@@ -476,6 +476,18 @@ def synthesize(manifest: dict | None) -> dict:
     if feature_gap:
         gaps.append(feature_gap)
 
+    # Customer identity stays in corpus-side profile metadata, never in routing
+    # code or the Human-approved product feature map. Every match is advisory.
+    try:
+        profiles = _load_sibling_module("customer_discovery", "customer_discovery.py")
+        if profiles is None:
+            raise RuntimeError("profile loader unavailable")
+        profile_result = profiles.discover(data, pairs)
+        candidates += profile_result["candidates"]
+        gaps += [f"CUSTOMER_PROFILE: {gap}" for gap in profile_result["gaps"]]
+    except Exception as exc:
+        gaps.append(f"CUSTOMER_PROFILE: unavailable ({type(exc).__name__}); no advice fabricated")
+
     # Normalize discovery axes into the existing v3 vocabulary. Keep the exact
     # axis/probe/feature identity: a broad family cannot stand in for its siblings.
     for cand in candidates:
@@ -565,7 +577,9 @@ def review_notes(manifest: dict | None = None) -> list[str]:
         if cand.get("generator") == "FEATURE_MAP":
             if str(cand.get("equivalence_key", "")).casefold() in represented_feature_map:
                 continue
-        elif cand.get("generator") in coverage_hypotheses.EXPLORATION_FIELDS:
+        elif (cand.get("generator") in coverage_hypotheses.EXPLORATION_FIELDS
+              or cand.get("generator") == "CUSTOMER_PROFILE"
+              or (cand.get("generator") == "LEARNED_PROBE" and cand.get("source") == "LEARNED")):
             if str(cand.get("equivalence_key", "")).casefold() in represented_keys:
                 continue
         elif str(cand.get("implied_dimension_axis") or cand["dimension"]).upper() in represented:

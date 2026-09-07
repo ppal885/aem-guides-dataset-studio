@@ -11,7 +11,7 @@ services:
       # Pre-publish validation resolves maps by name from the mounted AEM Guides content.
       - DITA_CONTENT_ROOT=${DITA_CONTENT_ROOT:-/content}
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     volumes:
       - backend_storage:/app/storage
       - backend_logs:/app/logs
@@ -23,23 +23,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    restart: unless-stopped
-    networks:
-      - studio-net
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_BASE_URL=
-    container_name: aem-studio-frontend
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      backend:
-        condition: service_healthy
     restart: unless-stopped
     networks:
       - studio-net

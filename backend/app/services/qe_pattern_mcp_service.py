@@ -9,6 +9,7 @@ make a pattern ACTIVE.
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import re
 from threading import RLock
@@ -38,6 +39,9 @@ from app.core.schemas_qe_pattern_mcp import (
     QePatternValidationStatus,
     ResolveQePatternsRequest,
     ResolveQePatternsResponse,
+    SharedLearningContext,
+    SharedLearningEnvelope,
+    SharedLearningMode,
 )
 
 
@@ -489,10 +493,27 @@ def _best_similarity(
 
 
 class QePatternResolver:
-    def __init__(self, provider: PatternLibraryProvider | None = None) -> None:
+    def __init__(self, provider: PatternLibraryProvider | None = None, *, shared_loader=None) -> None:
         self._provider = provider or TrainV2PatternLibraryProvider()
+        self._shared_enabled = provider is None or shared_loader is not None
+        self._shared_loader = shared_loader
 
-    def resolve(self, request: ResolveQePatternsRequest) -> ResolveQePatternsResponse:
+    def resolve_for_runtime(self, request: ResolveQePatternsRequest, context: SharedLearningContext) -> ResolveQePatternsResponse:
+        return self.resolve(request, context=context)
+
+    def resolve(self, request: ResolveQePatternsRequest, *, context: SharedLearningContext | None = None) -> ResolveQePatternsResponse:
+        baseline = self._resolve_patterns(request)
+        if self._shared_enabled and context is not None:
+            from app.services.shared_learning_pattern_provider import resolve_shared_learning
+            try:
+                baseline.shared_learning = resolve_shared_learning(request, context, loader=self._shared_loader)
+            except Exception:
+                baseline.shared_learning = SharedLearningEnvelope(mode=context.mode, status="UNAVAILABLE",
+                    error_code="SHARED_LEARNING_UNAVAILABLE",
+                    warnings=["Shared learning unavailable; existing baseline retained."])
+        return baseline
+
+    def _resolve_patterns(self, request: ResolveQePatternsRequest) -> ResolveQePatternsResponse:
         try:
             patterns, library_version, library_sha = self._provider.load()
         except PatternLibraryUnavailable:
@@ -530,6 +551,13 @@ class QePatternResolver:
         context_values = [value for value in context_values if value]
 
         for pattern in patterns:
+            # Additional shared-lesson qualifiers must not change the legacy
+            # baseline provider's existing negative-evidence matching surface.
+            pattern_context_values = list(context_values)
+            if pattern.provenance.source_kind == "SHARED_UAC_LEARNING":
+                pattern_context_values.extend(value for value in [
+                    *request.subject_terms, request.deployment_model,
+                    request.product_version] if value)
             reason_codes: list[str] = []
             conflicts: list[str] = []
             if pattern.customer_specific:
@@ -566,6 +594,17 @@ class QePatternResolver:
                 elif configuration_score < 0.5:
                     reason_codes.append("CONFIGURATION_STATE_MISMATCH")
 
+            if pattern.applicable_subject_terms:
+                subject_score, _, _ = _best_similarity(request.subject_terms, pattern.applicable_subject_terms)
+                if subject_score < 0.75:
+                    reason_codes.append("SUBJECT_SCOPE_MISMATCH")
+            for field, actual, expected in (
+                ("DEPLOYMENT", request.deployment_model, pattern.applicable_deployment_models),
+                ("PRODUCT_VERSION", request.product_version, pattern.applicable_product_versions),
+            ):
+                if expected and (not actual or actual.casefold() not in {value.casefold() for value in expected}):
+                    reason_codes.append(f"{field}_SCOPE_MISMATCH")
+
             surface_score, surface_input, surface_pattern = _best_similarity(
                 request.change_surfaces,
                 pattern.abstract_change_surface,
@@ -600,6 +639,10 @@ class QePatternResolver:
                 *pattern.question_families,
                 *pattern.relationship_to_explore,
             ]
+            if pattern.provenance.source_kind == "SHARED_UAC_LEARNING":
+                scope_targets.extend([*pattern.applicable_subject_terms,
+                    *pattern.applicable_deployment_models,
+                    *pattern.applicable_product_versions])
             for value in request.scope_constraints.explicit_out_of_scope:
                 score, _, candidate = _best_similarity([value], scope_targets)
                 if score >= 0.5:
@@ -615,11 +658,11 @@ class QePatternResolver:
                 if score >= 0.5:
                     conflicts.append(f"CURRENT_PRODUCT_DECISION:{candidate}")
             for hard_negative in pattern.hard_negatives:
-                score, _, _ = _best_similarity([hard_negative], context_values)
+                score, _, _ = _best_similarity([hard_negative], pattern_context_values)
                 if score >= 0.75:
                     conflicts.append(f"HARD_NEGATIVE:{hard_negative}")
             for counterexample in pattern.counterexamples:
-                score, _, _ = _best_similarity([counterexample], context_values)
+                score, _, _ = _best_similarity([counterexample], pattern_context_values)
                 if score >= 0.75:
                     conflicts.append(f"COUNTEREXAMPLE:{counterexample}")
             if conflicts:
@@ -737,10 +780,20 @@ _DEFAULT_RESOLVER = QePatternResolver()
 
 def resolve_qe_patterns(
     request: ResolveQePatternsRequest,
+    *,
+    context: SharedLearningContext | None = None,
 ) -> ResolveQePatternsResponse:
     """Resolve generic investigation patterns; never generate final ACs."""
 
-    return _DEFAULT_RESOLVER.resolve(request)
+    return _DEFAULT_RESOLVER.resolve(request, context=context)
+
+
+def configured_shared_learning_mode() -> SharedLearningMode:
+    """A server setting, never a client-supplied promotion or auth decision."""
+    try:
+        return SharedLearningMode(os.getenv("SHARED_UAC_LEARNING_MODE", "SHADOW").strip().upper())
+    except ValueError:
+        return SharedLearningMode.DISABLED
 
 
 def pattern_error_response(

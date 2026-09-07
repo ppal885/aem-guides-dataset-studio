@@ -1,4 +1,5 @@
 @echo off
-cd /d C:\Users\prashantp\Videos\aem-guides-dataset-studio\frontend
-echo STARTING_FRONTEND
-"C:\Program Files\nodejs\npm.cmd" run dev -- --force > C:\Users\prashantp\Videos\aem-guides-dataset-studio\tmp\frontend-start.log 2>&1
+setlocal
+echo This legacy command now delegates to the dashboard-only UAC launcher.
+call "%~dp0..\RUN_LOCAL_DEV.cmd" %*
+exit /b %errorlevel%

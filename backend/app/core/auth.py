@@ -1,13 +1,31 @@
 """Authentication and authorization modules."""
 import json
 import os
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 security = HTTPBearer(auto_error=False)
+
+
+class JiraReviewIdentity(BaseModel):
+    """Operator-provisioned Jira identity, never accepted from review requests."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    server_url: str = Field(min_length=1, max_length=500)
+    user_key: str = Field(default="", max_length=255)
+    account_id: str = Field(default="", max_length=255)
+
+    @model_validator(mode="after")
+    def one_stable_identity(self):
+        if bool(self.user_key) == bool(self.account_id):
+            raise ValueError("Configure exactly one Jira user key or account ID.")
+        for value in (self.server_url, self.user_key, self.account_id):
+            if value != value.strip() or any(ord(char) < 32 for char in value):
+                raise ValueError("Jira identity values must be clean bounded strings.")
+        return self
 
 
 class UserIdentity(BaseModel):
@@ -18,6 +36,9 @@ class UserIdentity(BaseModel):
     roles: list[str] = Field(default_factory=list)
     allowed_tenants: list[str] = Field(default_factory=list)
     auth_method: str = "unknown"
+    # Explicit operator configuration, never a client-supplied approval claim.
+    principal_type: Literal["human", "service", "shared", "unknown"] = "unknown"
+    jira_identity: JiraReviewIdentity | None = None
 
     @property
     def is_admin(self) -> bool:
@@ -65,6 +86,15 @@ def _build_identity(payload: dict, *, auth_method: str) -> UserIdentity:
     allowed_tenants = _normalize_allowed_tenants(payload.get("allowed_tenants"))
     if "admin" in {role.lower() for role in roles} and "*" not in allowed_tenants:
         allowed_tenants = ["*", *allowed_tenants]
+    principal_type = payload.get("principal_type", "unknown")
+    if principal_type not in {"human", "service", "shared", "unknown"}:
+        principal_type = "unknown"
+    try:
+        jira_identity = JiraReviewIdentity.model_validate(payload["jira_identity"]) if payload.get("jira_identity") else None
+    except (ValidationError, TypeError, ValueError):
+        # A bad optional mapping denies ticket review, without breaking legacy
+        # capture/generation authentication or exposing configured credentials.
+        jira_identity = None
     return UserIdentity(
         id=str(payload.get("id") or payload.get("user_id") or "unknown-user"),
         email=str(payload.get("email") or "") or None,
@@ -72,6 +102,8 @@ def _build_identity(payload: dict, *, auth_method: str) -> UserIdentity:
         roles=roles,
         allowed_tenants=allowed_tenants,
         auth_method=auth_method,
+        principal_type=principal_type,
+        jira_identity=jira_identity,
     )
 
 
@@ -83,6 +115,7 @@ def _default_dev_user() -> UserIdentity:
         roles=["admin"],
         allowed_tenants=["*"],
         auth_method="dev_bypass",
+        principal_type="shared",
     )
 
 
@@ -114,6 +147,7 @@ def _load_token_config_map() -> dict[str, UserIdentity]:
                 "id": os.getenv("ADMIN_BEARER_USER_ID", "admin"),
                 "email": os.getenv("ADMIN_BEARER_USER_EMAIL", ""),
                 "name": os.getenv("ADMIN_BEARER_USER_NAME", "Admin"),
+                "principal_type": "shared",
                 "roles": ["admin"],
                 "allowed_tenants": ["*"],
             },
@@ -127,6 +161,7 @@ def _load_token_config_map() -> dict[str, UserIdentity]:
                 "id": os.getenv("API_BEARER_USER_ID", "service-user"),
                 "email": os.getenv("API_BEARER_USER_EMAIL", ""),
                 "name": os.getenv("API_BEARER_USER_NAME", "Service User"),
+                "principal_type": "service",
                 "roles": _normalize_roles(os.getenv("API_BEARER_ROLES", "writer")),
                 "allowed_tenants": _normalize_allowed_tenants(os.getenv("API_ALLOWED_TENANTS", "*")),
             },

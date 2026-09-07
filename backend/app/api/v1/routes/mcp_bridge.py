@@ -8,9 +8,10 @@ streaming chat session.  Not intended for the main frontend.
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.core.auth import CurrentUser, UserIdentity
@@ -465,11 +466,26 @@ def search_jira_history(body: JiraHistoryRequest, user: UserIdentity = CurrentUs
 def resolve_qe_patterns_bridge(
     body: ResolveQePatternsRequest,
     user: UserIdentity = CurrentUser,
+    tenant_id: str = "kone",
+    cutoff_at: datetime | None = None,
+    excluded_source_case_ids: list[str] = Query(default=[]),
 ):
     """Resolve generic QE investigation patterns without generating final ACs."""
-    from app.services.qe_pattern_mcp_service import resolve_qe_patterns
+    from app.core.schemas_qe_pattern_mcp import SharedLearningContext
+    from app.services.qe_pattern_mcp_service import configured_shared_learning_mode, resolve_qe_patterns
+    from app.services.tenant_service import ensure_user_can_access_tenant
 
-    return resolve_qe_patterns(body)
+    tenant = ensure_user_can_access_tenant(user, tenant_id)
+    if len(excluded_source_case_ids) > 1000:
+        raise HTTPException(400, "At most 1000 source exclusions are supported.")
+    context = SharedLearningContext(
+        tenant_id=tenant, principal_id=user.id,
+        authenticated=user.auth_method == "token",
+        mode=configured_shared_learning_mode(), cutoff_at=cutoff_at,
+        excluded_source_case_ids=set(excluded_source_case_ids),
+        benchmark_isolation=bool(cutoff_at or excluded_source_case_ids),
+    )
+    return resolve_qe_patterns(body, context=context)
 
 
 # ---------------------------------------------------------------------------

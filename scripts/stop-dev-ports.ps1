@@ -1,5 +1,5 @@
-# Stop listeners on common dev ports (Dataset Studio frontend + API).
-$ports = @(5173, 5174, 5175, 8001)
+# Stop listeners on the UAC backend and static dashboard development ports.
+$ports = @(8001, 8765)
 foreach ($port in $ports) {
     $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     foreach ($c in $conns) {

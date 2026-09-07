@@ -21,6 +21,7 @@ from app.db.dataset_run_models import DatasetRun
 from app.db.dita_spec_models import DitaSpecChunk
 from app.db.run_feedback_models import RunFeedback
 from app.db import evidence_graph_models  # noqa: F401
+from app.db import test_plan_feedback_models, shared_uac_learning_models  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

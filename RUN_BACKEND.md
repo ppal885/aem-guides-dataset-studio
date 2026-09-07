@@ -1,43 +1,51 @@
-# Running the Backend Server
+# Run the UAC backend
 
-## Issue
-Windows Store Python has permission restrictions that prevent it from running in some contexts.
+The backend hosts the canonical UAC generation API and MCP bridge. It does not require a browser UI.
 
-## Solutions
+## Recommended Windows launcher
 
-### Option 1: Run Python Directly (Recommended)
-Open a **new PowerShell window** and run:
+From the repository root:
 
 ```powershell
-cd c:\UI_Frameowrk\guides-ui-tests\aem-guides-dataset-studio\backend
-C:\Users\prashantp\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe run_local.py
+.\RUN_LOCAL_DEV.cmd
 ```
 
-### Option 2: Install Python from python.org (Best Long-term Solution)
-1. Download Python from: https://www.python.org/downloads/
-2. During installation, check **"Add Python to PATH"**
-3. After installation, restart your terminal
-4. Then run: `python run_local.py` from the backend directory
+This starts the backend on port `8001` and the read-only dashboard on port `8765`. Use `.\RUN_LOCAL_DEV.cmd -Stop` to stop only the processes owned by that launcher.
 
-### Option 3: Use the Fixed Script
-Try running the fixed script I created:
+## Backend only
+
+Create and populate a project virtual environment once:
 
 ```powershell
-.\start_backend_direct.ps1
+Copy-Item backend\.env.example backend\.env
+python -m venv backend\.venv
+backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 ```
 
-### Option 4: Use WSL (Windows Subsystem for Linux)
-If you have WSL installed:
-```bash
-cd /mnt/c/UI_Frameowrk/guides-ui-tests/aem-guides-dataset-studio/backend
-python3 run_local.py
+Then start the service:
+
+```powershell
+Set-Location backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
-## Verify Backend is Running
-Once started, the backend should be available at:
-- **API**: http://localhost:8001
-- **API Docs**: http://localhost:8001/docs
-- **Health Check**: http://localhost:8001/health
+The compatibility scripts `START_BACKEND_SIMPLE.ps1`, `start_backend.ps1`, `start_backend_direct.ps1`, and `start_backend.cmd` remain backend-only alternatives.
 
-## Note
-The fixes I made to handle the 500 error are already in place in `backend/app/api/v1/routes/schedule.py`. Once the backend starts, test the `/api/v1/jobs` endpoint again.
+## Verify
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8001/health -UseBasicParsing
+python scripts\run_test_plan_pipeline.py GUIDES-12345 --http --base-url http://127.0.0.1:8001
+```
+
+- Health: `http://127.0.0.1:8001/health`
+- API docs: `http://127.0.0.1:8001/docs`
+- Canonical API: `POST http://127.0.0.1:8001/api/v1/test-plans/pipeline`
+- MCP bridge: `POST http://127.0.0.1:8001/api/v1/mcp/guides-test-plan-generator`
+
+## Troubleshooting
+
+- If the port is already in use, stop the known launcher with `.\RUN_LOCAL_DEV.cmd -Stop`. Use `.\KILL_PORTS.ps1` only when you intentionally want to terminate every listener on the documented local ports.
+- If imports fail, confirm that the same Python executable received `backend\requirements.txt`.
+- Keep secrets in `backend\.env` or the approved deployment secret store; never add them to tracked scripts.
+- Review local logs under `logs\`. On the VM, use `journalctl -u aem-backend -n 100 --no-pager`.

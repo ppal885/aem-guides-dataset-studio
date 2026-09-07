@@ -1,5 +1,5 @@
-# Kill processes using ports 8001 (backend default) and 5173 (frontend)
-# Run this if RUN_BOTH.ps1 fails with "Backend did not respond" or port-in-use errors
+# Explicitly stop listeners on the local backend and dashboard ports.
+# Prefer RUN_LOCAL_DEV.ps1 -Stop; use this only for stale or externally started processes.
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -23,8 +23,8 @@ function Kill-Port {
     }
 }
 
-Write-Host "Clearing ports 8001 and 5173..." -ForegroundColor Cyan
+Write-Host "Clearing ports 8001 and 8765..." -ForegroundColor Cyan
 Kill-Port 8001
-Kill-Port 5173
+Kill-Port 8765
 Start-Sleep -Seconds 2
-Write-Host "Done. Run .\RUN_BOTH.ps1 to start." -ForegroundColor Green
+Write-Host "Done. Run .\RUN_LOCAL_DEV.cmd to start." -ForegroundColor Green

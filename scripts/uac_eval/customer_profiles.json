@@ -1,0 +1,56 @@
+{
+  "schema_version": "aem-guides-customer-discovery-map-v1",
+  "profiles": [
+    {
+      "profile_id": "CP-001",
+      "customer": "Hyundai",
+      "labels": ["Hyundai"],
+      "source": "LEARNED",
+      "promotion_state": "VALIDATING",
+      "confidence": 0.25,
+      "source_ref": "Jira CSV export 2026-09-05T22_22_55+0000; labels filter; summary/component/resolution only for AC-less rows",
+      "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
+      "semantic_match": {
+        "components": ["Authoring"],
+        "any_terms": ["CJK", "Korean", "Hangul", "input method", "IME"]
+      },
+      "dimensions": [
+        {
+          "id": "table-edit",
+          "component": "Authoring",
+          "axis": "STATE_PARTITION",
+          "candidate": "Investigate table header, row and column editing on the current path; establish expected retained structure from current evidence.",
+          "case_refs": ["GUIDES-35438", "GUIDES-23213", "GUIDES-23212"]
+        },
+        {
+          "id": "map-ref-title",
+          "component": "Authoring",
+          "axis": "REFERENCE_ARTIFACT",
+          "candidate": "Investigate map-reference display and insertion: displayed title, inserted order and error indicators are separate questions, not an assumed shared title defect.",
+          "case_refs": ["GUIDES-21759", "GUIDES-22858", "GUIDES-22859"]
+        },
+        {
+          "id": "editor-view-state",
+          "component": "Authoring",
+          "axis": "STATE_PARTITION",
+          "candidate": "Investigate whether the current editor action preserves the intended selection and visible state; verify which views actually share the touched path.",
+          "case_refs": ["GUIDES-25104", "GUIDES-13454"]
+        },
+        {
+          "id": "CJK/Korean",
+          "component": "Localization",
+          "axis": "LOCALIZATION",
+          "candidate": "Investigate localized input, character display and resource paths using the current supported locales and input methods; historical language examples do not set acceptance scope.",
+          "case_refs": ["GUIDES-17089", "GUIDES-14538", "GUIDES-13489", "GUIDES-13436"]
+        }
+      ],
+      "notes": [
+        "All entries are theme-level advisory context, not independently approved behavior contracts.",
+        "GUIDES-34580 is Duplicate and is not counted as independent title evidence.",
+        "GUIDES-22858 and GUIDES-22859 support order/error investigation, not title-only confirmation.",
+        "GUIDES-23211 does not establish table structural editing from its summary and is not counted here.",
+        "Held-out GUIDES-25663 is excluded from every profile and learned probe."
+      ]
+    }
+  ]
+}

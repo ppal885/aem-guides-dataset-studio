@@ -1,0 +1,181 @@
+{
+  "acceptance_contract_assertions": {
+    "disabled_contract_hash": "28b731eca59282818b84ee6acbbd4261c42c36335eeda439c47ca9fa9e74df04",
+    "enabled_contract_hash": "28b731eca59282818b84ee6acbbd4261c42c36335eeda439c47ca9fa9e74df04",
+    "no_acceptance_contract_change": true,
+    "no_promotion_change": true
+  },
+  "capture": {
+    "binding_status": "BOUND",
+    "draft_id": "81316e07-4df4-5817-a6a6-45f12f384ffc",
+    "feedback_id": "eee9888c-13db-5b0f-b023-6bbe8ed0af7f",
+    "index_status": "SKIPPED",
+    "learning_status": "CANDIDATE",
+    "persisted": true,
+    "source_hash": "93443097d9849acc2399376c524a06c3915c28f4e675d5b141c2ba4f37ca9577",
+    "source_kind": "HUMAN_CORRECTION",
+    "submitter_id": "reviewer-1"
+  },
+  "generated_at": "2026-09-05T22:31:46.898391+00:00",
+  "live_vector_index_verified": false,
+  "next_case": {
+    "evidence_bundle_id": "bundle:8c13e8fc49a83197658ea306e5c1d743ea22fac3d45e6932a1cf4ef9093780f4",
+    "jira_key": "GUIDES-82004",
+    "linked_dispositions": [
+      {
+        "candidate": "ALTERNATE_MECHANISMS: Publishing should retain the exact Ready status.",
+        "disposition": "SEMANTIC_REGRESSION",
+        "disposition_id": "disposition:9fd5dd3bcd3912bec59a2990922f970d",
+        "evidence_ids": [
+          "ev:JIRA_DESCRIPTION:f74e6725e39743c68aa31be0fb2f4fc6"
+        ],
+        "rationale": "Targeted evidence verified applicability; the result remains QE coverage and is not promoted to product acceptance.",
+        "source_closure_ids": [
+          "closure:7a8f6baf50701beee1d50d2eccdcaf4e"
+        ],
+        "source_fact_ids": [],
+        "source_hypothesis_ids": [
+          "hypothesis:f763f6f8b6959faf5240967a6162f8ed"
+        ],
+        "source_question_ids": [
+          "question:6790ff12c5d594e0235d6c9f039f382f"
+        ]
+      }
+    ],
+    "linked_questions": [
+      {
+        "active_domain": [
+          "MIGRATION",
+          "PUBLISHING"
+        ],
+        "active_reasoner": "Python compatibility fallback",
+        "authority_subject": "PRODUCT_CONTRACT",
+        "blocking": false,
+        "blocking_status": false,
+        "current_fact_refs": [],
+        "dimension": "ALTERNATE_MECHANISMS",
+        "expected_evidence_type": [
+          "ACCEPTED_UAC",
+          "PRODUCT_DECISION",
+          "JIRA_ACCEPTANCE_CRITERIA",
+          "JIRA_DESCRIPTION",
+          "CUSTOMER_REQUEST",
+          "OFFICIAL_PRODUCT_DOCUMENTATION"
+        ],
+        "expected_oracle": "Evidence identifies ALTERNATE_MECHANISM_TO for Publishing should retain the exact Ready status..",
+        "family_id": "ALTERNATE_MECHANISMS",
+        "human_question_class": null,
+        "linked_behavior_or_state": "Publishing should retain the exact Ready status.",
+        "linked_change_surface": [
+          "surface:d08db3b90c93a442a129a82d51d9ca4a"
+        ],
+        "linked_pattern_ids": [
+          "SHARED_1A3A1182D59FDF659E8EBE7B3829F4F8"
+        ],
+        "materiality": "P2",
+        "origin": "PYTHON_COMPATIBILITY_FALLBACK",
+        "preferred_provider": "FLUFFYJAWS",
+        "question": "Does another supported mechanism provide Publishing should retain the exact Ready status.?",
+        "question_id": "question:6790ff12c5d594e0235d6c9f039f382f",
+        "question_text": "Does another supported mechanism provide Publishing should retain the exact Ready status.?",
+        "relationship_being_tested": "ALTERNATE_MECHANISM_TO",
+        "resolution_status": "PENDING_EVIDENCE",
+        "source_closure_ids": [
+          "closure:7a8f6baf50701beee1d50d2eccdcaf4e"
+        ],
+        "source_fact_ids": [],
+        "target_source_types": [
+          "ACCEPTED_UAC",
+          "PRODUCT_DECISION",
+          "JIRA_ACCEPTANCE_CRITERIA",
+          "JIRA_DESCRIPTION",
+          "CUSTOMER_REQUEST",
+          "OFFICIAL_PRODUCT_DOCUMENTATION"
+        ],
+        "why_it_matters": "Human-backed pattern SHARED_1A3A1182D59FDF659E8EBE7B3829F4F8 recommends investigating ALTERNATE_MECHANISMS; current evidence must still verify applicability before it can block acceptance."
+      }
+    ],
+    "run_id": "run:431197c8-40aa-478a-bc18-2b7807d3393f",
+    "shared_lesson_matches": [
+      {
+        "abstract_trigger": [
+          "CHANGED_BEHAVIOR"
+        ],
+        "applicability": 0.870833,
+        "blocking_default": false,
+        "confidence": 0.7,
+        "counterexample_summary": [
+          "COUNTEREXAMPLES_REVIEWED:0",
+          "HARD_NEGATIVES_REVIEWED:0"
+        ],
+        "current_applicability": "CURRENTLY_UNRESOLVED",
+        "independent_case_count": 1,
+        "lesson_id": "eee9888c-13db-5b0f-b023-6bbe8ed0af7f",
+        "lesson_kind": "SCOPED_CASE",
+        "materiality": "P2",
+        "pattern_id": "SHARED_1A3A1182D59FDF659E8EBE7B3829F4F8",
+        "pattern_version": "2",
+        "preferred_evidence_sources": [],
+        "recommended_question_families": [
+          "ALTERNATE_MECHANISMS"
+        ],
+        "relationship_to_explore": [
+          "Investigate alternate mechanisms for the changed publishing behavior."
+        ],
+        "suggestion_state": "PATTERN_SUGGESTED",
+        "support_count": 1
+      }
+    ]
+  },
+  "publication": {
+    "lesson_id": "eee9888c-13db-5b0f-b023-6bbe8ed0af7f",
+    "lesson_version": 2,
+    "publication_id": "31626fc3e68a11a5d162cfa79c666f1124fc7c791d3dfe35fd801cb2a750c9ba"
+  },
+  "review": {
+    "authorization_jira_key": "GUIDES-82003",
+    "authorization_policy": "LIVE_JIRA_QE_ASSIGNEE",
+    "learning_status": "APPROVED",
+    "live_qe_assignment_verified": true,
+    "named_human_approval": {
+      "applicability_confirmed": true,
+      "authorization": {
+        "checked_at": "2026-09-05T22:31:46.722624+00:00",
+        "field_id": "customfield_18512",
+        "field_name": "QE Assignee",
+        "identity_kind": "user_key",
+        "identity_value": "qe-key-1",
+        "issue_updated": "2026-09-06T00:00:00+00:00",
+        "jira_key": "GUIDES-82003",
+        "jira_server": "https://jira.example",
+        "policy": "LIVE_JIRA_QE_ASSIGNEE"
+      },
+      "counterexamples_checked": true,
+      "origin_confirmed": true,
+      "reviewed_at": "2026-09-05T22:31:46.722624+00:00",
+      "reviewer_id": "reviewer-1"
+    },
+    "revision": 2
+  },
+  "revocation": {
+    "coverage_dispositions_match_disabled": true,
+    "learning_status": "REVOKED",
+    "missing_questions_match_disabled": true,
+    "no_acceptance_contract_change": true,
+    "publication_id": "c9ef460cc63c182723a681378fe4a27abca5a78ac2249109fe69cd0254d72a45",
+    "published_lesson_count": 0,
+    "revision": 3,
+    "shared_lesson_matches": []
+  },
+  "schema_version": "shared-uac-local-learning-proof-v1",
+  "source_case": {
+    "evidence_bundle_id": "bundle:916f821c2e061e361c3227819de6081d7cb4d38325385013a7d1d8779fdcac1a",
+    "jira_key": "GUIDES-82003",
+    "plan_fingerprint": "b1aa1d4af4e41f24ccee4024bc48cfda11fee2cbb516ff50cb0bd46060ed0a73",
+    "run_id": "run:12790650-c7cf-4baa-847a-998c1100a96e"
+  },
+  "synthetic_fixture": true,
+  "test": "test_real_canonical_draft_binds_correction_and_approved_sql_lesson_reaches_next_case",
+  "verification_scope": "LOCAL_ISOLATED",
+  "vm_verified": false
+}

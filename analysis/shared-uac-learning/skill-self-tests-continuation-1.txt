@@ -1,0 +1,1677 @@
+ok: good plan passes
+ok: automation requires one main feature coverage verdict
+ok: acceptance criterion without source is rejected
+ok: compact renderer AC syntax is rejected as a durable source record
+ok: paste-unsafe AC markup is rejected: backticks/code spans
+ok: paste-unsafe AC markup is rejected: strikethrough
+ok: paste-unsafe AC markup is rejected: bold/italic markers
+ok: paste-unsafe AC markup is rejected: bold/italic markers
+ok: paste-unsafe AC markup is rejected: Markdown link
+ok: grossly overlong Then clause is rejected with rewrite guidance
+ok: graph path alone cannot support P0 acceptance
+ok: graph path containing a Jira key is still rejected
+ok: area-only similarity (no match strength) is rejected
+ok: AC missing the sphere tag is rejected
+ok: AC with an uncontrolled sphere is rejected
+ok: AC with reordered fields is rejected
+ok: AC with an embedded field label is rejected
+ok: AC without terminal punctuation is rejected
+ok: AC with an extra field is rejected
+ok: duplicate AC IDs are rejected
+ok: Performance AC without quantified workload is rejected
+ok: Performance AC without measurable oracle is rejected
+ok: quantified evidence-backed Performance AC passes
+ok: AC with no scenario mapping is rejected
+ok: AC with no automation verdict is rejected
+ok: scenario without AC mapping is rejected
+ok: Test Scenarios without a Test data to prepare bullet is rejected
+ok: customer context source is required
+ok: scenario Action and Expected wording is required
+ok: terse keyword-fragment Regression Areas bullet is rejected
+ok: open question stating QA impact passes
+ok: open question without QA impact is rejected
+ok: duplicate Open Question IDs are rejected
+ok: non-contiguous Open Question IDs are rejected
+ok: no-open-questions declaration cannot coexist with a real question
+ok: stable contiguous Test Scenario IDs pass
+ok: duplicate Test Scenario IDs are rejected
+ok: Scope From Git citing a clone without sync/SHA state is rejected
+ok: Scope From Git citing a clone with a provisional SHA acknowledgment passes
+ok: Regression Areas citing a Jira key absent from Known Bugs is rejected
+ok: short technical AC remains valid
+ok: technical identifiers remain readable tokens
+ok: plain presentation is one line and preserves technical token text exactly
+ok: one coupled safety result remains allowed
+ok: complex legal-style phrase is rejected with a simple replacement
+ok: ordinary clause density is reviewed instead of hard-failed by the legacy contract
+ok: double-negative outcome is rejected
+ok: When cannot hide a second action after and then
+ok: and/or is rejected in favor of an exact choice
+ok: semicolon-separated outcomes are rejected
+ok: AC clauses cannot depend on another AC reference
+ok: 29-word outcome emits a loud readability review
+ok: three-sentence outcome emits review without hard failure
+ok: clause-heavy outcome emits review without hard failure
+ok: tester jargon emits review: Widget.render
+ok: tester jargon emits review: loadCurrentValue()
+ok: tester jargon emits review: C:/repo/Widget.java:42
+ok: tester jargon emits review: baseline-relative
+ok: tester jargon emits review: materialization
+ok: tester jargon emits review: p95
+ok: tester jargon emits review: heap
+ok: tester jargon emits review: GC
+ok: tester jargon emits review: suffix path
+ok: tester jargon emits review: render condition
+ok: tester jargon emits review: non-asset resource
+ok: tester jargon emits review: per-asset gating
+ok: code and jargon in Evidence do not trigger tester-text review
+ok: developer note outside the AC is not treated as tester text
+ok: generic surface emits exact-screen review
+ok: declared exact screen suppresses vague-surface review
+ok: long Given clause emits the same first-read review as a long outcome
+ok: combined recap of two earlier outcomes is reviewed
+ok: POSIX absolute source path is recognized
+ok: existing file + valid line passes
+ok: out-of-range line is failed
+ok: real symbol next to a single file passes
+ok: invented symbol next to a single file is failed
+ok: missing source file is failed
+ok: runtime/relative/space-root paths are skipped, not failed
+ok: backtick path with spaces is verified when it exists
+ok: backtick path with spaces is failed when missing
+ok: invented Jira key is flagged against manifest
+ok: Partially covered without code evidence is failed
+ok: Partially covered with code evidence passes
+ok: only Not-covered needs no code evidence
+ok: manifest with real download + analyzed passes
+ok: manifest with missing download is failed
+ok: manifest entry not attested analyzed is failed
+ok: fewer than three RAG probes is failed when behaviour matters
+ok: three RAG probes passes
+ok: one probe passes when behaviour_matters is false
+ok: run_gates requires a manifest
+ok: run_gates flags missing manifest keys
+ok: legacy v2 base-schema check stays readable before signal completeness
+ok: behaviour_matters false waives v3 semantic manifest keys
+ok: run_gates requires source fidelity for Proposed enumerated requirements
+ok: principal performance assessment accepts an evidence-backed not-required decision
+ok: not-required performance assessment aligns with a plan containing no Performance AC
+ok: run_gates rejects an incomplete principal performance risk review
+ok: malformed performance arrays fail closed without crashing
+ok: required principal performance assessment passes schema validation
+ok: required performance decision fails when the plan omits a Performance AC
+ok: required performance decision aligns with a quantitative Performance AC
+ok: not-required decision rejects an invented Performance AC
+ok: manager feedback fails when historical performance Jira is only a passive regression
+ok: current performance Jira is not misclassified as historical evidence
+ok: same-path historical SubjectScheme performance contract passes schema validation
+ok: retained historical SubjectScheme contract emits a mapped Performance AC
+ok: retained historical performance AC cannot omit its mapped benchmark scenario
+ok: retained historical performance Jira must be cited by the Performance AC
+ok: area-only historical performance cannot be retained
+ok: retained same-path history cannot be classified not-required
+ok: conditional principal performance assessment passes schema validation
+ok: conditional performance decision requires a QA-impact Open Question
+ok: conditional performance decision aligns after its QA-impact question is visible
+ok: run_gates flags a clone with no sha and not provisional
+ok: run_gates rejects Jira search as product-doc RAG
+ok: run_gates requires same and cross-customer Jira searches
+ok: run_gates rejects noncanonical Jira components
+ok: run_gates rejects graph paths without leaf citations
+ok: run_gates rejects shadow graph influence
+ok: run_gates allows explicit graph degraded mode
+ok: run_gates passes a complete manifest
+ok: Confirmed ACs are forbidden when no accepted UAC exists
+ok: manifest and visible Open Question IDs must match exactly
+ok: combined artifact accepts only the exact plan plus Appendix A
+ok: combined artifact rejects a mutated plan body
+ok: full run gate rejects compact source AC syntax
+ok: run_gates adds no root-cause/fix failure for the complete fixture
+ok: run_gates rejects fix-driven fixture: Pre-Development
+ok: run_gates rejects fix-driven fixture: unguarded preserved invariant
+ok: run_gates rejects fix-driven fixture: unmapped fix-introduced risk
+ok: run_gates rejects fix-driven fixture: added test reported Not covered
+ok: accepted UAC requires fidelity audit
+ok: complete UAC fidelity audit passes
+ok: unmapped accepted UAC clause is rejected
+ok: passing audit cannot hide scope expansion
+ok: blocked UAC fidelity audit cannot pass final gate
+ok: preflight rejects configuration as proof of availability
+ok: preflight rejects a failed call labelled available
+ok: preflight rejects a timestamp without timezone
+ok: preflight requires a not-applicable reason
+ok: preflight rejects full mode when a source is unavailable
+ok: preflight accepts a complete degraded manifest
+ok: degraded preflight requires claim restrictions
+ok: full preflight aligns with the visible evidence boundary
+ok: degraded preflight rejects a falsely full evidence boundary
+ok: degraded preflight aligns when unavailable sources and limits are visible
+ok: degraded evidence boundary must name each unavailable source
+ok: implementation review cannot stay ready when Git is unavailable
+ok: implementation review accepts explicit degraded readiness
+ok: post-fix validation is blocked when Git fix evidence is unavailable
+ok: extract_acs parses both canonical ACs
+ok: extract_acs maps stable automation fields
+ok: extract_acs fails closed on malformed input
+ok: extract_acs emits no partial payload for compact display syntax
+ok: extract_acs emits no payload for paste-unsafe AC markup
+ok: extract_acs leaves non-gross clarity review to the readability gate
+ok: compact view renders without problems
+ok: compact view exposes exactly the requested headings
+ok: compact view keeps analysis in the durable artifact
+ok: compact view does not leak hidden record sections
+ok: compact view keeps validated Test Scenarios
+ok: compact ACs use one plain line and hide internal record labels
+ok: compact Jira list keeps only key and title
+ok: compact automation states main coverage and high-level target
+ok: compact view hides Open Questions but durable record keeps them
+ok: compact renderer emits nothing for a noncanonical source AC
+ok: compact view renders a deterministic no-Jira result
+ok: material relation with no evidence is rejected
+ok: unknown relation type is rejected
+ok: well-formed relation validates clean
+ok: immaterial relation without evidence is allowed
+ok: CONTROLS lands in controlling_constructs bucket
+ok: hypotheses include material non-rejected deps
+ok: hypotheses exclude rejected and immaterial
+ok: equivalent hypotheses collapse to representatives
+ok: navtitle fixture passes the semantic gate
+ok: navtitle fixture exposes unresolved semantics
+ok: uninvestigated governing dependency makes the gate NEEDS_REVIEW
+ok: conref fixture passes the gate (generalizes beyond navtitle)
+ok: keyref fixture passes the gate (generalizes beyond navtitle)
+ok: inactive DITA semantics gate is SKIPPED
+ok: clean production code passes the audit
+ok: `if navtitle:` production guard is flagged
+ok: construct guard with an example/provenance marker is exempt
+ok: construct->construct pair literal is flagged
+ok: ambiguous-only literals / `if data:` are not flagged
+ok: bare construct rule-arrow in a prompt is flagged
+ok: example-marked rule-arrow in a prompt is exempt
+ok: test_*.py files are skipped by the audit
+ok: the real skill directory passes the anti-hardcoding audit
+ok: a concrete historical issue key in production instructions fails
+ok: explicit regression fixture catalog is excluded from production audit
+Traceback (most recent call last):
+  File "C:\aem-uac-learning\.codex\skills\test-plan-generation\scripts\test_skill_scripts.py", line 10466, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "C:\aem-uac-learning\.codex\skills\test-plan-generation\scripts\test_skill_scripts.py", line 10374, in main
+    test_production_jira_hardcoding_audit()
+  File "C:\aem-uac-learning\.codex\skills\test-plan-generation\scripts\test_skill_scripts.py", line 3189, in test_production_jira_hardcoding_audit
+    check(
+  File "C:\aem-uac-learning\.codex\skills\test-plan-generation\scripts\test_skill_scripts.py", line 262, in check
+    raise AssertionError(f"FAILED: {name}")
+AssertionError: FAILED: active skill has no historical Jira identity or fixture threshold
+KNOWN BASELINE FAILURE retained: test_production_jira_hardcoding_audit
+ok: behavior_model valid for ui ticket
+ok: behavior_model valid for backend ticket
+ok: behavior_model valid for config ticket
+ok: behavior_model valid for publishing ticket
+ok: behavior_model valid for dita ticket
+ok: behavior_model valid for persistence_ok ticket
+ok: empty behavior_model is rejected
+ok: fact without evidence_ids is rejected
+ok: fact with unknown authority is rejected
+ok: confidence out of range is rejected
+ok: non-list model field is rejected
+ok: state removal without a writer path is rejected
+ok: state removal passes when the missing writer is flagged in unknowns
+ok: behavior_model absent is not a failure
+ok: valid coverage candidate passes
+ok: candidate status is INVESTIGATION_CANDIDATE by default
+ok: candidate with no technical_basis is rejected
+ok: unknown dimension is rejected
+ok: invalid status is rejected
+ok: confidence out of range is rejected
+ok: equivalent candidates are flagged for collapse
+ok: collapse keeps one representative of an equivalent family
+ok: distinct candidates both pass and do not collapse
+ok: coverage_hypotheses absent is not a failure
+ok: valid missing_question passes
+ok: material question requires a second pass
+ok: no material question -> no second pass required
+ok: material question without a second pass is rejected
+ok: second query identical to initial is rejected
+ok: a genuinely new second-pass query is detected
+ok: USED evidence resolves the question
+ok: REJECTED-only evidence leaves the question unresolved
+ok: unresolved question must declare if_unresolved OPEN_QUESTION
+ok: duplicate (query,source) retrieval is flagged
+ok: question without search_concepts is rejected
+ok: evidence with unknown status is rejected
+ok: evidence with out-of-bound pass is rejected
+ok: implementation retrieval cannot resolve a product-contract question
+ok: USED evidence must reference a question or hypothesis
+ok: evidence cannot reference an undeclared question
+ok: evidence cannot reference an undeclared hypothesis
+ok: a missing question cannot reference an undeclared hypothesis
+ok: duplicate evidence ids are rejected
+ok: missing_questions/evidence absent is not a failure
+ok: plausible hypothesis confirmed on authoritative evidence
+ok: current implementation alone cannot authorize an AC
+ok: hypothesis rejected with disproving evidence
+ok: REJECTED cannot enter an AC
+ok: conflicting evidence cannot be CONFIRMED
+ok: conflict resolved as UNRESOLVED->Open Question passes
+ok: spec-vs-impl divergence forces UNRESOLVED
+ok: existing test alone cannot CONFIRM current contract
+ok: embedding similarity alone cannot CONFIRM
+ok: UNRESOLVED cannot become an AC
+ok: UNRESOLVED without an open_question_ref is rejected
+ok: inferred-high-confidence with 2+ facts and no product decision passes
+ok: inferred verdict with an explicit product decision is rejected
+ok: every coverage hypothesis must be verified (unverified is flagged)
+ok: verified hypothesis is not flagged
+ok: authority is validated against the hypothesis subject
+ok: CONFIRMED requires a concrete evidence reference
+ok: verification cannot target an undeclared hypothesis
+ok: a hypothesis cannot have two terminal verifications
+ok: verification passes when evidence, authority, subject, and hypothesis agree
+ok: verification rejects evidence owned by another hypothesis
+ok: verifications absent is not a failure
+ok: fully explored plan passes the coverage gate
+ok: covered dimension marked COVERED
+ok: rejected candidate marked INVESTIGATED_AND_REJECTED
+ok: exposed unresolved marked UNRESOLVED_AND_EXPOSED
+ok: discovered-but-unexplored contract/consumer -> NEEDS_REVIEW
+ok: NEEDS_REVIEW blocks final delivery
+ok: hidden unresolved hypothesis -> FAIL
+ok: unevaluated NFR signal -> NEEDS_REVIEW
+ok: material question without a new second pass -> NEEDS_REVIEW
+ok: investigated-and-rejected candidate -> PASS
+ok: active DITA dep left uninvestigated folds into NEEDS_REVIEW
+ok: coverage gate not present without reasoning blocks
+ok: coverage gate present with a reasoning block
+ok: unresolved surfaced in plan Open Questions passes integration
+ok: unresolved missing from plan Open Questions fails integration
+ok: valid evidence_trace passes integration
+ok: evidence_trace with unknown ac_id fails
+ok: AC tracing to a REJECTED hypothesis fails
+ok: evidence_trace without evidence_ids fails
+ok: integration skipped without reasoning blocks
+ok: behavior_model mandatory when behaviour_matters
+ok: behaviour_matters false waives the reasoning requirement
+ok: behavior_model alone cannot satisfy the canonical pipeline
+ok: coverage hypotheses without verifications is rejected
+ok: full reasoning set satisfies the requirement
+ok: large-topic authoring issue routes to viewport stability
+ok: authoring viewport contract contains active caret or selected element deep in the document
+ok: authoring viewport contract contains cross-reference or reference link
+ok: authoring viewport contract contains focus returns to the intended insertion location
+ok: authoring viewport contract contains relative to the active element rather than to an exact prior pixel offset
+ok: authoring viewport contract contains type, paste
+ok: authoring viewport contract contains cancel it repeatedly
+ok: authoring viewport contract contains no reference or duplicate content is inserted
+ok: authoring viewport contract does not invent left map tree
+ok: authoring viewport contract does not invent save/reopen
+ok: authoring viewport contract does not invent old editor
+ok: authoring viewport contract does not invent milliseconds
+ok: authoring viewport contract does not invent data loss
+ok: map preview remains a separate route
+ok: map preview retains condition state
+ok: map preview does not inherit caret behavior
+ok: CALS deletion gets the structural route
+ok: CALS deletion contract contains source-defined row and column count
+ok: CALS deletion contract contains visible column count decreases by the number of distinct deleted columns
+ok: CALS deletion contract contains ghost column
+ok: CALS deletion contract contains span metadata
+ok: large-file safeguard is configuration-driven working-as-designed behavior
+ok: large-file contract uses parsed tag threshold
+ok: large-file contract does not create an observed-count AC
+ok: historical issue key alone cannot activate the large-file route
+ok: skill retains UAC fidelity marker #### Accepted UAC Fidelity Gate
+ok: skill retains UAC fidelity marker aem-guides-uac-fidelity-v1
+ok: skill retains UAC fidelity marker bidirectional traceability
+ok: skill retains UAC fidelity marker configuration truth table
+ok: skill retains UAC fidelity marker Do not convert a working-as-designed complaint into Confirmed AC
+ok: skill retains UAC fidelity marker Do not treat a configuration-gated control as removed or deprecated
+ok: skill retains UAC fidelity marker Respect investigation chronology
+ok: skill retains UAC fidelity marker Do not equate `Resolution: Fixed` with a verified product-code fix
+ok: skill retains UAC fidelity marker Never merge a mainline accepted UAC into a hotfix ticket
+ok: skill retains UAC fidelity marker Collapse repeated identical UAC blocks deterministically
+ok: skill retains UAC fidelity marker Incident workload observations are not performance SLAs
+ok: skill retains UAC fidelity marker Product-fix chronology without accepted UAC remains candidate regression evidence
+ok: skill retains UAC fidelity marker jira_comment_accepted_scope
+ok: skill retains UAC fidelity marker Preserve contradictory automation labels
+ok: skill retains UAC fidelity marker ### Deterministic Authoring-State Routing
+ok: skill retains UAC fidelity marker scripts/authoring_state_contract.py
+ok: skill retains UAC fidelity marker references/authoring-state-uac.md
+ok: skill retains UAC fidelity marker references/component-routing.md
+ok: skill retains UAC fidelity marker scripts/component_reference_router.py
+ok: skill retains UAC fidelity marker references/component-authoring.md
+ok: skill retains UAC fidelity marker references/component-integration.md
+ok: skill retains UAC fidelity marker When a later accepted scope conflicts with an older description
+ok: skill retains UAC fidelity marker For map-Xref display labels, separate visible text from destination semantics
+ok: skill retains UAC fidelity marker For hierarchy-selection counts, derive the expected selected set and count from the current fixture
+ok: skill retains UAC fidelity marker For Explorer sorting, keep display label, sort key, sort direction
+ok: skill retains UAC fidelity marker For asset CRUD API requests
+ok: regression catalog retains generic fixture boundary non-authoritative regression and evaluator catalog
+ok: regression catalog retains generic fixture boundary must never activate or authorize that rule for a new issue
+ok: regression catalog retains generic fixture boundary ## What Good UAC Looks Like
+ok: regression catalog retains generic fixture boundary ## Gold Reference:
+ok: regression catalog retains generic fixture boundary ## Caution Reference:
+ok: regression catalog retains generic fixture boundary [Proposed]
+ok: regression catalog retains generic fixture boundary [Confirmed]
+ok: regression catalog retains generic fixture boundary Open Question
+ok: quality gate enforces accepted UAC fidelity
+ok: authoring-state reference retains marker ## Route 1 - Authoring Viewport Stability
+ok: authoring-state reference retains marker ## Route 2 - Map Preview State Restoration
+ok: authoring-state reference retains marker ## Route 3 - CALS Multi-Column Deletion
+ok: authoring-state reference retains marker ## Route 4 - Configuration-Driven Large-File Safeguard
+ok: authoring-state reference retains marker Derive the starting row/column count
+ok: authoring-state reference retains marker largeFileTagCount
+ok: authoring-state reference retains marker Screenshot-only and pasted examples
+ok: Codex and Claude UAC references stay identical
+ok: thumbnail scope routes to Authoring
+ok: accepted thumbnail scope excludes stale multi-selection mechanism
+ok: thumbnail scope pivot emits a deterministic warning
+ok: Authoring route avoids the full UAC catalog
+ok: map Xref routes to Authoring
+ok: map Xref receives the exact mechanism
+ok: duplicate without UAC is Proposed-only
+ok: duplicate warning is explicit
+ok: explicit Editor conditional-attribute scope preserves its Jira component
+ok: conditional-attribute configuration receives the exact mechanism
+ok: conditional-attribute configuration uses the focused Authoring and enumeration packs
+ok: conditional-attribute matrix warning is required
+ok: semantic conditional-attribute wording activates the same route without a path
+ok: generic DITAVAL filtering does not activate conditional-attribute label learning
+ok: generic Right Panel wording does not activate conditional-attribute label learning
+ok: Map View hierarchy count routes to Authoring
+ok: Map View hierarchy count receives the exact mechanism
+ok: accepted Map View count uses accepted scope
+ok: Explorer filename/title sorting routes to Authoring
+ok: Explorer sorting receives the exact mechanism
+ok: working-as-designed Explorer request stays Proposed-only
+ok: Explorer sorting warning is retained: accepted_uac_missing
+ok: Explorer sorting warning is retained: caution_resolution_without_uac_is_proposed_only
+ok: Explorer sorting warning is retained: explorer_sort_request_without_accepted_uac_is_proposed_only
+ok: Explorer sorting warning is retained: explorer_sort_interaction_model_is_unresolved
+ok: Explorer mockup selects the explicit sort-control direction
+ok: Explorer mockup removes the unresolved interaction-model warning
+ok: Explorer mockup records its design-backed resolution
+ok: Explorer feature flag requires an OFF/ON matrix
+ok: Explorer sort control requires default-state validation
+ok: Explorer flag/default warning is retained: explorer_sort_feature_flag_state_matrix_required
+ok: Explorer flag/default warning is retained: explorer_sort_feature_flag_key_unresolved
+ok: Explorer flag/default warning is retained: explorer_sort_feature_flag_default_value_unresolved
+ok: Explorer flag/default warning is retained: explorer_sort_flag_off_presentation_unresolved
+ok: Explorer flag/default warning is retained: explorer_sort_button_default_state_required
+ok: Explorer flag/default warning is retained: explorer_sort_button_default_state_unresolved
+ok: Explorer OFF/ON evidence completes the requested state matrix
+ok: generic Explorer label wording does not trigger sorting learning
+ok: folder deletion routes to Authoring
+ok: folder deletion receives the exact mechanism
+ok: folder deletion without accepted UAC stays Proposed-only
+ok: folder deletion warning is retained: folder_deletion_without_accepted_uac_is_proposed_only
+ok: folder deletion warning is retained: folder_deletion_surface_and_version_must_be_verified
+ok: folder deletion warning is retained: folder_restore_is_separate_from_delete_contract
+ok: generic file deletion does not trigger folder-deletion learning
+ok: asset CRUD API routes to Integration
+ok: asset CRUD API receives the exact mechanism
+ok: asset CRUD API uses the focused Integration pack
+ok: asset CRUD request without accepted UAC stays Proposed
+ok: generic API wording does not trigger asset CRUD learning
+ok: bulk overwrite/session failure routes to Platform
+ok: bulk overwrite/session failure receives the exact mechanism
+ok: bulk overwrite/session failure uses the focused Platform pack
+ok: bulk overwrite caution warning is retained: accepted_uac_missing
+ok: bulk overwrite caution warning is retained: caution_resolution_without_uac_is_proposed_only
+ok: bulk overwrite caution warning is retained: bulk_overwrite_without_accepted_uac_is_proposed_only
+ok: generic upload wording does not trigger bulk overwrite learning
+ok: historical count cannot replace mechanism context in routing
+ok: Authoring component pack retains marker ## Asset-Browser Thumbnail Contract
+ok: Authoring component pack retains marker does not authorize new multi-selection behavior
+ok: Authoring component pack retains marker ## Map-Xref Display Label Contract
+ok: Authoring component pack retains marker `href`, `format`, `scope`, `type`
+ok: Authoring component pack retains marker `scope="external"`
+ok: Authoring component pack retains marker ## Map View Hierarchy Selection-Count Contract
+ok: Authoring component pack retains marker Derive the expected selected-node set
+ok: Authoring component pack retains marker cold first selection and a repeat selection separately
+ok: Authoring component pack retains marker Do not import a count, map name, file-type list, or version from another issue
+ok: Authoring component pack retains marker ## SubjectScheme Title Resolution and Enumdefs Performance
+ok: Authoring component pack retains marker shared execution path
+ok: Authoring component pack retains marker Without all of those, performance is conditional
+ok: Authoring component pack retains marker ## Explorer Filename/Title Sorting Contract
+ok: Authoring component pack retains marker display label, sort key, sort direction, folder default, per-user override
+ok: Authoring component pack retains marker A historical or static mockup cannot select the interaction
+ok: Authoring component pack retains marker ## Folder Deletion Contract
+ok: Authoring component pack retains marker File deletion documentation does not prove folder deletion
+ok: Authoring component pack retains marker Historical feature requests are product-evolution context only
+ok: Authoring component pack retains marker ## Configuration-Driven Conditional Attribute Discovery and Label Contract
+ok: Authoring component pack retains marker canary conditional attribute
+ok: Authoring component pack retains marker absent from inspected hardcoded allowlists
+ok: Authoring component pack retains marker raw XML attribute name or value
+ok: Authoring component pack retains marker added, renamed, and removed entries
+ok: Authoring component pack retains marker actual schema/DTD/specialization and profile gates
+ok: Authoring component pack retains marker Require live updates only when accepted evidence defines them
+ok: Configuration-driven enumeration reference retains marker ## Minimum Coverage Matrix
+ok: Configuration-driven enumeration reference retains marker Newly added valid entry with a configured friendly/display name
+ok: Configuration-driven enumeration reference retains marker Newly added valid entry without a mapping
+ok: Configuration-driven enumeration reference retains marker active DTD/schema, element, profile, permission, or deployment scope
+ok: Configuration-driven enumeration reference retains marker hardcoded arrays, enums, switch branches, label maps
+ok: Configuration-driven enumeration reference retains marker supported configuration activation or reload boundary
+ok: Configuration-driven enumeration reference retains marker stored raw attribute/key/value
+ok: Integration component pack retains marker ## Asset CRUD API Import Contract
+ok: Integration component pack retains marker Historical tickets and supplied-document examples are regression fixtures only
+ok: Integration component pack retains marker The word `API`, a historical issue key, or an old API document alone is insufficient
+ok: Integration component pack retains marker Keep filename, repository path, product identity/GUID, version identity
+ok: Integration component pack retains marker Keep CREATE, READ/download, UPDATE, DELETE, and UPSERT controls independent
+ok: Integration component pack retains marker Discover and record each current endpoint, HTTP method, content type
+ok: Integration component pack retains marker never copy an endpoint, parameter, default, or status from a historical example
+ok: Integration component pack retains marker test existing and missing targets
+ok: Integration component pack retains marker no duplicate identity appears
+ok: Integration component pack retains marker Keep version/revision creation on an existing target separate from missing-target creation
+ok: Integration component pack retains marker Keep delete reference-bypass/force behavior separate from UPDATE creation behavior
+ok: Integration component pack retains marker Transport success alone is not a business-success oracle
+ok: Integration component pack retains marker What identifies an UPDATE target
+ok: Integration component pack retains marker Historical evidence may create a hypothesis only after same-mechanism verification
+ok: Platform component pack retains marker ## Bulk Same-Name Asset Overwrite and Session Contract
+ok: Platform component pack retains marker no historical-ticket authority
+ok: Platform component pack retains marker A ticket key, customer name, old batch count, or old release cannot activate
+ok: Platform component pack retains marker import endpoint traffic as failure signatures
+ok: Platform component pack retains marker not a supported maximum, SLA, timeout, or resource ceiling
+ok: Platform component pack retains marker observable terminal success, partial-success, or failure state
+ok: Platform component pack retains marker verified by reading back every targeted asset
+ok: Platform component pack retains marker Do not import counts from historical examples
+ok: Platform component pack retains marker Historical evidence may propose a retrieval hypothesis
+ok: Platform component pack retains marker Do not claim data loss
+ok: repository Claude skill copy matches .codex source: SKILL.md
+ok: repository Claude skill copy matches .codex source: references/chat-deliverable.md
+ok: repository Claude skill copy matches .codex source: references/plain-language-ac-writing.md
+ok: repository Claude skill copy matches .codex source: references/output-template.md
+ok: repository Claude skill copy matches .codex source: references/quality-gate-checklist.md
+ok: repository Claude skill copy matches .codex source: references/clarification-gate.md
+ok: repository Claude skill copy matches .codex source: references/manifest-completeness.md
+ok: repository Claude skill copy matches .codex source: references/localization-regression-coverage.md
+ok: repository Claude skill copy matches .codex source: references/upgrade-migration-coverage.md
+ok: repository Claude skill copy matches .codex source: references/root-cause-fix-driven.md
+ok: repository Claude skill copy matches .codex source: references/security-coverage.md
+ok: repository Claude skill copy matches .codex source: references/execution-outcome-loop.md
+ok: repository Claude skill copy matches .codex source: references/shared-human-uac-learning.md
+ok: repository Claude skill copy matches .codex source: scripts/ac_presentation.py
+ok: repository Claude skill copy matches .codex source: scripts/ac_contract.py
+ok: repository Claude skill copy matches .codex source: scripts/clarification_gate.py
+ok: repository Claude skill copy matches .codex source: scripts/extract_acs.py
+ok: repository Claude skill copy matches .codex source: scripts/manifest_completeness_gate.py
+ok: repository Claude skill copy matches .codex source: scripts/localization_regression_coverage.py
+ok: repository Claude skill copy matches .codex source: scripts/upgrade_migration_coverage.py
+ok: repository Claude skill copy matches .codex source: scripts/execution_outcome.py
+ok: repository Claude skill copy matches .codex source: scripts/feedback_capture.py
+ok: repository Claude skill copy matches .codex source: scripts/publishing_scope_coverage.py
+ok: repository Claude skill copy matches .codex source: scripts/render_compact_view.py
+ok: repository Claude skill copy matches .codex source: scripts/root_cause_fix_driven.py
+ok: repository Claude skill copy matches .codex source: scripts/reviewer_request_coverage.py
+ok: repository Claude skill copy matches .codex source: scripts/reproducibility_gate.py
+ok: repository Claude skill copy matches .codex source: scripts/probe_coverage_gate.py
+ok: repository Claude skill copy matches .codex source: scripts/dita_semantics_activation.py
+ok: repository Claude skill copy matches .codex source: scripts/dimension_synthesizer.py
+ok: repository Claude skill copy matches .codex source: scripts/miss_probe_library.py
+ok: repository Claude skill copy matches .codex source: data/miss_probes.json
+ok: repository Claude skill copy matches .codex source: data/dita_constructs.json
+ok: repository Claude skill copy matches .codex source: scripts/feature_map.py
+ok: repository Claude skill copy matches .codex source: data/aem_feature_map.json
+ok: repository Claude skill copy matches .codex source: references/aem-feature-map.md
+ok: repository Claude skill copy matches .codex source: scripts/offline_retrieval.py
+ok: repository Claude skill copy matches .codex source: references/offline-authoring-rag.md
+ok: repository Claude skill copy matches .codex source: scripts/run_gates.py
+ok: repository Claude skill copy matches .codex source: scripts/security_coverage.py
+ok: repository Claude skill copy matches .codex source: scripts/shared_path_regression_coverage.py
+ok: repository Claude skill copy matches .codex source: scripts/validate_test_plan.py
+ok: repository Claude skill copy matches .codex source: scripts/jira_safe_text.py
+ok: repository Claude skill copy matches .codex source: scripts/value_provenance_coverage.py
+ok: repository Claude skill copy matches .codex source: scripts/test_skill_scripts.py
+ok: repository Claude component router matches .codex source
+ok: repository Claude Authoring pack matches .codex source
+ok: repository Claude configuration enumeration pack matches .codex source
+ok: repository Claude Integration pack matches .codex source
+ok: repository Claude Platform pack matches .codex source
+ok: repository public skill copy matches .codex source: SKILL.md
+ok: repository public skill copy matches .codex source: references/chat-deliverable.md
+ok: repository public skill copy matches .codex source: references/plain-language-ac-writing.md
+ok: repository public skill copy matches .codex source: references/output-template.md
+ok: repository public skill copy matches .codex source: references/quality-gate-checklist.md
+ok: repository public skill copy matches .codex source: references/clarification-gate.md
+ok: repository public skill copy matches .codex source: references/manifest-completeness.md
+ok: repository public skill copy matches .codex source: references/localization-regression-coverage.md
+ok: repository public skill copy matches .codex source: references/upgrade-migration-coverage.md
+ok: repository public skill copy matches .codex source: references/root-cause-fix-driven.md
+ok: repository public skill copy matches .codex source: references/security-coverage.md
+ok: repository public skill copy matches .codex source: references/execution-outcome-loop.md
+ok: repository public skill copy matches .codex source: references/shared-human-uac-learning.md
+ok: repository public skill copy matches .codex source: scripts/ac_presentation.py
+ok: repository public skill copy matches .codex source: scripts/ac_contract.py
+ok: repository public skill copy matches .codex source: scripts/clarification_gate.py
+ok: repository public skill copy matches .codex source: scripts/extract_acs.py
+ok: repository public skill copy matches .codex source: scripts/manifest_completeness_gate.py
+ok: repository public skill copy matches .codex source: scripts/localization_regression_coverage.py
+ok: repository public skill copy matches .codex source: scripts/upgrade_migration_coverage.py
+ok: repository public skill copy matches .codex source: scripts/execution_outcome.py
+ok: repository public skill copy matches .codex source: scripts/feedback_capture.py
+ok: repository public skill copy matches .codex source: scripts/publishing_scope_coverage.py
+ok: repository public skill copy matches .codex source: scripts/render_compact_view.py
+ok: repository public skill copy matches .codex source: scripts/root_cause_fix_driven.py
+ok: repository public skill copy matches .codex source: scripts/reviewer_request_coverage.py
+ok: repository public skill copy matches .codex source: scripts/reproducibility_gate.py
+ok: repository public skill copy matches .codex source: scripts/probe_coverage_gate.py
+ok: repository public skill copy matches .codex source: scripts/dita_semantics_activation.py
+ok: repository public skill copy matches .codex source: scripts/dimension_synthesizer.py
+ok: repository public skill copy matches .codex source: scripts/miss_probe_library.py
+ok: repository public skill copy matches .codex source: data/miss_probes.json
+ok: repository public skill copy matches .codex source: data/dita_constructs.json
+ok: repository public skill copy matches .codex source: scripts/feature_map.py
+ok: repository public skill copy matches .codex source: data/aem_feature_map.json
+ok: repository public skill copy matches .codex source: references/aem-feature-map.md
+ok: repository public skill copy matches .codex source: scripts/offline_retrieval.py
+ok: repository public skill copy matches .codex source: references/offline-authoring-rag.md
+ok: repository public skill copy matches .codex source: scripts/run_gates.py
+ok: repository public skill copy matches .codex source: scripts/security_coverage.py
+ok: repository public skill copy matches .codex source: scripts/shared_path_regression_coverage.py
+ok: repository public skill copy matches .codex source: scripts/validate_test_plan.py
+ok: repository public skill copy matches .codex source: scripts/jira_safe_text.py
+ok: repository public skill copy matches .codex source: scripts/value_provenance_coverage.py
+ok: repository public skill copy matches .codex source: scripts/test_skill_scripts.py
+ok: repository public component router matches .codex source
+ok: repository public Authoring pack matches .codex source
+ok: repository public configuration enumeration pack matches .codex source
+ok: repository public Integration pack matches .codex source
+ok: repository public Platform pack matches .codex source
+ok: Windows bundle skill copy matches .codex source: SKILL.md
+ok: Windows bundle skill copy matches .codex source: references/chat-deliverable.md
+ok: Windows bundle skill copy matches .codex source: references/plain-language-ac-writing.md
+ok: Windows bundle skill copy matches .codex source: references/output-template.md
+ok: Windows bundle skill copy matches .codex source: references/quality-gate-checklist.md
+ok: Windows bundle skill copy matches .codex source: references/clarification-gate.md
+ok: Windows bundle skill copy matches .codex source: references/manifest-completeness.md
+ok: Windows bundle skill copy matches .codex source: references/localization-regression-coverage.md
+ok: Windows bundle skill copy matches .codex source: references/upgrade-migration-coverage.md
+ok: Windows bundle skill copy matches .codex source: references/root-cause-fix-driven.md
+ok: Windows bundle skill copy matches .codex source: references/security-coverage.md
+ok: Windows bundle skill copy matches .codex source: references/execution-outcome-loop.md
+ok: Windows bundle skill copy matches .codex source: references/shared-human-uac-learning.md
+ok: Windows bundle skill copy matches .codex source: scripts/ac_presentation.py
+ok: Windows bundle skill copy matches .codex source: scripts/ac_contract.py
+ok: Windows bundle skill copy matches .codex source: scripts/clarification_gate.py
+ok: Windows bundle skill copy matches .codex source: scripts/extract_acs.py
+ok: Windows bundle skill copy matches .codex source: scripts/manifest_completeness_gate.py
+ok: Windows bundle skill copy matches .codex source: scripts/localization_regression_coverage.py
+ok: Windows bundle skill copy matches .codex source: scripts/upgrade_migration_coverage.py
+ok: Windows bundle skill copy matches .codex source: scripts/execution_outcome.py
+ok: Windows bundle skill copy matches .codex source: scripts/feedback_capture.py
+ok: Windows bundle skill copy matches .codex source: scripts/publishing_scope_coverage.py
+ok: Windows bundle skill copy matches .codex source: scripts/render_compact_view.py
+ok: Windows bundle skill copy matches .codex source: scripts/root_cause_fix_driven.py
+ok: Windows bundle skill copy matches .codex source: scripts/reviewer_request_coverage.py
+ok: Windows bundle skill copy matches .codex source: scripts/reproducibility_gate.py
+ok: Windows bundle skill copy matches .codex source: scripts/probe_coverage_gate.py
+ok: Windows bundle skill copy matches .codex source: scripts/dita_semantics_activation.py
+ok: Windows bundle skill copy matches .codex source: scripts/dimension_synthesizer.py
+ok: Windows bundle skill copy matches .codex source: scripts/miss_probe_library.py
+ok: Windows bundle skill copy matches .codex source: data/miss_probes.json
+ok: Windows bundle skill copy matches .codex source: data/dita_constructs.json
+ok: Windows bundle skill copy matches .codex source: scripts/feature_map.py
+ok: Windows bundle skill copy matches .codex source: data/aem_feature_map.json
+ok: Windows bundle skill copy matches .codex source: references/aem-feature-map.md
+ok: Windows bundle skill copy matches .codex source: scripts/offline_retrieval.py
+ok: Windows bundle skill copy matches .codex source: references/offline-authoring-rag.md
+ok: Windows bundle skill copy matches .codex source: scripts/run_gates.py
+ok: Windows bundle skill copy matches .codex source: scripts/security_coverage.py
+ok: Windows bundle skill copy matches .codex source: scripts/shared_path_regression_coverage.py
+ok: Windows bundle skill copy matches .codex source: scripts/validate_test_plan.py
+ok: Windows bundle skill copy matches .codex source: scripts/jira_safe_text.py
+ok: Windows bundle skill copy matches .codex source: scripts/value_provenance_coverage.py
+ok: Windows bundle skill copy matches .codex source: scripts/test_skill_scripts.py
+ok: Windows bundle component router matches .codex source
+ok: Windows bundle Authoring pack matches .codex source
+ok: Windows bundle configuration enumeration pack matches .codex source
+ok: Windows bundle Integration pack matches .codex source
+ok: Windows bundle Platform pack matches .codex source
+ok: Unix bundle skill copy matches .codex source: SKILL.md
+ok: Unix bundle skill copy matches .codex source: references/chat-deliverable.md
+ok: Unix bundle skill copy matches .codex source: references/plain-language-ac-writing.md
+ok: Unix bundle skill copy matches .codex source: references/output-template.md
+ok: Unix bundle skill copy matches .codex source: references/quality-gate-checklist.md
+ok: Unix bundle skill copy matches .codex source: references/clarification-gate.md
+ok: Unix bundle skill copy matches .codex source: references/manifest-completeness.md
+ok: Unix bundle skill copy matches .codex source: references/localization-regression-coverage.md
+ok: Unix bundle skill copy matches .codex source: references/upgrade-migration-coverage.md
+ok: Unix bundle skill copy matches .codex source: references/root-cause-fix-driven.md
+ok: Unix bundle skill copy matches .codex source: references/security-coverage.md
+ok: Unix bundle skill copy matches .codex source: references/execution-outcome-loop.md
+ok: Unix bundle skill copy matches .codex source: references/shared-human-uac-learning.md
+ok: Unix bundle skill copy matches .codex source: scripts/ac_presentation.py
+ok: Unix bundle skill copy matches .codex source: scripts/ac_contract.py
+ok: Unix bundle skill copy matches .codex source: scripts/clarification_gate.py
+ok: Unix bundle skill copy matches .codex source: scripts/extract_acs.py
+ok: Unix bundle skill copy matches .codex source: scripts/manifest_completeness_gate.py
+ok: Unix bundle skill copy matches .codex source: scripts/localization_regression_coverage.py
+ok: Unix bundle skill copy matches .codex source: scripts/upgrade_migration_coverage.py
+ok: Unix bundle skill copy matches .codex source: scripts/execution_outcome.py
+ok: Unix bundle skill copy matches .codex source: scripts/feedback_capture.py
+ok: Unix bundle skill copy matches .codex source: scripts/publishing_scope_coverage.py
+ok: Unix bundle skill copy matches .codex source: scripts/render_compact_view.py
+ok: Unix bundle skill copy matches .codex source: scripts/root_cause_fix_driven.py
+ok: Unix bundle skill copy matches .codex source: scripts/reviewer_request_coverage.py
+ok: Unix bundle skill copy matches .codex source: scripts/reproducibility_gate.py
+ok: Unix bundle skill copy matches .codex source: scripts/probe_coverage_gate.py
+ok: Unix bundle skill copy matches .codex source: scripts/dita_semantics_activation.py
+ok: Unix bundle skill copy matches .codex source: scripts/dimension_synthesizer.py
+ok: Unix bundle skill copy matches .codex source: scripts/miss_probe_library.py
+ok: Unix bundle skill copy matches .codex source: data/miss_probes.json
+ok: Unix bundle skill copy matches .codex source: data/dita_constructs.json
+ok: Unix bundle skill copy matches .codex source: scripts/feature_map.py
+ok: Unix bundle skill copy matches .codex source: data/aem_feature_map.json
+ok: Unix bundle skill copy matches .codex source: references/aem-feature-map.md
+ok: Unix bundle skill copy matches .codex source: scripts/offline_retrieval.py
+ok: Unix bundle skill copy matches .codex source: references/offline-authoring-rag.md
+ok: Unix bundle skill copy matches .codex source: scripts/run_gates.py
+ok: Unix bundle skill copy matches .codex source: scripts/security_coverage.py
+ok: Unix bundle skill copy matches .codex source: scripts/shared_path_regression_coverage.py
+ok: Unix bundle skill copy matches .codex source: scripts/validate_test_plan.py
+ok: Unix bundle skill copy matches .codex source: scripts/jira_safe_text.py
+ok: Unix bundle skill copy matches .codex source: scripts/value_provenance_coverage.py
+ok: Unix bundle skill copy matches .codex source: scripts/test_skill_scripts.py
+ok: Unix bundle component router matches .codex source
+ok: Unix bundle Authoring pack matches .codex source
+ok: Unix bundle configuration enumeration pack matches .codex source
+ok: Unix bundle Integration pack matches .codex source
+ok: Unix bundle Platform pack matches .codex source
+ok: global .codex enforced fingerprint matches .codex source
+ok: global .claude enforced fingerprint matches .codex source
+ok: prioritizer ranks DIRECT before GENERIC
+ok: direct_semantic_dependency infers DIRECT
+ok: same_code_path infers ONE_HOP
+ok: no signal defaults to GENERIC_REGRESSION
+ok: DIRECT is high relevance
+ok: GENERIC is not high relevance
+ok: unexplored HIGH-relevance hypothesis is flagged
+ok: verified HIGH-relevance hypothesis clears the flag
+ok: HIGH-relevance without priority_reason is flagged
+ok: invalid behavioral_distance is flagged
+ok: unexplored DIRECT dependency blocks the gate via RELEVANCE_PRIORITIZATION
+ok: observable outcome is not implementation-level
+ok: class.method reference is implementation-level
+ok: camelCase method call is implementation-level
+ok: naming a property/output alone is not implementation-level
+ok: impl-level ACCEPTANCE_CONTRACT is rejected
+ok: impl-level AC allowed when internal contract IS the requirement
+ok: impl-level statement is fine as IMPLEMENTATION_ORACLE
+ok: IMPLEMENTATION_ORACLE mapped to an AC is rejected
+ok: unknown disposition rejected
+ok: implementation-mechanism AC in the plan is flagged
+ok: observable AC in the plan is not flagged
+ok: observable outcome is a product oracle
+ok: property outcome is a state oracle
+ok: no-exception is a diagnostic signal
+ok: no-exception-only is diagnostic-only
+ok: success + observable output is not diagnostic-only
+ok: state oracle counts as observable
+ok: delivery availability is a product-visible oracle when delivery is in scope
+ok: bare internal archive existence remains diagnostic-only
+ok: P0 with only a diagnostic oracle is rejected
+ok: P0 with a product oracle passes
+ok: diagnostic-only P0 scenario is flagged
+ok: observable P0 scenario is not flagged
+ok: persisted/subsequent-run signals activate the explorer
+ok: stateless UI ticket does not activate
+ok: remove_paths is a structural activation signal
+ok: well-formed state_compatibility passes
+ok: missing BUGGY-old state origin is flagged
+ok: recovery-of-old-state AC without evidence is rejected
+ok: recovery-of-old-state AC with evidence is allowed
+ok: unknown recovery requirement forced to OPEN_QUESTION
+ok: semantic-equivalence surface as REFERENCE_ORACLE passes
+ok: semantic-equivalence-only REGRESSION_TARGET is rejected
+ok: no-evidence-of-impact REGRESSION_TARGET is rejected
+ok: shared-path REGRESSION_TARGET with evidence passes
+ok: shared-path REGRESSION_TARGET without evidence is rejected
+ok: invalid impact_class rejected
+ok: invalid role rejected
+ok: two+ publishing modes is a multi-output signal
+ok: single publishing mode is not a multi-output signal
+ok: fully-verified EQUIVALENT_PATH passes
+ok: EQUIVALENT_PATH with an unverified dimension is rejected
+ok: EQUIVALENT_PATH without evidence is rejected
+ok: UNKNOWN equivalence as Open Question passes
+ok: UNKNOWN equivalence asserted as regression is rejected
+ok: well-formed PARTIALLY_EQUIVALENT passes
+ok: PARTIALLY_EQUIVALENT without a boundary is rejected
+ok: DIFFERENT_PATH generating regression is rejected
+ok: invalid classification rejected
+ok: equivalent scenario collapses cleanly
+ok: reduce keeps one representative
+ok: collapsing across different signatures is rejected
+ok: scenario with a distinguishing factor cannot be collapsed
+ok: distinguishing scenario is fine as a representative
+ok: redundant representatives are flagged
+ok: incomplete signature is rejected
+ok: invalid distinguishing factor is rejected
+ok: spec-vs-impl conflict preserved as Open Question passes
+ok: latest-comment resolution is forbidden
+ok: highest-similarity resolution is forbidden
+ok: explicit-decision resolution passes
+ok: resolving toward superseded evidence is rejected
+ok: RESOLVED without resolved_by is rejected
+ok: bad status rejected
+ok: bad authority rejected
+ok: conflict referencing unknown id rejected
+ok: well-formed change_impact passes
+ok: missing changed is rejected
+ok: missing cannot_affect is rejected
+ok: missing can_affect is rejected
+ok: regression target without shared-path evidence is rejected
+ok: regression target in cannot_affect is a contradiction
+ok: product_contract_considered false is rejected
+ok: semantic_behavior_considered false is rejected
+ok: change_impact block is a change signal
+ok: fix_available flag is a change signal
+ok: no fix signal without a diff/PR/fix
+ok: clean reasoned plan passes the critic
+ok: relationship umbrella satisfies breadth exploration in the critic
+ok: unexplored direct dependency -> NEEDS_REFINEMENT
+ok: Q3 flags the unexplored direct dependency
+ok: Q4 flags an implementation-detail AC
+ok: Q10 flags a diagnostic-only scenario
+ok: hidden unresolved decision -> critic FAIL
+ok: first repair pass is allowed
+ok: second repair pass is refused
+ok: repair_passes over the limit is rejected
+ok: repair_passes within the limit passes
+ok: named API/servlet artifact activates implementation grounding
+ok: plain UI ticket does not activate
+ok: current-behaviour assertion about an API is detected
+ok: no assertion when API not mentioned
+ok: well-formed implementation_grounding passes
+ok: material artifact not inspected is rejected
+ok: material artifact without file:line evidence is rejected
+ok: unverified ticket premise is rejected
+ok: verified premise (code contradicts ticket) is allowed
+ok: empty named_artifacts is rejected
+ok: invalid artifact kind is rejected
+ok: config_key with verified provenance passes
+ok: config_key UNVERIFIED provenance without OQ is rejected
+ok: config_key UNVERIFIED provenance with OQ ref passes
+ok: empty known Open Question set rejects implementation-grounding reference
+ok: config_key invalid provenance rejected
+ok: config_key missing provenance is review-only, not a validate failure
+ok: premise_holds 'unresolved' without a note is rejected
+ok: premise_holds 'unresolved' with a note passes
+ok: premise_holds invalid string value is rejected
+ok: dependency_resolution with valid status passes
+ok: dependency_resolution invalid status is rejected
+ok: dependency_resolution UNRESOLVED_NO_ACCESS without a note is rejected
+ok: dependency_resolution UNRESOLVED_NO_ACCESS with a note passes
+ok: multi-action toolbar activates
+ok: single-action ticket does not activate (Case A)
+ok: distinct per-capability predicates pass (Case C)
+ok: material predicate without evidence rejected
+ok: invalid predicate dimension rejected
+ok: empty capabilities rejected
+ok: shared predicate group with evidence passes (Case B)
+ok: shared group without evidence is flagged for review
+ok: group with unknown capability rejected
+ok: no multiselect -> no selection requirement (Case D)
+ok: multiselect UNKNOWN without open question rejected
+ok: multiselect UNKNOWN with open-question ref allowed
+ok: empty known Open Question set rejects capability reference
+ok: semantic-collision evidence cannot support predicate
+ok: behavior_model with capabilities[] validates
+ok: behavior_model capability missing name rejected
+ok: capability predicate outranks historical similarity (Item 18)
+ok: coverage_gate emits AFFECTED_CAPABILITIES_DECOMPOSED
+ok: coverage_gate emits JIRA_SCOPE_VS_FIX_RECONCILED
+ok: coverage_gate FAILs a hidden scope mismatch (Item 19)
+ok: entry points with resolved consistency pass
+ok: multiple entry points without consistency rejected
+ok: VERIFIED_SAME without evidence rejected
+ok: entry-point Open Question reference passes when declared
+ok: empty known Open Question set rejects entry-point reference
+ok: invalid entry-point form rejected
+ok: responsive signals + <2 entry points is under-explored
+ok: no responsive signals -> not under-explored
+ok: CONFIG term without a config key is flagged
+ok: CONFIG term citing xmleditor.autocheckout is not flagged
+ok: CONFIG prerequisite without an open-question ref is rejected
+ok: CONFIG prerequisite surfaced as an open question passes
+ok: fix + multi-problem activates
+ok: no fix signal does not activate
+ok: pre-development plan text does not create a false fix-scope conflict
+ok: full alignment passes with no open question (Case E)
+ok: partial alignment without open question rejected
+ok: partial alignment with open question passes
+ok: empty known Open Question set rejects scope-conflict reference
+ok: unresolved_scope_without_open_question detects hidden mismatch
+ok: unresolved scope rejects undeclared Open Question reference
+ok: unresolved scope accepts declared Open Question reference
+ok: secondary-defect thread mapped to AC rejected (Case F)
+ok: invalid thread status rejected
+ok: invalid alignment rejected
+ok: PR-only extra behavior is detected generically
+ok: Jira-authorized behavior is not treated as implementation-only
+ok: implementation-only AC requires a real scope Open Question
+ok: implementation-only Proposed AC passes with a declared scope question
+ok: named product authority can approve implementation-discovered scope
+ok: well-formed affected_surface passes
+ok: uncovered enum value is rejected
+ok: COVERED without an ac is rejected
+ok: ac not defined in the plan is rejected
+ok: OUT_OF_SCOPE without a reason is rejected
+ok: OUT_OF_SCOPE with a reason passes
+ok: empty known Open Question set rejects affected-surface reference
+ok: invalid dimension kind is rejected
+ok: empty dimensions is rejected
+ok: grounded config_key activates affected-surface
+ok: no grounding does not activate affected-surface
+ok: comment_claims absent is not a failure
+ok: comment_claims wrong type is rejected
+ok: well-formed VERIFIED_FALSE claim passes
+ok: missing claim text is rejected
+ok: invalid comment_source is rejected
+ok: invalid verification_status is rejected
+ok: VERIFIED_TRUE without evidence_ids is rejected
+ok: UNVERIFIABLE without open_question_ref is rejected
+ok: UNVERIFIABLE with a known open_question_ref passes
+ok: UNVERIFIABLE with an unknown open_question_ref is rejected
+ok: empty known Open Question set rejects comment-claim reference
+ok: current-behaviour phrasing is detected in comment text
+ok: plain comment text has no hits
+ok: pr_references absent is not a failure
+ok: single PR needs no reconciliation
+ok: two PRs with no AUTHORITATIVE entry is rejected
+ok: two PRs with exactly one AUTHORITATIVE + comparison_note passes
+ok: AUTHORITATIVE without comparison_note is rejected
+ok: UNRESOLVED without open_question_ref is rejected
+ok: all-UNRESOLVED with a known open_question_ref passes
+ok: empty known Open Question set rejects PR reference
+ok: invalid status is rejected
+ok: missing pr_ref is rejected
+ok: feature registry cleanly skips without signals
+ok: detected feature class without declaration is REVIEW only
+ok: declared feature class requires its dimension block
+ok: complete feature class contract passes
+ok: every registry dimension has a validator
+ok: seeded class-to-dimension mappings stay exact
+ok: registry detects ui_display_label from a seeded signal
+ok: registry detects access_control from a seeded signal
+ok: registry detects async_job from a seeded signal
+ok: registry detects configuration_driven_enumeration from a seeded signal
+ok: registry detects generated_artifact_delivery from a seeded signal
+ok: registry detects content_identity_lifecycle from a seeded signal
+ok: registry detects plural and inflected UI display-label signals
+ok: ordinary grouping language does not imply access control
+ok: validator decision text cannot self-activate a feature class
+ok: relationship traversal umbrella self-test
+ok: configuration enumeration dimensions self-test
+ok: catalog-complete UI surface scope passes
+ok: missed catalog surface is a hard failure
+ok: unknown construct requests catalog review without failing
+ok: UI surface scope rejects unknown AC references
+ok: UI surface scope rejects Jira-only rendering grounding
+ok: catalog helper is append-only and idempotent
+ok: grounded three-actor provisioning matrix passes
+ok: actor requires an explicit privilege class
+ok: actor rejects an unknown privilege class
+ok: actor grounding requires a checkable citation
+ok: actor grounding rejects a Jira-only citation
+ok: delegated actor requires withheld groups
+ok: non-admin actor requires withheld groups
+ok: actor requires explicit auto-added group disposition
+ok: no automatic group uses explicit none instead of an empty list
+ok: actor named by an AC must map back to that AC
+ok: generic contributor actor cannot bypass the provisioning matrix
+ok: absent fluffyjaws block passes
+ok: probe defaults to DISABLED/unavailable
+ok: probe never reports available without an injected transport
+ok: discoveries while disabled are rejected
+ok: grounded shadow discovery passes
+ok: FluffyJaws cannot claim a first-class authority
+ok: discovery without re-grounding is rejected
+ok: no FluffyJaws -> AC promotion path
+test_fluffyjaws_evidence: OK
+ok: absent temporal metadata passes
+ok: empty manifest not flagged present
+ok: invalid temporal state rejected
+ok: UNKNOWN_VERSION cannot silently support an AC
+ok: unknown-version claim is safe when dispositioned
+ok: currently-applicable evidence may support an AC
+ok: SUPERSEDED must record superseded_by/conflict_with
+ok: normative record not superseded by recency alone
+ok: version conflict must preserve both records
+ok: marked version conflict passes
+test_temporal_evidence: OK
+ok: absent conflict_resolution passes
+ok: invalid conflict_type rejected
+ok: implementation cannot win over the contract (defect, not rewrite)
+ok: documented defect resolution passes
+ok: SUPPORTING_DISCOVERY cannot be the winning authority
+ok: implementation cannot settle a normative question
+ok: normative authority settles a normative question
+ok: non-settling state cannot silently support an AC
+ok: dispositioned open conflict passes
+ok: competing evidence must be preserved
+test_evidence_conflict_resolver: OK
+ok: absent scope_applicability passes
+ok: grounded direct-scope candidate passes
+ok: name-only scope expansion is rejected
+ok: in-scope candidate needs evidence
+ok: shared-path regression must stay distinct from primary
+ok: evidenced shared-path regression passes
+ok: reference-only cannot promote an AC
+ok: unresolved scope must become an Open Question
+ok: unresolved scope with Open Question passes
+ok: scope must anchor on the primary outcome
+test_scope_applicability: OK
+ok: absent ac_synthesis passes
+ok: clear final AC passes
+ok: vague expectation flagged
+ok: unclear title flagged
+ok: implementation leak flagged
+ok: declared technical-artifact AC is allowed
+ok: multiple contracts flagged
+ok: material candidate loss flagged
+ok: full retention passes
+ok: hidden material dimension flagged
+ok: redundant AC flagged
+test_ac_language_policy: OK
+ok: non-publishing ticket is not applicable
+ok: publishing plan without DITA-OT coverage is flagged
+ok: publishing plan without preset scope is flagged
+ok: publishing plan covering DITA-OT mode and preset scope passes
+ok: output-preset text signal activates the check
+ok: neighbour-only native-pdf mention does not classify as publishing
+ok: neighbour-only native-pdf plan is not flagged
+ok: own-section native-pdf mention still classifies as publishing
+test_publishing_scope_coverage: OK
+ok: fully populated fix-driven block passes
+ok: positive fixture activates the fix-driven gate
+ok: ticket with no positive fix signal stays inactive
+ok: ticket with no positive fix signal passes untouched
+ok: an explicit fix branch activates without accepting a bare fix-version token
+ok: documented activation signal is detected: root-cause statement
+ok: documented activation signal is detected: pull request
+ok: documented activation signal is detected: commit
+ok: documented activation signal is detected: branch
+ok: documented activation signal is detected: diff
+ok: documented activation signal is detected: merged claim
+ok: documented activation signal is detected: cherry-picked claim
+ok: documented activation signal is detected: hotfix claim
+ok: documented activation signal is detected: fixed-in-build claim
+ok: documented activation signal is detected: verified-in-build claim
+ok: negative fix-status claim stays inactive: The change is not merged.
+ok: negative fix-status claim stays inactive: The issue is not fixed in build 42.
+ok: negative fix-status claim stays inactive: The behavior was not verified in build 42.
+ok: negative fix-status claim stays inactive: No hotfix is available.
+ok: benign layout 'merged' does not activate the fix gate: The metadata page layout is merged
+ok: benign layout 'merged' does not activate the fix gate: Merge with Previous page loses the
+ok: benign layout 'merged' does not activate the fix gate: The merged page layout shows only 
+ok: benign layout 'merged' does not activate the fix gate: CALS table merged cells render cor
+ok: benign layout 'merged' does not activate the fix gate: The fix must restore the topic met
+ok: benign layout 'merged' does not activate the fix gate: A change to the layout must show v
+ok: fix-context 'merged' still activates the fix gate: The candidate fix was merged to de
+ok: fix-context 'merged' still activates the fix gate: PR merged into main.
+ok: fix-context 'merged' still activates the fix gate: The change was merged in build 42.
+ok: fix signal without root_cause_fix block fails
+ok: missing-block failures use stable prefix
+ok: described fix with Pre-Development lifecycle fails
+ok: lifecycle failures use stable prefix
+ok: preserved invariant without a guarding AC fails
+ok: preservation failures use stable prefix
+ok: fix-introduced risk without AC or OQ fails
+ok: risk failures use stable prefix
+ok: added test with Not covered main-feature verdict fails
+ok: automation failures use stable prefix
+ok: narrow verification without a named gap fails
+ok: empty risk list with concrete no-new-risk reason passes
+ok: missing requirement_oracle fails
+ok: requirement_oracle failures use stable prefix
+ok: scope_delta item without an AC/OQ mapping fails
+ok: scope_delta mapping to an absent OQ fails
+ok: empty scope_delta without fix_fully_covers claim fails
+ok: empty scope_delta with a concrete full-coverage claim passes
+ok: run_gates loads the root-cause/fix-driven gate
+ok: run_gates invokes the root-cause/fix-driven validator without hiding its prefix
+test_root_cause_fix_driven: OK
+ok: no signal passes untouched
+ok: covered reviewer request passes
+ok: regression disposition is rejected with the prefix
+ok: covered-by-ac without ac_refs fails
+ok: ac_refs absent from the plan fail
+ok: unresolved-path open question must be known
+ok: imperative comment with no block fails
+ok: imperative comment not captured by any entry fails
+ok: run_gates loads the reviewer-request gate
+ok: run_gates invokes the reviewer-request validator without hiding its prefix
+ok: absent reviewer_comments is a hard failure
+ok: empty reviewer_comments without checked flag fails
+ok: empty reviewer_comments with checked flag passes
+ok: populated reviewer_comments passes the declaration check
+ok: non-list reviewer_comments fails
+test_reviewer_request_coverage: OK
+ok: no not-reproducible signal is not activated
+ok: no-signal plan passes
+ok: signal without block activates
+ok: signal without reproducibility block fails
+ok: unconfirmed without strategy fails
+ok: claimed strategy without content fails
+ok: fix ACs not gated fails
+ok: complete reproduction plan passes
+ok: run_gates loads the reproducibility gate
+ok: run_gates invokes the reproducibility validator without hiding its prefix
+test_reproducibility_gate: OK
+ok: output-generation evidence activates a probe
+ok: activated probe without a covering dimension fails
+ok: covering the axis via a clarification dimension passes
+ok: explicit probe disposition satisfies the gate
+ok: ENTRY_POINT probe unsatisfied without a dimension or block
+ok: populated entry_point_equivalence block satisfies the ENTRY_POINT probe
+ok: no matching probe is not activated
+ok: no-probe plan passes
+ok: run_gates loads the probe-coverage gate
+ok: run_gates invokes the probe-coverage validator without hiding its prefix
+test_probe_coverage_gate: OK
+ok: named DITA construct activates the gate
+ok: construct without a dita_semantics block fails
+ok: active:true satisfies the activation gate
+ok: active:false with a thin assessment fails
+ok: active:false with a full assessment passes
+ok: no construct is not activated
+ok: no-construct plan passes
+ok: behaviour_matters false opts out
+ok: run_gates loads the dita-semantics activation gate
+ok: run_gates invokes the dita-semantics validator without hiding its prefix
+test_dita_semantics_activation: OK
+ok: inspected code path is a valid evidence anchor: 'xmleditor src/util/drag.ts:88 createKeyDefData'
+ok: inspected code path is a valid evidence anchor: 'Starling libs/fmdita/pdf/Basic/content.css .entry border rule'
+ok: inspected code path is a valid evidence anchor: 'insert_topicref_controller.ts:106-115 forceNavTitle'
+ok: inspected code path is a valid evidence anchor: 'app/services/foo.py:12'
+ok: bare prose without an anchor still fails: 'OASIS DITA keydef model'
+ok: bare prose without an anchor still fails: 'the referenced topic title'
+ok: jira key still anchors
+ok: url still anchors
+test_evidence_anchor_recognition: OK
+ok: strip_markup removes asterisks
+ok: strip_markup removes backticks
+ok: strip_markup removes em dash
+ok: strip_markup converts md link to text (url)
+ok: issue-key-shaped label is flagged outside noformat
+ok: jira_comment_body wraps in noformat
+ok: wrapped body preserves the AC label literally
+ok: wrapped body has no residual markup
+ok: validate passes for a noformat-wrapped body
+test_jira_safe_text: OK
+ok: library loads seeded probes
+ok: seeded MP-001 present
+ok: seeded probe is ACTIVE
+ok: seeded probe axis is VALUE_SET_CHANNEL
+ok: model-sourced probe is not ACTIVE
+ok: language pattern is retired
+ok: single-literal probe is not ACTIVE
+ok: validating probe is SHADOW
+ok: learned candidate emitted for matching evidence
+ok: learned candidate axis is VALUE_SET_CHANNEL
+ok: learned candidate carries probe id
+ok: learned candidate cites the evidence label
+ok: learned candidate technical_basis names the probe and delta
+ok: no learned candidate without a match
+ok: absent miss_probe_activity passes
+ok: unknown probe id flagged
+test_miss_probe_library: OK
+ok: checked-in feature map passes strict governance
+ok: feature map schema is v1
+ok: feature map is installed and approved
+ok: feature map has six curated surfaces
+ok: asset-upload surface is present
+ok: asset-upload surface contains the six required native features
+ok: every curated feature is Human-approved and cites Experience League
+ok: surface match phrases are generic lower-case text rather than code paths or identifiers
+ok: asset upload emits duplicate-detection candidate
+ok: asset upload emits versioning candidate
+ok: feature candidate generator is FEATURE_MAP
+ok: feature candidate status is investigation-only
+ok: feature candidate carries feature tag
+ok: feature candidate carries implied dimension axis
+ok: feature candidate uses canonical coverage dimension
+ok: feature candidate carries reference tag
+ok: feature candidate cites matching evidence
+ok: feature candidate is explicitly advisory
+ok: feature and reference survive in technical basis
+ok: non-matching evidence contributes no feature-map candidate
+ok: baseline evidence emits the approved translation-project candidate
+ok: baseline translation candidate preserves its direct Experience League source
+ok: baseline translation is a configuration-branch investigation
+ok: translation evidence without a baseline signal does not activate baseline translation
+ok: Oxygen remains outside the governed map pending sufficient source approval
+ok: baseline surface contains only the approved translation-project feature
+ok: review membership and panel candidates use the direct review-comments source
+ok: malformed map loads as empty
+ok: malformed map contributes no candidate
+ok: missing map contributes no candidate
+ok: wrong-typed surfaces fail open
+ok: wrong-typed surfaces contribute no candidate
+ok: wrong-typed native features fail open
+ok: wrong-typed native features contribute no candidate
+ok: non-Human-approved map is ignored
+ok: strict governance rejects non-Human-approved checked-in data
+ok: strict governance rejects an unapproved entry instead of silently sanitizing it
+ok: every emitted feature candidate validates in canonical coverage-hypothesis shape
+ok: feature map summary reports approved entries
+test_feature_map: OK
+ok: offline retrieval converts embedding to a plain list
+ok: offline docs normalize one retrieved row
+ok: offline docs preserve title
+ok: offline docs preserve URL
+ok: offline docs preserve distance
+ok: offline docs use OFFLINE_CHROMA
+ok: offline docs are supporting discovery
+ok: offline docs are non-authoritative
+ok: offline docs record success
+ok: offline retrieval converts embedding to a plain list
+ok: offline history returns only same-component safe chunks
+ok: offline history preserves Jira key
+ok: offline history never claims live indexed history
+ok: offline history strips embedded Human AC text
+ok: offline history is non-authoritative
+ok: absent docs collection returns no result
+ok: absent docs collection records a reason
+ok: absent history collection returns no result
+ok: absent history collection records a reason
+ok: unimportable backend returns no fabricated docs
+ok: unimportable backend reason is recorded without raw exception text
+ok: offline retrieval exercised both real collection contracts
+test_offline_retrieval: OK
+ok: synthesizer not activated on empty manifest
+ok: no review notes when not activated
+ok: synthesizer activated with behavior_model
+ok: emits a VALUE_SET_CHANNEL code-neighborhood candidate
+ok: candidate cites the generating evidence id
+ok: candidate has non-empty technical_basis
+ok: records a history gap when no source
+ok: records a rag gap when no probes
+ok: unrepresented candidate surfaces as a DISCOVERY note
+ok: represented dimension is not re-surfaced
+ok: synthesizer appends FEATURE_MAP duplicate detection
+ok: synthesizer appends FEATURE_MAP versioning
+ok: feature-map candidate receives a stable synthesizer id
+ok: unrepresented feature-map candidate surfaces as DISCOVERY review
+ok: exactly represented feature-map candidate is suppressed
+ok: other same-axis feature-map candidates remain visible
+ok: offline RAG emits a retrieved duplicate-detection neighbor
+ok: offline RAG current evidence includes the retrieved document title
+ok: offline RAG is supporting discovery
+ok: offline RAG is advisory and non-authoritative
+ok: offline RAG candidate validates in canonical hypothesis shape
+ok: feature-map expansion, not a hardcoded branch, formed the duplicate query
+ok: offline history does not run without a component
+ok: offline synthesis does not mutate the manifest
+ok: offline synthesis never invents indexed_history_run
+ok: offline RAG surfaces through the existing DISCOVERY note
+ok: offline history emits a same-component investigation candidate
+ok: offline history candidate explicitly remains non-live
+ok: offline history does not mutate the live-history flag
+ok: recorded live history suppresses offline history lookup
+ok: recorded live history remains distinguishable from OFFLINE_CHROMA
+ok: absent collections fabricate no offline candidate
+ok: absent collections record both offline generator gaps
+ok: run_gates emits FEATURE_MAP REVIEW DISCOVERY note
+ok: run_gates emits OFFLINE_CHROMA RAG REVIEW DISCOVERY note
+ok: run_gates emits no FEATURE_MAP review for non-matching evidence
+test_dimension_synthesizer: OK
+ok: provenance: well-formed catalog passes
+ok: provenance: absent catalog is a clean pass
+ok: provenance: behaviour_matters false opts out
+ok: provenance: dangling id fails with prefix
+ok: provenance: missing path fails
+ok: provenance: hash mismatch fails
+ok: provenance: unrecorded rag probe fails
+ok: run_gates invokes verify_provenance
+test_evidence_provenance: OK
+ok: non-security plan passes without a security block
+ok: non-security plan does not activate the security gate
+ok: explicit all-N/A security ledger passes for a non-security plan
+ok: XML ingest without a security ledger fails
+ok: every XML ingest failure uses the stable prefix
+ok: XML ingest without XXE coverage fails
+ok: XML ingest without entity-expansion coverage fails
+ok: XML ingest without malformed input coverage fails
+ok: XML ingest without oversized input coverage fails
+ok: mentioning XXE without disabling it does not satisfy coverage
+ok: mentioning entity expansion without a limit does not satisfy coverage
+ok: mentioning malformed input without a safe outcome does not satisfy coverage
+ok: mentioning oversized input without a safe outcome does not satisfy coverage
+ok: complete XML input-safety AC mapping passes
+ok: complete QA-impact Open Question disposition passes
+ok: conref plan without traversal coverage fails
+ok: conref traversal protection passes
+ok: content endpoint without unauthorized-role denial fails
+ok: content endpoint without escalation protection fails
+ok: publish endpoint without authorization coverage fails
+ok: publish endpoint failure preserves the SECURITY GATE prefix
+ok: complete endpoint authorization mapping passes
+ok: genuinely inapplicable signalled dimension passes with a concrete reason
+ok: placeholder N/A reason fails
+ok: explicit security ledger cannot omit a dimension
+ok: security summary reports clean complete ledger
+ok: run_gates loads the security coverage gate
+ok: run_gates invokes security coverage validation
+ok: run_gates preserves the security gate failure prefix
+test_security_coverage: OK
+ok: translation states remain the documented product set
+ok: translation project types remain the documented product set
+ok: non-localization plan passes untouched
+ok: non-localization plan does not activate the gate
+ok: another coverage ledger cannot self-activate localization
+ok: metadata change without localization coverage fails
+ok: metadata failure uses the stable prefix
+ok: publishing change without translation-state disposition fails
+ok: publishing failure uses the stable prefix
+ok: Translation component activates the gate
+ok: activated metadata change passes when every dimension is dispositioned
+ok: translation-state coverage requires Out of Sync
+ok: translation-state coverage requires Missing copy
+ok: complete translation-state AC mapping passes
+ok: complete translation-state Open Question mapping passes
+ok: XLIFF coverage requires import
+ok: XLIFF coverage requires round-trip integrity
+ok: complete XLIFF round-trip mapping passes
+ok: one project type cannot satisfy the supported set
+ok: complete documented project-type set passes
+ok: placeholder localization N/A reason fails
+ok: localization ledger cannot omit a dimension
+ok: localization summary reports clean complete ledger
+ok: run_gates loads localization regression coverage
+ok: run_gates invokes localization regression validation
+ok: run_gates preserves localization failure prefix
+test_localization_regression_coverage: OK
+ok: non-migration plan passes untouched
+ok: non-migration plan does not activate the gate
+ok: another coverage ledger cannot self-activate migration
+ok: temporal applicability without a migration operation stays inactive
+ok: migration evidence still activates operation coverage
+ok: migration activation signal is recognized: Upgrade the product instance from the source release to the target release.
+ok: migration activation signal is recognized: The repository requires a stored data migration to the new schema.
+ok: migration activation signal is recognized: Convert non-UUID identifiers to UUID identifiers.
+ok: migration activation signal is recognized: Migrate the installation from on-premise to cloud.
+ok: migration activation signal is recognized: The change must preserve backward compatibility.
+ok: fix-version plus persisted-format change activates the gate
+ok: fix-version field alone does not invent a migration operation
+ok: fully covered non-UUID to UUID migration passes
+ok: migration signal without a coverage ledger fails
+ok: every missing-ledger failure uses the stable prefix
+ok: migration coverage cannot omit old authored or stored input
+ok: migration execution requires a rerun or one-shot policy
+ok: migration execution requires failure reporting
+ok: non-UUID to UUID coverage requires the possible mixed state
+ok: mixed-state failure preserves the stable prefix
+ok: verified atomic operation does not invent mixed-state coverage
+ok: applicable post-state coverage cannot be parked in an Open Question
+ok: pre-state and rollback may use QA-impact Open Questions
+ok: activated but genuinely inapplicable dimensions pass with reasons
+ok: placeholder migration N/A reason fails
+ok: migration ledger cannot omit rollback disposition
+ok: migration summary reports a clean complete ledger
+ok: run_gates loads upgrade migration coverage
+ok: run_gates invokes upgrade migration validation
+ok: run_gates preserves migration failure prefix
+test_upgrade_migration_coverage: OK
+ok: absent repro_matrix passes
+ok: customer-only material diff with an Open Question passes
+ok: material customer-only diff cannot be REJECTED
+ok: material unresolved diff must reference an Open Question
+ok: immaterial dimension is flagged as overexpansion
+ok: confirmed repro covered by an AC passes
+ok: invalid dimension/state enums rejected
+ok: duplicate dimension rejected
+test_repro_dimension_matrix: OK
+ok: absent ac_synthesis passes
+ok: ac_synthesis without synthesis_group is not activated
+ok: fully-traced grouped AC passes
+ok: unknown synthesis_group rejected
+ok: missing evidence_ids trace flagged
+ok: missing scope_basis trace flagged
+ok: missing oracle trace flagged
+ok: merged candidate not in candidate_ids is flagged
+test_acceptance_synthesizer: OK
+ok: empty inputs pass
+ok: distinct ACs pass
+ok: duplicate AC outcome is flagged
+ok: complete testability record passes
+ok: missing oracle in testability flagged
+ok: testability ac_ref not in plan flagged
+ok: AC/OQ contradiction flagged
+ok: scope mismatch flagged
+test_uac_linter: OK
+ok: absent human_feedback_delta passes
+ok: multi-case human approved delta passes
+ok: FluffyJaws delta cannot be VALIDATING/APPROVED
+ok: AI review delta cannot be promoted
+ok: language delta cannot be DISCOVERY_PATTERN
+ok: language delta as rendering pattern passes
+ok: coverage add without first_failed_stage flagged
+ok: single-case approval without invariant/severe flagged
+ok: approval without counterexample search flagged
+test_human_feedback_delta: OK
+feedback_capture self-tests: PASS
+ok: queued feedback keeps a redacted correction only
+test_feedback_capture: OK
+ok: absent execution_outcome passes
+ok: well-formed execution outcome passes
+ok: Human escape yields one miss-probe input
+ok: Human escape remains governed CANDIDATE
+ok: MODEL-sourced execution outcome is rejected
+ok: escape without dimension is rejected
+ok: escape without first stage is rejected
+ok: repeated real defects raise only the mapped dimension priority
+ok: malformed outcome is not a hard gate failure
+ok: malformed outcome creates a REVIEW note
+ok: valid execution outcome adds no failure or review note
+test_execution_outcome: OK
+ok: absent entry_point_equivalence passes
+ok: shared-handler regression with evidence passes
+ok: same-user-intent cannot be promoted to regression
+ok: shared-type promotion needs shared-path evidence
+ok: different-implementation cannot be shared regression
+ok: OQ entry point without searched_sources flagged
+ok: investigated OQ entry point passes
+test_entry_point_equivalence: OK
+ok: non-value plan is not applicable
+ok: value plan without provenance is flagged
+ok: value plan with repository provenance passes
+ok: concrete value_provenance_not_applicable reason opts out
+ok: too-short not-applicable reason does not opt out
+test_value_provenance_coverage: OK
+ok: no shared-path evidence is not applicable
+ok: shared code without regression coverage is flagged
+ok: out-of-scope consumer on shared path is flagged
+ok: shared code with shared-path regression passes
+test_shared_path_regression_coverage: OK
+ok: plan with no real question or regression passes untouched
+ok: clean plan does not activate QE completeness
+ok: exact unbulleted no-question sentinel also passes untouched
+ok: activated plan without qe_completeness fails
+ok: missing qe_completeness uses the stable prefix
+Scaffold not written: output already exists; choose a new --out path
+Scaffold not written: output already exists; choose a new --out path
+Scaffold not written: manifest requires a behavior_model object
+ok: DEFERRED_COVERAGE hard-fails even with a real promoted AC
+ok: deferred coverage failure keeps the stable prefix
+ok: Open Question missing from classification hard-fails
+ok: IN_SCOPE_BEHAVIOR without ac_ref hard-fails
+ok: fully classified genuine decisions and regressions pass
+ok: clean classified plan has no review
+ok: QE-expected contract emits the exact REVIEW note
+ok: REVIEW case keeps hard validation green
+ok: genuine decision promoted to a real AC passes
+ok: promoted genuine decision clears REVIEW
+ok: run_gates loads QE completeness
+ok: run_gates invokes QE completeness validation
+ok: run_gates preserves the QE completeness prefix
+ok: run_gates collects QE completeness REVIEW notes
+ok: QE completeness REVIEW makes a receipt non-postable
+test_qe_completeness_coverage: OK
+ok: signal-free manifest has no completeness requirement
+ok: signal-free manifest reports gate not active
+ok: publishing signal without publishing_scope hard-fails
+ok: every completeness failure has the stable prefix
+ok: publishing plan activates completeness
+ok: non-empty publishing_scope satisfies completeness
+ok: empty publishing_scope does not satisfy completeness
+ok: scalar publishing_scope cannot impersonate a manifest block
+ok: reasoned attributable waiver satisfies completeness
+ok: blank waiver reason hard-fails
+ok: behaviour_matters false preserves behavior-block opt-out
+ok: versioned behavior requires temporal_evidence
+ok: non-empty temporal_evidence satisfies version signal
+ok: summary reports a clean positive fixture
+test_manifest_completeness_gate: OK
+ok: grounded authoring model passes
+ok: empty facts cannot impersonate behavioral understanding
+ok: wrong-typed fact evidence fails without crashing
+ok: all twelve exploration families execute and activate on grounded signals
+ok: exploration candidates carry non-empty technical basis and no verdict
+ok: ungrounded model emits no exploration guesses
+ok: simple UI does not activate irrelevant exploration families
+ok: all generated candidates are legal v3 hypotheses
+ok: generation is stable and does not mutate its input
+ok: retained explorer candidates clear discovery review
+ok: v3 model, hypotheses, evidence, verification, disposition and promotion validate together
+ok: complete reasoning record needs no block waivers
+ok: strict authoring model runs through run_gates
+ok: real v3 hypotheses satisfy reasoning-required
+ok: terminal verification runs through run_gates
+ok: actual evidence ledger runs through retrieval gate
+ok: dropping a candidate verdict fails
+ok: verified hypotheses cannot silently lose their disposition
+ok: authoring rejects anonymous candidates before verification
+ok: implementation authority cannot be relabelled as acceptance truth
+ok: feature-map and learned-probe candidates both run
+ok: all discovery axes normalize into valid hypotheses
+ok: hypotheses alone preserve discovery-axis probe coverage
+ok: real active probes accept hypothesis dimensions without parallel clarification
+ok: blanket behavioral v2 waivers hard-fail all three protected blocks
+ok: every reasoning waiver emits non-postable REVIEW
+ok: reasoning waiver reviews engage the actual posting guard
+ok: reviewed legacy escape is accepted as a review record
+ok: reviewed escape never reports CLEAN
+ok: author self-review cannot bypass protected blocks
+ok: v3 reasoning waivers require explicit reviewed escapes
+ok: legacy structural waiver behavior is unchanged
+ok: run_gates no longer silently skips behavioral v2 reasoning
+ok: one question's second pass cannot satisfy another blocking question
+test_v3_authoring_pipeline: OK
+ok: non-activated plan may omit clarification
+ok: declared clarification must be an object
+ok: activated plan must declare clarification
+ok: fully resolved clarification block passes
+ok: clarification block is detected
+ok: clarification summary reports the dimension
+ok: material UNRESOLVED dimension fails
+ok: every clarification failure has the stable prefix
+ok: WAITING blocking question fails
+ok: blocking question requires authoring gate assertion
+ok: COVERED_BY_AC must reference a plan AC
+ok: deferred dimension must reference a declared Open Question
+ok: value-write plan cannot omit VALUE_SET_CHANNEL
+ok: value-write dimension must enumerate CRX/DE or repository node
+ok: publishing plan must enumerate OUTPUT_PRESET
+ok: shared code plan must enumerate CODE_PATH_CONSUMER
+test_clarification_gate: OK
+ok: all terminal states with valid references pass
+ok: missing terminal state fails
+ok: terminal state rejects unknown AC reference
+ok: versioned concurrency race contract passes with real references
+ok: empty known AC set rejects a concurrency AC reference
+ok: inactive concurrency contract requires a reason
+ok: event-driven behavior is detected
+ok: complete enumerated source disposition passes
+ok: empty known Open Question set rejects an enumerated reference
+ok: missing enumerated source item is a hard failure
+ok: independent enumerated items cannot silently overload one AC
+ok: ordinary Markdown bullets activate enumerated coverage
+ok: detected source list cannot be bypassed with active false
+ok: Proposed-only enumerated source still requires the fidelity ledger
+ok: rewritten enumerated text cannot pass beside the original verbatim source
+ok: invented semantic atom text is rejected
+ok: automatic scope protection blocks user-level loss even when its atom is omitted
+ok: automatic scope protection recognizes per-user and hyphenated level terms
+ok: user-level to folder-profile substitution fails semantic fidelity
+ok: an evidence conflict passes only when a real Open Question preserves the atom
+ok: dropping an exact configuration path fails fidelity
+ok: source raw-text hash mismatch fails closed
+ok: complete Proposed source ledger passes independently of acceptance authority
+ok: skill retains source-fidelity marker aem-guides-source-requirement-ledger-v1
+ok: skill retains source-fidelity marker source_requirement_ledger
+ok: skill retains source-fidelity marker accepted_uac_present=false
+ok: quality checklist requires source requirement fidelity
+ok: unresolved decision marker is a hard AC failure
+ok: unrelated retry number does not make a vague log bound measurable
+ok: explicitly bound outcome is decidable
+ok: implementation-choice menu is a hard AC failure
+ok: ambiguous terminal result is a hard AC failure
+ok: non-finite negative is a hard AC failure
+ok: unresolved prose in Evidence does not poison parsed behavior fields
+ok: complete operational contract passes
+ok: shutdown must be dispositioned separately from cancellation
+ok: empty AC set rejects invented operational references
+ok: strong operational signal requires the contract
+ok: operational signal cannot be bypassed by active false
+ok: configuration activation restart does not imply an async operational contract
+ok: restart remains operational when recurring job evidence is present
+ok: sync contract covers seven canonical and executing copies
+ok: fingerprint has a non-empty enforced file set
+ok: Codex-only file is excluded from cross-copy fingerprint: SKILL.md
+ok: Codex-only file is excluded from cross-copy fingerprint: scripts/test_skill_scripts.py
+ok: Codex-only file is excluded from cross-copy fingerprint: references/quality-gate-checklist.md
+ok: fingerprint exposes one hash per enforced file
+ok: repository Claude enforced fingerprint matches canonical
+ok: repository public enforced fingerprint matches canonical
+ok: Windows bundle enforced fingerprint matches canonical
+ok: Unix bundle enforced fingerprint matches canonical
+ok: global Claude enforced fingerprint matches canonical
+ok: global Codex enforced fingerprint matches canonical
+ok: fresh enforced-file copy verifies
+ok: injected drift is detected by relative file name
+ok: run_gates emits the required executing-copy REVIEW note
+ok: executing-copy drift makes a receipt non-postable without a gate failure
+test_skill_bundle_fingerprint: OK
+ok: readability REVIEW prevents a postable receipt
+ok: scope-authority REVIEW prevents a postable receipt
+ok: semantic advisory notes also block posting
+ok: hash-bound receipt authorizes the exact current artifacts
+ok: stale receipt is rejected after plan mutation
+ok: stale receipt is rejected after validator mutation
+ok: skip-self-test style non-postable receipt is rejected
+ok: remote resolver serializes canonical request as JSON
+ok: remote resolver received JSON object
+ok: local TRAIN baseline survives remote lookup
+ok: local shadow ceiling strips remote influence
+ok: shadow ceiling removes shared matches
+ok: shadow ceiling removes authoring guidance
+ok: shadow ceiling preserves trace-only shared pattern IDs
+ok: shadow ceiling preserves trace-only guidance IDs
+ok: remote shared resolver called once
+ok: remote resolver passes tenant context
+ok: remote resolver passes current-case exclusion
+ok: remote resolver serializes canonical request as JSON
+ok: remote resolver received JSON object
+ok: explicit enabled mode retains server-authorized envelope
+ok: enabled shared resolver made a second call
+ok: contextless resolver keeps local baseline
+ok: contextless resolver disables shared lookup
+ok: contextless resolver makes no remote call
+ok: local client disable skips remote lookup
+ok: disabled shared envelope is explicit
+ok: benchmark isolation skips remote shared learning
+ok: benchmark shared envelope is disabled
+ok: shared lookup needs personal token
+ok: missing personal token preserves local baseline
+ok: credential failure does not call remote
+test_remote_approved_pattern_resolver: OK
+ok: source-bound contract facts validate
+ok: contract facts must quote their canonical source exactly
+ok: protected exact source terms survive in their ACs
+ok: silently dropped contract wording fails integrity
+ok: ambiguous contract fact cannot be routed directly to an AC
+ok: publishing evidence activates the publishing domain
+ok: inflected publishing, API delivery, and bulk scale activate independent routes
+ok: published and singular API wording are recognized
+ok: negated and explicitly unaffected domains do not self-activate
+ok: a negative performance instruction does not activate a performance route
+ok: structured out-of-scope values cannot activate a domain
+ok: a positive clause after a negated clause remains discoverable
+ok: publishing configuration does not imply a generated-download contract
+ok: publishing domain and scope validate
+ok: active publishing route requires its scope contract
+ok: unresolved DITA-OT state requires an Open Question
+ok: an empty Open Question registry rejects invented references
+ok: every canonical relation family is accepted
+ok: graph inference cannot silently become confirmed
+ok: graph authority is validated against a declared subject policy
+ok: graph provenance must resolve in the canonical evidence registry
+ok: unresolved graph edges cannot invent Open Question references
+ok: behavior traversal is bounded
+ok: complete canonical semantic pipeline passes
+ok: behavior model alone cannot pass semantic coverage
+ok: complete applicability matrix passes
+ok: wrong-typed contract_facts fails gracefully
+ok: wrong-typed behavior_graph fails gracefully
+ok: wrong-typed semantic_closure fails gracefully
+ok: a silently omitted semantic dimension fails
+ok: wildcard closure cannot hide per-entity applicability gaps
+ok: scaffold does not mutate input
+ok: model roles produce typed candidate nodes and edges
+ok: graph provenance comes only from bound facts
+ok: nodes and edges retain explicit unknown verification context
+ok: scaffold vocabulary is data-backed and canonical
+ok: malformed policy cannot introduce invented vocabulary
+ok: malformed policy cannot introduce invented vocabulary
+ok: malformed policy cannot introduce invented vocabulary
+ok: materiality follows actual node kind with explicit author override
+ok: configuration model field is scaffolded
+ok: closure matrix excludes nonmaterial context nodes
+ok: closure scaffold emits complete per-node matrix
+ok: closure never asserts applicability or a disposition
+ok: scaffold emits no verdicts, ACs or fake unresolved questions
+ok: candidate graph edges are declared hypotheses
+ok: fresh scaffold deterministically reruns
+ok: malformed existing node fails with a controlled validation error
+ok: one contextual question per unresolved closure and verification
+ok: questions use subject-specific source vocabulary
+ok: unresolved question does not invent second-pass retrieval
+ok: rerun preserves authored rows and IDs
+ok: new entities append without renumbering decisions
+ok: unreviewed graph defaults cannot validate
+ok: filling disposition IDs cannot launder default rejection
+ok: reviewed candidate graph validates without auto-confirmation
+ok: author-dispositioned closure can validate
+ok: conflicting duplicate closure pair fails
+ok: unavailable sources never become invented graph provenance
+ok: unmentioned entity cannot borrow arbitrary catalog evidence
+ok: large matrices have valid unique IDs without truncation
+ok: file binding hashes exact bytes and resolves relative path
+ok: hash helper completes existing file IDs without breaking model bindings
+ok: binding does not invent a query, authority, use or second pass
+ok: pending binding is rejected even if marked USED
+ok: file entries use existing provenance validator contract
+ok: same file binding is idempotent and preserves lifecycle edits
+ok: changed bytes never overwrite old evidence
+ok: missing files and directories yield gaps without evidence
+Scaffold: 6 nodes, 5 edges, 186 closure records, 0 questions; 197 rows await author review. This is not a gate pass or posting authority.
+Written: C:\Users\prashantp\AppData\Local\Temp\v3-scaffold-w0lbdrxb\manifest.scaffold.json
+ok: CLI creates a separate scaffold
+ok: CLI refuses overwriting input or existing output
+ok: malformed manifest yields controlled failure and no file
+ok: canonical gate rejects generated review placeholders
+ok: scaffold then author disposition passes canonical semantic gates
+ok: scaffolding does not expand the fixture's acceptance set
+ok: unresolved closure automatically requires a question
+ok: missing-question stub preserves subject, dimension, and visible Open Question
+ok: generated material question is linked
+ok: directed subject-specific retrieval is recorded even when no answer is found
+ok: undispositioned material candidate fails
+ok: exactly-once disposition passes
+ok: duplicate disposition fails
+ok: Jira expected behavior can support a Proposed AC
+ok: PR implementation alone cannot promote an AC
+ok: regression-only candidate cannot promote
+ok: a candidate and AC cannot be promoted more than once
+ok: a promotion cannot borrow authority from another candidate
+ok: product acceptance cannot relabel an implementation candidate
+ok: promotion disposition must cover the same candidate and AC
+ok: Confirmed promotion requires an accepted UAC contract
+ok: complete generated-output contract passes
+ok: legacy v1 generated-output contracts remain readable
+ok: delivery availability is not required when delivery is out of scope
+ok: an out-of-scope delivery cannot retain a covered availability oracle
+ok: in-scope delivery requires its real delivery surface
+ok: unresolved delivery cannot invent an Open Question
+ok: delivery scope and availability cannot point to different questions
+ok: logs-only archive is not accepted as generated output
+ok: artifact-existence-only coverage fails
+ok: archive-exists text is not a sufficient product oracle
+ok: generated-artifact contract rejects a logs-only downloadable archive
+ok: current-identity lifecycle contract passes
+ok: content-identity contract rejects an unauthorized previous-version fallback
+ok: legacy migration cannot be invented without authority
+ok: every semantic REVIEW blocks posting
+CONTINUATION AFTER KNOWN BASELINE FAILURE: PASS

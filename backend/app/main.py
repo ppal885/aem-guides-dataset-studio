@@ -434,6 +434,7 @@ async def startup_event():
             from app.db.llm_models import LLMRun  # noqa: F401
             from app.db.evidence_graph_models import EvidenceGraphGeneration  # noqa: F401
             from app.db.test_plan_feedback_models import TestPlanQualityFeedback  # noqa: F401
+            from app.db import shared_uac_learning_models  # noqa: F401
             
             if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
                 logger.info_structured(
@@ -815,6 +816,15 @@ async def startup_event():
                 extra_fields={"enabled": False}
             )
 
+        shared_learning_worker_enabled = os.getenv("SHARED_UAC_LEARNING_WORKER_ENABLED", "true").lower() == "true"
+        if shared_learning_worker_enabled:
+            from app.services.shared_uac_learning_worker import run_shared_learning_publication_job
+            scheduler.add_job(
+                run_shared_learning_publication_job, "interval", seconds=60,
+                id="shared_uac_learning_publication", name="Approved shared feedback index projection",
+                replace_existing=True, max_instances=1, coalesce=True,
+            )
+
         if (
             cleanup_enabled
             or jira_indexing_enabled
@@ -822,6 +832,7 @@ async def startup_event():
             or dita_pdf_index_enabled
             or evidence_graph_sync_enabled
             or evidence_graph_reconcile_enabled
+            or shared_learning_worker_enabled
         ):
             scheduler.start()
             logger.info_structured("Scheduler started", extra_fields={})

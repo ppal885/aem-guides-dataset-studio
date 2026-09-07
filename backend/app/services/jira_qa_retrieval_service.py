@@ -7,7 +7,7 @@ import os
 import re
 from typing import Any
 
-from app.services.embedding_service import embed_query, is_embedding_available
+from app.services.embedding_service import embed_query, is_embedding_available, embedding_cache_namespace
 from app.services.jira_qa_copilot_cache import cache_get_embedding_vector, cache_set_embedding_vector
 from app.services.vector_store_service import (
     CHROMA_COLLECTION_JIRA_QA,
@@ -318,15 +318,18 @@ def semantic_search_jira_qa(
     if not query_text.strip() or not is_chroma_available() or not is_embedding_available():
         return []
     qt = query_text[:12000]
-    cached = cache_get_embedding_vector(qt)
+    namespace = embedding_cache_namespace()
+    cached = cache_get_embedding_vector(qt, namespace=namespace)
     if cached is not None:
         emb = cached
     else:
         qv = embed_query(qt)
         if qv is None:
             return []
+        if namespace != embedding_cache_namespace():
+            return []
         emb = qv.tolist() if hasattr(qv, "tolist") else list(qv)
-        cache_set_embedding_vector(qt, emb)
+        cache_set_embedding_vector(qt, emb, namespace=namespace)
 
     names = list(customer_names or [])
     if not names and not customer:

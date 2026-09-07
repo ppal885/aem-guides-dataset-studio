@@ -1,8 +1,8 @@
-# AEM Dataset Studio MCP Setup
+# AEM Guides UAC MCP setup
 
 This repo ships a local stdio MCP server (`mcp_server.py`) so Claude Code, Claude
-Desktop, Cursor, and other MCP-enabled clients can use the DITA/Jira/dataset
-tooling directly — no need to run the web UI or backend server separately for
+Desktop, Cursor, and other MCP-enabled clients can use the UAC, DITA, and Jira
+tooling directly — no browser UI is required for
 most tools (a few, like Jira search, still call out to live services and need
 the same credentials the backend uses).
 
@@ -83,15 +83,9 @@ you have from aem-dataset-studio?") to see the full live list — this table may
 drift as tools are added.
 
 
-## Claude Code slash command
+## Generate a UAC
 
-Authorized Adobe team members can run:
-
-```text
-/guides-test-plan-generator GUIDES-12345
-```
-
-The command file is `.claude/commands/guides-test-plan-generator.md`. It calls the MCP `guides_test_plan_generator(jira_key, tenant_id="kone", evidence_k=8)` tool, then uses `claude-skills/aem-guides-test-scenario-generator/SKILL.md` to produce the final plan with the mandatory `## 4. Blast radius and risk analysis` section.
+Ask the client to use the installed `test-plan-generation` skill for the Jira key. The skill may call the MCP `guides_test_plan_generator(jira_key, tenant_id="kone", evidence_k=8)` tool for its evidence packet, then applies the canonical reasoning and quality gates. No browser UI is required.
 
 The MCP tool is read-only: it builds a Jira + Experience League RAG + DITA/spec + QA Studio preview evidence packet and does not crawl, reindex, delete, or mutate production vector indexes.
 

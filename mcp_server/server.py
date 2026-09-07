@@ -29,6 +29,7 @@ Environment variables:
 import asyncio
 import json
 import os
+import re
 from typing import Any
 
 import httpx
@@ -38,6 +39,25 @@ from mcp import types
 
 BACKEND_URL = os.environ.get("AEM_STUDIO_URL", "http://127.0.0.1:8001").rstrip("/")
 AUTH_TOKEN = os.environ.get("AEM_STUDIO_TOKEN", "dev-bypass")
+
+FEEDBACK_DELTA_TYPES = [
+    "UNCLASSIFIED", "COVERAGE_ADDED", "COVERAGE_REMOVED", "SCOPE_NARROWED",
+    "SCOPE_EXPANDED", "DISPOSITION_CHANGED", "OPEN_QUESTION_ADDED",
+    "OPEN_QUESTION_REMOVED", "LANGUAGE_SIMPLIFIED", "AC_MERGED", "AC_SPLIT",
+    "ORACLE_CHANGED", "PRIORITY_CHANGED", "IMPLEMENTATION_DETAIL_REMOVED",
+]
+FEEDBACK_SOURCE_KINDS = ["HUMAN_CORRECTION", "AI_PROPOSAL", "UNCONFIRMED"]
+FEEDBACK_DECISIONS = ["APPROVE", "REJECT", "REVOKE", "SUPERSEDE"]
+FEEDBACK_TOOL_NAMES = frozenset({
+    "capture_uac_feedback",
+    "list_uac_feedback",
+    "get_uac_feedback_status",
+    "review_uac_feedback",
+    "bind_uac_feedback",
+    "get_uac_feedback_readiness",
+})
+_SAFE_FEEDBACK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
+SHARED_SSE_TRANSPORT = False
 
 server = Server("aem-guides-dataset-studio")
 
@@ -94,6 +114,253 @@ def _pattern_error_payload(*, invalid_request: bool) -> dict[str, Any]:
             else "QE_PATTERN_PROVIDER_UNAVAILABLE"
         ),
     }
+
+
+def _require_personal_feedback_identity() -> None:
+    token = AUTH_TOKEN.strip()
+    if SHARED_SSE_TRANSPORT:
+        raise ValueError(
+            "Shared UAC feedback is disabled on the legacy shared SSE transport; "
+            "use a local stdio client so each Human supplies a personal credential."
+        )
+    if (
+        not token
+        or token == "dev-bypass"
+        or token.casefold().startswith("replace")
+        or any(character in token for character in "\r\n")
+    ):
+        raise ValueError(
+            "Shared UAC feedback requires AEM_STUDIO_TOKEN to be a personal token; "
+            "dev-bypass cannot establish a named Human author or reviewer."
+        )
+
+
+def _feedback_id(value: object) -> str:
+    identifier = str(value or "").strip()
+    if not _SAFE_FEEDBACK_ID.fullmatch(identifier):
+        raise ValueError("feedback_id is required and contains unsupported characters")
+    return identifier
+
+
+def _reviewed_jira_uac_schema() -> dict:
+    return {
+        "type": "object",
+        "description": (
+            "Exact raw Jira UAC source pin; the server independently retrieves it. "
+            "Not a generated draft, approval or proof of generator lineage. "
+            "Do not combine with draft/run/bundle references."
+        ),
+        "properties": {
+            "field_id": {"type": "string", "pattern": "^customfield_[1-9][0-9]{0,9}$"},
+            "expected_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "expected_issue_updated": {
+                "type": "string", "maxLength": 80, "default": "",
+                "description": "Optional exact observed timezone-aware Jira issue timestamp.",
+            },
+            "original_reviewed_ac": {
+                "type": "string", "maxLength": 12000, "default": "",
+                "description": "Exact unique original criterion excerpt; required when ac_id is supplied.",
+            },
+        },
+        "required": ["field_id", "expected_sha256"],
+        "additionalProperties": False,
+    }
+
+
+def _feedback_tools() -> list[types.Tool]:
+    client_context = {
+        "type": "object",
+        "properties": {
+            "client": {
+                "type": "string",
+                "enum": ["claude_desktop", "codex", "api", "unknown"],
+                "default": "unknown",
+            },
+            "session_id": {"type": "string", "maxLength": 160, "default": ""},
+            "message_id": {"type": "string", "maxLength": 160, "default": ""},
+        },
+        "additionalProperties": False,
+        "default": {},
+    }
+    draft = {
+        "type": "object",
+        "description": (
+            "Optional exact generated draft for atomic registration. Do not put an entire "
+            "chat transcript here; criteria must be exact substrings of draft_markdown."
+        ),
+        "properties": {
+            "draft_markdown": {"type": "string", "minLength": 1, "maxLength": 100000},
+            "criteria": {
+                "type": "object",
+                "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 12000},
+                "default": {},
+            },
+            "evidence_bundle_id": {"type": "string", "maxLength": 180, "default": ""},
+            "run_id": {"type": "string", "maxLength": 160, "default": ""},
+            "client_context": client_context,
+        },
+        "required": ["draft_markdown"],
+        "additionalProperties": False,
+    }
+    return [
+        types.Tool(
+            name="capture_uac_feedback",
+            description=(
+                "Any authenticated tenant teammate may persist a selected Human UAC correction as pending feedback. "
+                "This never approves or indexes the correction. Use HUMAN_CORRECTION only "
+                "when a Human directly supplied it; never upload the whole conversation."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "contract_version": {
+                        "type": "string", "enum": ["shared-uac-feedback-v1"],
+                        "default": "shared-uac-feedback-v1",
+                    },
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "jira_key": {"type": "string", "minLength": 3, "maxLength": 64},
+                    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "raw_feedback": {"type": "string", "minLength": 1, "maxLength": 12000},
+                    "source_kind": {
+                        "type": "string", "enum": FEEDBACK_SOURCE_KINDS,
+                        "default": "UNCONFIRMED",
+                    },
+                    "proposed_correction": {"type": "string", "maxLength": 12000, "default": ""},
+                    "delta_type": {
+                        "type": "string", "enum": FEEDBACK_DELTA_TYPES,
+                        "default": "UNCLASSIFIED",
+                    },
+                    "ai_classification": {
+                        "type": "object",
+                        "description": "Advisory model metadata only; never Human authority.",
+                        "additionalProperties": True,
+                        "default": {},
+                    },
+                    "draft_id": {"type": "string", "maxLength": 36, "default": ""},
+                    "plan_fingerprint": {
+                        "type": "string", "pattern": "^$|^[a-f0-9]{64}$", "default": "",
+                    },
+                    "evidence_bundle_id": {"type": "string", "maxLength": 180, "default": ""},
+                    "run_id": {"type": "string", "maxLength": 160, "default": ""},
+                    "ac_id": {"type": "string", "maxLength": 120, "default": ""},
+                    "draft": draft,
+                    "reviewed_jira_uac": _reviewed_jira_uac_schema(),
+                    "client_context": client_context,
+                },
+                "required": ["jira_key", "idempotency_key", "raw_feedback"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="list_uac_feedback",
+            description=(
+                "List shared UAC feedback visible to the authenticated tenant teammate. Pending and "
+                "candidate records are not reusable learning."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "jira_key": {"type": "string", "maxLength": 64, "default": ""},
+                    "plan_fingerprint": {
+                        "type": "string", "pattern": "^$|^[a-f0-9]{64}$", "default": "",
+                    },
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100},
+                },
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="get_uac_feedback_status",
+            description=(
+                "Read the server-authoritative binding, review, publication, and index "
+                "status for one feedback record, including reuse_eligible and publication_review_status. "
+                "An earlier APPROVED state alone does not establish current reuse eligibility."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feedback_id": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                },
+                "required": ["feedback_id"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="get_uac_feedback_readiness",
+            description=(
+                "Read authenticated tenant configuration and supported feedback contracts only. "
+                "No database/index/Jira probe, worker start, capture or approval; "
+                "a configured identity/mode is not proof that learning works or was used."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 120},
+                },
+                "required": ["tenant_id"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="bind_uac_feedback",
+            description=(
+                "Explicitly bind pending feedback to one existing draft or exact reviewed Jira UAC pin. "
+                "Only the ticket's current live QE Assignee may bind. This does not approve learning. "
+                "Never queued or automatically retried; keep the original source pin unchanged."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feedback_id": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "draft_id": {"type": "string", "minLength": 1, "maxLength": 36},
+                    "reviewed_jira_uac": _reviewed_jira_uac_schema(),
+                },
+                "required": ["feedback_id", "idempotency_key"],
+                "oneOf": [
+                    {"required": ["draft_id"], "not": {"required": ["reviewed_jira_uac"]}},
+                    {"required": ["reviewed_jira_uac"], "not": {"required": ["draft_id"]}},
+                ],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="review_uac_feedback",
+            description=(
+                "Submit one deliberate review using the current revision. Only the ticket's "
+                "current live Jira QE Assignee, using a personal named Human identity, may review. "
+                "Admin status, roles, draft ownership, ordinary Assignee and prose names grant no review right. "
+                "The server verifies Jira identity and QE assignment; unavailable verification denies review. "
+                "Review operations are never queued or automatically retried."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feedback_id": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "tenant_id": {"type": "string", "maxLength": 120, "default": "kone"},
+                    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "expected_revision": {"type": "integer", "minimum": 1},
+                    "decision": {"type": "string", "enum": FEEDBACK_DECISIONS},
+                    "note": {"type": "string", "minLength": 1, "maxLength": 2000},
+                    "lesson": {
+                        "type": "object",
+                        "description": "Server-validated lesson definition; required for approval/supersession.",
+                        "additionalProperties": True,
+                    },
+                    "origin_confirmed": {"type": "boolean", "default": False},
+                    "applicability_confirmed": {"type": "boolean", "default": False},
+                    "counterexamples_checked": {"type": "boolean", "default": False},
+                },
+                "required": [
+                    "feedback_id", "idempotency_key", "expected_revision", "decision", "note"
+                ],
+                "additionalProperties": False,
+            },
+        ),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +714,7 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["key", "markdown"],
             },
         ),
-    ]
+    ] + ([] if SHARED_SSE_TRANSPORT else _feedback_tools())
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +728,16 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         result = await _dispatch(name, arguments)
         return [types.TextContent(type="text", text=_fmt(result))]
     except httpx.HTTPStatusError as exc:
+        if name in FEEDBACK_TOOL_NAMES:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "Shared feedback request failed. Verify access and read server status "
+                        "before retrying; no review decision was retried."
+                    ),
+                )
+            ]
         detail = exc.response.text[:500]
         return [
             types.TextContent(
@@ -468,6 +745,8 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             )
         ]
     except httpx.ConnectError:
+        if name in FEEDBACK_TOOL_NAMES:
+            return [types.TextContent(type="text", text="Shared feedback service unavailable. No feedback persistence or review result was confirmed; no review was retried.")]
         return [
             types.TextContent(
                 type="text",
@@ -475,6 +754,16 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             )
         ]
     except Exception as exc:
+        if name in FEEDBACK_TOOL_NAMES:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=(
+                        "Shared feedback operation failed local validation or transport. "
+                        "No review decision was retried."
+                    ),
+                )
+            ]
         return [
             types.TextContent(type="text", text=f"Error ({type(exc).__name__}): {exc}")
         ]
@@ -591,6 +880,87 @@ async def _dispatch(name: str, args: dict) -> Any:
             },
         )
 
+    if name == "capture_uac_feedback":
+        _require_personal_feedback_identity()
+        body = {
+            "contract_version": args.get("contract_version", "shared-uac-feedback-v1"),
+            "tenant_id": args.get("tenant_id", "kone"),
+            "jira_key": args["jira_key"],
+            "idempotency_key": args["idempotency_key"],
+            "raw_feedback": args["raw_feedback"],
+            "source_kind": args.get("source_kind", "UNCONFIRMED"),
+            "proposed_correction": args.get("proposed_correction", ""),
+            "delta_type": args.get("delta_type", "UNCLASSIFIED"),
+            "ai_classification": args.get("ai_classification", {}),
+            "draft_id": args.get("draft_id", ""),
+            "plan_fingerprint": args.get("plan_fingerprint", ""),
+            "evidence_bundle_id": args.get("evidence_bundle_id", ""),
+            "run_id": args.get("run_id", ""),
+            "ac_id": args.get("ac_id", ""),
+            "client_context": args.get("client_context", {}),
+        }
+        if "draft" in args:
+            body["draft"] = args["draft"]
+        if "reviewed_jira_uac" in args:
+            body["reviewed_jira_uac"] = args["reviewed_jira_uac"]
+        return await _post("/api/v1/test-plan-learning/feedback", body)
+
+    if name == "list_uac_feedback":
+        _require_personal_feedback_identity()
+        return await _get(
+            "/api/v1/test-plan-learning/feedback",
+            {
+                "tenant_id": args.get("tenant_id", "kone"),
+                "jira_key": args.get("jira_key", ""),
+                "plan_fingerprint": args.get("plan_fingerprint", ""),
+                "limit": args.get("limit", 100),
+            },
+        )
+
+    if name == "get_uac_feedback_status":
+        _require_personal_feedback_identity()
+        identifier = _feedback_id(args.get("feedback_id"))
+        return await _get(
+            f"/api/v1/test-plan-learning/feedback/{identifier}",
+            {"tenant_id": args.get("tenant_id", "kone")},
+        )
+
+    if name == "get_uac_feedback_readiness":
+        _require_personal_feedback_identity()
+        return await _get("/api/v1/test-plan-learning/readiness", {"tenant_id": args["tenant_id"]})
+
+    if name == "bind_uac_feedback":
+        _require_personal_feedback_identity()
+        identifier = _feedback_id(args.get("feedback_id"))
+        draft_id = args.get("draft_id", "")
+        pin = args.get("reviewed_jira_uac")
+        if bool(draft_id) == (pin is not None):
+            raise ValueError("Binding requires exactly one draft_id or reviewed_jira_uac source.")
+        body = {"tenant_id": args.get("tenant_id", "kone"), "idempotency_key": args["idempotency_key"]}
+        if pin is not None:
+            body["reviewed_jira_uac"] = pin
+        else:
+            body["draft_id"] = draft_id
+        return await _post(f"/api/v1/test-plan-learning/feedback/{identifier}/bind", body)
+
+    if name == "review_uac_feedback":
+        _require_personal_feedback_identity()
+        identifier = _feedback_id(args.get("feedback_id"))
+        body = {
+            "tenant_id": args.get("tenant_id", "kone"),
+            "idempotency_key": args["idempotency_key"],
+            "expected_revision": args["expected_revision"],
+            "decision": args["decision"],
+            "note": args["note"],
+            "lesson": args.get("lesson"),
+            "origin_confirmed": args.get("origin_confirmed", False),
+            "applicability_confirmed": args.get("applicability_confirmed", False),
+            "counterexamples_checked": args.get("counterexamples_checked", False),
+        }
+        return await _post(
+            f"/api/v1/test-plan-learning/feedback/{identifier}/review", body
+        )
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -610,6 +980,8 @@ async def main() -> None:
 
 def run_sse() -> None:
     """Run as an HTTP/SSE server so the whole team can connect without a local clone."""
+    global SHARED_SSE_TRANSPORT
+    SHARED_SSE_TRANSPORT = True
     try:
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette

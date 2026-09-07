@@ -1,0 +1,205 @@
+ok: good plan passes
+ok: automation requires one main feature coverage verdict
+ok: acceptance criterion without source is rejected
+ok: compact renderer AC syntax is rejected as a durable source record
+ok: paste-unsafe AC markup is rejected: backticks/code spans
+ok: paste-unsafe AC markup is rejected: strikethrough
+ok: paste-unsafe AC markup is rejected: bold/italic markers
+ok: paste-unsafe AC markup is rejected: bold/italic markers
+ok: paste-unsafe AC markup is rejected: Markdown link
+ok: grossly overlong Then clause is rejected with rewrite guidance
+ok: graph path alone cannot support P0 acceptance
+ok: graph path containing a Jira key is still rejected
+ok: area-only similarity (no match strength) is rejected
+ok: AC missing the sphere tag is rejected
+ok: AC with an uncontrolled sphere is rejected
+ok: AC with reordered fields is rejected
+ok: AC with an embedded field label is rejected
+ok: AC without terminal punctuation is rejected
+ok: AC with an extra field is rejected
+ok: duplicate AC IDs are rejected
+ok: Performance AC without quantified workload is rejected
+ok: Performance AC without measurable oracle is rejected
+ok: quantified evidence-backed Performance AC passes
+ok: AC with no scenario mapping is rejected
+ok: AC with no automation verdict is rejected
+ok: scenario without AC mapping is rejected
+ok: Test Scenarios without a Test data to prepare bullet is rejected
+ok: customer context source is required
+ok: scenario Action and Expected wording is required
+ok: terse keyword-fragment Regression Areas bullet is rejected
+ok: open question stating QA impact passes
+ok: open question without QA impact is rejected
+ok: duplicate Open Question IDs are rejected
+ok: non-contiguous Open Question IDs are rejected
+ok: no-open-questions declaration cannot coexist with a real question
+ok: stable contiguous Test Scenario IDs pass
+ok: duplicate Test Scenario IDs are rejected
+ok: Scope From Git citing a clone without sync/SHA state is rejected
+ok: Scope From Git citing a clone with a provisional SHA acknowledgment passes
+ok: Regression Areas citing a Jira key absent from Known Bugs is rejected
+ok: short technical AC remains valid
+ok: technical identifiers remain readable tokens
+ok: plain presentation is one line and preserves technical token text exactly
+ok: one coupled safety result remains allowed
+ok: complex legal-style phrase is rejected with a simple replacement
+ok: ordinary clause density is reviewed instead of hard-failed by the legacy contract
+ok: double-negative outcome is rejected
+ok: When cannot hide a second action after and then
+ok: and/or is rejected in favor of an exact choice
+ok: semicolon-separated outcomes are rejected
+ok: AC clauses cannot depend on another AC reference
+ok: 29-word outcome emits a loud readability review
+ok: three-sentence outcome emits review without hard failure
+ok: clause-heavy outcome emits review without hard failure
+ok: tester jargon emits review: Widget.render
+ok: tester jargon emits review: loadCurrentValue()
+ok: tester jargon emits review: C:/repo/Widget.java:42
+ok: tester jargon emits review: baseline-relative
+ok: tester jargon emits review: materialization
+ok: tester jargon emits review: p95
+ok: tester jargon emits review: heap
+ok: tester jargon emits review: GC
+ok: tester jargon emits review: suffix path
+ok: tester jargon emits review: render condition
+ok: tester jargon emits review: non-asset resource
+ok: tester jargon emits review: per-asset gating
+ok: code and jargon in Evidence do not trigger tester-text review
+ok: developer note outside the AC is not treated as tester text
+ok: generic surface emits exact-screen review
+ok: declared exact screen suppresses vague-surface review
+ok: long Given clause emits the same first-read review as a long outcome
+ok: combined recap of two earlier outcomes is reviewed
+ok: POSIX absolute source path is recognized
+ok: existing file + valid line passes
+ok: out-of-range line is failed
+ok: real symbol next to a single file passes
+ok: invented symbol next to a single file is failed
+ok: missing source file is failed
+ok: runtime/relative/space-root paths are skipped, not failed
+ok: backtick path with spaces is verified when it exists
+ok: backtick path with spaces is failed when missing
+ok: invented Jira key is flagged against manifest
+ok: Partially covered without code evidence is failed
+ok: Partially covered with code evidence passes
+ok: only Not-covered needs no code evidence
+ok: manifest with real download + analyzed passes
+ok: manifest with missing download is failed
+ok: manifest entry not attested analyzed is failed
+ok: fewer than three RAG probes is failed when behaviour matters
+ok: three RAG probes passes
+ok: one probe passes when behaviour_matters is false
+ok: run_gates requires a manifest
+ok: run_gates flags missing manifest keys
+ok: legacy v2 base-schema check stays readable before signal completeness
+ok: behaviour_matters false waives v3 semantic manifest keys
+ok: run_gates requires source fidelity for Proposed enumerated requirements
+ok: principal performance assessment accepts an evidence-backed not-required decision
+ok: not-required performance assessment aligns with a plan containing no Performance AC
+ok: run_gates rejects an incomplete principal performance risk review
+ok: malformed performance arrays fail closed without crashing
+ok: required principal performance assessment passes schema validation
+ok: required performance decision fails when the plan omits a Performance AC
+ok: required performance decision aligns with a quantitative Performance AC
+ok: not-required decision rejects an invented Performance AC
+ok: manager feedback fails when historical performance Jira is only a passive regression
+ok: current performance Jira is not misclassified as historical evidence
+ok: same-path historical SubjectScheme performance contract passes schema validation
+ok: retained historical SubjectScheme contract emits a mapped Performance AC
+ok: retained historical performance AC cannot omit its mapped benchmark scenario
+ok: retained historical performance Jira must be cited by the Performance AC
+ok: area-only historical performance cannot be retained
+ok: retained same-path history cannot be classified not-required
+ok: conditional principal performance assessment passes schema validation
+ok: conditional performance decision requires a QA-impact Open Question
+ok: conditional performance decision aligns after its QA-impact question is visible
+ok: run_gates flags a clone with no sha and not provisional
+ok: run_gates rejects Jira search as product-doc RAG
+ok: run_gates requires same and cross-customer Jira searches
+ok: run_gates rejects noncanonical Jira components
+ok: run_gates rejects graph paths without leaf citations
+ok: run_gates rejects shadow graph influence
+ok: run_gates allows explicit graph degraded mode
+ok: run_gates passes a complete manifest
+ok: Confirmed ACs are forbidden when no accepted UAC exists
+ok: manifest and visible Open Question IDs must match exactly
+ok: combined artifact accepts only the exact plan plus Appendix A
+ok: combined artifact rejects a mutated plan body
+ok: full run gate rejects compact source AC syntax
+ok: run_gates adds no root-cause/fix failure for the complete fixture
+ok: run_gates rejects fix-driven fixture: Pre-Development
+ok: run_gates rejects fix-driven fixture: unguarded preserved invariant
+ok: run_gates rejects fix-driven fixture: unmapped fix-introduced risk
+ok: run_gates rejects fix-driven fixture: added test reported Not covered
+ok: accepted UAC requires fidelity audit
+ok: complete UAC fidelity audit passes
+ok: unmapped accepted UAC clause is rejected
+ok: passing audit cannot hide scope expansion
+ok: blocked UAC fidelity audit cannot pass final gate
+ok: preflight rejects configuration as proof of availability
+ok: preflight rejects a failed call labelled available
+ok: preflight rejects a timestamp without timezone
+ok: preflight requires a not-applicable reason
+ok: preflight rejects full mode when a source is unavailable
+ok: preflight accepts a complete degraded manifest
+ok: degraded preflight requires claim restrictions
+ok: full preflight aligns with the visible evidence boundary
+ok: degraded preflight rejects a falsely full evidence boundary
+ok: degraded preflight aligns when unavailable sources and limits are visible
+ok: degraded evidence boundary must name each unavailable source
+ok: implementation review cannot stay ready when Git is unavailable
+ok: implementation review accepts explicit degraded readiness
+ok: post-fix validation is blocked when Git fix evidence is unavailable
+ok: extract_acs parses both canonical ACs
+ok: extract_acs maps stable automation fields
+ok: extract_acs fails closed on malformed input
+ok: extract_acs emits no partial payload for compact display syntax
+ok: extract_acs emits no payload for paste-unsafe AC markup
+ok: extract_acs leaves non-gross clarity review to the readability gate
+ok: compact view renders without problems
+ok: compact view exposes exactly the requested headings
+ok: compact view keeps analysis in the durable artifact
+ok: compact view does not leak hidden record sections
+ok: compact view keeps validated Test Scenarios
+ok: compact ACs use one plain line and hide internal record labels
+ok: compact Jira list keeps only key and title
+ok: compact automation states main coverage and high-level target
+ok: compact view hides Open Questions but durable record keeps them
+ok: compact renderer emits nothing for a noncanonical source AC
+ok: compact view renders a deterministic no-Jira result
+ok: material relation with no evidence is rejected
+ok: unknown relation type is rejected
+ok: well-formed relation validates clean
+ok: immaterial relation without evidence is allowed
+ok: CONTROLS lands in controlling_constructs bucket
+ok: hypotheses include material non-rejected deps
+ok: hypotheses exclude rejected and immaterial
+ok: equivalent hypotheses collapse to representatives
+ok: navtitle fixture passes the semantic gate
+ok: navtitle fixture exposes unresolved semantics
+ok: uninvestigated governing dependency makes the gate NEEDS_REVIEW
+ok: conref fixture passes the gate (generalizes beyond navtitle)
+ok: keyref fixture passes the gate (generalizes beyond navtitle)
+ok: inactive DITA semantics gate is SKIPPED
+ok: clean production code passes the audit
+ok: `if navtitle:` production guard is flagged
+ok: construct guard with an example/provenance marker is exempt
+ok: construct->construct pair literal is flagged
+ok: ambiguous-only literals / `if data:` are not flagged
+ok: bare construct rule-arrow in a prompt is flagged
+ok: example-marked rule-arrow in a prompt is exempt
+ok: test_*.py files are skipped by the audit
+ok: the real skill directory passes the anti-hardcoding audit
+ok: a concrete historical issue key in production instructions fails
+ok: explicit regression fixture catalog is excluded from production audit
+Traceback (most recent call last):
+  File "C:\aem-uac-learning\release-artifacts\aem-guides-mcp-client-windows\.claude\skills\test-plan-generation\scripts\test_skill_scripts.py", line 10466, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "C:\aem-uac-learning\release-artifacts\aem-guides-mcp-client-windows\.claude\skills\test-plan-generation\scripts\test_skill_scripts.py", line 10374, in main
+    test_production_jira_hardcoding_audit()
+  File "C:\aem-uac-learning\release-artifacts\aem-guides-mcp-client-windows\.claude\skills\test-plan-generation\scripts\test_skill_scripts.py", line 3189, in test_production_jira_hardcoding_audit
+    check(
+  File "C:\aem-uac-learning\release-artifacts\aem-guides-mcp-client-windows\.claude\skills\test-plan-generation\scripts\test_skill_scripts.py", line 262, in check
+    raise AssertionError(f"FAILED: {name}")
+AssertionError: FAILED: active skill has no historical Jira identity or fixture threshold

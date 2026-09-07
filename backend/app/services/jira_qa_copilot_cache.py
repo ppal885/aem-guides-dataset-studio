@@ -8,6 +8,8 @@ import time
 from threading import Lock
 from typing import Any, Optional
 
+from app.services.embedding_service import embedding_cache_namespace
+
 _LOCK = Lock()
 _EMBEDDING_CACHE: dict[str, tuple[list[float], float]] = {}
 _CONTEXT_CACHE: dict[str, tuple[str, float]] = {}
@@ -30,23 +32,33 @@ def _evict_oldest(store: dict[str, Any], n: int) -> None:
         store.pop(k, None)
 
 
-def cache_get_embedding_vector(text: str) -> Optional[list[float]]:
-    key = _hash_key("emb", text)
+def cache_get_embedding_vector(text: str, *, namespace: str | None = None) -> Optional[list[float]]:
+    current = embedding_cache_namespace()
+    namespace = current if namespace is None else namespace
+    if namespace != current:
+        return None
+    key = _hash_key("emb:" + namespace, text)
     now = time.monotonic()
     with _LOCK:
         item = _EMBEDDING_CACHE.get(key)
         if item and now - item[1] < _TTL_EMB:
-            return item[0]
+            return list(item[0])
     return None
 
 
-def cache_set_embedding_vector(text: str, vector: list[float]) -> None:
-    key = _hash_key("emb", text)
+def cache_set_embedding_vector(text: str, vector: list[float], *, namespace: str | None = None) -> None:
+    current = embedding_cache_namespace()
+    namespace = current if namespace is None else namespace
+    # A model reset during encoding must not publish that old vector into the
+    # new runtime namespace. No successful retrieval/authority is implied here.
+    if namespace != current:
+        return
+    key = _hash_key("emb:" + namespace, text)
     now = time.monotonic()
     with _LOCK:
         if len(_EMBEDDING_CACHE) >= _MAX_EMB:
             _evict_oldest(_EMBEDDING_CACHE, _MAX_EMB // 4)
-        _EMBEDDING_CACHE[key] = (vector, now)
+        _EMBEDDING_CACHE[key] = (list(vector), now)
 
 
 def cache_get_context(jira_key: str, chunk_sig: str) -> Optional[str]:

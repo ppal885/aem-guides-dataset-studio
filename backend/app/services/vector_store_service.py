@@ -6,8 +6,11 @@ Collections: aem_guides, dita_spec, recipes, jira_issues.
 import hashlib
 import json
 import os
+import re
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Optional
+from uuid import UUID
 
 from app.storage import get_storage
 from app.core.structured_logging import get_structured_logger
@@ -24,6 +27,107 @@ CHROMA_COLLECTION_DOCKER_DOCS = "docker_docs"
 CHROMA_DB_DIR = "chroma_db"
 
 _chroma_client = None
+_identity_client = None
+_identity_snapshot = None
+
+
+def _remember_client_identity(client, mode: str, target: dict) -> None:
+    """Freeze non-secret target information for this successfully opened client.
+
+    This is observational only: it neither configures a client nor reads mutable
+    environment variables. The target comes from the exact constructor arguments.
+    No raw path, host, auth settings, or exception text is retained in the receipt.
+    """
+    global _identity_client, _identity_snapshot
+    snapshot = {
+        "mode": mode if mode in {"EMBEDDED", "REMOTE"} else "UNKNOWN",
+        "target_fingerprint": None,
+        "tenant": None, "database": None, "client_version": None,
+    }
+    try:
+        for field in ("tenant", "database"):
+            value = getattr(client, field, None)
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", value):
+                snapshot[field] = value
+        try:
+            installed = version("chromadb")
+            if re.fullmatch(r"[0-9][A-Za-z0-9.+_-]{0,63}", installed):
+                snapshot["client_version"] = installed
+        except (PackageNotFoundError, ValueError, TypeError):
+            pass
+        valid_target = False
+        if mode == "EMBEDDED":
+            path = target.get("path")
+            valid_target = isinstance(path, str) and bool(path) and len(path) <= 4096
+        elif mode == "REMOTE":
+            # Full URLs with userinfo/query credentials are not diagnostic targets.
+            # Unsupported forms leave the fingerprint unavailable; never guess it.
+            host, port, ssl = target.get("host"), target.get("port"), target.get("ssl")
+            valid_target = (
+                isinstance(host, str)
+                and re.fullmatch(r"[A-Za-z0-9.:[\]-]{1,253}", host) is not None
+                and type(port) is int and 1 <= port <= 65535 and type(ssl) is bool
+            )
+        if valid_target and snapshot["tenant"] and snapshot["database"]:
+            payload = {"mode": mode, "target": target,
+                       "tenant": snapshot["tenant"], "database": snapshot["database"]}
+            snapshot["target_fingerprint"] = hashlib.sha256(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+    except Exception:
+        # A diagnostic failure must never change retrieval availability.
+        pass
+    _identity_client = client
+    _identity_snapshot = snapshot
+
+
+def get_index_identity() -> dict:
+    """Read the initialized client's identity and existing collection UUIDs/counts.
+
+    Does not initialize Chroma, create collections, fetch documents, or infer
+    embedding compatibility. Equal counts are not proof of equal collection IDs.
+    Collection read failures are null/UNAVAILABLE, never a fabricated zero.
+    """
+    client = _chroma_client
+    result = {
+        "schema_version": "chroma-index-identity-v1", "status": "UNAVAILABLE",
+        "mode": "UNKNOWN", "target_fingerprint": None,
+        "tenant": None, "database": None, "client_version": None,
+        "collections": {},
+    }
+    if client is not None and client is _identity_client and isinstance(_identity_snapshot, dict):
+        # Chroma clients can change tenant/database after construction. Do not
+        # attribute those collections to an earlier scope's cached fingerprint.
+        try:
+            same_scope = all(getattr(client, field, None) == _identity_snapshot[field]
+                             for field in ("tenant", "database"))
+        except Exception:
+            same_scope = False
+        if same_scope:
+            result.update(_identity_snapshot)
+    for name in (CHROMA_COLLECTION_AEM_GUIDES, CHROMA_COLLECTION_DITA_SPEC, CHROMA_COLLECTION_JIRA_QA):
+        row = {"id": None, "count": None, "status": "UNAVAILABLE"}
+        result["collections"][name] = row
+        if client is None:
+            continue
+        try:
+            collection = client.get_collection(name=name)
+            identifier = str(collection.id)
+            if re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", identifier):
+                row["id"] = str(UUID(identifier))
+            observed = collection.count()
+            if type(observed) is int and observed >= 0:
+                row["count"] = observed
+            row["status"] = "OK" if row["id"] is not None and row["count"] is not None else "PARTIAL"
+        except Exception:
+            # Preserve any UUID already observed; never return raw errors/auth data.
+            row["status"] = "UNAVAILABLE"
+    if client is not None:
+        complete = result["target_fingerprint"] is not None and all(
+            row["status"] == "OK" for row in result["collections"].values()
+        )
+        result["status"] = "OK" if complete else "PARTIAL"
+    return result
 
 
 def _get_chroma_path() -> Path:
@@ -64,13 +168,16 @@ def _get_client():
             # /api/v2 path in nginx (location /api/v2/ -> chroma) instead of a
             # custom prefix; the client then needs no path override here.
             settings = Settings(**setting_kwargs) if setting_kwargs else None
+            chroma_port = int(os.getenv("CHROMA_PORT", "8000"))
+            chroma_ssl = os.getenv("CHROMA_SSL", "false").strip().lower() in ("1", "true", "yes", "on")
             client = chromadb.HttpClient(
                 host=chroma_host,
-                port=int(os.getenv("CHROMA_PORT", "8000")),
-                ssl=os.getenv("CHROMA_SSL", "false").strip().lower() in ("1", "true", "yes", "on"),
+                port=chroma_port,
+                ssl=chroma_ssl,
                 settings=settings,
             )
             client.heartbeat()  # fail fast if the server is unreachable
+            _remember_client_identity(client, "REMOTE", {"host": chroma_host, "port": chroma_port, "ssl": chroma_ssl})
             _chroma_client = client
             logger.info_structured("ChromaDB connected in server mode",
                                    extra_fields={"host": chroma_host, "port": os.getenv("CHROMA_PORT", "8000")})
@@ -98,6 +205,7 @@ def _get_client():
                 except Exception:
                     pass
                 client.list_collections()
+        _remember_client_identity(client, "EMBEDDED", {"path": str(path)})
         _chroma_client = client
         return _chroma_client
     except ImportError as e:
@@ -170,6 +278,69 @@ def _collection_exists(client, collection_name: str) -> bool:
         return False
 
 
+def _query_failure_diagnostic(stage, collection_name, query_vector_dimension, error) -> dict:
+    """Failure-only, allowlisted context; never retain exception/provider text.
+
+    message_signal is a bounded text hint, not a verified root cause. Vector
+    length alone does not prove encoder compatibility or successful submission.
+    """
+    stages = {
+        "GET_COLLECTION", "COUNT", "QUERY_CALL", "RESULT_IDS",
+        "RESULT_DOCUMENTS", "RESULT_METADATAS", "RESULT_DISTANCES",
+    }
+    collections = {
+        "aem_guides", "dita_spec", "jira_qa", "dita_ot_github",
+        "learned_qa", "docker_docs",
+    }
+    error_types = {
+        "ValueError", "TypeError", "KeyError", "IndexError", "AttributeError",
+        "RuntimeError", "TimeoutError", "ConnectionError", "OSError",
+        "InvalidArgumentError", "InvalidDimensionException", "InvalidDimensionError",
+        "NotFoundError", "AuthorizationError", "AuthenticationError", "PermissionError",
+        "HTTPStatusError", "HTTPError", "ReadTimeout", "ConnectTimeout", "ConnectError",
+        "RequestError", "InternalError", "ChromaError",
+    }
+    details = {
+        "schema_version": "chroma-query-diagnostic-v1",
+        "stage": stage if type(stage) is str and stage in stages else "UNKNOWN",
+        "collection": (
+            collection_name if type(collection_name) is str and collection_name in collections else "OTHER"
+        ),
+        "query_vector_dimension": (
+            query_vector_dimension
+            if type(query_vector_dimension) is int and query_vector_dimension >= 0 else None
+        ),
+        "error_type": "OTHER",
+        "message_signal": "UNKNOWN",
+    }
+    try:
+        name = type(error).__name__
+        if type(name) is str and name in error_types:
+            details["error_type"] = name
+        # Inspect a small prefix only; never include it (or a hash of it) in logs.
+        message = str(error)[:4096].lower()
+        if "truth value of an array" in message and "ambiguous" in message:
+            details["message_signal"] = "AMBIGUOUS_TRUTH_VALUE"
+        elif "dimension" in message and any(
+            token in message for token in ("does not match", "expected", "expecting")
+        ):
+            details["message_signal"] = "DIMENSION_MISMATCH"
+        elif "timed out" in message or "timeout" in message:
+            details["message_signal"] = "TIMEOUT"
+        elif "connection refused" in message or "connection reset" in message:
+            details["message_signal"] = "CONNECTION_FAILURE"
+        elif "unauthorized" in message or "forbidden" in message:
+            details["message_signal"] = "AUTH_FAILURE"
+        elif "rate limit" in message or "too many requests" in message:
+            details["message_signal"] = "RATE_LIMITED"
+        elif "invalid argument" in message:
+            details["message_signal"] = "INVALID_ARGUMENT"
+    except Exception:
+        # Even an exception with a broken __str__ must preserve the [] fallback.
+        pass
+    return details
+
+
 def query_collection(
     collection_name: str,
     query_embedding: list[float],
@@ -193,23 +364,31 @@ def query_collection(
     emb = list(emb) if emb else []
     if not emb:
         return []
+    stage = "GET_COLLECTION"
     try:
         coll = client.get_collection(name=collection_name)
+        stage = "COUNT"
         count = coll.count()
         if count == 0:
             return []
+        # Includes client validation/argument processing, not just server I/O.
+        stage = "QUERY_CALL"
         result = coll.query(
             query_embeddings=[emb],
             n_results=min(k, count),
             where=where,
             include=["documents", "metadatas", "distances"],
         )
+        stage = "RESULT_IDS"
         if not result or not result["ids"] or not result["ids"][0]:
             return []
         rows = []
         for i, doc_id in enumerate(result["ids"][0]):
+            stage = "RESULT_DOCUMENTS"
             doc = (result["documents"][0][i] or "") if result["documents"] else ""
+            stage = "RESULT_METADATAS"
             meta = (result["metadatas"][0][i] or {}) if result["metadatas"] else {}
+            stage = "RESULT_DISTANCES"
             dist = (result["distances"][0][i] or 0.0) if result.get("distances") else 0.0
             rows.append({
                 "id": doc_id,
@@ -217,11 +396,16 @@ def query_collection(
                 "metadata": meta,
                 "distance": dist,
             })
+            stage = "RESULT_IDS"
         return rows
     except Exception as e:
+        details = _query_failure_diagnostic(stage, collection_name, len(emb), e)
+        # Plain handlers discard extra_fields. Keep the same safe receipt in the
+        # message too, without enabling global JSON logging or raw tracebacks.
         logger.warning_structured(
-            "ChromaDB query failed",
-            extra_fields={"collection": collection_name, "error": str(e)},
+            "ChromaDB query failed [CHROMA_QUERY_DIAGNOSTIC_V1] "
+            + json.dumps(details, sort_keys=True, separators=(",", ":")),
+            extra_fields=details,
         )
         return []
 

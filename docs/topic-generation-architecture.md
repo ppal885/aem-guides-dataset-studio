@@ -1,10 +1,12 @@
 # Topic generation from screenshot + reference DITA — repository map
 
+> The React/Vite client named below has been retired. Frontend paths are retained only as historical implementation context; the backend pipeline remains available to API, MCP, CLI, and skill consumers.
+
 ## 1. Where uploads work
 
 - **API**: `backend/app/api/v1/routes/chat.py` — `POST .../messages/authoring` accepts multipart `image_attachment`, optional `reference_dita`, plus generation options and optional `jira_context`.
 - **Storage & validation**: `backend/app/services/chat_asset_service.py` — `save_upload_asset()` writes under `chat_assets/`, size limits, optional raster magic-byte checks for images.
-- **Frontend**: `frontend/src/api/chat.ts` (`sendMessage` with attachments) and `frontend/src/components/Chat/ChatInput.tsx` (file pickers).
+- **Retired frontend snapshot**: the removed `frontend/src/api/chat.ts` and `frontend/src/components/Chat/ChatInput.tsx` previously supplied browser attachment controls. They are not active runtime dependencies.
 
 ## 2. Where chat orchestration lives
 

@@ -297,6 +297,16 @@ class CanonicalTestPlanRuntime:
             key: value for key, value in safe_options.items() if key in option_fields
         }
         tenant = str(tenant_id).strip()
+        allowed_tenants = {
+            str(value).strip().casefold()
+            for value in (getattr(user, "allowed_tenants", None) or [])
+        }
+        shared_learning_authenticated = bool(
+            user is not None
+            and getattr(user, "auth_method", "") == "token"
+            and str(getattr(user, "id", "") or "").strip()
+            and ("*" in allowed_tenants or tenant.casefold() in allowed_tenants)
+        )
         principal = RuntimePrincipal(
             principal_id=str(getattr(user, "id", None) or "system"),
             tenant_id=tenant,
@@ -327,7 +337,10 @@ class CanonicalTestPlanRuntime:
                     "compose_draft_plan": True,
                 }.items()
             },
-            runtime_context={"contract_owner": CANONICAL_RUNTIME_ID},
+            # This access assertion comes only from the authenticated server
+            # principal; manifest/options fields cannot assert shared access.
+            runtime_context={"contract_owner": CANONICAL_RUNTIME_ID,
+                "shared_learning_authenticated": shared_learning_authenticated},
             options=safe_options,
         )
 
@@ -894,6 +907,7 @@ class CanonicalTestPlanRuntime:
             domains=domains,
             surfaces=surfaces,
             signals=abstract_signals,
+            generation_request=request,
         )
         for warning_code in pattern_lookup.warning_codes:
             if warning_code not in runtime_warnings:

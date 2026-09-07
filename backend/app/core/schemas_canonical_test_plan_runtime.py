@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from app.core.schemas_qe_pattern_mcp import SharedAuthoringGuidance
 
 
 EVIDENCE_RECORD_SCHEMA = "aem-guides-evidence-record-v2"
@@ -1584,6 +1585,11 @@ class PatternLookupCallRecord(BaseModel):
     matched_pattern_ids: list[str] = Field(default_factory=list)
     suppressed_pattern_ids: list[str] = Field(default_factory=list)
     warning_codes: list[str] = Field(default_factory=list)
+    shared_learning_mode: Literal["", "DISABLED", "SHADOW", "ENABLED"] = ""
+    shadow_pattern_ids: list[str] = Field(default_factory=list)
+    shadow_authoring_guidance_ids: list[str] = Field(default_factory=list)
+    retrieved_authoring_guidance_ids: list[str] = Field(default_factory=list)
+    excluded_pattern_counts: dict[str, int] = Field(default_factory=dict, max_length=50)
 
     @field_validator(
         "matched_pattern_ids",
@@ -1606,6 +1612,8 @@ class MatchedHumanPatternView(BaseModel):
 
     pattern_id: str = Field(pattern=r"^[A-Z][A-Z0-9_]{2,127}$")
     pattern_version: str = Field(min_length=1, max_length=100)
+    lesson_id: str = Field(default="", max_length=200)
+    lesson_kind: Literal["GENERIC_PATTERN", "SCOPED_CASE"] = "GENERIC_PATTERN"
     abstract_trigger: list[str] = Field(default_factory=list, max_length=100)
     relationship_to_explore: list[str] = Field(default_factory=list, max_length=50)
     support_count: int = Field(ge=1)
@@ -1695,6 +1703,7 @@ class PatternLookupResult(BaseModel):
         default_factory=list
     )
     warning_codes: list[str] = Field(default_factory=list)
+    authoring_guidance: list[SharedAuthoringGuidance] = Field(default_factory=list, max_length=50)
 
     @model_validator(mode="after")
     def validate_status(self) -> "PatternLookupResult":
@@ -1887,6 +1896,7 @@ class QeInvestigationPreparation(BaseModel):
     abstract_signals: list[AbstractSignal] = Field(default_factory=list)
     pattern_lookup: PatternLookupResult
     matched_human_patterns: list[MatchedHumanPatternView] = Field(default_factory=list)
+    authoring_guidance: list[SharedAuthoringGuidance] = Field(default_factory=list, max_length=50)
     mandatory_families: list[MandatoryInvestigationFamily] = Field(default_factory=list)
     already_investigated_dimensions: list[SemanticDimension] = Field(
         default_factory=list
@@ -1919,6 +1929,8 @@ class QeInvestigationPreparation(BaseModel):
         )
         if self.matched_human_patterns != self.pattern_lookup.matched_human_patterns:
             raise ValueError("preparation pattern view must match Pattern lookup")
+        if self.authoring_guidance != self.pattern_lookup.authoring_guidance:
+            raise ValueError("preparation editorial context must match reviewed lookup")
         identity = self.model_dump(mode="json", exclude={"preparation_id"})
         expected = f"investigation:{stable_sha256(identity)[:32]}"
         if self.preparation_id and self.preparation_id != expected:

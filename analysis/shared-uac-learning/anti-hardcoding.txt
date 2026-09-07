@@ -1,0 +1,8 @@
+FAIL: scripts\coverage_forcing.py:267: concrete GUIDES issue key: 'GUIDES-50368'
+FAIL: scripts\coverage_forcing.py:468: concrete GUIDES issue key: 'GUIDES-49386'
+FAIL: scripts\coverage_forcing.py:468: concrete GUIDES issue key: 'GUIDES-23883'
+FAIL: scripts\coverage_forcing.py:486: concrete GUIDES issue key: 'GUIDES-50368'
+FAIL: scripts\coverage_forcing.py:492: concrete GUIDES issue key: 'GUIDES-50368'
+FAIL: scripts\coverage_forcing.py:504: concrete GUIDES issue key: 'GUIDES-45935'
+FAIL: scripts\coverage_forcing.py:509: concrete GUIDES issue key: 'GUIDES-45935'
+FAIL: scripts\coverage_forcing.py:515: concrete GUIDES issue key: 'GUIDES-52444'
