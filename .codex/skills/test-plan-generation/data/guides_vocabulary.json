@@ -68,6 +68,15 @@
       "governance": "HUMAN_APPROVED"
     },
     {
+      "id": "non-guides-platform-editors",
+      "pattern": "rule\\s+editor|visual\\s+rule\\s+editor|advanced\\s+map\\s+editor|theme\\s+editor",
+      "wrong": "Rule Editor / Visual Rule Editor / Advanced Map Editor / Theme Editor",
+      "correct": "Editor (with Author View, Source View, Preview) / Map console / Theme Page",
+      "message": "These are not AEM Guides concepts (platform terms that leaked into the corpus). The Guides authoring surface is the Editor with Author View, Source View, and Preview. 'Advanced Map Editor' is the Map console; 'Theme Editor' should be Theme Page. There is no Rule Editor / Visual Rule Editor in Guides.",
+      "source": "human-correction",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
       "id": "schematron-validation-reports",
       "pattern": "schematron\\s+validation\\s+reports?",
       "wrong": "Schematron Validation Report(s)",
@@ -113,11 +122,9 @@
     "output preset",
     "Styles panel",
     "Autonumber",
-    "Rule Editor",
-    "Visual Rule Editor",
-    "Universal Editor",
-    "Advanced Map Editor",
-    "Theme Editor",
+    "Theme Page",
+    "Author View",
+    "Source View",
     "Folder Profile",
     "Global Profile",
     "Publish Dashboard",
@@ -150,6 +157,10 @@
     {
       "terms": ["V2 Baseline", "New Baseline"],
       "note": "V2 Baseline and New Baseline are the same thing - do not treat them as two different baselines."
+    },
+    {
+      "terms": ["Advanced Map Editor", "Map console"],
+      "note": "Advanced Map Editor is the same as the Map console."
     }
   ]
 }
