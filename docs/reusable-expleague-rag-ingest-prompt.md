@@ -1,35 +1,33 @@
 # Reusable prompt: ingest an Experience League URL into RAG + learn + grow vocabulary
 
-## Setup (one-time, platform-agnostic — macOS / Windows / Linux)
+## Where this runs (two modes — read first)
 
-Run from the repo root. Use `python` or `python3` — whichever your OS has; nothing else
-differs. Paths use forward slashes (Python and git accept them on every OS).
+- **Consuming RAG (querying / UAC authoring): NO setup needed.** The VM already runs the
+  backend + the 1.5 GB Chroma corpus and EXPOSES it over MCP. Teammates query it via the MCP
+  tools (`lookup_aem_guides`, `ask_dita_expert`, `search_jira_history`) pointed at the VM
+  (`AEM_STUDIO_URL`). Do NOT copy the corpus or install anything to just use RAG.
+- **Ingesting new pages / growing vocabulary (this doc's workflow): run it ON THE VM**, where
+  the backend, the corpus, and the correct embedding model already exist. That is the source
+  of truth. Just `git pull` on the VM and run the scripts there — no corpus copy, no extra
+  install. After committing, other environments get the vocabulary via `git pull`; each
+  environment's own corpus is updated by running `ingest_urls.py` there (or the VM re-crawl).
 
-1. Clone the repo and `cd` into it. Ensure Python 3.10+ is installed.
-2. (Recommended) create + activate a virtualenv: `python -m venv venv`, then activate it the
-   way your OS/shell does. This is the only step that differs per OS; everything after is
-   identical.
-3. Install dependencies:
-   ```
-   python -m pip install -r backend/requirements.txt
-   ```
-   This provides httpx, chromadb, sentence-transformers, langchain*, python-dotenv.
-4. Config: copy `backend/.env.example` to `backend/.env`. RAG uses a LOCAL embedding model
-   by default (no API key needed). Only if you deliberately use Azure embeddings do you set
-   `AZURE_OPENAI_API_KEY` etc. IMPORTANT: ingest with the SAME embedding model the corpus was
-   built with (the default `DITA_EMBEDDING_MODEL` / bundled model) — mixing models makes the
+## Setup — only for a standalone DEV machine that is NOT the VM (platform-agnostic)
+
+Skip this entirely if you ingest on the VM (recommended). Run from the repo root; use
+`python` or `python3`; forward-slash paths work on every OS.
+
+1. Clone the repo; ensure Python 3.10+.
+2. (Recommended) virtualenv: `python -m venv venv`, activate per your OS (only OS-specific step).
+3. `python -m pip install -r backend/requirements.txt` (httpx, chromadb, sentence-transformers,
+   langchain*, python-dotenv).
+4. Copy `backend/.env.example` to `backend/.env`. RAG uses a LOCAL embedding model by default
+   (no API key). Use the SAME embedding model the corpus was built with — mixing models makes
    vectors incompatible.
-5. RAG corpus: ensure `backend/storage/chroma_db/` exists. It is ~1.5 GB and NOT in git, so a
-   fresh clone will not have it. Copy the whole `backend/storage/chroma_db/` folder from an
-   environment that has it (e.g. the VM or an existing clone). Without it, the collection
-   starts empty and queries return nothing until you ingest pages.
-6. Verify setup (all should pass / print OK):
-   ```
-   python .codex/skills/test-plan-generation/scripts/guides_vocabulary.py --self-test
-   python .codex/skills/test-plan-generation/scripts/test_skill_scripts.py
-   python scripts/ingest_urls.py "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-language-variables"
-   ```
-   The last prints `OK <n> chunks`. Setup is done.
+5. Corpus: copy the whole `backend/storage/chroma_db/` folder (~1.5 GB, not in git) from the
+   VM/an existing clone. Without it the collection starts empty.
+6. Verify: `guides_vocabulary.py --self-test`, `test_skill_scripts.py`, and one
+   `ingest_urls.py "<url>"` (prints `OK <n> chunks`).
 
 ---
 
