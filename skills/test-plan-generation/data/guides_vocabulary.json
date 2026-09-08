@@ -259,9 +259,55 @@
     "Delete condition preset",
     "Name Condition",
     "Set default action to",
-    "Set the action for selected conditions to"
+    "Set the action for selected conditions to",
+    "Default Page Layout",
+    "Page Layout Order",
+    "Chapters & Topics",
+    "TOC",
+    "List of Figures",
+    "List of Tables",
+    "DITA Profiles",
+    "Assigned Paths",
+    "AEM DITA-OT Zip Path",
+    "Profile Extract Path",
+    "Site path",
+    "AEM Site Name",
+    "PDF File Name"
   ],
   "canonical_term_sources": [
+    {
+      "terms": ["Destination Path", "Site path", "AEM Site Name", "PDF File Name"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-use-variables",
+      "evidence_ids": ["aem_ingest_c7f47237c4_0", "aem_ingest_c7f47237c4_2", "aem_ingest_c7f47237c4_3"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/output-path-variables-evidence.md",
+      "scope": "Text-verified publishing options for AEM Sites/PDF path and name substitutions. No article screenshot exists. Preserve variable-specific restrictions on name fields; this is not the Language Variable mechanism or proof of universal output-format support. Documentation is not Human approval or an acceptance contract."
+    },
+    {
+      "terms": ["DITA Profiles"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/dita-ot/setup-a-custom-dita-ot",
+      "evidence_ids": ["aem_ingest_226b34e70a_1"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/custom-dita-ot-setup-evidence.md",
+      "scope": "Tools > Guides > DITA Profiles setup surface, distinct from Folder Profiles and output presets. Documentation verification is not Human approval or proof of support in every deployment."
+    },
+    {
+      "terms": ["Assigned Paths", "AEM DITA-OT Zip Path", "Profile Extract Path"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/dita-ot/setup-a-custom-dita-ot",
+      "evidence_images": ["https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/dita-ot/media_1ca91315be40476066e02cf92da68bb14270bbe33.png"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/custom-dita-ot-setup-evidence.md",
+      "scope": "Exact fields visually inspected in the Profiles editor; these labels are absent from text chunks. Preserve assigned content paths, uploaded toolkit ZIP path and extraction path as separate settings. Screenshot values do not establish defaults or version compatibility."
+    },
+    {
+      "terms": ["Default Page Layout", "Page Layout Order", "Chapters & Topics", "TOC", "List of Figures", "List of Tables"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/native-pdf/how-to-include-bookmap-toc-in-pdf-publishing",
+      "evidence_images": ["https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/native-pdf/media_10d72a6698f4a158b381cbb5e700aa00a765e5565.png", "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/native-pdf/media_15405e6210a73a2f7ca79e7de317f71b73d646983.png"],
+      "evidence_ids": ["aem_ingest_c1a9c3ee4d_2"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/bookmap-toc-native-pdf-evidence.md",
+      "scope": "Exact labels from both inspected Native PDF template screenshots. Most labels are image-only; the text chunk establishes TOC behaviour, not every label. These are template settings, not output-preset controls. Bookmap structure takes precedence; Page Layout Order inclusion/order settings apply to ordinary DITA maps. No universal defaults, Human approval or AC expansion is asserted."
+    },
     {
       "terms": ["Native PDF Publishing"],
       "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/template-content-styles",

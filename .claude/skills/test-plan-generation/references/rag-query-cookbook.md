@@ -71,6 +71,20 @@ the integrated-plugin/transformation relationship, not just a shared option name
 The Custom page's EPUB wording is a source inconsistency, not proof of output format
 or default destination; inspect the target plugin and configuration when relevant.
 
+For custom toolkit deployment and DITA Profiles, use `references/custom-dita-ot-setup-evidence.md`.
+Retrieve the uploaded toolkit and profile assignment separately from output-preset settings.
+Profile scope, toolkit compatibility and fallback require their own evidence; screenshot
+values are not defaults, and DITA Profiles are not Folder Profiles.
+
+For publishing path/name substitutions, use `references/output-path-variables-evidence.md`.
+Retrieve the variable's permitted target fields as well as its value source. Do not import
+Language Variable fallback rules or infer undocumented handling of missing metadata.
+
+For Native PDF TOC and booklist questions, use `references/bookmap-toc-native-pdf-evidence.md`.
+Retrieve source-structure ordering separately from template layout selection and ordinary
+DITA-map inclusion controls. Do not infer bookmap control support from a matching label
+or turn a documentation example into a validated DITA fixture.
+
 For shared Global/Folder Profile presets, use
 `references/profile-output-presets-evidence.md`. Retrieve profile-level role and
 map-independence rules separately from map-specific settings. Default PDF / Download

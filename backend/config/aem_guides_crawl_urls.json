@@ -453,7 +453,10 @@
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/generate-output-custom",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/web-editor-manage-output-presets",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-create-edit-preset",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/conditional-content/generate-output-use-condition-presets"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/conditional-content/generate-output-use-condition-presets",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/native-pdf/how-to-include-bookmap-toc-in-pdf-publishing",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/dita-ot/setup-a-custom-dita-ot",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-use-variables"
   ],
   "recursive": {
     "enabled": false,
