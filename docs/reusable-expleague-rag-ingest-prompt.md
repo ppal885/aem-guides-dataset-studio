@@ -1,5 +1,40 @@
 # Reusable prompt: ingest an Experience League URL into RAG + learn + grow vocabulary
 
+## Setup (one-time, platform-agnostic — macOS / Windows / Linux)
+
+Run from the repo root. Use `python` or `python3` — whichever your OS has; nothing else
+differs. Paths use forward slashes (Python and git accept them on every OS).
+
+1. Clone the repo and `cd` into it. Ensure Python 3.10+ is installed.
+2. (Recommended) create + activate a virtualenv: `python -m venv venv`, then activate it the
+   way your OS/shell does. This is the only step that differs per OS; everything after is
+   identical.
+3. Install dependencies:
+   ```
+   python -m pip install -r backend/requirements.txt
+   ```
+   This provides httpx, chromadb, sentence-transformers, langchain*, python-dotenv.
+4. Config: copy `backend/.env.example` to `backend/.env`. RAG uses a LOCAL embedding model
+   by default (no API key needed). Only if you deliberately use Azure embeddings do you set
+   `AZURE_OPENAI_API_KEY` etc. IMPORTANT: ingest with the SAME embedding model the corpus was
+   built with (the default `DITA_EMBEDDING_MODEL` / bundled model) — mixing models makes the
+   vectors incompatible.
+5. RAG corpus: ensure `backend/storage/chroma_db/` exists. It is ~1.5 GB and NOT in git, so a
+   fresh clone will not have it. Copy the whole `backend/storage/chroma_db/` folder from an
+   environment that has it (e.g. the VM or an existing clone). Without it, the collection
+   starts empty and queries return nothing until you ingest pages.
+6. Verify setup (all should pass / print OK):
+   ```
+   python .codex/skills/test-plan-generation/scripts/guides_vocabulary.py --self-test
+   python .codex/skills/test-plan-generation/scripts/test_skill_scripts.py
+   python scripts/ingest_urls.py "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-language-variables"
+   ```
+   The last prints `OK <n> chunks`. Setup is done.
+
+---
+
+
+
 Paste the block below into Codex or Claude Code (run from the repo root). Replace
 `<EXP_LEAGUE_URL>` with the Experience League doc URL. Works for both agents; it only
 uses committed scripts so it is safe to re-run and reuse for every URL.
