@@ -5,6 +5,8 @@ import contextlib
 import io
 import json
 import os
+import tempfile
+from types import SimpleNamespace
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -59,6 +61,194 @@ class RequireTests(unittest.TestCase):
 
     def test_satisfied_requirement_passes(self) -> None:
         replay.require(True, "CORPUS_ID_MISMATCH")
+
+
+class ModelConfigurationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory(prefix="replay-model-test-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        self.service_cwd = self.root / "backend"
+        self.model = self.service_cwd / "models/all-MiniLM-L6-v2"
+        self.model.mkdir(parents=True)
+        self.environment = {
+            "USE_AZURE_EMBEDDING": "false",
+            "DITA_EMBEDDING_MODEL_PATH": str(self.model),
+        }
+        model_patch = mock.patch.object(replay, "MODEL", self.model)
+        model_patch.start()
+        self.addCleanup(model_patch.stop)
+
+    def assert_rejected(self, reason: str, environment: dict | None = None) -> None:
+        with self.assertRaises(replay.ReplayError) as raised:
+            replay.validate_model_configuration(
+                self.environment if environment is None else environment, self.service_cwd
+            )
+        self.assertEqual(str(raised.exception), reason)
+
+    def test_accepts_equivalent_absolute_and_relative_paths(self) -> None:
+        for configured in (
+            str(self.model),
+            str(self.model) + "/",
+            "models/all-MiniLM-L6-v2",
+            "./models/all-MiniLM-L6-v2/",
+            "models/../models/all-MiniLM-L6-v2",
+            " \tmodels/all-MiniLM-L6-v2\n",
+        ):
+            with self.subTest(configured=configured):
+                self.environment["DITA_EMBEDDING_MODEL_PATH"] = configured
+                self.assertEqual(
+                    replay.validate_model_configuration(self.environment, self.service_cwd),
+                    self.model.resolve(strict=True),
+                )
+
+    def test_relative_path_uses_service_directory_without_changing_process_cwd(self) -> None:
+        original_cwd = Path.cwd()
+        self.assertNotEqual(original_cwd, self.service_cwd)
+        self.environment["DITA_EMBEDDING_MODEL_PATH"] = "models/all-MiniLM-L6-v2"
+        self.assertEqual(
+            replay.validate_model_configuration(self.environment, self.service_cwd), self.model
+        )
+        self.assertEqual(Path.cwd(), original_cwd)
+
+    def test_accepts_false_provider_values_and_missing_provider_default(self) -> None:
+        for provider in ("false", "FALSE", "0", "no", "NO", "off", "Off"):
+            with self.subTest(provider=provider):
+                self.environment["USE_AZURE_EMBEDDING"] = provider
+                self.assertEqual(
+                    replay.validate_model_configuration(self.environment, self.service_cwd), self.model
+                )
+        del self.environment["USE_AZURE_EMBEDDING"]
+        self.assertEqual(
+            replay.validate_model_configuration(self.environment, self.service_cwd), self.model
+        )
+
+    def test_rejects_azure_invalid_and_whitespace_padded_provider_values(self) -> None:
+        for provider in ("true", "TRUE", "1", "yes", "on", "", "invalid", " false ", "off\n", None):
+            with self.subTest(provider=provider):
+                self.environment["USE_AZURE_EMBEDDING"] = provider
+                self.assert_rejected("EMBEDDING_PROVIDER_NOT_LOCAL")
+
+    def test_rejects_missing_empty_or_non_string_path_without_using_bundled_model(self) -> None:
+        for configured in ("", " \t\n", None, 123):
+            with self.subTest(configured=configured):
+                self.environment["DITA_EMBEDDING_MODEL_PATH"] = configured
+                self.assert_rejected("MODEL_PATH_NOT_CONFIGURED")
+        del self.environment["DITA_EMBEDDING_MODEL_PATH"]
+        self.assert_rejected("MODEL_PATH_NOT_CONFIGURED")
+
+    def test_rejects_missing_malformed_or_non_directory_path(self) -> None:
+        file_path = self.service_cwd / "model-file"
+        file_path.touch()
+        for configured in ("models/missing", str(file_path), "models/invalid\0path"):
+            with self.subTest(configured=configured):
+                self.environment["DITA_EMBEDDING_MODEL_PATH"] = configured
+                self.assert_rejected("MODEL_PATH_UNAVAILABLE")
+
+    def test_rejects_a_different_existing_directory(self) -> None:
+        other = self.service_cwd / "models/other"
+        other.mkdir()
+        for configured in (str(other), "models/other", ".", ".."):
+            with self.subTest(configured=configured):
+                self.environment["DITA_EMBEDDING_MODEL_PATH"] = configured
+                self.assert_rejected("MODEL_PATH_TARGET_MISMATCH")
+
+    def test_rejects_unavailable_reviewed_directory(self) -> None:
+        file_path = self.root / "reviewed-model-file"
+        file_path.touch()
+        for reviewed in (self.root / "missing-reviewed-model", file_path):
+            with self.subTest(reviewed=reviewed), mock.patch.object(replay, "MODEL", reviewed):
+                self.assert_rejected("REVIEWED_MODEL_DIRECTORY_UNAVAILABLE")
+
+    def test_does_not_expand_shell_syntax_or_remove_literal_quotes(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {"REPLAY_TEST_MODEL": str(self.model)}),
+            mock.patch.object(Path, "expanduser", side_effect=AssertionError("Unexpected expansion")),
+            mock.patch.object(os.path, "expanduser", side_effect=AssertionError("Unexpected expansion")),
+        ):
+            for configured in (
+                "~/models/all-MiniLM-L6-v2",
+                "$REPLAY_TEST_MODEL",
+                "${REPLAY_TEST_MODEL}",
+                "%REPLAY_TEST_MODEL%",
+                '"models/all-MiniLM-L6-v2"',
+                "'models/all-MiniLM-L6-v2'",
+            ):
+                with self.subTest(configured=configured):
+                    self.environment["DITA_EMBEDDING_MODEL_PATH"] = configured
+                    self.assert_rejected("MODEL_PATH_UNAVAILABLE")
+
+    def test_rejects_a_relative_service_directory(self) -> None:
+        with self.assertRaises(replay.ReplayError) as raised:
+            replay.validate_model_configuration(self.environment, Path("backend"))
+        self.assertEqual(str(raised.exception), "SERVICE_WORKING_DIRECTORY_MISMATCH")
+
+    def test_resolves_symlinks_before_comparing_the_reviewed_directory(self) -> None:
+        alias = self.service_cwd / "model-alias"
+        other = self.service_cwd / "other-model"
+        other.mkdir()
+        other_alias = self.service_cwd / "other-alias"
+        try:
+            alias.symlink_to(self.model, target_is_directory=True)
+            other_alias.symlink_to(other, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"Directory symlinks are unavailable: {type(exc).__name__}")
+        self.environment["DITA_EMBEDDING_MODEL_PATH"] = "model-alias"
+        self.assertEqual(
+            replay.validate_model_configuration(self.environment, self.service_cwd), self.model
+        )
+        self.environment["DITA_EMBEDDING_MODEL_PATH"] = "other-alias"
+        self.assert_rejected("MODEL_PATH_TARGET_MISMATCH")
+
+    def test_live_loader_accepts_relative_dotenv_override_and_normalizes_child_environment(self) -> None:
+        python = self.root / "candidate-python"
+        ca = self.root / "test-ca.pem"
+        root_env = self.root / ".env"
+        backend_env = self.service_cwd / ".env"
+        for path in (python, ca, root_env, backend_env):
+            path.touch()
+        launch = {**replay.ROUTING, **self.environment, "REPLAY_TEST_WRITER": "off"}
+        process = Path("/proc/12345")
+        original_resolve = Path.resolve
+
+        def resolve(path, *args, **kwargs):
+            if path == process / "cwd":
+                return self.service_cwd
+            if path == process / "exe":
+                return python
+            return original_resolve(path, *args, **kwargs)
+
+        def read_bytes(path):
+            if path == process / "cmdline":
+                return str(python).encode() + b"\0"
+            if path == process / "environ":
+                return b"\0".join(f"{key}={value}".encode() for key, value in launch.items())
+            raise AssertionError(f"Unexpected read: {path}")
+
+        def load_dotenv(path, **kwargs):
+            self.assertEqual(kwargs, {"override": True, "encoding": "utf-8-sig"})
+            if path == backend_env:
+                os.environ["DITA_EMBEDDING_MODEL_PATH"] = "models/all-MiniLM-L6-v2"
+
+        dotenv = SimpleNamespace(load_dotenv=mock.Mock(side_effect=load_dotenv))
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch.dict(replay.sys.modules, {"dotenv": dotenv}),
+            mock.patch.object(replay, "ROOT", self.root),
+            mock.patch.object(replay, "PYTHON", python),
+            mock.patch.object(replay, "CA", str(ca)),
+            mock.patch.object(Path, "resolve", resolve),
+            mock.patch.object(Path, "read_bytes", read_bytes),
+            mock.patch.object(Path, "write_text", side_effect=AssertionError("Unexpected write")),
+            mock.patch.object(Path, "write_bytes", side_effect=AssertionError("Unexpected write")),
+            mock.patch.object(replay, "helper", return_value=SimpleNamespace(WRITERS=["REPLAY_TEST_WRITER"])) as helper,
+        ):
+            self.assertEqual(replay.load_live_configuration({"aem-backend.service": {"MainPID": "12345"}}), "")
+            self.assertEqual(os.environ["DITA_EMBEDDING_MODEL_PATH"], str(self.model))
+            self.assertEqual(os.environ["HF_HUB_OFFLINE"], "1")
+            self.assertEqual(os.environ["TRANSFORMERS_OFFLINE"], "1")
+        self.assertEqual([call.args[0] for call in dotenv.load_dotenv.call_args_list], [root_env, backend_env])
+        helper.assert_called_once_with("repair_vm_chroma_routing")
 
 
 class ParseSuccessTests(unittest.TestCase):

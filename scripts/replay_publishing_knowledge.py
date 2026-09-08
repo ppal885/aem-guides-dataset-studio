@@ -60,6 +60,36 @@ def service_snapshot():
     return result
 
 
+def validate_model_configuration(environment, service_cwd):
+    """Accept equivalent paths to the reviewed artifact, never a model fallback."""
+    provider = environment.get("USE_AZURE_EMBEDDING", "false")
+    require(isinstance(provider, str) and provider.lower() in {"false", "0", "no", "off"},
+            "EMBEDDING_PROVIDER_NOT_LOCAL")
+    configured = environment.get("DITA_EMBEDDING_MODEL_PATH", "")
+    require(isinstance(configured, str) and bool(configured.strip()), "MODEL_PATH_NOT_CONFIGURED")
+    require(service_cwd.is_absolute(), "SERVICE_WORKING_DIRECTORY_MISMATCH")
+    try:
+        expected = MODEL.resolve(strict=True)
+        expected_is_directory = expected.is_dir()
+    except (OSError, RuntimeError, ValueError):
+        raise ReplayError("REVIEWED_MODEL_DIRECTORY_UNAVAILABLE") from None
+    require(expected_is_directory, "REVIEWED_MODEL_DIRECTORY_UNAVAILABLE")
+    try:
+        # embedding_service strips this value and resolves relative paths in the
+        # backend's cwd, not in the operator's shell cwd. Do not expand variables,
+        # ~ or literal quotes; no bundled-model/download fallback is authorized.
+        selected = Path(configured.strip())
+        if not selected.is_absolute():
+            selected = service_cwd / selected
+        selected = selected.resolve(strict=True)
+        selected_is_directory = selected.is_dir()
+    except (OSError, RuntimeError, ValueError):
+        raise ReplayError("MODEL_PATH_UNAVAILABLE") from None
+    require(selected_is_directory, "MODEL_PATH_UNAVAILABLE")
+    require(selected == expected, "MODEL_PATH_TARGET_MISMATCH")
+    return selected
+
+
 def load_live_configuration(snapshot):
     """Reproduce app.main's loader without importing or starting the application."""
     from dotenv import load_dotenv
@@ -68,7 +98,8 @@ def load_live_configuration(snapshot):
     argv = process.joinpath("cmdline").read_bytes().split(b"\0")
     require(str(PYTHON).encode() in argv and process.joinpath("exe").resolve() == PYTHON.resolve(),
             "ACTIVE_CANDIDATE_MISMATCH")
-    require(process.joinpath("cwd").resolve() == ROOT / "backend", "SERVICE_WORKING_DIRECTORY_MISMATCH")
+    service_cwd = process.joinpath("cwd").resolve()
+    require(service_cwd == ROOT / "backend", "SERVICE_WORKING_DIRECTORY_MISMATCH")
     operator_token = os.environ.get("AEM_STUDIO_TOKEN", "")
     launch_env = dict(item.decode().split("=", 1) for item in process.joinpath("environ").read_bytes().split(b"\0")
                       if b"=" in item)
@@ -86,8 +117,7 @@ def load_live_configuration(snapshot):
                 if key.strip():
                     os.environ[key.strip()] = value.strip()
     require(all(os.environ.get(k) == v for k, v in ROUTING.items()), "SHARED_HTTP_CONFIGURATION_REQUIRED")
-    require(os.environ.get("USE_AZURE_EMBEDDING", "false").lower() in {"false", "0", "no", "off"}
-            and os.environ.get("DITA_EMBEDDING_MODEL_PATH") == str(MODEL), "REVIEWED_LOCAL_MODEL_REQUIRED")
+    validate_model_configuration(os.environ, service_cwd)
     writers = helper("repair_vm_chroma_routing").WRITERS
     require(all(os.environ.get(k, "").lower() in {"false", "0", "no", "off"} for k in writers),
             "BACKGROUND_WRITER_PAUSE_NOT_CONFIRMED")

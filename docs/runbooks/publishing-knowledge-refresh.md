@@ -32,6 +32,19 @@ status call may initialize the running service's normal status dependencies.
 If authentication is required, use the existing approved `AEM_STUDIO_TOKEN`
 environment mechanism; never paste tokens into commands or share environment files.
 
+The configured model may use the absolute reviewed path or an equivalent relative
+path such as `models/all-MiniLM-L6-v2`. Relative paths are resolved from the verified
+backend working directory, not from the shell running this command. The directory
+must exist and resolve to the same reviewed model directory. No `.env` edit is
+needed just to convert a relative path to an absolute one.
+
+The old `REVIEWED_LOCAL_MODEL_REQUIRED` combined two different checks. Updated
+receipts distinguish `EMBEDDING_PROVIDER_NOT_LOCAL`, `MODEL_PATH_NOT_CONFIGURED`,
+`MODEL_PATH_UNAVAILABLE`, `MODEL_PATH_TARGET_MISMATCH`, and
+`REVIEWED_MODEL_DIRECTORY_UNAVAILABLE`. Missing or different models remain blocked;
+there is no implicit bundled-model or download fallback. The model hash and stored
+vector checks in `--apply` remain required and unchanged.
+
 ## 2. Apply and verify
 
 ```bash
