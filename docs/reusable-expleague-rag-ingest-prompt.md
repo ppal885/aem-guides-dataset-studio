@@ -65,18 +65,53 @@ The backend does NOT need to be running (the scripts open the local Chroma corpu
    Visual Rule Editor, Adaptive Forms, Sites/Page Editor, Adobe *Console) and do NOT add
    heading/sentence fragments. When unsure, leave it out and note it for human review.
 
-5. SYNC + TEST + COMMIT. Keep all skill copies byte-identical and green:
-   ```bash
-   python .codex/skills/test-plan-generation/scripts/guides_vocabulary.py --self-test
-   python scripts/sync_test_plan_skill_copies.py --include-global
-   python .codex/skills/test-plan-generation/scripts/test_skill_scripts.py   # must print ALL SELF-TESTS PASSED
-   git add "*/test-plan-generation/data/guides_vocabulary.json" backend/config/aem_guides_crawl_urls.json
-   git commit -m "chore(rag+skill): ingest <page-name>; grow vocabulary from RAG"
-   git push
-   ```
-   Commit `guides_vocabulary.json` and the crawl config only (do not sweep unrelated
-   working-tree changes). End `git commit` messages with:
-   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
+5. FINALIZE — platform-agnostic steps (identical on macOS, Windows, Linux). Every command
+   is `python` + git; use forward slashes in paths (Python and git accept them on all OSes).
+   On macOS/Linux the interpreter may be `python3` instead of `python` - use whichever your
+   env has; nothing else changes. Do NOT translate these into shell-specific syntax (no
+   bash heredocs, no PowerShell cmdlets) - run them verbatim from the repo root.
+
+   a. Gate + sync + test (all must pass before you commit):
+      ```
+      python .codex/skills/test-plan-generation/scripts/guides_vocabulary.py --self-test
+      python scripts/sync_test_plan_skill_copies.py --include-global
+      python .codex/skills/test-plan-generation/scripts/test_skill_scripts.py
+      ```
+      The last must print `ALL SELF-TESTS PASSED`. If any fails, fix it - do NOT commit.
+
+   b. Rebuild the offline skill zips ONLY if you changed skill files (vocabulary / SKILL.md /
+      gates). Ingesting a page alone does NOT need this (the RAG corpus is not in the zip):
+      ```
+      python scripts/package_mcp_client_bundles.py
+      ```
+
+   c. Commit ONLY the files you changed (never `git add -A`). Use single-line `-m` messages
+      (works in every shell). Typical sets:
+      ```
+      git add .codex/skills/test-plan-generation/data/guides_vocabulary.json .claude/skills/test-plan-generation/data/guides_vocabulary.json skills/test-plan-generation/data/guides_vocabulary.json release-artifacts/aem-guides-mcp-client-unix/.claude/skills/test-plan-generation/data/guides_vocabulary.json release-artifacts/aem-guides-mcp-client-windows/.claude/skills/test-plan-generation/data/guides_vocabulary.json backend/config/aem_guides_crawl_urls.json
+      git commit -m "chore(rag+skill): ingest <page-name>; grow vocabulary from RAG"
+      ```
+      If you rebuilt zips in (b), also:
+      ```
+      git add release-artifacts/aem-guides-mcp-client-unix.zip release-artifacts/aem-guides-mcp-client-windows.zip
+      git commit -m "chore(release): rebuild mcp-client zips with latest skill"
+      ```
+      End every commit message with a final line:
+      `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
+
+   d. Push and get it onto main:
+      ```
+      git push origin HEAD
+      ```
+      Then open a PR (branch -> main) and merge it. Creating/merging a PR may be blocked by
+      the agent's token/policy; if so, print the compare URL
+      `https://github.com/<owner>/<repo>/compare/main...<branch>` for a human, OR (only if the
+      branch is exactly ahead of main with no divergence) fast-forward main directly:
+      `git push origin <branch>:main`. Never force-push; never bypass a failing gate.
+
+   e. Propagate to every environment that consumes the corpus (VM, other clones): from that
+      env's repo root, `git pull` then re-run `python scripts/ingest_urls.py "<EXP_LEAGUE_URL>"`
+      so its RAG corpus matches (the corpus is per-environment, not shipped in git or the zip).
 
 6. REPORT: the ingested chunk count, the behaviour summary, the UI surfaces seen, the
    terms you added (and any you left out for human review), and the final commit hash.
