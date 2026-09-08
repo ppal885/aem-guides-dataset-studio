@@ -1107,9 +1107,96 @@ def _validate_topic_type_coverage(manifest, plan_text: str) -> list[str]:
     ]
 
 
+_SURFACE_RE = re.compile(
+    r"\b([A-Z][A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,3}?)\s+([Pp]anels?|[Dd]ashboards?)\b"
+)
+_SURFACE_STOP = frozenset({
+    "the", "a", "an", "both", "various", "these", "those", "different", "other",
+    "each", "all", "some", "this", "that", "and", "or", "in", "on", "to", "of",
+    "same", "two", "three", "several", "any", "every", "its", "their",
+})
+
+
+def _plan_section(plan_text: str, name: str) -> str:
+    """Return the body of a `**Heading**` section from the plan (empty if absent)."""
+    lines = (plan_text or "").splitlines()
+    out: list[str] = []
+    in_section = False
+    for line in lines:
+        stripped = line.strip()
+        heading = re.fullmatch(r"\*\*(.+?)\*\*", stripped)
+        if heading:
+            in_section = heading.group(1).strip().casefold() == name.casefold()
+            continue
+        if in_section:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _surface_subjects(text: str) -> set[str]:
+    """Return the set of product-surface subject keys named with a Panel/Dashboard token.
+
+    A subject is the significant word(s) before the Panel/Dashboard token, lowercased.
+    Matching on the subject (not the full phrase) makes 'Baseline dashboard' and
+    'Baseline Panel' resolve to the same surface, so the dashboard/panel wording
+    difference does not create a false miss.
+    """
+    subjects: set[str] = set()
+    for match in _SURFACE_RE.finditer(text or ""):
+        words = [w for w in match.group(1).strip().lower().split() if w not in _SURFACE_STOP]
+        if not words:
+            continue
+        subjects.add(words[-1])
+        if len(words) >= 2:
+            subjects.add(" ".join(words[-2:]))
+    return subjects
+
+
+def _validate_named_surface_parity(manifest, plan_text: str) -> list[str]:
+    """Every product surface (Panel/Dashboard) the Jira names must be dispositioned in an
+    Acceptance Criterion or Open Question - not paraphrased away or dropped.
+
+    Root cause this closes: a ticket that names several surfaces (e.g. Baseline Panel,
+    Translation Panel, Map dashboard) gets a plan that only names one and paraphrases the
+    rest into a vague phrase ('baseline-based topic list'), silently dropping a stated
+    surface. Comparison is by surface SUBJECT so the panel/dashboard wording difference is
+    not a false miss. Fail-closed only when a named surface is entirely absent from the
+    acceptance contract / Open Questions.
+    """
+    ac_block = _acceptance_block(plan_text)
+    if not ac_block.strip():
+        return []  # only behavioural plans that carry an acceptance contract
+    named = _surface_subjects(
+        _plan_section(plan_text, "Understanding From Jira")
+        + "\n" + _plan_section(plan_text, "Expected Behaviour")
+        + "\n" + _manifest_issue_text(manifest)
+    )
+    if not named:
+        return []
+    oq_text = "\n".join(_oq_lines(plan_text))
+    dispositioned = _surface_subjects(ac_block + "\n" + oq_text)
+    # Collapse: if a two-word subject is dispositioned, its single-word tail counts too.
+    dispositioned |= {s.split()[-1] for s in dispositioned if " " in s}
+    missing = sorted(
+        s for s in named
+        if s not in dispositioned and (" " in s or s not in {d.split()[-1] for d in named if " " in d})
+    )
+    if not missing:
+        return []
+    return [
+        "NAMED_SURFACE_PARITY: the Jira names product surface(s) "
+        f"{missing} (a Panel/Dashboard) that no Acceptance Criterion or Open Question "
+        "disposition. Name each stated surface explicitly in an AC or Open Question - do "
+        "not paraphrase it into a vague phrase or drop it. The Baseline, Translation, "
+        "Map, Conditions, and Reports surfaces are Panels (not dashboards); use the exact "
+        "product term."
+    ]
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
+    problems += _validate_named_surface_parity(manifest, plan_text)
     problems += _validate_ui_surface(manifest, plan_text, catalog_path=catalog_path)
     problems += _validate_investigation(manifest, plan_text)
     problems += _validate_no_test_as_ac(manifest, plan_text)
@@ -1586,6 +1673,47 @@ def run_self_tests() -> None:
         "a topic-type Open Question satisfies the gate"
     )
     assert _validate_topic_type_coverage({}, plain) == [], "no authoring/content signal -> no forcing"
+
+    # --- named-surface parity ---
+    # Ticket names Baseline dashboard + Translation dashboard; plan only names Map dashboard
+    # and paraphrases the rest -> the two stated surfaces must be flagged.
+    surface_miss = nl.join([
+        "**Understanding From Jira**",
+        "- Issue understood: the Baseline dashboard and Translation dashboard show different topics.",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) The Metadata report matches the Map dashboard. Evidence: J.",
+        "**Open Questions**",
+        "- OQ-01: confirm the filter default. QA impact: scope.",
+        ""])
+    miss = _validate_named_surface_parity({}, surface_miss)
+    assert any("NAMED_SURFACE_PARITY" in p for p in miss), "stated Baseline/Translation surfaces must be flagged"
+    assert any("baseline" in p for p in miss) and any("translation" in p for p in miss), (
+        "both dropped surfaces must be named in the finding"
+    )
+    # dashboard/panel wording difference must NOT be a false miss.
+    surface_ok = nl.join([
+        "**Understanding From Jira**",
+        "- Issue understood: the Baseline dashboard and Translation dashboard show different topics.",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) The Metadata report matches the Baseline Panel. Evidence: J.",
+        "- AC-02 [Proposed]: (Integration) The list matches the Translation Panel using Baseline. Evidence: J.",
+        ""])
+    assert _validate_named_surface_parity({}, surface_ok) == [], (
+        "Baseline/Translation Panel in ACs satisfies parity despite the ticket saying dashboard"
+    )
+    # a surface named only via the manifest issue text is also enforced.
+    manifest_named = {"issue": {"summary": "", "description": "The Subject Scheme Panel is wrong."}}
+    only_ac = nl.join([
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) The Metadata report matches the Baseline Panel. Evidence: J.",
+        ""])
+    assert any("subject scheme" in p for p in _validate_named_surface_parity(manifest_named, only_ac)), (
+        "a surface named only in the manifest issue text must be enforced"
+    )
+    # no acceptance contract -> gate is inert.
+    assert _validate_named_surface_parity({}, "**Understanding From Jira**\n- Baseline Panel issue.\n") == []
+    # no Panel/Dashboard surface named anywhere -> no forcing.
+    assert _validate_named_surface_parity({}, plain) == []
 
     print("coverage_forcing self-tests: PASS")
 
