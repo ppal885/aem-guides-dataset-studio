@@ -8,8 +8,8 @@ It never authors an AC and never hard-fails.
 
 ## Activation
 
-Runs when the manifest carries a `behavior_model` or an `evidence_catalog`. A manifest
-with neither contributes no candidates. This does not bypass the separate v3
+Runs when the manifest carries a `behavior_model`, `evidence_catalog`, or recorded
+`construct_relationships`. A manifest with none contributes no candidates. This does not bypass the separate v3
 reasoning requirements: a behavioral legacy record without its required blocks
 still fails `run_gates`.
 
@@ -27,6 +27,10 @@ Each candidate is tagged with the generating evidence label and generator:
   (evidence-catalog `source_ref`/`note`, `behavior_model.facts`, read/write paths). Example:
   a metadata / `jcr:content` read path proposes a `VALUE_SET_CHANNEL` candidate for
   repository-node value provenance — *discovered*, not remembered.
+  It also emits a separate candidate for each recorded sibling/configuration/caller
+  finding in `construct_relationships` (including its exact source). Two neighbors
+  on the same axis do not collapse into one check. This consumes recorded inspection;
+  it does not perform an AST search or claim to find every unrecorded neighbor.
 - **RAG_NEIGHBORHOOD** — the same signal map over recorded `rag_probes`, plus
   fail-open local product-documentation neighbors when recorded probes or current
   behavior text can form a query. Offline results are explicitly supporting discovery;
@@ -46,15 +50,20 @@ are stable across repeat runs. Retained duplicates merge evidence and technical 
 
 ## Output in run_gates
 
-For every synthesized candidate whose `dimension` is **not** already represented in
-`coverage_hypotheses[].dimension` or `clarification.dimension_space[].axis`, `run_gates`
-emits a non-blocking `REVIEW DISCOVERY:` note so the author must consciously dispose or
-reject it. Exit stays 0; the receipt becomes non-postable until the author resolves the
-candidate (the standard REVIEW contract).
+Every synthesized candidate needs an evidence-backed terminal decision. A matching
+axis, copied feature name, equivalence key, or candidate row alone does not clear
+`REVIEW DISCOVERY:`. `discovery_disposition.py` checks the exact discovery identity,
+retained source/basis, one terminal verification and one linked disposition using
+the existing canonical contracts. This applies to all generators, not one product.
 
-Model-explorer candidates and feature-map entries require their exact generator
-equivalence key; a single broad-family hypothesis cannot hide these candidates.
-Follow `v3-reasoning-authoring.md` to carry the output into terminal verification.
+Missing or invalid chains retain REVIEW and a non-postable receipt. This check adds
+no hard failures to the legacy exit-code contract. A justified rejection clears
+the discovery note without creating an AC. An unresolved candidate needs its real
+Open Question and remains subject to existing question/readiness gates. Verified
+implementation evidence may justify regression, never automatic acceptance.
+
+Follow `discovery-disposition.md` and `v3-reasoning-authoring.md`. Do not mark evidence
+USED or invent a rejection simply to remove a warning.
 
 ## Constraints
 
@@ -64,3 +73,15 @@ an empty candidate set with a recorded reason, never an invented candidate.
 
 Read `offline-authoring-rag.md` for the offline provider, query-expansion, provenance,
 Human-UAC exclusion, and live-history honesty contracts.
+
+## Bounded retrieval without silent starvation
+
+Feature queries group features that share the same surface and exact documentation
+URLs, then rotate across matched surfaces. A large broad checklist cannot consume
+all slots before a smaller matched surface gets a query. The existing six-query,
+per-query result and total-candidate limits remain unchanged. The first two explicit
+RAG probes and current behavior remain in the bounded plan. Query groups outside
+the budget are recorded as deferred gaps, not reported as retrieved. Provider failure
+or a result-budget early stop also records unexecuted queries while retaining any
+real earlier results. Authors must investigate material deferred candidates through
+the normal directed retrieval process.

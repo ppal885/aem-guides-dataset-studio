@@ -5,8 +5,8 @@ model + evidence catalog + recorded RAG probes), it proposes candidate test
 dimensions - including ones the ticket text never named - as INVESTIGATION
 CANDIDATEs that flow into the existing coverage_hypotheses -> verifications
 pipeline and clarification_gate.dimension_space. It never authors an AC and never
-hard-fails; run_gates surfaces the candidates that are not yet represented as a
-non-blocking DISCOVERY review note.
+hard-fails; run_gates surfaces candidates without evidence-backed terminal
+decisions as DISCOVERY review notes (exit-compatible, but non-postable).
 
 Five generators, each candidate tagged with the generating evidence and generator:
   * CODE_NEIGHBORHOOD  - generic signals in cited code text/paths.
@@ -26,14 +26,15 @@ import argparse
 import hashlib
 import importlib.util
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 import coverage_hypotheses
+import discovery_disposition
+import recorded_neighbor_discovery
 
 
-BLOCK_ACTIVATORS = ("behavior_model", "evidence_catalog")
+BLOCK_ACTIVATORS = ("behavior_model", "evidence_catalog", "construct_relationships")
 MAX_OFFLINE_DOC_QUERIES = 6
 OFFLINE_DOC_RESULTS_PER_QUERY = 4
 MAX_OFFLINE_DOC_CANDIDATES = 8
@@ -107,7 +108,9 @@ def _evidence_texts(manifest: dict) -> list[tuple[str, str]]:
                 eids = [e for e in (fact.get("evidence_ids") or []) if isinstance(e, str)]
                 label = eids[0] if eids else "behavior_model"
                 pairs.append((label, str(fact.get("fact", ""))))
-        for key in ("read_paths", "write_paths", "update_paths", "consumers", "processors", "configuration_branches"):
+        for key in ("trigger", "operations", "inputs", "outputs", "affected_state",
+                    "read_paths", "write_paths", "update_paths", "consumers", "processors",
+                    "configuration_branches", "publishing_modes"):
             text = _text_of(bm.get(key))
             if text.strip():
                 pairs.append((f"behavior_model.{key}", text))
@@ -173,12 +176,55 @@ def _query_text(pairs: list[tuple[str, str]], limit: int = 1_200) -> str:
     return " ".join(" ".join(text.split()) for _, text in pairs if text.strip())[:limit]
 
 
-def _offline_doc_queries(
+def _feature_query_groups(feature_candidates: list[dict]) -> list[tuple[str, str, tuple[str, ...]]]:
+    """Group one documented surface/source, then share the budget across surfaces.
+
+    Several sibling features may live on the same documentation page. Combining
+    their query vocabulary saves calls; round-robin ordering prevents a large
+    early surface from starving a smaller matched surface. No product names or
+    feature-specific priorities participate in this scheduling.
+    """
+    surfaces: dict[str, dict[tuple, dict]] = {}
+    for candidate in feature_candidates:
+        feature = str(candidate.get("feature", "")).strip()
+        if not feature:
+            continue
+        surface = str(candidate.get("surface") or "surface").strip()
+        references = tuple(sorted({str(value).strip()
+                                   for value in candidate.get("reference_urls") or []
+                                   if str(value).strip()}))
+        # Without a source, do not merge unrelated feature names into one query.
+        key = (references, "" if references else feature.casefold())
+        groups = surfaces.setdefault(surface, {})
+        group = groups.setdefault(key, {"features": [], "flows": [], "references": references})
+        if feature not in group["features"]:
+            group["features"].append(feature)
+        for value in candidate.get("shared_flows") or []:
+            flow = str(value).strip()
+            if flow and flow not in group["flows"]:
+                group["flows"].append(flow)
+
+    buckets = [(surface, list(groups.values())) for surface, groups in surfaces.items()]
+    queries: list[tuple[str, str, tuple[str, ...]]] = []
+    for index in range(max((len(groups) for _, groups in buckets), default=0)):
+        for surface, groups in buckets:
+            if index >= len(groups):
+                continue
+            group = groups[index]
+            queries.append((
+                f"feature_map:{surface}:{'|'.join(group['features'])}",
+                " ".join((*group["features"], *group["flows"])),
+                group["references"],
+            ))
+    return queries
+
+
+def _offline_doc_query_plan(
     pairs: list[tuple[str, str]],
     rag_probes: object,
     feature_candidates: list[dict],
-) -> list[tuple[str, str, tuple[str, ...]]]:
-    """Build bounded generic queries from current evidence and approved checklists."""
+) -> tuple[list[tuple[str, str, tuple[str, ...]]], list[str]]:
+    """Return bounded queries and exact feature groups deferred by the budget."""
     queries: list[tuple[str, str, tuple[str, ...]]] = []
     if isinstance(rag_probes, list):
         for index, probe in enumerate(rag_probes, start=1):
@@ -187,43 +233,46 @@ def _offline_doc_queries(
             if len(queries) >= 2:
                 break
 
-    # The feature map is Human-approved domain vocabulary. It may strengthen the
-    # retrieval query, but it is not evidence and cannot itself create a RAG result.
-    for candidate in feature_candidates:
-        feature = str(candidate.get("feature", "")).strip()
-        flows = [
-            str(value).strip()
-            for value in candidate.get("shared_flows") or []
-            if str(value).strip()
-        ]
-        text = " ".join((feature, *flows)).strip()
-        if text:
-            references = tuple(
-                str(value).strip()
-                for value in candidate.get("reference_urls") or []
-                if str(value).strip()
-            )
-            queries.append(
-                (f"feature_map:{candidate.get('surface', 'surface')}:{feature}", text, references)
-            )
-        if len(queries) >= MAX_OFFLINE_DOC_QUERIES - 1:
-            break
-
     behavior = _query_text(pairs)
-    if behavior:
-        queries.append(("current_behavior", behavior, ()))
-
     unique: list[tuple[str, str, tuple[str, ...]]] = []
-    seen: set[str] = set()
-    for label, text, references in queries:
-        key = " ".join(text.casefold().split())
-        if not key or key in seen:
-            continue
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+
+    def append_query(query: tuple[str, str, tuple[str, ...]]) -> bool:
+        label, text, references = query
+        normalized = " ".join(text.casefold().split())
+        key = (normalized, references)
+        if not normalized or key in seen:
+            return False
         seen.add(key)
         unique.append((label, text, references))
-        if len(unique) >= MAX_OFFLINE_DOC_QUERIES:
-            break
-    return unique
+        return True
+
+    for query in queries:
+        append_query(query)
+    # Reserve current behavior, including when two explicit RAG probes are present.
+    feature_budget = MAX_OFFLINE_DOC_QUERIES - len(unique) - bool(behavior)
+    deferred: list[str] = []
+    feature_count = 0
+    for query in _feature_query_groups(feature_candidates):
+        key = (" ".join(query[1].casefold().split()), query[2])
+        if key in seen:
+            continue
+        if feature_count >= feature_budget:
+            deferred.append(query[0])
+        elif append_query(query):
+            feature_count += 1
+    if behavior:
+        append_query(("current_behavior", behavior, ()))
+    return unique, deferred
+
+
+def _offline_doc_queries(
+    pairs: list[tuple[str, str]],
+    rag_probes: object,
+    feature_candidates: list[dict],
+) -> list[tuple[str, str, tuple[str, ...]]]:
+    """Compatibility view of the bounded, surface-diverse query plan."""
+    return _offline_doc_query_plan(pairs, rag_probes, feature_candidates)[0]
 
 
 def _offline_rag_candidates(
@@ -232,9 +281,13 @@ def _offline_rag_candidates(
     rag_probes: object,
     feature_candidates: list[dict],
 ) -> tuple[list[dict], list[str]]:
-    queries = _offline_doc_queries(pairs, rag_probes, feature_candidates)
+    queries, deferred = _offline_doc_query_plan(pairs, rag_probes, feature_candidates)
+    budget_gaps = ([
+        f"RAG_NEIGHBORHOOD: {len(deferred)} feature-map query group(s) deferred by the "
+        f"{MAX_OFFLINE_DOC_QUERIES}-query budget; not retrieved: {', '.join(deferred)}"
+    ] if deferred else [])
     if offline is None:
-        return [], [
+        return [], budget_gaps + [
             "RAG_NEIGHBORHOOD: offline retrieval helper unavailable; no offline RAG candidate fabricated"
         ]
     if not queries:
@@ -243,7 +296,7 @@ def _offline_rag_candidates(
     candidates: list[dict] = []
     seen_sources: set[str] = set()
     last_reason = "query_returned_no_rows"
-    for query_label, query, expected_references in queries:
+    for query_index, (query_label, query, expected_references) in enumerate(queries):
         rows = offline.retrieve_docs(query, OFFLINE_DOC_RESULTS_PER_QUERY)
         status = offline.retrieval_status("docs")
         last_reason = str(status.get("reason") or last_reason)
@@ -299,13 +352,24 @@ def _offline_rag_candidates(
             )
             if len(candidates) >= MAX_OFFLINE_DOC_CANDIDATES:
                 break
-        if str(status.get("status")) in {"UNAVAILABLE", "ERROR"}:
+        provider_status = str(status.get("status") or "").upper()
+        if provider_status in {"UNAVAILABLE", "ERROR"}:
+            budget_gaps.append(
+                f"RAG_NEIGHBORHOOD: retrieval stopped with provider status {provider_status}; "
+                f"{len(queries) - query_index - 1} planned query group(s) not executed; "
+                "retained partial supporting results only"
+            )
             break
         if len(candidates) >= MAX_OFFLINE_DOC_CANDIDATES:
+            budget_gaps.append(
+                "RAG_NEIGHBORHOOD: retrieval stopped with status CANDIDATE_LIMIT; "
+                f"{len(queries) - query_index - 1} planned query group(s) not executed; "
+                "retained bounded supporting results only"
+            )
             break
     if candidates:
-        return candidates, []
-    return [], [
+        return candidates, budget_gaps
+    return [], budget_gaps + [
         f"RAG_NEIGHBORHOOD: offline retrieval produced no usable result ({last_reason}); "
         "no offline RAG candidate fabricated"
     ]
@@ -422,11 +486,14 @@ def synthesize(manifest: dict | None) -> dict:
     """Return {candidates, gaps, activated}. Never raises, never fabricates."""
     data = manifest if isinstance(manifest, dict) else {}
     if not any(data.get(k) for k in BLOCK_ACTIVATORS):
-        return {"candidates": [], "gaps": ["not activated: no behavior_model or evidence_catalog"], "activated": False}
+        return {"candidates": [], "gaps": ["not activated: no behavior_model, evidence_catalog or construct_relationships"], "activated": False}
 
     pairs = _evidence_texts(data)
     exploration = coverage_hypotheses.generate_from_model(data)
     candidates = exploration["candidates"] + _match_signals(pairs, "CODE_NEIGHBORHOOD")
+    # Preserve each inspected sibling/caller identity, not just the broad family.
+    # These are recorded discoveries, not a claim of an exhaustive code search.
+    candidates += recorded_neighbor_discovery.candidates_for(data)
 
     # Load the curated checklist before offline RAG. Matched entries may provide
     # bounded, Human-approved query vocabulary; they are never treated as evidence.
@@ -512,77 +579,21 @@ def synthesize(manifest: dict | None) -> dict:
             "explorers": exploration["explorers"]}
 
 
-def _represented_dimensions(manifest: dict) -> set[str]:
-    reps: set[str] = set()
-    for h in manifest.get("coverage_hypotheses") or []:
-        if isinstance(h, dict) and h.get("dimension"):
-            reps.add(str(h["dimension"]).upper())
-            if h.get("implied_dimension_axis"):
-                reps.add(str(h["implied_dimension_axis"]).upper())
-    clar = manifest.get("clarification")
-    if isinstance(clar, dict):
-        for d in clar.get("dimension_space") or []:
-            if isinstance(d, dict) and d.get("axis"):
-                reps.add(str(d["axis"]).upper())
-    return reps
-
-
-def _represented_feature_map_candidates(manifest: dict) -> set[str]:
-    """Return exact FEATURE_MAP equivalence keys explicitly dispositioned.
-
-    A broad dimension such as CODE_PATH_CONSUMER does not prove that every native
-    feature on a matched shared flow was investigated. Feature-map candidates are
-    therefore suppressed only by their exact equivalence key (or surface+feature
-    tags), while all pre-existing generators keep the legacy axis-level behavior.
-    """
-    represented: set[str] = set()
-    blocks: list[Any] = list(manifest.get("coverage_hypotheses") or [])
-    clarification = manifest.get("clarification")
-    if isinstance(clarification, dict):
-        blocks += list(clarification.get("dimension_space") or [])
-    for item in blocks:
-        if not isinstance(item, dict):
-            continue
-        equivalence_key = str(item.get("equivalence_key", "")).strip().casefold()
-        if equivalence_key.startswith("feature_map:"):
-            represented.add(equivalence_key)
-        surface = str(item.get("surface", "")).strip().upper()
-        feature = str(item.get("feature", "")).strip()
-        if surface and feature:
-            represented.add(
-                f"feature_map:{surface}:{re.sub(r'[^a-z0-9]+', '-', feature.casefold()).strip('-')}"
-            )
-    return represented
-
-
 def is_present(manifest: dict | None = None) -> bool:
     data = manifest if isinstance(manifest, dict) else {}
     return any(data.get(k) for k in BLOCK_ACTIVATORS)
 
 
 def review_notes(manifest: dict | None = None) -> list[str]:
-    """Non-blocking DISCOVERY notes for candidates not yet represented."""
+    """Exit-compatible, non-postable notes until each discovery is dispositioned."""
     data = manifest if isinstance(manifest, dict) else {}
     result = synthesize(data)
     if not result["activated"]:
         return []
-    represented = _represented_dimensions(data)
-    represented_feature_map = _represented_feature_map_candidates(data)
-    represented_keys = {
-        str(item.get("equivalence_key", "")).casefold()
-        for item in data.get("coverage_hypotheses", []) if isinstance(item, dict)
-    }
     notes: list[str] = []
     for cand in result["candidates"]:
-        if cand.get("generator") == "FEATURE_MAP":
-            if str(cand.get("equivalence_key", "")).casefold() in represented_feature_map:
-                continue
-        elif (cand.get("generator") in coverage_hypotheses.EXPLORATION_FIELDS
-              or cand.get("generator") == "CUSTOMER_PROFILE"
-              or (cand.get("generator") == "LEARNED_PROBE" and cand.get("source") == "LEARNED")):
-            if str(cand.get("equivalence_key", "")).casefold() in represented_keys:
-                continue
-        elif str(cand.get("implied_dimension_axis") or cand["dimension"]).upper() in represented:
+        reason = discovery_disposition.review_reason(cand, data)
+        if not reason:
             continue
         feature_context = (
             f", feature={cand.get('feature')}, reference={cand.get('reference')}"
@@ -598,7 +609,7 @@ def review_notes(manifest: dict | None = None) -> list[str]:
             f"DISCOVERY: unrepresented dimension {cand.get('implied_dimension_axis') or cand['dimension']} "
             f"(generator={cand['generator']}{feature_context}{source_context}, "
             f"evidence={','.join(cand['current_evidence'])}): "
-            f"{cand['candidate']} - dispose or reject it in coverage_hypotheses/dimension_space"
+            f"{cand['candidate']} - {reason}; bind this exact candidate to verification and disposition"
         )
     return notes
 

@@ -2946,6 +2946,15 @@ def test_component_reference_routing() -> None:
             "scripts/probe_coverage_gate.py",
             "scripts/dita_semantics_activation.py",
             "scripts/dimension_synthesizer.py",
+            "scripts/discovery_disposition.py",
+            "scripts/recorded_neighbor_discovery.py",
+            "scripts/test_discovery_disposition.py",
+            "scripts/test_discovery_pipeline.py",
+            "scripts/test_recorded_neighbor_discovery.py",
+            "scripts/test_native_pdf_feature_discovery.py",
+            "references/discovery-disposition.md",
+            "references/dimension-synthesizer.md",
+            "references/v3-reasoning-authoring.md",
             "scripts/miss_probe_library.py",
             "data/miss_probes.json",
             "data/dita_constructs.json",
@@ -7130,7 +7139,7 @@ def test_feature_map() -> None:
     check("checked-in feature map passes strict governance", fm.validate_repository_map() == [])
     check("feature map schema is v1", feature_map["schema_version"] == fm.SCHEMA_VERSION)
     check("feature map is installed and approved", fm.is_present() is True)
-    check("feature map has six curated surfaces", len(feature_map["surfaces"]) == 6)
+    check("feature map has seven curated surfaces", len(feature_map["surfaces"]) == 7)
     asset_surface = next(
         (surface for surface in feature_map["surfaces"] if surface["surface"] == "ASSET_UPLOAD_DAM"),
         None,
@@ -7570,12 +7579,12 @@ def test_dimension_synthesizer() -> None:
         any("DISCOVERY:" in n and "VALUE_SET_CHANNEL" in n for n in ds.review_notes(manifest)),
     )
 
-    # Represented dimension is suppressed from the DISCOVERY notes.
+    # A dimension tag is not evidence that a discovered relationship was checked.
     represented = dict(manifest)
     represented["coverage_hypotheses"] = [{"dimension": "VALUE_SET_CHANNEL"}]
     check(
-        "represented dimension is not re-surfaced",
-        all("VALUE_SET_CHANNEL" not in n for n in ds.review_notes(represented)),
+        "axis-only representation cannot suppress discovery review",
+        any("VALUE_SET_CHANNEL" in n for n in ds.review_notes(represented)),
     )
 
     feature_manifest = {
@@ -7626,8 +7635,8 @@ def test_dimension_synthesizer() -> None:
     ]
     represented_feature_notes = ds.review_notes(represented_feature)
     check(
-        "exactly represented feature-map candidate is suppressed",
-        all("feature=duplicate detection" not in note for note in represented_feature_notes),
+        "feature key without verification cannot suppress discovery review",
+        any("feature=duplicate detection" in note for note in represented_feature_notes),
     )
     check(
         "other same-axis feature-map candidates remain visible",
@@ -10152,7 +10161,7 @@ def test_v3_authoring_pipeline() -> None:
         check("generation is stable and does not mutate its input",
               generated == ds.synthesize(manifest) and manifest["coverage_hypotheses"] == [])
         manifest["coverage_hypotheses"] = generated["candidates"]
-        check("retained explorer candidates clear discovery review", ds.review_notes(manifest) == [])
+        check("retained explorer candidates still need terminal decisions", bool(ds.review_notes(manifest)))
         first_hid = generated["candidates"][0]["hypothesis_id"]
         for index, hyp in enumerate(manifest["coverage_hypotheses"]):
             hyp.update(status="CONFIRMED", requires_more_evidence=False)
@@ -10514,7 +10523,7 @@ def test_customer_discovery() -> None:
         broad["coverage_hypotheses"] = [{"dimension": "STATE_PARTITION"}]
         check("broad axis does not conceal profile candidates", sum("generator=CUSTOMER_PROFILE" in n for n in ds.review_notes(broad)) == 3)
         broad["coverage_hypotheses"] = profile_candidates
-        check("exact represented profile candidates stop repeating", all("generator=CUSTOMER_PROFILE" not in n for n in ds.review_notes(broad)))
+        check("exact profile candidates still require terminal decisions", any("generator=CUSTOMER_PROFILE" in n for n in ds.review_notes(broad)))
         changed = copy.deepcopy(broad)
         changed["customer_discovery_profiles"]["profiles"][0]["dimensions"][0]["candidate"] += " and current retained content"
         check("old dispositions cannot conceal a changed profile version", any("generator=CUSTOMER_PROFILE" in n for n in ds.review_notes(changed)))
@@ -10595,6 +10604,12 @@ def main() -> int:
     test_miss_probe_library()
     test_customer_discovery()
     test_feature_map()
+    _load("test_native_pdf_feature_discovery", "test_native_pdf_feature_discovery.py").run_tests(check)
+    check("recorded neighbor discovery adversarial suite passes",
+          _load("test_recorded_neighbor_discovery", "test_recorded_neighbor_discovery.py").run_self_tests())
+    check("discovery disposition adversarial suite passes",
+          _load("test_discovery_disposition", "test_discovery_disposition.py").run_self_tests())
+    _load("test_discovery_pipeline", "test_discovery_pipeline.py").run_tests(check)
     test_offline_retrieval()
     test_dimension_synthesizer()
     test_evidence_provenance()

@@ -299,6 +299,44 @@
       ]
     },
     {
+      "surface": "NATIVE_PDF_CONTENT",
+      "match": [
+        "native pdf",
+        "nativepdf",
+        "native-pdf"
+      ],
+      "native_features": [
+        {
+          "feature": "Variables",
+          "shared_flows": [
+            "native pdf page layout content",
+            "native pdf generation"
+          ],
+          "implied_dimension_axis": "CODE_PATH_CONSUMER",
+          "candidate_template": "investigate preservation of Variables in the affected Native PDF page layouts, including header, footer, or body placements that share the touched publishing path; keep Variables separate from Language Variables",
+          "reference": "Experience League native-pdf-variables",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-variables"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        },
+        {
+          "feature": "Variable Sets",
+          "shared_flows": [
+            "native pdf output preset selection",
+            "native pdf variable value selection"
+          ],
+          "implied_dimension_axis": "CONFIG_BRANCH",
+          "candidate_template": "investigate whether Native PDF displays values from the Variable set selected in its output preset, including (Default) values and values configured in a custom set; do not infer automatic set selection or Language Variable fallback from the output language",
+          "reference": "Experience League native-pdf-variables",
+          "reference_urls": [
+            "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-variables"
+          ],
+          "approval_status": "HUMAN_APPROVED"
+        }
+      ]
+    },
+    {
       "surface": "TRANSLATION",
       "match": [
         "translation",

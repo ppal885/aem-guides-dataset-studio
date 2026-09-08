@@ -152,6 +152,13 @@ Discovery is SUPPORTING only. A matched feature, historical analogy, RAG snippet
 or generated candidate does not establish current applicability or acceptance.
 Never paste candidate wording straight into an AC.
 
+Read `discovery-disposition.md`. Copied candidate rows, feature tags or broad axes
+do not settle discovery. Each exact candidate needs the existing evidence-bound
+verification and disposition chain before its DISCOVERY review clears. Recorded
+sibling options/configuration keys and callers are emitted separately so a parent
+family cannot hide an unchecked neighbor. Repeat discovery after coverage/scope
+changes or a reported omission; a wording-only edit is not a new completeness run.
+
 ## 4. Investigate missing evidence
 
 For each material or blocking gap, author a contextual `missing_questions` record:

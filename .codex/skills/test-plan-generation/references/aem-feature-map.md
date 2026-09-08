@@ -37,8 +37,9 @@ or an Acceptance Criterion.
      `implied_dimension_axis` used by clarification;
    - the surface, feature, shared flow, and Experience League reference;
    - the evidence labels and matched phrases that activated it.
-5. `dimension_synthesizer.review_notes()` surfaces unrepresented candidates through
-   the existing non-blocking `REVIEW DISCOVERY` path.
+5. `dimension_synthesizer.review_notes()` surfaces candidates without an exact,
+   evidence-backed terminal decision through the existing `REVIEW DISCOVERY` path
+   (compatibility exit unchanged; receipt non-postable). Tags alone do not clear it.
 6. Normal evidence retrieval, applicability verification, disposition, and
    acceptance-promotion rules still apply. There is no Feature Map-to-AC shortcut.
 
@@ -95,6 +96,39 @@ Official sources:
 - [Use a baseline for publishing](https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/work-with-baseline/generate-output-use-baseline-for-publishing)
 - [Use condition presets](https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/conditional-content/generate-output-use-condition-presets)
 - [Use a post-generation workflow](https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/workflows/using-post-generation-workflow)
+
+### Native PDF content
+
+The `NATIVE_PDF_CONTENT` checklist keeps **Variables** and **Variable Sets** as
+separate candidates. Current evidence must name the Native PDF engine; a generic
+language label, Editor operation, HTML5 preset, or DITA-OT PDF path alone must not
+activate this surface. The sibling feature does not have to appear in the ticket
+headline. Activation is a retrieval lead, not proof that it shares the changed path.
+
+- **Variables** can appear in Native PDF page-layout headers, footers, or bodies.
+  Inspect the placements used by the affected output and verify their shared-path
+  applicability before deciding coverage.
+- **Variable Sets** choose alternate values through the output preset's **Variable
+  set** field. **(Default)** publishes default values; a selected custom set supplies
+  that set's values.
+- **Language Variables** are a different feature. Their output-language and fallback
+  rules do not establish automatic language-based selection of a Variable Set.
+  Similar names are not evidence that the mechanisms are equivalent.
+- These two candidates are not substitutes for one another. Record each candidate's
+  exact identity and disposition. One generic consumer or configuration record does
+  not show that both features were considered.
+- Keep a narrow publishing fix narrow: this checklist does not automatically add
+  Variables editor CRUD, import/export, every page placement, or other PDF engines
+  to acceptance scope. A scoped preservation check still needs current evidence.
+
+This entry records the Human-requested Variables/Variable Sets discovery correction;
+its documented source was checked on 2026-09-09. It does not claim a RAG retrieval,
+an executed product test, or automatic acceptance approval for a future ticket.
+
+Official sources:
+
+- [Variables in the PDF output](https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-variables)
+- [Support for language variables](https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-language-variables)
 
 ### Translation
 
