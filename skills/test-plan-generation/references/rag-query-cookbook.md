@@ -56,6 +56,31 @@ For DITA questions:
 
 ## Output-Family Disambiguation (publishing tickets)
 
+For Native PDF template, preset, or environment evidence, consult
+`references/native-pdf-publishing-evidence.md`: it records the exact Experience League
+sources, chunk anchors, every inspected image, and source/version limitations. Retrieve
+only the applicable facts; it is not a mandatory list of acceptance criteria.
+
+For HTML5 output presets, use `references/html5-publishing-evidence.md` to locate
+the relevant chunks and inspected UI labels. Preserve the console/dashboard field
+mapping, engine restrictions, and version-dependent outside-map content setting;
+do not transfer Native PDF behaviour into HTML5 because the field names overlap.
+
+For Custom DITA-OT presets, use `references/custom-publishing-evidence.md`. Retrieve
+the integrated-plugin/transformation relationship, not just a shared option name.
+The Custom page's EPUB wording is a source inconsistency, not proof of output format
+or default destination; inspect the target plugin and configuration when relevant.
+
+For shared Global/Folder Profile presets, use
+`references/profile-output-presets-evidence.md`. Retrieve profile-level role and
+map-independence rules separately from map-specific settings. Default PDF / Download
+as PDF names a preset selection, not a publishing-engine equivalence or fallback.
+
+For condition-preset management and selection, use `references/condition-presets-evidence.md`.
+Retrieve default-action scope and duplicate naming with their console/dashboard section
+context. Condition presets are not the authoring Conditions panel or DITAVAL editor;
+the source's dashboard-section naming inconsistency must not become invented UI parity.
+
 The AEM Guides RAG corpus co-locates multiple publishing engines that share vocabulary, so
 embedding similarity alone can return the WRONG engine's behaviour. This is observed, not
 theoretical: a probe for "DITA-OT PDF command-line arguments" ranks a Native-PDF chunk first,
@@ -80,6 +105,12 @@ preprocessing is NOT the DITA-OT PDF engine — do not treat one as evidence for
   the ingest adds an output-family facet. Tracked in `analysis/rag_ingestion_gaps.md`.
 
 ## Good vs Noisy Examples
+
+For output-preset edit/duplicate/delete questions, consult
+`references/output-preset-actions-evidence.md` and retrieve the exact management-page
+source. Keep console field editing/Options separate from dashboard top-bar actions.
+The template-preset administrator restriction is not a rule for every preset;
+the page does not specify duplication naming, copied state, or deletion side effects.
 
 Good:
 

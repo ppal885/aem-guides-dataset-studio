@@ -78,6 +78,12 @@ clones, or retrieve unrelated RAG before saving the selected Human correction.
 
 - Read `references/evidence-preflight.md` before evidence retrieval. Run an actual availability check for product RAG, indexed Jira history, live Jira, Git, and Figma; connector configuration alone does not prove availability.
 - Read `references/rag-query-cookbook.md` before calling or judging `ask_dita_expert` evidence.
+- Read `references/native-pdf-publishing-evidence.md` when current scope concerns Native PDF templates, output presets, or environment configuration; use its source/chunk and image ledger to retrieve the applicable behaviour, preserving engine, version, and UI-label boundaries.
+- Read `references/html5-publishing-evidence.md` when current scope concerns HTML5 output presets; retrieve the relevant source-backed dependencies and preserve Map console/Map dashboard and DITA-OT/FMPS distinctions. The reference is not an automatic AC checklist.
+- Read `references/custom-publishing-evidence.md` for Custom DITA-OT output presets; preserve plugin/transformation dependencies, console/dashboard labels, and source inconsistencies rather than importing another output family's contract.
+- Read `references/condition-presets-evidence.md` for condition-preset creation, editing, default actions or output-preset selection; retrieve surface-specific rules and preserve the documented console/dashboard differences and naming ambiguity.
+- Read `references/profile-output-presets-evidence.md` for Global/Folder Profile preset management or map Download as PDF defaults; distinguish shared, map-independent profile configuration from map-specific presets and do not infer PDF-engine equivalence.
+- Read `references/output-preset-actions-evidence.md` for editing, duplicating, or deleting output presets; preserve Map console versus Map dashboard controls and the documented template-preset administrator restriction without inventing copy or deletion side effects.
 - Read `references/fluffyjaws-evidence.md` before calling the FluffyJaws connector or recording a `fluffyjaws` manifest block; it defines the SUPPORTING_DISCOVERY-only, re-grounding, and no-FJ-to-AC invariants the `fluffyjaws_evidence` gate enforces.
 - Read `references/pr-and-repo-evidence.md` before searching GitHub MCP, inspecting PRs, or using user-cloned repos.
 - Read `references/git-repo-sync.md` and use `scripts/sync_evidence_repo.py` before treating a local clone as current product or automation evidence.

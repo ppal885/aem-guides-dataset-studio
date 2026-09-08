@@ -1,6 +1,6 @@
 {
   "schema_version": "aem-guides-vocabulary-v1",
-  "note": "Curated AEM Guides product vocabulary for acceptance criteria. Two lists: 'block' = phrases that name a product concept the product does NOT have (invented from support/ticket wording) - fail-closed when they appear in an AC line. 'advise' = correct-term nudges that are too broad to hard-fail (the wrong word can be legitimate elsewhere) - surfaced as advisory suggestions only. Patterns are case-insensitive regex over an AC line. Every entry is HUMAN_APPROVED; add new entries only from a real human correction with the source Jira. This encodes product vocabulary, NOT a code-identifier list - never put method/class names here.",
+  "note": "Curated AEM Guides product vocabulary for acceptance criteria. Two lists: 'block' = phrases that name a product concept the product does NOT have (invented from support/ticket wording) - fail-closed when they appear in an AC line. 'advise' = correct-term nudges that are too broad to hard-fail (the wrong word can be legitimate elsewhere) - surfaced as advisory suggestions only. Patterns are case-insensitive regex over an AC line. Every block/advise entry is HUMAN_APPROVED; add those rules only from a real human correction with the source Jira. canonical_terms can also contain documented names with DOCUMENT_VERIFIED provenance in canonical_term_sources; that is not Human approval or an acceptance contract. This encodes product vocabulary, NOT a code-identifier list - never put method/class names here.",
   "governance": "HUMAN_APPROVED",
   "block": [
     {
@@ -203,7 +203,136 @@
     "Editor Preview",
     "Old Editor",
     "New Editor",
-    "Baseline"
+    "Baseline",
+    "Native PDF Publishing",
+    "Native PDF output preset",
+    "New output preset",
+    "Generate PDF Using",
+    "Apply Conditions Using",
+    "Use Baseline",
+    "Create PDF with Change Bar between Published Versions",
+    "Baseline of the Previous Version",
+    "Run health check before output generation",
+    "DITA-OT Command Line Arguments",
+    "Enable DITA-OT preprocessing",
+    "Provide XMP file",
+    "Provide metadata names and values",
+    "Select PDF template",
+    "Page Display",
+    "Printer Marks",
+    "Create accessible (tagged) PDF",
+    "Merge PDFs included in the TOC",
+    "Embed used fonts",
+    "Retain temporary files",
+    "PDF conformance",
+    "File properties",
+    "HTML5 output preset",
+    "Generate HTML Using",
+    "Generate HTML5 Using",
+    "Generate Responsive Using",
+    "FrameMaker Publishing Server",
+    "DITA-OT",
+    "Map dashboard",
+    "Output path",
+    "Destination Path",
+    "Conditional filtering",
+    "Transformation name",
+    "Flatten file hierarchy",
+    "Download temporary files",
+    "Add to current folder profile",
+    "Add to the current folder profile",
+    "Custom output preset",
+    "custom DITA-OT plug-in",
+    "Run post generation workflow",
+    "Add to folder profile",
+    "Default PDF",
+    "Download as PDF",
+    "Knowledgebase preset",
+    "template preset",
+    "Presets Settings",
+    "Publish Context",
+    "Condition presets panel",
+    "Attributes panel",
+    "New condition preset",
+    "Rename condition preset",
+    "Duplicate condition preset",
+    "Delete condition preset",
+    "Name Condition",
+    "Set default action to",
+    "Set the action for selected conditions to"
+  ],
+  "canonical_term_sources": [
+    {
+      "terms": ["Native PDF Publishing"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/template-content-styles",
+      "evidence_ids": ["aem_ingest_0862a326e8_0"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/native-pdf-publishing-evidence.md"
+    },
+    {
+      "terms": ["Native PDF output preset", "New output preset", "Generate PDF Using", "Apply Conditions Using", "Use Baseline", "Create PDF with Change Bar between Published Versions", "Baseline of the Previous Version", "Run health check before output generation", "DITA-OT Command Line Arguments", "Enable DITA-OT preprocessing", "Provide XMP file", "Provide metadata names and values", "Select PDF template", "Page Display", "Printer Marks", "Create accessible (tagged) PDF", "Merge PDFs included in the TOC", "Embed used fonts", "Retain temporary files", "PDF conformance", "File properties"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/pdf-preset/native-pdf-web-editor",
+      "evidence_ids": ["aem_ingest_5494c3c9c9_0", "aem_ingest_5494c3c9c9_2", "aem_ingest_5494c3c9c9_4", "aem_ingest_5494c3c9c9_8", "aem_ingest_5494c3c9c9_11", "aem_ingest_5494c3c9c9_12", "aem_ingest_5494c3c9c9_15", "aem_ingest_5494c3c9c9_17", "aem_ingest_5494c3c9c9_18", "aem_ingest_5494c3c9c9_21", "aem_ingest_5494c3c9c9_25", "aem_ingest_5494c3c9c9_28", "aem_ingest_5494c3c9c9_29", "aem_ingest_5494c3c9c9_32", "aem_ingest_5494c3c9c9_33"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/native-pdf-publishing-evidence.md",
+      "scope": "Native PDF preset terminology, not Sites/Forms or DITA-OT PDF-engine terminology. Prose and screenshot labels can differ; verify the target build. Document verification is not a new Human approval or acceptance contract."
+    },
+    {
+      "terms": ["HTML5 output preset", "Generate HTML Using", "Generate Responsive Using", "FrameMaker Publishing Server", "DITA-OT", "Map dashboard", "Output path", "Destination Path", "Conditional filtering", "Transformation name", "Flatten file hierarchy", "Download temporary files", "Add to current folder profile"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/generate-output-html5",
+      "evidence_ids": ["aem_ingest_b69c4e51a8_0", "aem_ingest_b69c4e51a8_1", "aem_ingest_b69c4e51a8_2", "aem_ingest_b69c4e51a8_4", "aem_ingest_b69c4e51a8_5", "aem_ingest_b69c4e51a8_6", "aem_ingest_b69c4e51a8_12", "aem_ingest_b69c4e51a8_13", "aem_ingest_b69c4e51a8_14"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/html5-publishing-evidence.md",
+      "scope": "HTML5 publishing terminology. Map dashboard is the publishing surface, not an authoring panel. Preserve console/dashboard label differences and administrator-configured FMPS availability; do not infer engine parity. No new Human approval or acceptance contract."
+    },
+    {
+      "terms": ["Generate HTML5 Using", "Add to the current folder profile"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/generate-output-html5",
+      "evidence_images": ["https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/media_174da43a92a29b54a02da222a61dac04cfd005e88.png"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/html5-publishing-evidence.md",
+      "scope": "Visible labels in the inspected New output preset screenshot. These exact variants are absent from text chunks. Preserve the prose variants separately and verify labels in the target build; no universal rename or Human approval is asserted."
+    },
+    {
+      "terms": ["Custom output preset", "custom DITA-OT plug-in", "Run post generation workflow"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/generate-output-custom",
+      "evidence_ids": ["aem_ingest_abb689fe11_0", "aem_ingest_abb689fe11_5", "aem_ingest_abb689fe11_11"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/custom-publishing-evidence.md",
+      "scope": "Custom DITA-OT publishing. Run post generation workflow names the dashboard checkbox, not a per-run workflow object. Existing shared labels are reused. The page's EPUB output wording and screenshot path do not establish Custom=EPUB or a universal destination. Document verification is not Human approval or an acceptance contract."
+    },
+    {
+      "terms": ["Add to folder profile", "Default PDF", "Download as PDF", "Knowledgebase preset"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/web-editor-manage-output-presets",
+      "evidence_ids": ["aem_ingest_c48989faa6_1", "aem_ingest_c48989faa6_3"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/profile-output-presets-evidence.md",
+      "scope": "Global and Folder Profile output preset management. Preserve prose versus screenshot labels. Default PDF selects an existing PDF preset for map Download as PDF; no PDF-engine equivalence or unspecified fallback is asserted. Profile-level administration is not a permission rule for all map presets. Documentation is not Human approval or an automatic acceptance contract."
+    },
+    {
+      "terms": ["template preset"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-create-edit-preset",
+      "evidence_ids": ["aem_ingest_400b02977d_0", "aem_ingest_400b02977d_1"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/output-preset-actions-evidence.md",
+      "scope": "The page restricts editing, duplicating and deleting template presets to administrators. Do not extend that restriction to every output preset or equate template presets with other preset categories without separate evidence. Documentation verification is not Human approval or an acceptance contract."
+    },
+    {
+      "terms": ["Presets Settings", "Publish Context"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-create-edit-preset",
+      "evidence_images": ["https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/media_10b557a1ec32ddcf18dce89570560c6b23fea7bc4.png"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/output-preset-actions-evidence.md",
+      "scope": "Exact tab labels visually inspected in the Map dashboard screenshot; absent from this page's text chunks. Presets Settings is selected; Publish Context content was not shown. No behavior of that unopened tab, current-build label guarantee, or Human approval is asserted."
+    },
+    {
+      "terms": ["Condition presets panel", "Attributes panel", "New condition preset", "Rename condition preset", "Duplicate condition preset", "Delete condition preset", "Name Condition", "Set default action to", "Set the action for selected conditions to"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/conditional-content/generate-output-use-condition-presets",
+      "evidence_ids": ["aem_ingest_c50c5d5527_1", "aem_ingest_c50c5d5527_2", "aem_ingest_c50c5d5527_5", "aem_ingest_c50c5d5527_6", "aem_ingest_c50c5d5527_7"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/condition-presets-evidence.md",
+      "scope": "Condition-preset management, not the authoring Conditions panel or DITAVAL editor. Preserve console/dashboard default-action scope, duplicate suffix differences and the dashboard-section naming ambiguity. Document verification is not Human approval or an acceptance contract."
+    }
   ],
   "synonyms": [
     {
