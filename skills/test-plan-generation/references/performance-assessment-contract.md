@@ -78,7 +78,7 @@ Use only when all seven reviewed signals are absent.
 
 A Performance AC uses the same `aem-guides-ac-v1` grammar as every other AC:
 
-`- AC-## [Confirmed|Proposed]: (Performance) Given <quantified workload> | When <single trigger> | Then <numeric or source-backed comparative metric oracle> | Evidence: <underlying source>.`
+`- AC-## [Confirmed|Proposed]: (Performance) <plain-English criterion naming a quantified workload and a numeric or source-backed comparative metric oracle>. Evidence: <underlying source>.`
 
 An acceptable workload contains the source-backed operation, cardinality, concurrency, repetition, duration, dataset, and environment needed for reproduction. An acceptable outcome contains an approved numeric SLA or a source-backed comparative metric and controlled baseline. Never copy an illustrative or historical number into a new plan.
 

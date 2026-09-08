@@ -11,18 +11,36 @@ import re
 from typing import TypedDict
 
 
-AC_SCHEMA_VERSION = "aem-guides-ac-v1"
+AC_SCHEMA_VERSION = "aem-guides-ac-v2"
+AC_SCHEMA_VERSION_LEGACY = "aem-guides-ac-v1"
 AC_STATUSES = ("Confirmed", "Proposed")
 AC_SPHERES = ("Basic", "Negative", "Integration", "Performance")
+
+# Canonical produced grammar (v2): one plain-English acceptance criterion, no
+# Given/When/Then scaffolding and no pipes. Long criteria are broken into indented
+# sub-points; the whole presented set is capped at AC_PRESENTATION_CAP.
 AC_EXACT_FORMAT = (
     "- AC-## [Confirmed|Proposed]: "
     "(Basic|Negative|Integration|Performance) "
-    "Given <precondition/input> | When <single trigger/action> | "
-    "Then <observable outcome> | Evidence: <underlying source>."
+    "<plain-English acceptance criterion>. Evidence: <underlying source>."
 )
 
+# Cap on how many AC-## points a presented UAC may carry. More than this must be
+# consolidated/merged (senior-QA style) and the granular detail pushed into
+# sub-points or the linked full-record markdown.
+AC_PRESENTATION_CAP = 10
+
 _FIELD = r"\S(?:[^|\r\n]*\S)?"
-AC_LINE_RE = re.compile(
+# v2 plain criterion body: no pipes, must not open with the Given keyword.
+_PLAIN_BODY = r"(?!Given )[^|\r\n]+?"
+PLAIN_AC_LINE_RE = re.compile(
+    rf"^- (?P<id>AC-\d{{2}}) \[(?P<status>{'|'.join(AC_STATUSES)})\]: "
+    rf"\((?P<sphere>{'|'.join(AC_SPHERES)})\) "
+    rf"(?P<text>{_PLAIN_BODY})\.?\s+Evidence: (?P<evidence>[^|\r\n]+?)\.$"
+)
+# Legacy Given/When/Then grammar (v1). Still parsed so saved plans and the
+# historical test corpus keep working; it is no longer produced or documented.
+LEGACY_AC_LINE_RE = re.compile(
     rf"^- (?P<id>AC-\d{{2}}) \[(?P<status>{'|'.join(AC_STATUSES)})\]: "
     rf"\((?P<sphere>{'|'.join(AC_SPHERES)})\) "
     rf"Given (?P<given>{_FIELD}) \| "
@@ -30,6 +48,8 @@ AC_LINE_RE = re.compile(
     rf"Then (?P<then>{_FIELD}) \| "
     rf"Evidence: (?P<evidence>{_FIELD})\.$"
 )
+# Back-compat alias: older callers imported AC_LINE_RE for the GWT grammar.
+AC_LINE_RE = LEGACY_AC_LINE_RE
 HEADING_RE = re.compile(r"^\*\*(.+?)\*\*$")
 RESERVED_FIELD_RE = re.compile(r"(?:^|\s)(?:Given|When|Then|Evidence:)\s")
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\([^)]*\)")
@@ -75,25 +95,57 @@ class AcceptanceCriterion(TypedDict):
     given: str
     when: str
     then: str
+    text: str
     evidence: str
     raw: str
     schema_version: str
 
 
 def parse_ac_line(line: str) -> AcceptanceCriterion | None:
-    """Parse one full-record AC in the immutable ``aem-guides-ac-v1`` grammar.
+    """Parse one full-record AC.
+
+    The canonical produced grammar is the plain v2 form (``AC-## [status]:
+    (Sphere) <plain criterion>. Evidence: ...``) with no Given/When/Then
+    scaffolding. The legacy v1 Given/When/Then grammar is still accepted so
+    saved plans and the historical corpus keep parsing, but it is no longer
+    produced or documented.
+
+    ``text`` always holds the plain criterion body. For legacy v1 lines the
+    individual ``given``/``when``/``then`` fields are also populated and
+    ``text`` is their readable join, so downstream consumers that read ``then``
+    keep working unchanged.
 
     The human-facing ``Starting point / Action / Expected result`` block is
-    presentation only. Accepting it here would let a durable plan and automation
-    handoff lose status, sphere, canonical fields, and evidence while still
-    appearing machine-readable.
+    presentation only and is never accepted here.
     """
-    match = AC_LINE_RE.fullmatch(line)
+    plain = PLAIN_AC_LINE_RE.fullmatch(line)
+    if plain:
+        fields = plain.groupdict()
+        text = fields["text"].strip()
+        if RESERVED_FIELD_RE.search(text):
+            # A plain criterion must not smuggle the reserved Given/When/Then/
+            # Evidence field keywords into its body.
+            return None
+        return {
+            "id": fields["id"],
+            "status": fields["status"],
+            "sphere": fields["sphere"],
+            "given": "",
+            "when": "",
+            "then": text,
+            "text": text,
+            "evidence": fields["evidence"].strip(),
+            "raw": line[2:],
+            "schema_version": AC_SCHEMA_VERSION,
+        }
+
+    match = LEGACY_AC_LINE_RE.fullmatch(line)
     if not match:
         return None
     fields = match.groupdict()
     if any(RESERVED_FIELD_RE.search(fields[name]) for name in ("given", "when", "then")):
         return None
+    combined = f"{fields['given']}; {fields['when'].strip()}, {fields['then'].strip()}"
     return {
         "id": fields["id"],
         "status": fields["status"],
@@ -101,14 +153,20 @@ def parse_ac_line(line: str) -> AcceptanceCriterion | None:
         "given": fields["given"],
         "when": fields["when"],
         "then": fields["then"],
+        "text": combined,
         "evidence": fields["evidence"],
         "raw": line[2:],
-        "schema_version": AC_SCHEMA_VERSION,
+        "schema_version": AC_SCHEMA_VERSION_LEGACY,
     }
 
 
 def acceptance_lines(text: str) -> list[str]:
-    """Return non-empty lines from the full plan's Acceptance Criteria section."""
+    """Return top-level (non-indented) lines from the Acceptance Criteria section.
+
+    Indented sub-point bullets (``  - ...``) elaborate the AC head above them and
+    are not standalone AC lines, so they are excluded here. Use
+    ``acceptance_sub_points`` to read them.
+    """
     lines: list[str] = []
     in_section = False
     for raw_line in text.splitlines():
@@ -117,9 +175,65 @@ def acceptance_lines(text: str) -> list[str]:
         if heading:
             in_section = heading.group(1) == "Acceptance Criteria"
             continue
-        if in_section and line.strip():
+        if in_section and line.strip() and not line.startswith((" ", "\t")):
             lines.append(line)
     return lines
+
+
+AC_HEAD_RE = re.compile(r"^- (AC-\d{2})\b")
+SUB_POINT_RE = re.compile(r"^\s+-\s+(.+?)\s*$")
+
+
+def acceptance_sub_points(text: str) -> dict[str, list[str]]:
+    """Return ``{ac_id: [sub_point_text, ...]}`` for indented AC sub-points.
+
+    A sub-point is an indented ``- ...`` bullet that follows an AC head line and
+    breaks a long criterion into short, scannable clauses.
+    """
+    out: dict[str, list[str]] = {}
+    in_section = False
+    current: str | None = None
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        heading = HEADING_RE.fullmatch(line.strip())
+        if heading:
+            in_section = heading.group(1) == "Acceptance Criteria"
+            current = None
+            continue
+        if not in_section or not line.strip():
+            continue
+        head = AC_HEAD_RE.match(line)
+        if head and not line.startswith((" ", "\t")):
+            current = head.group(1)
+            out.setdefault(current, [])
+            continue
+        sub = SUB_POINT_RE.match(line)
+        if sub and current:
+            out[current].append(sub.group(1).strip())
+    return {ac_id: points for ac_id, points in out.items() if points}
+
+
+def validate_ac_count(plan_text: str) -> list[str]:
+    """Hard-cap the number of presented AC-## points at AC_PRESENTATION_CAP.
+
+    A senior human QA keeps a UAC to a handful of consolidated points and pushes
+    granular detail into sub-points or a linked full record. More than the cap
+    means the set must be merged, not split.
+    """
+    ac_ids = [
+        head.group(1)
+        for line in acceptance_lines(plan_text)
+        for head in [AC_HEAD_RE.match(line)]
+        if head
+    ]
+    if len(ac_ids) > AC_PRESENTATION_CAP:
+        return [
+            f"Acceptance Criteria has {len(ac_ids)} AC points; the presented UAC must be "
+            f"consolidated to at most {AC_PRESENTATION_CAP}. Merge related criteria into a "
+            "single AC, break each merged AC into short sub-points, and keep any remaining "
+            "granular detail in the linked full-record markdown - do not drop accepted meaning."
+        ]
+    return []
 
 
 def validate_ac_sequence(criteria: list[AcceptanceCriterion]) -> list[str]:

@@ -411,11 +411,11 @@ def test_validator() -> None:
     errs = validate_mod.validate(unquantified_performance)
     check(
         "Performance AC without quantified workload is rejected",
-        any("Performance Given must define a quantified workload" in e for e in errs),
+        any("Performance AC must define a quantified workload" in e for e in errs),
     )
     check(
         "Performance AC without measurable oracle is rejected",
-        any("Performance Then must define a measurable" in e for e in errs),
+        any("Performance AC must define a measurable" in e for e in errs),
     )
 
     quantified_performance = _replace(
@@ -9407,6 +9407,68 @@ def test_uac_linter() -> None:
     print("test_uac_linter: OK")
 
 
+def test_plain_ac_grammar() -> None:
+    """v2 plain grammar, sub-points, legacy tolerance, and the AC-count cap."""
+    ac = ac_contract_mod
+    ul = uac_linter_mod
+
+    plain = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Basic) The DITAVAL editor lists every condition defined "
+        "in the active Folder Profile. Evidence: Jira description GUIDES-14593."
+    )
+    check("plain v2 AC parses", plain is not None)
+    check("plain v2 populates text", plain and plain["text"].startswith("The DITAVAL editor lists"))
+    check("plain v2 has no Given/When leakage", plain and plain["given"] == "" and plain["when"] == "")
+    check("plain v2 evidence captured", plain and plain["evidence"].startswith("Jira description"))
+    check("plain v2 schema version", plain and plain["schema_version"] == ac.AC_SCHEMA_VERSION)
+
+    # A plain criterion must not smuggle the reserved field keywords back in.
+    smuggled = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Basic) Given a profile the editor lists conditions. "
+        "Evidence: Jira."
+    )
+    check("plain v2 rejects a Given-keyword body", smuggled is None)
+
+    # Legacy Given/When/Then still parses for the historical corpus.
+    legacy = ac.parse_ac_line(
+        "- AC-01 [Proposed]: (Basic) Given a preset | When output is generated | "
+        "Then metadata.xml contains the map properties | Evidence: Jira."
+    )
+    check("legacy v1 AC still parses", legacy is not None)
+    check("legacy v1 keeps then field", legacy and legacy["then"].startswith("metadata.xml"))
+    check("legacy v1 schema version", legacy and legacy["schema_version"] == ac.AC_SCHEMA_VERSION_LEGACY)
+
+    # Sub-points: indented bullets attach to the AC head and are not AC lines.
+    plan_with_sub = (
+        "**Acceptance Criteria**\n"
+        "- AC-01 [Proposed]: (Integration) Condition changes in a profile are reflected "
+        "in the DITAVAL editor dropdowns. Evidence: Jira GUIDES-14593.\n"
+        "  - Adding a condition to the Folder Profile makes it appear in the Attribute dropdown.\n"
+        "  - Deleting a condition removes it from the dropdown.\n"
+        "**Expected Behaviour**\n- Known.\n"
+    )
+    heads = ac.acceptance_lines(plan_with_sub)
+    check("acceptance_lines excludes indented sub-points", len(heads) == 1)
+    subs = ac.acceptance_sub_points(plan_with_sub)
+    check("sub-points collected under the AC head", subs.get("AC-01") and len(subs["AC-01"]) == 2)
+
+    # AC-count cap: at most AC_PRESENTATION_CAP presented AC points.
+    under_cap = "**Acceptance Criteria**\n" + "".join(
+        f"- AC-{i:02d} [Proposed]: (Basic) Distinct observable outcome number {i}. Evidence: Jira.\n"
+        for i in range(1, ac.AC_PRESENTATION_CAP + 1)
+    )
+    check("at the cap passes", ac.validate_ac_count(under_cap) == [])
+    over_cap = "**Acceptance Criteria**\n" + "".join(
+        f"- AC-{i:02d} [Proposed]: (Basic) Distinct observable outcome number {i}. Evidence: Jira.\n"
+        for i in range(1, ac.AC_PRESENTATION_CAP + 2)
+    )
+    check("over the cap is flagged by ac_contract", any("consolidated" in p for p in ac.validate_ac_count(over_cap)))
+    check("over the cap is flagged by uac_linter",
+          any("AC_COUNT_CAP" in p for p in ul.validate({}, over_cap)))
+
+    print("test_plain_ac_grammar: OK")
+
+
 def test_human_feedback_delta() -> None:
     hf = human_feedback_delta_mod
 
@@ -10542,6 +10604,7 @@ def main() -> int:
     test_repro_dimension_matrix()
     test_acceptance_synthesizer()
     test_uac_linter()
+    test_plain_ac_grammar()
     test_human_feedback_delta()
     test_feedback_capture()
     test_execution_outcome()

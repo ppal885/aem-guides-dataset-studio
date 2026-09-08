@@ -49,5 +49,13 @@ def project_ac_for_people(
     header_prefix = "- " if header_bullet else ""
     # Clause text is copied verbatim (not capitalized) so a leading lowercase technical
     # token such as largeFileTagCount cannot be corrupted during presentation.
-    sentence = f"{_mid(criterion['given'])}; when {_mid(criterion['when'])}, {_clause(criterion['then'])}"
+    text = str(criterion.get("text") or "").strip()
+    given = str(criterion.get("given") or "").strip()
+    when = str(criterion.get("when") or "").strip()
+    if given and when:
+        # Legacy Given/When/Then record: project the three clauses into one sentence.
+        sentence = f"{_mid(criterion['given'])}; when {_mid(criterion['when'])}, {_clause(criterion['then'])}"
+    else:
+        # Canonical plain criterion: show the verbatim body.
+        sentence = _clause(text or criterion.get("then") or "")
     return f"{header_prefix}{ac_id}{status}: {sentence}"

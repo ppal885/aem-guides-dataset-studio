@@ -12,6 +12,17 @@ def test_clean_acs_produce_no_findings():
     assert _lint_acceptance_criteria(acs) == []
 
 
+def test_ac_count_cap_flagged_over_ten():
+    acs = [f"The entry produces observable outcome number {i} in the output." for i in range(1, 12)]
+    problems = _lint_acceptance_criteria(acs)
+    assert any(p.startswith("AC_COUNT_CAP") for p in problems)
+
+
+def test_ac_count_cap_not_flagged_at_ten():
+    acs = [f"The entry produces observable outcome number {i} in the output." for i in range(1, 11)]
+    assert not any(p.startswith("AC_COUNT_CAP") for p in _lint_acceptance_criteria(acs))
+
+
 def test_vague_behaviour_flagged():
     problems = _lint_acceptance_criteria(["The feature works correctly."])
     assert any(p.startswith("VAGUE_BEHAVIOR") for p in problems)

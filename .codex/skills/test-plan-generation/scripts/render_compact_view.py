@@ -11,6 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from ac_contract import acceptance_sub_points
 from ac_presentation import project_ac_for_people
 from extract_acs import extract
 
@@ -216,8 +217,17 @@ def project(text: str) -> tuple[str, list[str]]:
     if problems:
         return "", problems
 
+    sub_points = acceptance_sub_points(text)
+
+    def _projected_with_sub_points(criterion: dict[str, str]) -> str:
+        head = _acceptance_projection(criterion)
+        points = sub_points.get(criterion["id"], [])
+        if not points:
+            return head
+        return "\n".join([head, *(f"  - {point}" for point in points)])
+
     acceptance_block = "\n\n".join(
-        _acceptance_projection(criterion) for criterion in criteria
+        _projected_with_sub_points(criterion) for criterion in criteria
     )
     output = [
         "**Acceptance Criteria**",

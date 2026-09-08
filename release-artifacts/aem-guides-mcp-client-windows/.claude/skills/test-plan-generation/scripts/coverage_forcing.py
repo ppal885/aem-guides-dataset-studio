@@ -44,7 +44,7 @@ from pathlib import Path
 CATALOG_PATH = Path(__file__).with_name("data") / "ui_feature_surface_catalog.json"
 
 # Keep these mechanical thresholds aligned with scripts/uac_eval/precision.py.
-OVER_DECOMPOSITION_MAX = 12
+OVER_DECOMPOSITION_MAX = 10
 REDUNDANCY_JACCARD = 0.6
 
 _AC_LABEL_RE = re.compile(r"\bAC[-\s]?(\d+)\b", re.IGNORECASE)
@@ -1241,7 +1241,7 @@ def run_self_tests() -> None:
     assert any("code block" in p for p in validate({}, fence)), "code fence in AC must fail"
     # --- over-decomposition ---
     many = nl.join(["**Acceptance Criteria**"] + [f"- AC-{i:02d}: the entry behaves correctly in case {i}." for i in range(1, 14)] + [""])
-    assert any("over-decomposed" in p for p in validate({}, many)), ">12 ACs must be flagged"
+    assert any("over-decomposed" in p for p in validate({}, many)), ">10 ACs must be flagged"
     few = nl.join(["**Acceptance Criteria**"] + [f"- AC-{i}: the entry behaves correctly." for i in range(1, 7)] + [""])
     assert not any("over-decomposed" in p for p in validate({}, few)), "6 ACs must pass"
 

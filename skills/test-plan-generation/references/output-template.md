@@ -8,7 +8,8 @@ Use exactly these sections. Keep every line as a bullet.
 
 After the complete record passes `run_gates.py` and produces a postable hash-bound receipt, render the compact UI with `render_compact_view.py`. Keep all Jira understanding, evidence analysis, code scope, detailed automation proof, and Open Questions in the eleven-section durable artifact. The compact UI contains exactly four headings, in this order: `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, and `Automation Coverage`.
 
-- Project each Acceptance Criterion into three short lines labelled `Starting point`, `Action`, and `Expected result`; do not show `Given`, `When`, `Then`, pipes, status, sphere, evidence, or analysis in the compact UI.
+- Show each Acceptance Criterion as one plain-English line (`AC-##: <criterion>`), optionally with short indented sub-points; do not show `Given`, `When`, `Then`, pipes, status, sphere, evidence, or analysis in the compact UI.
+- Consolidate the presented set to at most ten AC points. If synthesis produced more, merge related criteria into one AC and break it into sub-points; keep any remaining granular detail in the linked full-record markdown. Never drop accepted meaning to hit the cap.
 - Append every validated Regression Areas bullet to `Test Scenarios` as a `P3 [Regression]` scenario with an action and observable expected result.
 - Show only the Jira key and title for validated same-mechanism tickets. Do not expose status, resolution, versions, RCA, similarity analysis, or retrieval notes in the compact UI.
 - Show one main-feature automation verdict plus high-level feature-file/UI or integration/API guidance. Keep exact paths, methods, SHAs, code excerpts, and evidence analysis in the durable artifact.
@@ -23,9 +24,11 @@ After the complete record passes `run_gates.py` and produces a postable hash-bou
 - Evidence boundary: Evidence mode: <full|degraded>; <available evidence sources; every unavailable source and resulting claim restriction; customer field/label conflicts, missing customer profiles, contradictions, and material facts not yet verified>.
 
 **Acceptance Criteria**
-- AC-01 [Confirmed]: (Basic) Given <precondition/input> | When <single trigger/action> | Then <observable outcome> | Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>.
-- AC-02 [Proposed]: (Negative) Given <invalid/unsupported input or wrong state> | When <single trigger/action> | Then <exact observable rejection and unchanged state> | Evidence: <underlying source, never only a graph path ID>.
-- AC-03 [Proposed]: (Integration) Given <evidence-backed adjacent workflow/API/config/output> | When <single trigger/action> | Then <observable coupled-system outcome> | Evidence: <underlying source>.
+- AC-01 [Confirmed]: (Basic) <plain-English acceptance criterion: the setup, action, and observable outcome stated as one direct sentence, no Given/When/Then labels and no pipes>. Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>.
+- AC-02 [Proposed]: (Negative) <plain-English criterion for an invalid/unsupported input and the exact observable rejection with unchanged state>. Evidence: <underlying source, never only a graph path ID>.
+- AC-03 [Proposed]: (Integration) <plain-English criterion for an evidence-backed adjacent workflow/API/config/output and its observable coupled-system outcome>. Evidence: <underlying source>.
+  - <optional sub-point that breaks a long criterion into a short, scannable clause>
+  - <optional sub-point; keep each one paste-safe plain text>
 
 **Expected Behaviour**
 - <Evidence-backed intended behavior, or `Unknown from current evidence`>.
@@ -84,19 +87,19 @@ After the complete record passes `run_gates.py` and produces a postable hash-bou
 - After the gate passes, run `python scripts/render_compact_view.py <full-plan.md> --out <compact-view.md>`.
 - Present only `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, and `Automation Coverage`, in that order, unless the user explicitly asks to see another section or the complete record.
 - Keep `Open Questions` in the validated full record and reveal it only on explicit request.
-- Render Acceptance Criteria as `Starting point`, `Action`, and `Expected result` lines copied verbatim from the verified fields. Keep canonical Given/When/Then labels, status, sphere, and evidence only in the durable artifact and extracted JSON.
+- Render Acceptance Criteria as plain-English `AC-##` lines copied verbatim from the verified record, with optional short sub-points. Keep status, sphere, and evidence only in the durable artifact and extracted JSON.
 - Convert validated Regression Areas deterministically into `P3 [Regression]` scenarios under `Test Scenarios`; do not expose a separate Regression Areas heading.
 - Render only Jira key and title for tickets worth checking; keep all similarity, status, resolution, version, RCA, and retrieval details hidden in the durable artifact.
 - Render the declared main-feature automation verdict and high-level target layer; never expose raw source paths, SHAs, code excerpts, or internal analysis in the compact view.
 - Before an automation-draft agent consumes the plan, run `python scripts/extract_acs.py <full-plan.md> --out <acceptance-criteria.json>`. A nonzero exit blocks handoff; the agent consumes that JSON rather than reparsing prose.
-- Never use the compact projection as an input to extraction, automation, runtime adaptation, or Jira posting. An explicitly approved Jira write uses the strict plan plus the current postable receipt, keeps `[Proposed]` or `[Confirmed]`, and uses the same simple `Starting point` / `Action` / `Expected result` projection. Sphere, canonical labels, and local Evidence paths remain hidden in Jira.
+- Never use the compact projection as an input to extraction, automation, runtime adaptation, or Jira posting. An explicitly approved Jira write uses the strict plan plus the current postable receipt, keeps `[Proposed]` or `[Confirmed]`, and uses the same plain-English one-line `AC-##` projection with optional sub-points. Sphere, canonical labels, and local Evidence paths remain hidden in Jira.
 
 ## Writing Style
 
 - Apply `plain-language-ac-writing.md` to every acceptance criterion before validation.
 - Write like a manual QA engineer: direct action, observable result, no implementation jargon unless needed.
 - State the lifecycle stage in `Scope From Git`: `Pre-Development UAC`, `Implementation Review`, or `Post-Fix Validation`.
-- In the internal record, state the product contract directly through Given, When, and Then. In chat and Jira, show only the three simple presentation labels. Use Verify or Confirm only for tester actions in Test Scenarios.
+- State the product contract as one direct plain-English criterion (setup, action, and observable outcome in a single sentence); do not use Given/When/Then labels or pipes anywhere, including the durable record. Use Verify or Confirm only for tester actions in Test Scenarios.
 - Keep bullets short enough to scan.
 - Put only stage-relevant missing evidence in the section it affects: `Draft blocker: ...`.
 - For pre-development, use `Not applicable — development has not started` for PR, changed-code, and line-count fields; never call these Draft blockers.
@@ -113,7 +116,8 @@ After the complete record passes `run_gates.py` and produces a postable hash-bou
 - Do not use approximate customer timing, topic count, or heap guidance as a hard oracle without an approved SLA or controlled benchmark.
 - For concurrency recovery, assert successful publishing and output integrity separately from bounded terminal failure after retry exhaustion.
 - Customer ticket frequencies describe what is frequently represented or affected in the Jira corpus; they do not prove feature usage or product behaviour.
-- Every internal AC uses the exact `AC-## [Confirmed|Proposed]: (<Sphere>) Given ... | When ... | Then ... | Evidence: <underlying source>.` field order and cites an underlying source. Human-facing projections are never accepted as source. Graph path IDs stay internal traceability metadata.
+- Every internal AC uses the exact `AC-## [Confirmed|Proposed]: (<Sphere>) <plain-English criterion>. Evidence: <underlying source>.` format and cites an underlying source. No Given/When/Then labels or pipes. Human-facing projections are never accepted as source. Graph path IDs stay internal traceability metadata.
+- Keep the presented set at ten AC points or fewer. Break a long AC into short indented sub-points rather than adding more AC lines; push overflow granularity into the linked full-record markdown without losing accepted meaning.
 - Reject unresolved markers, vague/non-finite bounds, implementation-choice menus, and combined terminal outcomes from ACs; move the decision to a stable `OQ-##` record with QA impact.
 
 ## Stage Mapping
@@ -150,8 +154,8 @@ Examples:
 - Evidence boundary: Evidence mode: full; Jira or supplied issue facts were used; implementation and unresolved behavior remain separately identified.
 
 **Acceptance Criteria**
-- AC-01 [Proposed]: (Basic) Given the affected user role and a valid configuration | When the user runs the configured workflow | Then the workflow completes and reaches the documented observable outcome | Evidence: Jira UAC GUIDES-xxxxx.
-- AC-02 [Proposed]: (Negative) Given invalid or unsupported input | When the user submits it to the same workflow | Then the operation is blocked with a clear specific error and no partial state is written | Evidence: Jira description GUIDES-xxxxx.
+- AC-01 [Proposed]: (Basic) The affected user role with a valid configuration runs the configured workflow and it completes at the documented observable outcome. Evidence: Jira UAC GUIDES-xxxxx.
+- AC-02 [Proposed]: (Negative) The same workflow blocks invalid or unsupported input with a clear specific error and writes no partial state. Evidence: Jira description GUIDES-xxxxx.
 
 **Expected Behaviour**
 - AEM Guides should follow the documented configuration rule returned by accepted RAG evidence.

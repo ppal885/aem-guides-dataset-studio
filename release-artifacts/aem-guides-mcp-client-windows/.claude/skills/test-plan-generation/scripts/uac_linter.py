@@ -32,6 +32,11 @@ from __future__ import annotations
 
 import re
 
+try:  # peer import (scripts dir is on sys.path when run via run_gates)
+    from ac_contract import validate_ac_count as _validate_ac_count
+except Exception:  # pragma: no cover - keep the linter usable in isolation
+    _validate_ac_count = None
+
 AC_LINE_RE = re.compile(r"^-\s*(AC-\d+)\b(.*)$")
 THEN_RE = re.compile(r"\|\s*Then\s*(.*?)\s*\|\s*Evidence", re.IGNORECASE | re.DOTALL)
 
@@ -135,6 +140,8 @@ def _validate_block(manifest, plan_ac_ids):
 
 def validate(manifest, plan_text=""):
     problems = list(_duplicate_acs(plan_text))
+    if _validate_ac_count is not None:
+        problems.extend(f"AC_COUNT_CAP: {p}" for p in _validate_ac_count(plan_text))
     if is_present(manifest):
         problems.extend(_validate_block(manifest, set(_plan_acs(plan_text).keys())))
     return problems

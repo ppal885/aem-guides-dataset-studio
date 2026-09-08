@@ -45,7 +45,7 @@ Use this before calling a test plan review-ready.
 - `Understanding From Jira` appears first and contains exactly five bullets beginning `Issue understood:`, `Why it matters: Customer context resolved from Jira:`, `Requested outcome:`, `Lifecycle understood as:`, and `Evidence boundary:`.
 - The compact UI contains exactly four headings in order: `Acceptance Criteria`, `Test Scenarios`, `Jira Tickets Worth Checking`, and `Automation Coverage`; it has no Jira Understanding card, Open Questions section, or fifth heading.
 - Jira understanding, impact analysis, expected behavior, code scope, and evidence reasoning remain in the complete eleven-section durable artifact and do not leak into the compact UI.
-- Compact Acceptance Criteria use three short lines labelled `Starting point`, `Action`, and `Expected result`; `Given`, `When`, `Then`, pipes, status, sphere, and evidence remain hidden and preserved in the durable artifact and extracted AC JSON.
+- Compact Acceptance Criteria show one plain-English line per AC (optionally with short indented sub-points), capped at ten AC points; status, sphere, and evidence remain hidden and preserved in the durable artifact and extracted AC JSON.
 - `Test Scenarios` remains visible and contains deterministic `P3 [Regression]` scenarios projected from every validated Regression Areas bullet.
 - `Jira Tickets Worth Checking` exposes only each validated same-mechanism Jira key and title; status, resolution, versions, RCA, similarity rationale, retrieval notes, and customer metadata remain hidden.
 - `Automation Coverage` exposes one main-feature verdict plus high-level feature-file/UI or integration/API guidance; exact paths, methods, SHAs, and code excerpts remain in the durable artifact and appendix.
@@ -53,7 +53,7 @@ Use this before calling a test plan review-ready.
 - `Why it matters` states canonical customer context and its Jira field/label source; multiple customers remain separate and material conflicts remain visible.
 - Jira facts are collected with Jira MCP when available; pasted Jira, Dynamics/support incident, customer escalation, logs, screenshots, and investigation notes are valid fallback evidence and their source is identified.
 - Acceptance criteria are explicit, or missing AC is marked as a Draft blocker.
-- Every AC matches the canonical `aem-guides-ac-v1` one-line grammar with contiguous IDs, controlled status/sphere values, ordered `Given | When | Then | Evidence` fields, and no extra or multiline prose.
+- Every AC matches the canonical `aem-guides-ac-v2` grammar (`AC-## [status]: (Sphere) <plain-English criterion>. Evidence: <source>.`) with contiguous IDs and controlled status/sphere values, no Given/When/Then labels or pipes, and at most ten AC points; long criteria may carry short indented sub-points.
 - Every AC passes the first-read plain-language check: one purpose, only essential setup in `Given`, one trigger in `When`, and one observable result in `Then`; independent actions or results are split into separate ACs.
 - No AC is only a recap of earlier ACs; each has its own observable product outcome.
 - A PR-only extra behavior is not treated as approved sign-off scope; it remains Proposed and its scope decision is an Open Question unless product authority accepts it.
@@ -66,7 +66,7 @@ Use this before calling a test plan review-ready.
 - Tester-facing ACs use plain words and exact screen names. Code, paths, implementation jargon, and performance internals move to a `Note for developer:` bullet unless source-fidelity requires the exact identifier and the tradeoff is explicitly reviewed.
 - Existing or AI-supplied AC reviews use the complete manifest and `run_gates.py`; no conversational-only review is reported as gated.
 - Splitting a complex accepted UAC never drops or weakens its meaning: every source clause remains mapped through the accepted-UAC fidelity audit.
-- Human-facing AC projections are rejected as durable input by validation, extraction, and gate execution. Jira posting derives its simple presentation from fresh strict extraction; no consumer reconstructs missing status, sphere, Given/When/Then, or evidence from display text.
+- Human-facing AC projections are rejected as durable input by validation, extraction, and gate execution. Jira posting derives its simple presentation from fresh strict extraction; no consumer reconstructs missing status, sphere, criterion text, or evidence from display text.
 - Every AC is decidable: no pending/conditional marker, unbound qualitative limit, non-finite negative, implementation-choice menu, or combined terminal-state outcome remains. Numbers quantify the named bound rather than an unrelated retry or dataset value.
 - `extract_acs.py` emits complete structured records with no warnings before any AI automation-draft handoff; the downstream agent consumes that JSON rather than reparsing prose.
 - Destructive operational procedures are excluded from product ACs and appear only as incident-recovery validation with observable restoration outcomes.

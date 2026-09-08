@@ -1121,6 +1121,7 @@ _VAGUE_AC_RE = re.compile(
     re.I,
 )
 _LINT_MAX_AC_WORDS = 45  # aligns with precision.py VERBOSE_WORDS
+_LINT_MAX_AC_COUNT = 10  # aligns with the skill's ac_contract.AC_PRESENTATION_CAP
 
 
 def _lint_acceptance_criteria(statements: list[str]) -> list[str]:
@@ -1155,6 +1156,13 @@ def _lint_acceptance_criteria(statements: list[str]) -> list[str]:
                 f"EXCESSIVE_LENGTH: an acceptance criterion runs {words} words — split "
                 f"or tighten it (\"{text[:50]}...\")"
             )
+    ac_count = len([s for s in statements if s.strip()])
+    if ac_count > _LINT_MAX_AC_COUNT:
+        problems.append(
+            f"AC_COUNT_CAP: {ac_count} acceptance criteria — the presented UAC should be "
+            f"consolidated to at most {_LINT_MAX_AC_COUNT}; merge related criteria (senior-QA "
+            "style) and keep granular detail as sub-points or in the linked full record"
+        )
     return problems
 
 

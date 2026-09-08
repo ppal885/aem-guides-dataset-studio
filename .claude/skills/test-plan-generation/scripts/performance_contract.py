@@ -456,17 +456,22 @@ def validate_plan_alignment(manifest: dict[str, Any], text: str) -> list[str]:
 
     scenario_lines = _section_lines(text, "Test Scenarios")
     for criterion in performance_criteria:
-        if not QUANTIFIED_WORKLOAD_RE.search(criterion["given"]):
+        # Plain (v2) ACs carry the whole criterion in ``text``; legacy (v1) ACs
+        # split it across given/then. Check the workload against the setup text and
+        # the oracle against the outcome text, falling back to the full body.
+        workload_text = str(criterion.get("given") or "") or str(criterion.get("text") or "")
+        oracle_text = str(criterion.get("then") or "") or str(criterion.get("text") or "")
+        if not QUANTIFIED_WORKLOAD_RE.search(workload_text):
             failures.append(
-                f"{criterion['id']} Performance Given must contain a quantified workload "
+                f"{criterion['id']} Performance AC must contain a quantified workload "
                 "(for example topic count, user count, job count, or iterations)"
             )
         if not (
-            QUANTIFIED_VALUE_RE.search(criterion["then"])
-            or COMPARATIVE_ORACLE_RE.search(criterion["then"])
+            QUANTIFIED_VALUE_RE.search(oracle_text)
+            or COMPARATIVE_ORACLE_RE.search(oracle_text)
         ):
             failures.append(
-                f"{criterion['id']} Performance Then must contain a measurable numeric or comparative oracle"
+                f"{criterion['id']} Performance AC must contain a measurable numeric or comparative oracle"
             )
         mapped = [
             line

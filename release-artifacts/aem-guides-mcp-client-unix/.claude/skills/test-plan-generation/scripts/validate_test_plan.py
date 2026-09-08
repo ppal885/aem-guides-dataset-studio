@@ -97,7 +97,9 @@ def _section_map(lines: list[str]) -> tuple[dict[str, list[tuple[int, str]]], li
         if current is None:
             errors.append(f"line {number}: content appears outside the required sections")
             continue
-        if not line.startswith("- "):
+        # Top-level bullets start with '- '; indented '- ' bullets are sub-points
+        # that break a long acceptance criterion into short, scannable clauses.
+        if not line.lstrip().startswith("- "):
             errors.append(f"line {number}: section content must be a Markdown bullet starting with '- '")
         sections[current].append((number, line))
     if tuple(seen) != SECTIONS:
@@ -141,6 +143,17 @@ def validate(text: str) -> list[str]:
     )
     parsed_acceptance: list[tuple[int, dict[str, str]]] = []
     for number, line in acceptance:
+        # Indented sub-points elaborate the AC head above them; they are not
+        # standalone AC lines, so they are not parsed as canonical criteria, but
+        # they are shown to people and must stay paste-safe plain text.
+        if line.startswith((" ", "\t")):
+            body = line.lstrip()[2:] if line.lstrip().startswith("- ") else line.strip()
+            if "`" in body or "**" in body or "](" in body:
+                errors.append(
+                    f"line {number}: acceptance sub-point must be paste-safe plain text "
+                    "(no backticks, bold, or Markdown links)"
+                )
+            continue
         criterion = parse_ac_line(line)
         if criterion is None:
             errors.append(
@@ -157,17 +170,19 @@ def validate(text: str) -> list[str]:
             for problem in validate_ac_readability(criterion)
         )
         if criterion["sphere"] == "Performance":
-            if not QUANTIFIED_WORKLOAD_RE.search(criterion["given"]):
+            workload_text = str(criterion.get("given") or "") or str(criterion.get("text") or "")
+            oracle_text = str(criterion.get("then") or "") or str(criterion.get("text") or "")
+            if not QUANTIFIED_WORKLOAD_RE.search(workload_text):
                 errors.append(
-                    f"line {number}: Performance Given must define a quantified workload "
+                    f"line {number}: Performance AC must define a quantified workload "
                     "(for example topic count, user count, job count, or iterations)"
                 )
             if not (
-                QUANTIFIED_VALUE_RE.search(criterion["then"])
-                or COMPARATIVE_ORACLE_RE.search(criterion["then"])
+                QUANTIFIED_VALUE_RE.search(oracle_text)
+                or COMPARATIVE_ORACLE_RE.search(oracle_text)
             ):
                 errors.append(
-                    f"line {number}: Performance Then must define a measurable numeric or "
+                    f"line {number}: Performance AC must define a measurable numeric or "
                     "source-backed comparative oracle; if no approved threshold exists, keep "
                     "performance conditional in Open Questions"
                 )
