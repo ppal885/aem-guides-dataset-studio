@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from app.db.session import SessionLocal
@@ -68,6 +69,7 @@ from app.services.doc_retriever_service import retrieve_relevant_docs, format_do
 from app.services.hierarchical_retriever import hierarchical_retrieve, format_bundle_for_prompt
 from app.models.chunk_metadata import ChunkMetadata, ScoredChunk, RetrievalBundle
 from app.services.dita_knowledge_retriever import retrieve_dita_knowledge
+from app.services.dita_evidence_routing import requires_dita_ot_documentation, requires_indexed_dita_evidence
 from app.services.learned_qa_service import (
     format_learned_qa_for_prompt,
     strip_humanized_chat_prefix,
@@ -470,6 +472,8 @@ def _should_include_structural_dita_rag(question: str) -> bool:
     # DITA-OT error codes / build failures: spec RAG is noise, not signal
     if _DITA_OT_ERROR_PATTERN.search(text):
         return False
+    if requires_indexed_dita_evidence(text):
+        return True
     # AEM-product publishing questions (Native PDF, output preset, AEM Guides UI):
     # the structural DITA spec is not the relevant evidence source here
     _aem_product_ctx = re.search(
@@ -1526,7 +1530,7 @@ def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[s
         # in "role of OASIS catalogs", "toc" in "table of contents", "step" in "processing
         # step") must NOT hijack routing into a single-attribute lookup. Use RAG instead.
         is_ot_internals = _prefer_rag_synthesis(user_content)
-        if not is_broad_map and not is_behavior_question and not is_ot_internals:
+        if not is_broad_map and not is_behavior_question and not is_ot_internals and not requires_indexed_dita_evidence(user_content):
             attribute_name = _extract_requested_dita_attribute(user_content)
             if attribute_name:
                 requests.append(("lookup_dita_attribute", {"attribute_name": attribute_name}))
@@ -1582,6 +1586,10 @@ def _grounded_tool_requests(answer_mode: str, user_content: str) -> list[tuple[s
             requests.append(("lookup_aem_guides", {"query": user_content}))
         if _should_include_tenant_knowledge_for_aem_query(user_content):
             requests.append(("search_tenant_knowledge", {"query": user_content}))
+        if requires_indexed_dita_evidence(user_content) and not any(
+            name == "lookup_dita_spec" for name, _ in requests
+        ):
+            requests.append(("lookup_dita_spec", {"query": user_content}))
     return requests
 
 
@@ -1590,14 +1598,24 @@ _OT_SOURCE_DOMAIN_RE = re.compile(
     r"\bdita.?ot\b|\bpdf2\b|\btranstype\b|\bbuild\s+param|\bplugin\b|\bargs\.\w+\b|\barg(?:s|ument)?s?\b.{0,30}\bpublish\b",
     re.IGNORECASE,
 )
-_OT_OFFICIAL_LABEL_RE = re.compile(
-    r"args\.\w+|"  # "args.draft", "args.input"
-    r"(?:dita.?ot|dita-ot)\s+(?:base|dev|build|ref|param|version)|"  # "DITA-OT base parameters"
-    r"dita.?ot\s+\d+\.|"  # "DITA-OT 3.7"
-    r"dita-ot\.org",  # literal URL domain in label
-    re.IGNORECASE,
-)
-_OT_OFFICIAL_URL_RE = re.compile(r"dita-ot\.org", re.IGNORECASE)
+
+
+def _is_official_ot_url(url: str) -> bool:
+    """Check source provenance, not words copied from a question or document title.
+
+    This identifies the publisher only; relevance and sufficiency still need scoring.
+    """
+    try:
+        parsed = urlsplit(url or "")
+        return (
+            parsed.scheme in {"http", "https"}
+            and parsed.hostname in {"dita-ot.org", "www.dita-ot.org"}
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port in {None, 80, 443}
+        )
+    except ValueError:
+        return False
 
 
 def _needs_broad_map_construct_answer(query: str) -> bool:
@@ -1621,7 +1639,7 @@ def _apply_docs_source_domain_gate(
     For OT queries, dita_spec element-only evidence is insufficient — OT docs are required.
     """
     debug: dict = {}
-    source_domain = "dita_ot" if _OT_SOURCE_DOMAIN_RE.search(query) or re.search(r"\bargs\.\w+\b", query, re.IGNORECASE) else "general"
+    source_domain = "dita_ot" if _OT_SOURCE_DOMAIN_RE.search(query) or requires_dita_ot_documentation(query) else "general"
     debug["source_domain"] = source_domain
 
     if source_domain != "dita_ot":
@@ -1636,15 +1654,19 @@ def _apply_docs_source_domain_gate(
 
     _NON_OT_SOURCES = {"dita_spec", "dita_graph"}
     for c in candidates:
-        is_element_only = c.source in _NON_OT_SOURCES and not _OT_OFFICIAL_LABEL_RE.search(c.label or "")
+        is_official = _is_official_ot_url(c.url)
+        # Retrieved spec chunks can support DITA semantics alongside engine docs.
+        # They never establish PDF2/Native PDF implementation behavior by themselves.
+        is_semantic_context = c.metadata.get("evidence_role") == "DITA_SEMANTICS_ONLY"
+        is_element_only = c.source in _NON_OT_SOURCES and not is_official and not is_semantic_context
         if is_element_only:
             rejected.append({
                 "label": c.label,
                 "source": c.source,
-                "reason": "DITA spec element evidence is not enough for a DITA-OT build/configuration question",
+                "reason": "DITA spec element evidence is not enough for a DITA-OT processing question",
             })
             continue
-        if _OT_OFFICIAL_URL_RE.search(c.url or "") or _OT_OFFICIAL_LABEL_RE.search(c.label or ""):
+        if is_official:
             official_found = True
         selected.append(c)
 
@@ -1664,7 +1686,7 @@ class _ContextualDocsQuery:
 def _build_contextual_docs_query(session_id: str, query: str) -> _ContextualDocsQuery:
     """Build a contextual docs query enriched with session history."""
     prior = _recent_user_messages_before_latest(session_id, query, limit=5)
-    source_domain = "dita_ot" if _OT_SOURCE_DOMAIN_RE.search(query) or _DITA_OT_PATTERN.search(query) else "general"
+    source_domain = "dita_ot" if _OT_SOURCE_DOMAIN_RE.search(query) or requires_dita_ot_documentation(query) else "general"
 
     # When prior messages mention draft-comment and we're in OT context, reformulate question
     if source_domain == "dita_ot" and any(_DRAFT_COMMENT_RE.search(m) for m in prior):
@@ -1733,7 +1755,12 @@ def _tool_result_to_grounding_candidates(
             label=str(source.get("label") or source.get("title") or "").strip(),
             text=str(source.get("snippet") or source.get("summary") or "").strip(),
             url=str(source.get("url") or source.get("uri") or "").strip(),
-            metadata={"title": str(source.get("label") or source.get("title") or "").strip()},
+            metadata={
+                "title": str(source.get("label") or source.get("title") or "").strip(),
+                **({"evidence_role": "DITA_SEMANTICS_ONLY"}
+                   if tool_name == "lookup_dita_spec" and source.get("evidence_role") == "DITA_SEMANTICS_ONLY"
+                   else {}),
+            },
         )
 
     has_positive_evidence = False
@@ -1961,20 +1988,23 @@ async def _build_grounded_tool_evidence_pack(
         tool_results[tool_name] = result
         candidates.extend(_tool_result_to_grounding_candidates(tool_name, result))
 
-    if not candidates:
-        return None, {"strategy": "tool_grounding", "tool_names": list(tool_results)}, tool_results
-
     # Apply source domain gate — filter out wrong-domain candidates for OT queries
-    gated_candidates, gate_debug = _apply_docs_source_domain_gate(user_content, candidates)
+    gated_candidates, gate_debug = _apply_docs_source_domain_gate(effective_content, candidates)
     source_domain = gate_debug.get("source_domain", "general")
+    if (not candidates and source_domain != "dita_ot"
+            and not requires_indexed_dita_evidence(effective_content)):
+        return None, {"strategy": "tool_grounding", "tool_names": list(tool_results)}, tool_results
     source_domain_mismatch = gate_debug.get("source_domain_mismatch", False)
     rejected_candidates = gate_debug.get("rejected_candidates", [])
     official_docs_retry = False
+    official_docs_retry_attempted = False
 
-    # For OT queries: retry lookup_aem_guides when no official OT docs (dita-ot.org) were found yet
+    # Use the existing documentation tool even if initial routing only asked the spec.
+    # Preserve processing intent: not every OT question is a command-line parameter question.
     _has_official_ot_evidence = gate_debug.get("official_evidence_found", False)
-    if source_domain == "dita_ot" and not _has_official_ot_evidence and "lookup_aem_guides" in tool_results:
-        ot_retry_query = f"DITA-OT command-line parameter: {user_content}"
+    if source_domain == "dita_ot" and not _has_official_ot_evidence:
+        official_docs_retry_attempted = True
+        ot_retry_query = f"DITA-OT documentation: {effective_content}"
         retry_result = await run_tool(
             "lookup_aem_guides",
             {"query": ot_retry_query},
@@ -1984,26 +2014,39 @@ async def _build_grounded_tool_evidence_pack(
         )
         tool_results["lookup_aem_guides"] = retry_result
         retry_candidates = _tool_result_to_grounding_candidates("lookup_aem_guides", retry_result)
-        if retry_candidates:
-            gated_candidates.extend(retry_candidates)
-            source_domain_mismatch = False
-            official_docs_retry = True
-
-    if not gated_candidates:
-        gated_candidates = candidates  # fallback: use all candidates if gate removed everything
+        retry_selected, retry_debug = _apply_docs_source_domain_gate(effective_content, retry_candidates)
+        gated_candidates.extend(retry_selected)
+        rejected_candidates.extend(retry_debug.get("rejected_candidates", []))
+        source_domain_mismatch = source_domain_mismatch or retry_debug.get("source_domain_mismatch", False)
+        _has_official_ot_evidence = retry_debug.get("official_evidence_found", False)
+        official_docs_retry = _has_official_ot_evidence
+        # Keep bounded diagnostics; do not duplicate raw document/error payloads in
+        # the user-visible grounding event. Both sets of selected evidence stay above.
+        gate_debug["documentation_retry"] = {
+            "query": ot_retry_query,
+            "candidate_count": len(retry_candidates),
+            "selected_count": len(retry_selected),
+        }
 
     evidence_pack = build_evidence_pack(
-        query=user_content,
+        query=effective_content,
         tenant_id=tenant_id,
         candidates=gated_candidates,
     )
-    if official_docs_retry:
-        # Official OT docs found after retry — treat as grounded
-        evidence_pack.decision.status = "grounded"
-        evidence_pack.decision.confidence = max(float(evidence_pack.decision.confidence or 0.0), 0.88)
-        evidence_pack.decision.reason = "Official DITA-OT documentation found after targeted retry."
-        evidence_pack.decision.thin_evidence = False
-    elif answer_mode == "grounded_dita_answer":
+    # A retry or a recognized publisher is not proof that the question was answered.
+    # Preserve normal relevance/conflict scoring. Never restore rejected candidates.
+    official_evidence_in_pack = any(_is_official_ot_url(chunk.uri) for chunk in evidence_pack.chunks)
+    if source_domain == "dita_ot" and not official_evidence_in_pack:
+        if evidence_pack.decision.status != "conflict":
+            if evidence_pack.decision.status == "grounded":
+                evidence_pack.decision.status = "partial"
+            evidence_pack.decision.reason = (
+                "Official DITA-OT documentation is missing from the evidence pack. "
+                "Other sources do not establish DITA-OT processing behavior."
+            )
+        evidence_pack.decision.thin_evidence = True
+    elif (source_domain != "dita_ot" and answer_mode == "grounded_dita_answer"
+          and not requires_indexed_dita_evidence(effective_content)):
         attr_result = tool_results.get("lookup_dita_attribute") or {}
         spec_result = tool_results.get("lookup_dita_spec") or {}
         if _has_strong_direct_dita_tool_evidence(attr_result) or _has_strong_direct_dita_tool_evidence(spec_result):
@@ -2023,7 +2066,15 @@ async def _build_grounded_tool_evidence_pack(
         "source_domain": source_domain,
         "source_domain_mismatch": source_domain_mismatch,
         "official_docs_retry": official_docs_retry,
-        "retrieval_debug": {"rejected_candidates": rejected_candidates},
+        "retrieval_debug": {
+            "rejected_candidates": rejected_candidates,
+            "official_docs_retry_attempted": official_docs_retry_attempted,
+            "official_evidence_found": _has_official_ot_evidence,
+            "official_evidence_in_pack": official_evidence_in_pack,
+            "dita_spec_retrieval": (tool_results.get("lookup_dita_spec") or {}).get("retrieval") or {},
+            **({"documentation_retry": gate_debug["documentation_retry"]}
+               if "documentation_retry" in gate_debug else {}),
+        },
     }
     return evidence_pack, retrieval_meta, tool_results
 

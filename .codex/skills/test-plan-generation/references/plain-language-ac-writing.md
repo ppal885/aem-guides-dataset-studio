@@ -7,18 +7,18 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 ## Required Style
 
 - Use the canonical one-line format `AC-## [Confirmed|Proposed]: (<Sphere>) <plain-English criterion>. Evidence: <source>.` in the validated record. Never use Given/When/Then labels or pipes anywhere - not in the record, chat, Jira, or the linked markdown.
-- Write the criterion as one direct sentence that carries the setup, the action, and the observable outcome. Break a long criterion into short indented sub-points instead of stacking clauses.
-- Never show sphere, status, or Evidence to the user. Chat and Jira show `AC-##: <criterion>` (plus optional sub-points); Jira additionally keeps `[Proposed]` or `[Confirmed]`.
+- Lead with the concrete product outcome in a short sentence. Include only the condition needed to understand it; do not squeeze a setup procedure, action sequence, and result into one sentence. Use short indented sub-points for required cases.
+- Never show sphere, status, or Evidence in human-facing AC text. Chat and Jira show `AC-##: <criterion>` plus optional sub-points. Keep `[Proposed]` / `[Confirmed]` and evidence in the validated record only.
 - Consolidate to at most ten AC points in the presented UAC, but consolidation is LOSS-LESS: it reorganizes coverage, it never removes a checkable point. List every distinct point first; after merging, each one must survive as a clause of a merged AC, a sub-point under it, or an entry in the linked full-record markdown. If you synthesized more (say twenty), merge related criteria into a single AC the way a senior human QA does and express the merged detail as sub-points. Never drop a point to hit the cap, and never split one idea into many thin ACs to pad the list.
 - Give each AC one purpose.
-- Do not add a summary AC that repeats outcomes already covered by earlier criteria. Use Test Scenarios to show the combined DITA/non-DITA or positive/negative matrix.
+- Do not add a summary AC that repeats earlier outcomes with words such as "all", "everywhere", or "consistently". Move any genuinely new, evidence-backed consumer or condition into the relevant AC's explicit coverage; never discard it along with the repeated sentence.
 - State only the minimum setup the criterion needs.
-- Name one trigger or user action.
+- Name the relevant condition, trigger, or user action from the source; do not invent an action for a state-based requirement.
 - State one observable result.
 - Keep the criterion to one sentence a reader can scan; if it needs more, move detail into short sub-points.
 - More than 28 words, more than two sentences, or many stacked clauses in a single AC sentence is a loud review finding; an AC whose observable result runs over 45 words is a hard failure - split it or use sub-points.
-- Split the AC when two results can pass or fail independently.
-- Do not remove accepted meaning to meet a length target. Split a long accepted UAC into smaller Confirmed ACs and preserve every source-clause mapping.
+- Split when the required behavior or expected outcome differs, not merely because two test cases can fail independently. Different languages, entry points, or surfaces may share one AC when they have the same contract; a different fallback, failure outcome, timing, ordering, or permission rule must stay distinguishable.
+- Do not remove accepted meaning to meet a length or count target. Use short sub-points for equivalent cases, split genuinely different contracts, and preserve every source-clause mapping. The AC count follows the outcomes, not a desired list length.
 - Prefer short words: use, before, after, if, and for.
 - Keep exact product names, UI labels, API paths, configuration keys, enum values, and error codes when they matter.
 - Avoid semicolons, double negatives, parenthetical explanations, and long comma-separated lists.
@@ -27,6 +27,8 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 - Keep long examples, extension lists, implementation explanations, and parenthetical exceptions outside the tester sentence. Put them in Test data, a scenario, or a `Note for developer:` bullet.
 - Name the exact screen. Move code, file paths, implementation jargon, and performance internals to a `Note for developer:` bullet in an existing technical section instead of tester-facing AC text. Preserve a source-mandated exact identifier when fidelity requires it, and expose the readability tradeoff for review.
 - Preserve human reviewer wording as the semantic baseline. Simplify its sentence structure without changing the actor, scope, UI label, timing, fallback, exact path, or product outcome.
+- Use familiar QE verbs such as show, use, keep, and remove when they describe the result precisely. Keep documented product names such as Language Variable; do not replace them with invented technical synonyms or unnecessary qualifiers. Do not substitute a DITA element name for a visible label or CSS-generated text unless it really is that DITA element.
+- Check negative wording against the allowed fallback and configuration cases. "Do not use X" is valid only under the stated condition; it must not reject X when the approved fallback legitimately selects it.
 - If inspected code conflicts with human feedback, keep the requested meaning and add an Open Question that states the conflict. Do not silently replace the requirement with current implementation.
 - Do not refer to another criterion such as AC-04 inside the criterion text. State the required fallback or result directly so each criterion stands alone.
 - Review an existing or AI-supplied AC set through the full evidence manifest and `run_gates.py` pipeline. A conversational review alone is not a gated result.
@@ -50,10 +52,21 @@ Do not manually paraphrase this view. Keep the criterion text verbatim so techni
 Before accepting an AC, ask:
 
 - Can I explain its purpose in one short sentence?
-- Does it name only one trigger?
+- Is its condition, trigger, or action clear without inventing a new step?
 - Does it state only one result?
 - Can any shorter common word replace a formal phrase?
-- Would two smaller ACs be easier to test?
+- Does another AC already require this outcome? If so, what unique condition or check must survive the merge?
+- Are these different contracts, or just different cases of one contract?
+- Can QE identify what to inspect and what it must show without translating implementation terminology?
+
+## Group outcomes without hiding coverage
+
+Before rewriting, list each existing outcome and its named cases. Group by the required behavior and result, not by repeated words or a common product area. Keep an internal old-to-new mapping so a merged sentence cannot silently remove scope.
+
+- Keep material language, configuration, surface, entry-point and consumer cases visible in the AC's short sub-points. Detailed setup and individual executions belong in mapped Test Scenarios; do not hide reviewer-requested scope only in a separate artifact.
+- Keep fix validation separate from preservation of behavior that already works. Regression checks may share an AC when they protect the same invariant, with every named check retained. Do not move an in-scope check out of acceptance merely to shorten the list.
+- Do not assume equivalent behavior from similar names. If the evidence gives different outcomes, keep them separate; if applicability is undecided, preserve the Open Question instead of asserting parity.
+- For example, if approved source text requires the same displayed value in two named views, write the value rule once and list both views underneath. If another clause defines what appears when the value is missing, retain that fallback as a distinct contract. These are writing examples, not new product requirements.
 
 ## Examples
 
@@ -108,8 +121,8 @@ Easy-to-read records in the canonical plain format:
 A senior human QA wrote that UAC as a 3-line Scope plus seven one-line ACs, and it read far clearer than a longer AI draft. Apply these five rules so a UAC reads like that:
 
 1. **Draw the boundary up front when it is non-obvious.** A short Scope line (output/surface in scope, source constructs in scope, what is explicitly the only thing supported) is a good option when the boundary is easy to get wrong - e.g. "Scope: Native PDF; Map/Bookmap topicmeta/bookmeta; only the image element is supported." This is optional, not mandatory: in the measured corpus only ~2% of human UACs use an explicit "Scope:" block, so do not force one - most UACs draw the boundary implicitly through tight, well-scoped ACs. Prefer the boundary being clear over a ceremonial header.
-2. **One concrete, checkable thing per AC.** No compound clauses, no "whether X or Y", no second independent result. If it needs an "and" between two testable outcomes, split it.
-3. **Decide specifics; do not ask them.** Where a draft would raise an Open Question ("which image formats?"), a senior QA writes the decided answer ("gif, jpg, bmp, png, svg, tiff"). Reserve Open Questions for a genuine product decision QE cannot assert - not for a value you can resolve from evidence or a sensible enumerated default.
+2. **One concrete product contract per AC.** Keep the main sentence short. Group same-outcome cases as named sub-points; split different behavior or results. The words "and" or "whether" alone do not decide whether two cases need separate ACs.
+3. **Resolve specifics from evidence.** Replace a question such as "which image formats?" with the supported set only when the current requirement or documentation establishes it. Do not invent a sensible-looking default. Reserve Open Questions for decisions the evidence cannot settle.
 4. **Name the real artifact or pipeline the tester checks, not an abstract mechanism.** "The image is present in the generated temporary files" beats "the engine downloads the image" (vague). "No tag loss in the merged HTML" beats "content is preserved". Ground each AC in the concrete thing a tester can open and verify.
 5. **Shorter is the target, not a side effect.** Prefer seven tight one-liners over thirteen padded ones. Do not enumerate every construct variant as its own AC when the Scope already bounds them; push variants into Test Scenarios.
 

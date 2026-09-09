@@ -73,7 +73,10 @@ def test_route_prompt_keeps_native_pdf_dita_ot_args_on_aem_product_path():
     assert route.legacy_answer_mode == "grounded_aem_answer"
     assert policy.action == "answer_directly"
     assert chat_service._determine_answer_mode(prompt) == "grounded_aem_answer"
-    assert chat_service._should_include_structural_dita_rag(prompt) is False
+    # Product routing must not suppress the semantic investigation when the
+    # question explicitly asks about DITA-OT processing. It is still an AEM
+    # answer, not an assertion that Native PDF uses the PDF2 renderer.
+    assert chat_service._should_include_structural_dita_rag(prompt) is True
 
 
 def test_is_dita_ot_parameter_query_matches_typo_arguments():

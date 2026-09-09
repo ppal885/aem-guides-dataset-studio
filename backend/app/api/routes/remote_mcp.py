@@ -548,6 +548,8 @@ async def _ask_dita_expert(arguments: dict[str, Any]) -> str:
                 )
             if grounding.get("reason"):
                 grounding_lines.append(f"- Reason: {grounding.get('reason')}")
+            from app.services.dita_evidence_routing import dita_retrieval_receipt
+            grounding_lines.extend(dita_retrieval_receipt(grounding))
             if source_lines:
                 grounding_lines.append("- Sources:")
                 grounding_lines.extend(source_lines)

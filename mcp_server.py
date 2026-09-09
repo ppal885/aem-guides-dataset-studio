@@ -3469,7 +3469,11 @@ def _is_explicit_dita_construct_reference(question: str, construct: str) -> bool
 
 
 def _should_use_dita_construct_fast_path(question: str, constructs: list[str]) -> bool:
+    from app.services.dita_evidence_routing import requires_indexed_dita_evidence
+
     if not constructs or len(constructs) > 3:
+        return False
+    if requires_indexed_dita_evidence(question):
         return False
     if _DITA_PRODUCT_EVIDENCE_QUESTION.search(question or ""):
         return False
@@ -3570,7 +3574,10 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
         parts: list[str] = []
         grounding: dict | None = None
         with _tool_stdout_guard():
-            async for event in cs.chat_turn(session_id, question, tenant_id=tenant_id, human_prompts=True):
+            async for event in cs.chat_turn(
+                session_id, question, tenant_id=tenant_id, human_prompts=True,
+                allow_tool_routing=False,
+            ):
                 if not isinstance(event, dict):
                     continue
                 if event.get("type") == "grounding":
@@ -3607,6 +3614,8 @@ async def ask_dita_expert(question: str, tenant_id: str = "kone") -> str:
             grounding_lines.append(f"- Evidence chunks: {evidence_count}")
         if reason:
             grounding_lines.append(f"- Reason: {reason}")
+        from app.services.dita_evidence_routing import dita_retrieval_receipt
+        grounding_lines.extend(dita_retrieval_receipt(grounding))
         if source_lines:
             grounding_lines.append("- Sources:")
             grounding_lines.extend(source_lines)

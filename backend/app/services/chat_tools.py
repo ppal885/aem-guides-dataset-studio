@@ -28,6 +28,7 @@ from app.services.prompt_data_generation_planner import (
     render_prompt_generation_plan,
 )
 from app.services.generation_intent_router_service import route_generation_intent
+from app.services.dita_evidence_routing import requires_indexed_dita_evidence
 
 # Control characters and null bytes - strip from tool output
 _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -1582,7 +1583,7 @@ async def execute_lookup_dita_spec(
     query: str,
     elements: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Look up DITA spec details for elements/attributes using seed + graph knowledge."""
+    """Use the registry for definitions; query indexed evidence for processing/spec questions."""
     from app.services.dita_knowledge_retriever import (
         retrieve_dita_knowledge,
         retrieve_dita_graph_knowledge,
@@ -1595,14 +1596,15 @@ async def execute_lookup_dita_spec(
     try:
         explicit_elements = _extract_dita_elements_from_query(raw_query, explicit_elements=elements)
         attribute_names = _extract_dita_attributes_from_query(raw_query)
+        needs_indexed_evidence = requires_indexed_dita_evidence(raw_query)
 
-        if len(attribute_names) == 1:
+        if len(attribute_names) == 1 and not needs_indexed_evidence:
             # Single attribute query — delegate to the attribute catalog directly
             attr_result = await execute_lookup_dita_attribute(attribute_names[0])
             if not attr_result.get("error"):
                 return attr_result
 
-        if len(attribute_names) >= 2:
+        if len(attribute_names) >= 2 and not needs_indexed_evidence:
             structured_attribute_comparison = _build_dita_attribute_comparison_guidance(raw_query, attribute_names)
             if structured_attribute_comparison:
                 structured_attribute_comparison["sources"] = [
@@ -1616,7 +1618,10 @@ async def execute_lookup_dita_spec(
                 ]
                 return structured_attribute_comparison
 
-        structured_element_guidance = _build_dita_element_guidance(raw_query, explicit_elements or elements)
+        structured_element_guidance = (
+            _build_dita_element_guidance(raw_query, explicit_elements or elements)
+            if not needs_indexed_evidence else None
+        )
         if structured_element_guidance:
             if str(structured_element_guidance.get("query_type") or "").strip() in {"element_comparison", "element_family_overview"}:
                 structured_element_guidance["sources"] = [
@@ -1648,7 +1653,8 @@ async def execute_lookup_dita_spec(
                     ]
             return structured_element_guidance
 
-        chunks = retrieve_dita_knowledge(raw_query, k=5)
+        retrieval: dict[str, Any] = {}
+        chunks = retrieve_dita_knowledge(raw_query, k=5, diagnostics=retrieval)
         graph_text = ""
         if elements:
             graph_text = retrieve_dita_graph_knowledge(elements=elements)
@@ -1659,16 +1665,20 @@ async def execute_lookup_dita_spec(
                 {
                     "element_name": c.get("element_name"),
                     "text_content": (c.get("text_content") or "")[:800],
+                    "source_url": c.get("source_url") or "",
+                    "chunk_id": c.get("chunk_id") or "",
                 }
                 for c in chunks[:5]
             ],
             "graph_knowledge": graph_text,
             "query": raw_query,
+            "retrieval": retrieval,
             "sources": [
                 {
                     "label": str(c.get("element_name") or c.get("title") or "dita_spec").strip(),
                     "snippet": _first_sentence(str(c.get("text_content") or "").strip()),
                     "url": str(c.get("source_url") or "").strip(),
+                    "evidence_role": "DITA_SEMANTICS_ONLY",
                 }
                 for c in chunks[:5]
                 if isinstance(c, dict)

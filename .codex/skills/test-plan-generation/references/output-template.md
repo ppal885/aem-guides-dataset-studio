@@ -24,7 +24,7 @@ After the complete record passes `run_gates.py` and produces a postable hash-bou
 - Evidence boundary: Evidence mode: <full|degraded>; <available evidence sources; every unavailable source and resulting claim restriction; customer field/label conflicts, missing customer profiles, contradictions, and material facts not yet verified>.
 
 **Acceptance Criteria**
-- AC-01 [Confirmed]: (Basic) <plain-English acceptance criterion: the setup, action, and observable outcome stated as one direct sentence, no Given/When/Then labels and no pipes>. Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>.
+- AC-01 [Confirmed]: (Basic) <short plain-English product outcome with only the necessary condition; no Given/When/Then labels and no pipes>. Evidence: <underlying Jira, URL/chunk, DITA source, Figma node, attachment, or inspected code citation>.
 - AC-02 [Proposed]: (Negative) <plain-English criterion for an invalid/unsupported input and the exact observable rejection with unchanged state>. Evidence: <underlying source, never only a graph path ID>.
 - AC-03 [Proposed]: (Integration) <plain-English criterion for an evidence-backed adjacent workflow/API/config/output and its observable coupled-system outcome>. Evidence: <underlying source>.
   - <optional sub-point that breaks a long criterion into a short, scannable clause>
@@ -92,14 +92,14 @@ After the complete record passes `run_gates.py` and produces a postable hash-bou
 - Render only Jira key and title for tickets worth checking; keep all similarity, status, resolution, version, RCA, and retrieval details hidden in the durable artifact.
 - Render the declared main-feature automation verdict and high-level target layer; never expose raw source paths, SHAs, code excerpts, or internal analysis in the compact view.
 - Before an automation-draft agent consumes the plan, run `python scripts/extract_acs.py <full-plan.md> --out <acceptance-criteria.json>`. A nonzero exit blocks handoff; the agent consumes that JSON rather than reparsing prose.
-- Never use the compact projection as an input to extraction, automation, runtime adaptation, or Jira posting. An explicitly approved Jira write uses the strict plan plus the current postable receipt, keeps `[Proposed]` or `[Confirmed]`, and uses the same plain-English one-line `AC-##` projection with optional sub-points. Sphere, canonical labels, and local Evidence paths remain hidden in Jira.
+- Never use the compact projection as an input to extraction, automation, runtime adaptation, or Jira posting. An explicitly approved Jira write uses the strict plan plus the current postable receipt and the same plain-English one-line `AC-##` projection with optional sub-points. Keep `[Proposed]` / `[Confirmed]` in the validated record, not in Jira. Sphere, canonical labels, and local Evidence paths remain hidden in Jira.
 
 ## Writing Style
 
 - Apply `plain-language-ac-writing.md` to every acceptance criterion before validation.
 - Write like a manual QA engineer: direct action, observable result, no implementation jargon unless needed.
 - State the lifecycle stage in `Scope From Git`: `Pre-Development UAC`, `Implementation Review`, or `Post-Fix Validation`.
-- State the product contract as one direct plain-English criterion (setup, action, and observable outcome in a single sentence); do not use Given/When/Then labels or pipes anywhere, including the durable record. Use Verify or Confirm only for tester actions in Test Scenarios.
+- Lead with a short plain-English product outcome and its necessary condition; do not pack setup steps into the sentence. Retain same-outcome cases in short sub-points and map their execution steps to Test Scenarios. Do not use Given/When/Then labels or pipes anywhere, including the durable record. Use Verify or Confirm only for tester actions in Test Scenarios.
 - Keep bullets short enough to scan.
 - Put only stage-relevant missing evidence in the section it affects: `Draft blocker: ...`.
 - For pre-development, use `Not applicable — development has not started` for PR, changed-code, and line-count fields; never call these Draft blockers.

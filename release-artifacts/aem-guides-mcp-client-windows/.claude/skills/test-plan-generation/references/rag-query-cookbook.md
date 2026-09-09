@@ -80,6 +80,19 @@ For publishing path/name substitutions, use `references/output-path-variables-ev
 Retrieve the variable's permitted target fields as well as its value source. Do not import
 Language Variable fallback rules or infer undocumented handling of missing metadata.
 
+For publishing scope or task management, use `references/output-generation-overview-evidence.md`.
+Retrieve the requested output/engine and the relevant detailed source after the overview.
+Its Publish Dashboard and LwDITA references are discovery anchors, not proof that every
+engine supports every output, selective-publishing path or cancellation outcome. Retrieve
+the separate privilege paragraph when roles matter; it is absent from the dashboard chunk.
+
+For Map Collection, use `references/map-collection-publishing-evidence.md`. Retrieve
+membership/locale association, preset enablement, generation selection, queued/running
+restrictions and bulk metadata separately as relevant. Query Document State common
+allowed choices and File Properties synchronization when metadata is affected. Nearby
+New Map Collection results are not interchangeable evidence; collection membership
+removal does not establish repository deletion. One source hit is not full-page coverage.
+
 For Native PDF TOC and booklist questions, use `references/bookmap-toc-native-pdf-evidence.md`.
 Retrieve source-structure ordering separately from template layout selection and ordinary
 DITA-map inclusion controls. Do not infer bookmap control support from a matching label

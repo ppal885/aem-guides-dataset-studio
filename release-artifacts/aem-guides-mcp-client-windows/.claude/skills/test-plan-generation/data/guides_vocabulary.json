@@ -14,6 +14,16 @@
   ],
   "advise": [
     {
+      "id": "native-pdf-retained-html-location",
+      "pattern": "\\btemporary\\s+html(?:\\s+files?)?\\b",
+      "wrong": "in the temporary HTML",
+      "correct": "in merged.html inside Retain temporary files",
+      "message": "For a Native PDF check of the retained merged.html artifact, write 'In merged.html inside Retain temporary files'. If inspecting a different artifact, name that actual file instead; do not rename all temporary HTML to merged.html. Retain temporary files is a setting, not a folder. This is terminology guidance only, not an extra acceptance requirement.",
+      "source": "human-correction",
+      "source_context": "Human terminology correction in the current Native PDF UAC review",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
       "id": "run-workflow",
       "pattern": "run'?s?\\s+workflow|workflow\\s+(state|node|record|details)",
       "wrong": "run workflow / workflow state",
@@ -224,6 +234,8 @@
     "Merge PDFs included in the TOC",
     "Embed used fonts",
     "Retain temporary files",
+    "merged.html",
+    "merged.html inside Retain temporary files",
     "PDF conformance",
     "File properties",
     "HTML5 output preset",
@@ -272,9 +284,39 @@
     "Profile Extract Path",
     "Site path",
     "AEM Site Name",
-    "PDF File Name"
+    "PDF File Name",
+    "Publish Dashboard",
+    "LwDITA",
+    "Maps and Presets",
+    "Configure Metadata",
+    "Asset Metadata",
+    "Document State"
   ],
   "canonical_term_sources": [
+    {
+      "terms": ["Maps and Presets", "Configure Metadata", "Asset Metadata", "Document State"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-use-map-collection-output-generation",
+      "evidence_ids": ["aem_ingest_7e0f224af1_1", "aem_ingest_7e0f224af1_5", "aem_ingest_7e0f224af1_9", "aem_ingest_7e0f224af1_10"],
+      "evidence_images": ["https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/media_11dc657f93b67396556e3fe5552047889f391eb67.png", "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/media_136728d1c92a80a9bfa6462fb5ba50ed1ed951873.png"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/map-collection-publishing-evidence.md",
+      "scope": "Text-verified and visually inspected Map Collection tab, bulk metadata action/page, and document-state field. Reuse existing Map Collection vocabulary. These names do not import unrelated Assets, Sites or Forms features or establish equivalence with New Map Collection. Documentation verification is not Human approval or an automatic acceptance requirement."
+    },
+    {
+      "terms": ["Publish Dashboard", "LwDITA"],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output",
+      "evidence_ids": ["aem_ingest_57c1930e9c_1"],
+      "review_status": "DOCUMENT_VERIFIED",
+      "reference": "references/output-generation-overview-evidence.md",
+      "scope": "Text-verified publishing task surface and map/topic content type. No article images exist. The page also says Publishing Dashboard; do not infer equivalence with Map dashboard or Bulk Publish dashboard. Overview documentation does not establish an engine-format compatibility matrix, Human approval, or an automatic acceptance requirement."
+    },
+    {
+      "terms": ["merged.html", "merged.html inside Retain temporary files"],
+      "source": "human-correction",
+      "source_context": "Human terminology correction in the current Native PDF UAC review",
+      "review_status": "HUMAN_APPROVED",
+      "scope": "Human-approved wording from the UAC review for inspecting Native PDF merged.html obtained using Retain temporary files. The setting is not a literal directory. Do not infer this filename for other output formats or artifacts, a required HTML tag replacement, or any additional acceptance behavior."
+    },
     {
       "terms": ["Destination Path", "Site path", "AEM Site Name", "PDF File Name"],
       "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-use-variables",

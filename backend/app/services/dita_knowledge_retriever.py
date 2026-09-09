@@ -271,24 +271,36 @@ def _get_dita_chunks_for_embedding(session=None) -> list[dict]:
     return _load_seed()
 
 
-def _retrieve_dita_chromadb(query_text: str, k: int) -> Optional[list[dict]]:
+def _retrieve_dita_chromadb(query_text: str, k: int, diagnostics: Optional[dict] = None) -> Optional[list[dict]]:
     """Retrieve DITA chunks from ChromaDB dita_spec collection. Returns None if unavailable or empty."""
-    if not is_chroma_available() or not is_embedding_available():
+    trace = diagnostics if diagnostics is not None else {}
+    trace.update(collection=CHROMA_COLLECTION_DITA_SPEC, indexed_query_executed=False)
+    if not is_chroma_available():
+        trace["indexed_status"] = "CHROMA_UNAVAILABLE"
+        return None
+    if not is_embedding_available():
+        trace["indexed_status"] = "EMBEDDING_UNAVAILABLE"
         return None
     if get_collection_count(CHROMA_COLLECTION_DITA_SPEC) == 0:
+        trace["indexed_status"] = "EMPTY_COLLECTION"
         return None
     try:
         query_emb = embed_query(query_text)
         if query_emb is None:
+            trace["indexed_status"] = "EMBEDDING_UNAVAILABLE"
             return None
         emb_list = query_emb.tolist() if hasattr(query_emb, "tolist") else list(query_emb)
+        trace["indexed_query_executed"] = True
         rows = query_collection(
             CHROMA_COLLECTION_DITA_SPEC,
             query_embedding=emb_list,
             k=k,
         )
         if not rows:
+            trace["indexed_status"] = "EMPTY_RESULT"
             return None
+        trace["indexed_status"] = "RESULTS"
+        trace["indexed_result_count"] = len(rows)
         result = []
         for row in rows:
             doc = row.get("document") or ""
@@ -301,14 +313,17 @@ def _retrieve_dita_chromadb(query_text: str, k: int) -> Optional[list[dict]]:
                 "element_name": "dita_spec",
                 "content_type": "spec",
                 "text_content": doc,
-                "source_url": source_url or "https://docs.oasis-open.org/dita/v1.2/spec/DITA1.2-spec.pdf",
+                "source_url": source_url,
+                "chunk_id": row.get("id") or "",
+                "retrieval_source": "CHROMA",
             })
         logger.info_structured(
-            "DITA knowledge from ChromaDB (DITA 1.2 PDF)",
+            "DITA knowledge from ChromaDB spec corpus",
             extra_fields={"source": "chromadb_dita_spec", "count": len(result)},
         )
         return result
     except Exception as e:
+        trace["indexed_status"] = "ERROR"
         logger.warning_structured(
             "DITA ChromaDB retrieval failed, falling back",
             extra_fields={"error": str(e)},
@@ -366,6 +381,8 @@ def retrieve_dita_knowledge(
     query_text: str,
     k: Optional[int] = None,
     session=None,
+    *,
+    diagnostics: Optional[dict] = None,
 ) -> list[dict]:
     """
     Retrieve DITA spec chunks relevant to query.
@@ -374,10 +391,17 @@ def retrieve_dita_knowledge(
     Returns [{element_name, content_type, text_content, source_url}].
     """
     k = k or DITA_KNOWLEDGE_RETRIEVAL_K
+    trace = diagnostics if diagnostics is not None else {}
+    trace.update(collection=CHROMA_COLLECTION_DITA_SPEC, indexed_query_executed=False,
+                 mode="NONE", result_count=0)
     if not query_text or not str(query_text).strip():
         return []
 
-    chroma_results = _retrieve_dita_chromadb(query_text, k)
+    # Preserve the existing two-argument contract for callers without diagnostics.
+    chroma_results = (
+        _retrieve_dita_chromadb(query_text, k, diagnostics=trace)
+        if diagnostics is not None else _retrieve_dita_chromadb(query_text, k)
+    )
     if chroma_results is not None:
         seed_hits = _search_seed(query_text, k=max(2, k // 2))
         merged = list(chroma_results)
@@ -403,6 +427,7 @@ def retrieve_dita_knowledge(
                     scored.append((combined, chunk))
                 scored.sort(key=lambda x: -x[0])
                 merged = [c for _, c in scored]
+        trace.update(mode="CHROMA_HYBRID", result_count=len(merged[:k]))
         return merged[:k]
 
     logger.info_structured(
@@ -411,6 +436,7 @@ def retrieve_dita_knowledge(
     )
     emb_results = _retrieve_dita_embedding(query_text, k)
     if emb_results is not None:
+        trace.update(mode="EMBEDDING_FALLBACK", result_count=len(emb_results))
         return emb_results
 
     db_session = session
@@ -447,6 +473,7 @@ def retrieve_dita_knowledge(
                     "text_content": c.text_content,
                     "source_url": c.source_url,
                 })
+            trace.update(mode="DB_LEXICAL_FALLBACK", result_count=len(results))
             return results
     except Exception as e:
         logger.warning_structured(
@@ -457,7 +484,9 @@ def retrieve_dita_knowledge(
         if own_session and db_session:
             db_session.close()
 
-    return _search_seed(query_text, k)
+    results = _search_seed(query_text, k)
+    trace.update(mode="SEED_LEXICAL_FALLBACK", result_count=len(results))
+    return results
 
 
 # Known DITA elements for hint extraction (subset from seed; graph has full set at runtime)

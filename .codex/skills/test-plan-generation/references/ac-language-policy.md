@@ -20,6 +20,10 @@ rules, including the merge-safety invariant.
 - Merge overlapping ACs when the customer-visible contract is identical; **never**
   merge if it hides a distinct material configuration / lifecycle / identity /
   consumer / ordering / failure / negative boundary.
+- Separate contract identity from test-case identity: two named variants can fail
+  independently yet require the same outcome. Preserve those cases explicitly in
+  short AC sub-points and mapped scenarios. Keep genuinely different outcomes
+  distinct; follow the old-to-new coverage mapping in `plain-language-ac-writing.md`.
 
 ## FluffyJaws boundary
 

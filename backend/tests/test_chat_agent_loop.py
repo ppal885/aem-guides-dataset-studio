@@ -575,6 +575,13 @@ async def test_dita_ot_pdf_draft_followup_uses_official_docs_and_llm(monkeypatch
 @pytest.mark.anyio
 async def test_dita_ot_tool_grounding_retries_official_docs_before_abstaining(monkeypatch):
     calls = {"lookup_aem_guides": 0}
+    scored_decisions = []
+    original_build_pack = chat_service.build_evidence_pack
+
+    def record_scored_pack(**kwargs):
+        pack = original_build_pack(**kwargs)
+        scored_decisions.append(pack.decision.to_dict())
+        return pack
 
     async def fake_run_tool(name: str, params: dict, **_kwargs):
         if name == "lookup_dita_spec":
@@ -615,6 +622,7 @@ async def test_dita_ot_tool_grounding_retries_official_docs_before_abstaining(mo
         raise AssertionError(f"Unexpected tool {name}")
 
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
+    monkeypatch.setattr(chat_service, "build_evidence_pack", record_scored_pack)
 
     pack, meta, _results = await chat_service._build_grounded_tool_evidence_pack(
         answer_mode="grounded_dita_answer",
@@ -627,7 +635,9 @@ async def test_dita_ot_tool_grounding_retries_official_docs_before_abstaining(mo
     assert calls["lookup_aem_guides"] == 2
     assert meta["official_docs_retry"] is True
     assert meta["source_domain"] == "dita_ot"
-    assert pack.decision.status == "grounded"
+    # Official provenance alone must not override relevance, thin evidence or conflicts.
+    assert meta["retrieval_debug"]["official_evidence_in_pack"] is True
+    assert pack.decision.to_dict() == scored_decisions[0]
     assert any("args.draft" in chunk.content for chunk in pack.chunks)
 
 
