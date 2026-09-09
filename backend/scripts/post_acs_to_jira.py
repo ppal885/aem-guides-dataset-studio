@@ -9,10 +9,11 @@ This is deliberately a two-key operation:
    run, including a fail-closed read of Jira's current AC field.
 
 The compact rendering is never used as the posting source. Jira text is
-projected from canonical ``aem-guides-ac-v1`` records as simple Starting point,
-Action, and Expected result lines. ID and review status remain visible. Sphere,
-the canonical Given/When/Then labels, and the local Evidence locator remain in
-the hash-bound artifacts and are deliberately omitted from Jira.
+projected from strict v1/v2 AC records, preserving their sub-points. Status,
+sphere and evidence locators remain internal. Applying also requires a completed
+canonical result for the exact manifest whose promoted statements match these
+ACs. Compatibility receipts alone remain dry-run only. --field-only preserves
+all other Jira fields and never adds a comment.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from dotenv import load_dotenv
 
 _BACKEND = Path(__file__).resolve().parent.parent
 _REPO_ROOT = _BACKEND.parent
-_CANONICAL_SKILL_SCRIPTS = _REPO_ROOT / "skills" / "test-plan-generation" / "scripts"
+_CANONICAL_SKILL_SCRIPTS = _REPO_ROOT / ".codex" / "skills" / "test-plan-generation" / "scripts"
 _CANONICAL_EXTRACTOR = _CANONICAL_SKILL_SCRIPTS / "extract_acs.py"
 _CANONICAL_RENDERER = _CANONICAL_SKILL_SCRIPTS / "render_compact_view.py"
 
@@ -42,7 +43,7 @@ sys.path.insert(0, str(_BACKEND))
 load_dotenv(_BACKEND / ".env")
 
 GATE_RECEIPT_SCHEMA = "aem-guides-gate-receipt-v1"
-AC_SCHEMA = "aem-guides-ac-v1"
+AC_SCHEMAS = {"aem-guides-ac-v1", "aem-guides-ac-v2"}
 AC_FIELD = "customfield_13400"
 QE_ASSIGNEE_FIELD = "customfield_18512"
 REQUIRED_ARTIFACTS = ("plan", "manifest", "combined", "compact", "extracted_acs")
@@ -73,6 +74,18 @@ def _load_ac_projector() -> Callable[..., str]:
 _PROJECT_AC_FOR_PEOPLE = _load_ac_projector()
 
 
+def _skill_module(filename: str):
+    # Filenames are fixed by this script, never supplied by a receipt or CLI input.
+    spec = importlib.util.spec_from_file_location(
+        "jira_post_" + filename.removesuffix(".py"), _CANONICAL_SKILL_SCRIPTS / filename
+    )
+    if spec is None or spec.loader is None:
+        raise PostingSafetyError("canonical skill module unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @dataclass(frozen=True)
 class VerifiedPostPayload:
     """Immutable local payload produced before any Jira client is constructed."""
@@ -87,6 +100,8 @@ class VerifiedPostPayload:
     criteria: tuple[dict[str, str], ...]
     acceptance_criteria_text: str
     expected_current_ac_sha256: str | None
+    canonical_result_path: Path | None = None
+    canonical_result_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -205,6 +220,7 @@ def _fresh_strict_criteria(plan_path: Path) -> list[dict[str, str]]:
         "given",
         "when",
         "then",
+        "text",
         "evidence",
         "raw",
         "schema_version",
@@ -214,9 +230,9 @@ def _fresh_strict_criteria(plan_path: Path) -> list[dict[str, str]]:
             raise PostingSafetyError(
                 f"canonical AC record {index} does not have the exact structured field set"
             )
-        if row.get("schema_version") != AC_SCHEMA:
+        if row.get("schema_version") not in AC_SCHEMAS:
             raise PostingSafetyError(
-                f"canonical AC record {index} schema_version must be {AC_SCHEMA}"
+                f"canonical AC record {index} has an unsupported schema_version"
             )
         if row.get("status") not in {"Proposed", "Confirmed"}:
             raise PostingSafetyError(f"canonical AC record {index} has an invalid status")
@@ -281,6 +297,7 @@ def verify_gate_receipt(
     combined_path: str | Path,
     receipt_path: str | Path,
     expected_current_ac_sha256: str | None = None,
+    canonical_result_path: str | Path | None = None,
 ) -> VerifiedPostPayload:
     """Verify all local posting evidence before any Jira client can exist.
 
@@ -383,7 +400,27 @@ def verify_gate_receipt(
             "compact artifact does not equal a fresh canonical rendering of the plan"
         )
 
-    acceptance_text = "\n\n".join(_jira_ac_projection(row) for row in fresh_criteria)
+    sub_points = _skill_module("ac_contract.py").acceptance_sub_points(
+        verified_paths["plan"].read_text(encoding="utf-8")
+    )
+    acceptance_text = "\n\n".join(
+        "\n".join([
+            _jira_ac_projection(row),
+            *(f"  - {point}" for point in sub_points.get(row["id"], [])),
+        ])
+        for row in fresh_criteria
+    )
+    result_path = None
+    result_hash = None
+    if canonical_result_path is not None:
+        result_path = _resolve_cli_file(canonical_result_path, label="canonical result")
+        result_hash = _sha256_file(result_path)
+        _verify_canonical_result(result_path, manifest, issue, fresh_criteria, sub_points)
+        _skill_module("skill_bundle_fingerprint.py").verify(
+            receipt.get("validator"), expected_root=_CANONICAL_SKILL_SCRIPTS.parent
+        )
+        if _sha256_file(result_path) != result_hash:
+            raise PostingSafetyError("canonical result changed during verification")
     guard = _receipt_expected_current_hash(receipt, expected_current_ac_sha256)
     return VerifiedPostPayload(
         issue=issue,
@@ -396,7 +433,134 @@ def verify_gate_receipt(
         criteria=tuple(fresh_criteria),
         acceptance_criteria_text=acceptance_text,
         expected_current_ac_sha256=guard,
+        canonical_result_path=result_path,
+        canonical_result_sha256=result_hash,
     )
+
+
+def _verify_canonical_result(
+    path: Path, manifest: dict, issue: str, criteria: list[dict], sub_points: dict
+) -> None:
+    """Validate the existing runtime contract; never promote or regenerate an AC.
+
+    Local artifacts are not an authentication mechanism. This CLI still requires
+    explicit Human authorization and uses only the configured Jira identity.
+    """
+    from app.core.schemas_canonical_test_plan_runtime import (
+        AcceptanceCandidate, AcceptancePromotionDecision, CANONICAL_STAGE_ORDER,
+        CoverageDisposition, EvidenceSourceType, GenerationResult, GateStatus, PromotionStatus,
+        CandidateTerminalDisposition, stable_sha256,
+    )
+    from app.services.test_plan_runtime_adapters import LEGACY_COMPATIBILITY_PROJECTOR
+
+    raw = _read_json_object(path, "canonical result")
+    if not isinstance(raw.get("output_sha256"), str) or not SHA256_RE.fullmatch(raw["output_sha256"]):
+        raise PostingSafetyError("canonical result must contain its output hash")
+    try:
+        result = GenerationResult.model_validate(raw)
+    except ValueError as exc:
+        raise PostingSafetyError("canonical runtime envelope is invalid") from exc
+    if not LEGACY_COMPATIBILITY_PROJECTOR.is_postable(result):
+        raise PostingSafetyError("canonical runtime is not completed and postable")
+    plan = result.structured_plan
+    if (
+        result.output_kind != "test_plan" or plan is None
+        or plan.jira_key != issue or result.output_payload.get("jira_key") != issue
+    ):
+        raise PostingSafetyError("canonical result issue or structured plan does not match")
+    if (
+        [row.stage for row in result.trace.stage_trace] != list(CANONICAL_STAGE_ORDER)
+        or any(row.status != "completed" for row in result.trace.stage_trace)
+        or not _receipt_timestamp_is_valid(result.trace.completed_at)
+    ):
+        raise PostingSafetyError("canonical stage trace is incomplete")
+    required_gates = {stage for stage in CANONICAL_STAGE_ORDER if stage.value.endswith("Gate")}
+    gates = result.gate_decisions
+    gate_data = [row.model_dump(mode="json") for row in gates]
+    if (
+        {row.gate for row in gates} != required_gates or len(gates) != len(required_gates)
+        or any(row.status != GateStatus.PASSED or row.failures for row in gates)
+        or gate_data != result.output_payload.get("gate_decisions")
+        or gate_data != [row.model_dump(mode="json") for row in plan.gate_decisions]
+    ):
+        raise PostingSafetyError("canonical gate decisions are missing or inconsistent")
+    # The runtime already retains the whole manifest as CODEX_MANIFEST evidence.
+    # Compare its canonical content hash rather than inventing another envelope API.
+    manifest_matches = [
+        row for row in result.evidence_bundle.records
+        if row.source_type == EvidenceSourceType.CODEX_MANIFEST
+        and row.content_sha256 == stable_sha256(manifest)
+    ]
+    if len(manifest_matches) != 1:
+        raise PostingSafetyError("canonical result is not bound to this exact manifest")
+    candidates = [AcceptanceCandidate.model_validate(row) for row in result.output_payload.get("acceptance_candidates", [])]
+    promotions = [AcceptancePromotionDecision.model_validate(row) for row in result.output_payload.get("promotion_decisions", [])]
+    candidate_by_id = {row.candidate_id: row for row in candidates}
+    if len(candidate_by_id) != len(candidates) or len({p.candidate_id for p in promotions}) != len(promotions):
+        raise PostingSafetyError("duplicate canonical candidate or promotion identity")
+    promoted = [row for row in promotions if row.status == PromotionStatus.PROMOTED]
+    promoted_ids = [row.candidate_id for row in promoted]
+    if not promoted or set(promoted_ids) != set(plan.promoted_candidate_ids):
+        raise PostingSafetyError("canonical promoted candidate lineage does not match")
+    statements = []
+    for decision in promoted:
+        candidate = candidate_by_id.get(decision.candidate_id)
+        if candidate is None or not all((
+            decision.authority_supported, decision.scope_established,
+            decision.observable, decision.exact_values_supported,
+        )) or decision.contradicts_human_contract:
+            raise PostingSafetyError("canonical promotion lacks supporting verdicts")
+        if (
+            not candidate.in_scope or not candidate.observable or candidate.unresolved_decision_ids
+            or candidate.regression_only or candidate.implementation_mechanics_only
+            or not candidate.exact_values_supported or candidate.contradicts_human_contract
+            or decision.resulting_disposition not in {
+                CoverageDisposition.ACCEPTANCE_CONTRACT,
+                CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+            }
+        ):
+            raise PostingSafetyError("canonical candidate is unresolved or outside scope")
+        if not any(
+            row.canonical_candidate_id == candidate.candidate_id
+            and row.final_disposition == CandidateTerminalDisposition.AC
+            and row.promotion_status == PromotionStatus.PROMOTED
+            for row in plan.candidate_lifecycle
+        ) or not any(
+            row.canonical_candidate_id == candidate.candidate_id
+            and row.final_disposition == CandidateTerminalDisposition.AC
+            and row.section_key == "acceptance_contract"
+            for row in plan.renderer_decisions
+        ):
+            raise PostingSafetyError("canonical candidate lacks terminal renderer lineage")
+        statements.append(candidate.statement)
+    sections = [s for s in plan.sections if s.section_key == "acceptance_contract"]
+    if len(sections) != 1 or sections[0].items != statements:
+        raise PostingSafetyError("canonical acceptance section differs from promoted statements")
+    projected_statements = [
+        "\n".join([
+            _jira_ac_projection(row).split(": ", 1)[1],
+            *(f"  - {point}" for point in sub_points.get(row["id"], [])),
+        ])
+        for row in criteria
+    ]
+    if projected_statements != statements:
+        raise PostingSafetyError(
+            "approved AC wording/sub-points differ from canonical promoted statements; "
+            "do not replace, drop or auto-approve either version"
+        )
+
+
+def _reverify_for_apply(payload: VerifiedPostPayload) -> None:
+    if payload.canonical_result_path is None:
+        raise PostingSafetyError("--apply requires --canonical-result; compatibility receipt is dry-run only")
+    fresh = verify_gate_receipt(
+        key=payload.issue, plan_path=payload.plan_path, manifest_path=payload.manifest_path,
+        combined_path=payload.combined_path, receipt_path=payload.receipt_path,
+        expected_current_ac_sha256=payload.expected_current_ac_sha256,
+        canonical_result_path=payload.canonical_result_path,
+    )
+    if fresh != payload:
+        raise PostingSafetyError("posting artifacts changed after verification")
 
 
 def _read_current_acceptance_criteria(client: Any, key: str) -> str:
@@ -450,12 +614,16 @@ def execute_verified_post(
     apply: bool = False,
     label: str = "Needs_Human_Review",
     no_qe_tag: bool = False,
+    no_comment: bool = False,
+    field_only: bool = False,
     client_factory: Callable[[], Any] | None = None,
 ) -> PostResult:
     """Read Jira state and optionally apply an already locally verified payload."""
 
     if not LABEL_RE.fullmatch(label or ""):
         raise PostingSafetyError("review label contains unsupported characters")
+    if apply:
+        _reverify_for_apply(payload)
     if client_factory is None:
         # Imported only after verify_gate_receipt has returned to the caller.
         from app.services.jira_client import JiraClient
@@ -485,7 +653,7 @@ def execute_verified_post(
         + "-" * 60
     )
     print(intended)
-    print("-" * 60 + f"\nLabel: {label}")
+    print("-" * 60 + ("\nField only: labels and comments unchanged" if field_only else f"\nLabel: {label}"))
 
     if not apply:
         print("\nDry-run (default): Jira was read, but nothing was written. Pass --apply to write.")
@@ -507,7 +675,7 @@ def execute_verified_post(
         )
 
     qe = None
-    if not no_qe_tag and mode == "first post":
+    if not (no_qe_tag or no_comment or field_only) and mode == "first post":
         qe = _qe_assignee_username(client, payload.issue)
     if mode == "update":
         comment = (
@@ -525,21 +693,30 @@ def execute_verified_post(
 
     # Jira has no conditional-update primitive here. Re-read immediately before
     # mutation and reject any state change since the first read.
+    _reverify_for_apply(payload)
     immediately_before_write = _read_current_acceptance_criteria(client, payload.issue)
     if jira_acceptance_criteria_sha256(immediately_before_write) != current_hash:
         raise PostingSafetyError(
             "Jira Acceptance Criteria changed during this command; nothing was written"
         )
 
-    client.set_acceptance_criteria(
-        payload.issue,
-        intended,
-        review_label=label,
-        review_comment=comment,
-    )
+    if field_only:
+        client.update_issue(payload.issue, fields={AC_FIELD: intended})
+    else:
+        client.set_acceptance_criteria(
+            payload.issue, intended, review_label=label,
+            review_comment=None if no_comment else comment,
+        )
+    try:
+        posted = _read_current_acceptance_criteria(client, payload.issue)
+    except PostingSafetyError as exc:
+        raise PostingSafetyError("write requested but read-back failed; verify Jira before retrying") from exc
+    if posted != intended:
+        raise PostingSafetyError("write requested but read-back differs; verify Jira before retrying")
     print(
         f"\nOK: {mode} applied to {payload.issue} Acceptance Criteria field "
-        f"({len(payload.criteria)} criteria); label {label}; comment added."
+        f"({len(payload.criteria)} criteria); read-back verified; "
+        + ("no comment added." if no_comment or field_only else "comment added.")
     )
     return PostResult(
         issue=payload.issue,
@@ -559,6 +736,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--combined", required=True)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--gate-receipt", required=True)
+    parser.add_argument("--canonical-result", help="completed canonical GenerationResult JSON; required for --apply")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true", help="explicitly authorize the Jira write")
     mode.add_argument(
@@ -568,6 +746,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--label", default="Needs_Human_Review")
     parser.add_argument("--no-qe-tag", action="store_true")
+    parser.add_argument("--no-comment", action="store_true", help="do not add any Jira comment")
+    parser.add_argument("--field-only", action="store_true", help="change only the AC field; no labels or comments")
     parser.add_argument(
         "--expected-current-ac-sha256",
         default=None,
@@ -588,12 +768,15 @@ def main(argv: list[str] | None = None) -> int:
             combined_path=args.combined,
             receipt_path=args.gate_receipt,
             expected_current_ac_sha256=args.expected_current_ac_sha256,
+            canonical_result_path=args.canonical_result,
         )
         execute_verified_post(
             payload,
             apply=args.apply,
             label=args.label,
             no_qe_tag=args.no_qe_tag,
+            no_comment=args.no_comment,
+            field_only=args.field_only,
         )
     except Exception as exc:  # noqa: BLE001 - every uncertainty must stop the write
         print(f"ERROR: {exc}", file=sys.stderr)

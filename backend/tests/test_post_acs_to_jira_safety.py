@@ -134,9 +134,21 @@ class FakeJira:
         return {"key": key, "fields": {poster.QE_ASSIGNEE_FIELD: {"name": "qe-user"}}}
 
     def set_acceptance_criteria(
-        self, key: str, text: str, *, review_label: str, review_comment: str
+        self, key: str, text: str, *, review_label: str, review_comment: str | None
     ) -> None:
         self.writes.append((key, text, review_label, review_comment))
+        self.current = text
+
+    def update_issue(self, key: str, *, fields: dict) -> None:
+        assert set(fields) == {poster.AC_FIELD}
+        self.writes.append((key, fields[poster.AC_FIELD], None, None))
+        self.current = fields[poster.AC_FIELD]
+
+
+@pytest.fixture
+def transport_only(monkeypatch):
+    """Legacy transport unit tests; canonical binding is tested separately below."""
+    monkeypatch.setattr(poster, "_reverify_for_apply", lambda payload: None)
 
 
 def test_valid_receipt_uses_strict_records_and_preserves_status(tmp_path: Path) -> None:
@@ -149,14 +161,10 @@ def test_valid_receipt_uses_strict_records_and_preserves_status(tmp_path: Path) 
     assert [row["status"] for row in payload.criteria] == ["Proposed", "Confirmed"]
     # Non-negotiable: the [Proposed]/[Confirmed] status tag is NEVER written to Jira.
     assert payload.acceptance_criteria_text == (
-        "AC-01\n"
-        "- Starting point: an author has an editable topic.\n"
-        "- Action: the author saves the topic.\n"
-        "- Expected result: the saved value is visible after the topic is reopened.\n\n"
-        "AC-02\n"
-        "- Starting point: an author lacks edit permission.\n"
-        "- Action: the author attempts to save the topic.\n"
-        "- Expected result: the save is rejected and the stored topic remains unchanged."
+        "AC-01: an author has an editable topic; when the author saves the topic, "
+        "the saved value is visible after the topic is reopened.\n\n"
+        "AC-02: an author lacks edit permission; when the author attempts to save the topic, "
+        "the save is rejected and the stored topic remains unchanged."
     )
     assert "[Proposed]" not in payload.acceptance_criteria_text
     assert "[Confirmed]" not in payload.acceptance_criteria_text
@@ -289,7 +297,7 @@ def test_expected_current_hash_contract_is_validated_locally(tmp_path: Path) -> 
         _verify(paths, expected_current_ac_sha256="NOT-A-HASH")
 
 
-def test_default_is_read_only_and_apply_preserves_statuses(tmp_path: Path) -> None:
+def test_default_is_read_only_and_apply_preserves_statuses(tmp_path: Path, transport_only) -> None:
     payload = _verify(_bundle(tmp_path))
     dry_client = FakeJira()
     dry_result = poster.execute_verified_post(payload, client_factory=lambda: dry_client)
@@ -318,7 +326,7 @@ def test_default_is_read_only_and_apply_preserves_statuses(tmp_path: Path) -> No
     ],
 )
 def test_unreadable_current_jira_field_fails_without_mutation(
-    tmp_path: Path, client: FakeJira
+    tmp_path: Path, client: FakeJira, transport_only
 ) -> None:
     payload = _verify(_bundle(tmp_path))
     with pytest.raises(poster.PostingSafetyError, match="nothing was written"):
@@ -326,7 +334,7 @@ def test_unreadable_current_jira_field_fails_without_mutation(
     assert client.writes == []
 
 
-def test_expected_current_and_race_guards_prevent_mutation(tmp_path: Path) -> None:
+def test_expected_current_and_race_guards_prevent_mutation(tmp_path: Path, transport_only) -> None:
     paths = _bundle(tmp_path)
     payload = _verify(
         paths,
@@ -349,7 +357,7 @@ def test_expected_current_and_race_guards_prevent_mutation(tmp_path: Path) -> No
     assert racing_client.writes == []
 
 
-def test_unchanged_content_never_writes_even_with_apply(tmp_path: Path) -> None:
+def test_unchanged_content_never_writes_even_with_apply(tmp_path: Path, transport_only) -> None:
     payload = _verify(_bundle(tmp_path))
     client = FakeJira(current=payload.acceptance_criteria_text + "\n")
     result = poster.execute_verified_post(
@@ -390,3 +398,220 @@ def test_invalid_receipt_stops_before_post_executor(tmp_path: Path, monkeypatch)
     )
     assert result == 1
     assert called is False
+
+
+V2_STATEMENT = "After saving a topic, reopening it shows the saved text."
+V2_PLAN = VALID_PLAN[:VALID_PLAN.index("- AC-01")] + (
+    f"- AC-01 [Confirmed]: (Basic) {V2_STATEMENT} Evidence: accepted UAC.\n"
+) + VALID_PLAN[VALID_PLAN.index("\n**Test Scenarios**"):]
+
+
+def test_v2_format_and_subpoints_are_preserved(tmp_path):
+    plan = V2_PLAN.replace("Evidence: accepted UAC.\n", "Evidence: accepted UAC.\n  - Check a topic with inline text.\n")
+    payload = _verify(_bundle(tmp_path, plan_text=plan))
+    assert payload.criteria[0]["schema_version"] == "aem-guides-ac-v2"
+    assert payload.acceptance_criteria_text == (
+        f"AC-01: {V2_STATEMENT}\n  - Check a topic with inline text."
+    )
+
+
+def test_apply_without_canonical_result_stops_before_client(tmp_path):
+    payload = _verify(_bundle(tmp_path))
+    def forbidden():
+        pytest.fail("no Jira read is allowed without canonical verification")
+    with pytest.raises(poster.PostingSafetyError, match="requires --canonical-result"):
+        poster.execute_verified_post(payload, apply=True, client_factory=forbidden)
+
+
+@pytest.mark.parametrize("field_only", [False, True])
+def test_no_comment_modes_skip_qe_lookup_and_verify_readback(tmp_path, transport_only, field_only):
+    payload = _verify(_bundle(tmp_path, plan_text=V2_PLAN))
+    client = FakeJira()
+    result = poster.execute_verified_post(
+        payload, apply=True, no_comment=True, field_only=field_only,
+        client_factory=lambda: client,
+    )
+    assert result.applied
+    assert client.writes == [(payload.issue, payload.acceptance_criteria_text,
+                              None if field_only else "Needs_Human_Review", None)]
+    assert client.reads == [poster.AC_FIELD] * 3
+
+
+@pytest.mark.parametrize("readback", ["server stored a different value", RuntimeError("read-back unavailable")])
+def test_failed_readback_never_reports_success(tmp_path, transport_only, readback):
+    payload = _verify(_bundle(tmp_path, plan_text=V2_PLAN))
+    class FailedReadback(FakeJira):
+        def get_issue(self, key, fields):
+            if self.writes:
+                if isinstance(readback, Exception):
+                    raise readback
+                return {"key": key, "fields": {poster.AC_FIELD: readback}}
+            return super().get_issue(key, fields)
+    client = FailedReadback()
+    with pytest.raises(poster.PostingSafetyError, match="write requested but read-back"):
+        poster.execute_verified_post(payload, apply=True, field_only=True, client_factory=lambda: client)
+    assert len(client.writes) == 1
+
+
+def _canonical_fixture(paths):
+    """Synthetic unit fixture, NOT a real-ticket runtime or gate-pass claim."""
+    from app.core.schemas_canonical_test_plan_runtime import (
+        AcceptanceCandidate, AcceptancePromotionDecision, CANONICAL_STAGE_ORDER,
+        CandidateLifecycleRecord, RendererProjectionDecision, ContractMode,
+        GenerationResult, GateDecision, RuntimeTrace, RuntimeStageTrace,
+        StructuredQEPlan, PlanSection,
+    )
+    from app.services.canonical_evidence_service import normalize_codex_manifest
+    manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+    bundle = normalize_codex_manifest(manifest, tenant_id="fixture-tenant", jira_key="GUIDES-12345")
+    candidate = AcceptanceCandidate(
+        statement=V2_STATEMENT, contract_mode=ContractMode.HUMAN_ACCEPTED_CONTRACT,
+        accepted_human_contract=True, in_scope=True, observable=True,
+    )
+    promotion = AcceptancePromotionDecision(
+        candidate_id=candidate.candidate_id, status="PROMOTED",
+        resulting_disposition="ACCEPTANCE_CONTRACT", authority_supported=True,
+        scope_established=True, observable=True, exact_values_supported=True,
+    )
+    gates = [GateDecision(gate=s, status="PASSED") for s in CANONICAL_STAGE_ORDER if s.value.endswith("Gate")]
+    lifecycle = CandidateLifecycleRecord(
+        discovered_candidate_id=candidate.candidate_id, canonical_candidate_id=candidate.candidate_id,
+        stages=["CANDIDATE_DISCOVERED", "APPLICABILITY_EVALUATED", "FINAL_DISPOSITION"],
+        evidence_required=False, evidence_collected=False, final_disposition="AC", promotion_status="PROMOTED",
+    )
+    renderer = RendererProjectionDecision(
+        discovered_candidate_id=candidate.candidate_id, canonical_candidate_id=candidate.candidate_id,
+        final_disposition="AC", section_key="acceptance_contract", source_record_ids=[candidate.candidate_id],
+    )
+    plan = StructuredQEPlan(
+        jira_key="GUIDES-12345", contract_mode=ContractMode.HUMAN_ACCEPTED_CONTRACT,
+        sections=[PlanSection(section_key="acceptance_contract", title="Acceptance contract", items=[V2_STATEMENT])],
+        promoted_candidate_ids=[candidate.candidate_id], gate_decisions=gates,
+        candidate_lifecycle=[lifecycle], renderer_decisions=[renderer],
+    )
+    output = {
+        "jira_key": plan.jira_key, "plan_markdown": f"# Acceptance contract\n- {V2_STATEMENT}\n",
+        "structured_plan": plan.model_dump(mode="json"), "gate_decisions": [g.model_dump(mode="json") for g in gates],
+        "acceptance_candidates": [candidate.model_dump(mode="json")], "promotion_decisions": [promotion.model_dump(mode="json")],
+    }
+    timestamp = "2026-09-09T00:00:00Z"
+    trace = RuntimeTrace(
+        run_id="fixture-run", request_id="fixture-request", entry_point="codex_skill",
+        generation_profile="codex_canonical_v1", evidence_bundle_id=bundle.bundle_id,
+        started_at=timestamp, completed_at=timestamp,
+        stage_trace=[RuntimeStageTrace(
+            stage=s, sequence=i, started_at=timestamp, completed_at=timestamp,
+            duration_ms=0, input_sha256="a" * 64, output_sha256="b" * 64, status="completed",
+        ) for i, s in enumerate(CANONICAL_STAGE_ORDER, 1)],
+    )
+    result = GenerationResult(
+        run_id=trace.run_id, request_id=trace.request_id, evidence_bundle_id=bundle.bundle_id,
+        evidence_bundle=bundle, status="completed", output_contract="strict-qe", output_kind="test_plan",
+        output_payload=output, structured_output=output, rendered_output=output["plan_markdown"],
+        structured_plan=plan, gate_decisions=gates, validation_status="passed", trace=trace,
+    )
+    path = paths["receipt"].parent / "canonical-result.json"
+    path.write_text(result.model_dump_json(), encoding="utf-8")
+    _mutate_receipt(paths, lambda receipt: receipt.__setitem__(
+        "validator", poster._skill_module("skill_bundle_fingerprint.py").fingerprint(poster._CANONICAL_SKILL_SCRIPTS.parent)
+    ))
+    return path
+
+
+def test_bound_canonical_result_can_post_field_only(tmp_path):
+    paths = _bundle(tmp_path, plan_text=V2_PLAN)
+    result_path = _canonical_fixture(paths)
+    payload = _verify(paths, canonical_result_path=result_path)
+    client = FakeJira(current="previous criteria")
+    result = poster.execute_verified_post(payload, apply=True, field_only=True, client_factory=lambda: client)
+    assert result.applied
+    assert client.writes == [(payload.issue, f"AC-01: {V2_STATEMENT}", None, None)]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("status", "needs_human_review"), ("status", "blocked"), ("status", "failed"),
+    ("validation_status", "failed"), ("output_sha256", "f" * 64),
+    ("schema_version", "made-up"), ("runtime_version", "1.0.0"),
+])
+def test_invalid_canonical_envelope_blocks(tmp_path, field, value):
+    paths = _bundle(tmp_path, plan_text=V2_PLAN)
+    path = _canonical_fixture(paths)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw[field] = value
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    with pytest.raises(poster.PostingSafetyError):
+        _verify(paths, canonical_result_path=path)
+
+
+def test_wrong_manifest_and_missing_stage_are_rejected(tmp_path):
+    paths = _bundle(tmp_path, plan_text=V2_PLAN)
+    path = _canonical_fixture(paths)
+    manifest = {"issue": "GUIDES-12345", "description": "changed after generation"}
+    paths["manifest"].write_text(json.dumps(manifest), encoding="utf-8")
+    _mutate_receipt(paths, lambda r: r["artifacts"]["manifest"].__setitem__("sha256", _sha(paths["manifest"])))
+    with pytest.raises(poster.PostingSafetyError, match="exact manifest"):
+        _verify(paths, canonical_result_path=path)
+    path = _canonical_fixture(paths)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["trace"]["stage_trace"].pop()
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    with pytest.raises(poster.PostingSafetyError, match="trace is incomplete"):
+        _verify(paths, canonical_result_path=path)
+
+
+def test_unpromoted_subpoint_is_not_silently_posted(tmp_path):
+    paths = _bundle(tmp_path, plan_text=V2_PLAN.replace("Evidence: accepted UAC.\n", "Evidence: accepted UAC.\n  - An extra check.\n"))
+    path = _canonical_fixture(paths)
+    with pytest.raises(poster.PostingSafetyError, match="wording/sub-points differ"):
+        _verify(paths, canonical_result_path=path)
+
+
+def test_apply_rechecks_artifacts_before_constructing_client(tmp_path):
+    paths = _bundle(tmp_path, plan_text=V2_PLAN)
+    path = _canonical_fixture(paths)
+    payload = _verify(paths, canonical_result_path=path)
+    paths["plan"].write_text(V2_PLAN + "\nchanged", encoding="utf-8")
+    def forbidden():
+        pytest.fail("Jira client must not be constructed")
+    with pytest.raises(poster.PostingSafetyError, match="stale gate receipt"):
+        poster.execute_verified_post(payload, apply=True, client_factory=forbidden)
+
+
+@pytest.mark.parametrize("change", [
+    "wrong_issue", "rejected_promotion", "missing_renderer", "missing_gate",
+    "wrong_section", "unsupported_authority",
+])
+def test_rehashed_inner_runtime_changes_do_not_bypass_binding(tmp_path, change):
+    from app.core.schemas_canonical_test_plan_runtime import stable_sha256
+    paths = _bundle(tmp_path, plan_text=V2_PLAN)
+    path = _canonical_fixture(paths)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    output = raw["output_payload"]
+    if change == "wrong_issue":
+        output["jira_key"] = "GUIDES-99999"
+    elif change == "rejected_promotion":
+        output["promotion_decisions"][0]["status"] = "REJECTED"
+    elif change == "missing_renderer":
+        output["structured_plan"]["renderer_decisions"] = []
+    elif change == "missing_gate":
+        raw["gate_decisions"].pop()
+        output["gate_decisions"] = raw["gate_decisions"]
+        output["structured_plan"]["gate_decisions"] = raw["gate_decisions"]
+    elif change == "wrong_section":
+        output["structured_plan"]["sections"][0]["items"] = ["Unrelated text."]
+    elif change == "unsupported_authority":
+        output["promotion_decisions"][0]["authority_supported"] = False
+    raw["structured_plan"] = output["structured_plan"]
+    raw["structured_output"] = output
+    raw["output_sha256"] = stable_sha256(output)
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    with pytest.raises(poster.PostingSafetyError):
+        _verify(paths, canonical_result_path=path)
+
+
+def test_changed_skill_fingerprint_stops_posting(tmp_path):
+    paths = _bundle(tmp_path, plan_text=V2_PLAN)
+    path = _canonical_fixture(paths)
+    _mutate_receipt(paths, lambda r: r["validator"].__setitem__("sha256", "0" * 64))
+    with pytest.raises(ValueError, match="validator fingerprint hash mismatch"):
+        _verify(paths, canonical_result_path=path)

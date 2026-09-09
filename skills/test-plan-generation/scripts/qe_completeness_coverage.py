@@ -40,7 +40,12 @@ OQ_LINE_RE = re.compile(
     r"^\s*(?:[-*]\s*)?(?:\*\*)?(OQ-\d{2,})\s*(?:\*\*)?\s*(?::|[-—])",
     re.IGNORECASE,
 )
-BULLET_RE = re.compile(r"^\s*[-*]\s+(.+?)\s*$")
+BULLET_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(.+?)\s*$")
+AC_SECTIONS = {"acceptance criteria", "acceptance contract", "proposed acceptance contract"}
+QE_CHECKS_HEADING_RE = re.compile(
+    r"^(?:additional\s+)?(?:qe|qa|reviewer(?:[- ]requested)?)\s+"
+    r"(?:(?:regression\s+)?checks|regression coverage)\b"
+)
 P3_REGRESSION_RE = re.compile(
     r"^\s*[-*]\s*P3\b.*\[\s*Regression\s*\]", re.IGNORECASE
 )
@@ -65,7 +70,10 @@ def _heading_title(line: str) -> str | None:
         title = stripped[2:-2].strip()
     else:
         return None
-    return re.sub(r"\s+", " ", title).casefold()
+    title = re.sub(r"\s+#+\s*$", "", title).strip().rstrip(":").strip()
+    if title.startswith("**") and title.endswith("**"):
+        title = title[2:-2].strip()
+    return re.sub(r"\s+", " ", title).rstrip(":").casefold()
 
 
 def _bullet_text(line: str) -> str | None:
@@ -86,12 +94,27 @@ def _plan_state(plan_body: str) -> dict[str, Any]:
     open_question_refs: list[str] = []
     unnumbered_open_questions: list[str] = []
     regression_by_line: dict[int, str] = {}
+    acceptance_required_items: list[str] = []
     current_section: str | None = None
+    section_level = 0
+    fence: str | None = None
 
     for line_number, line in enumerate((plan_body or "").splitlines(), 1):
-        ac_match = AC_LINE_RE.match(line)
-        if ac_match:
+        stripped = line.strip()
+        fence_match = re.match(r"^(`{3,}|~{3,})", stripped)
+        if fence is not None:
+            if re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + r",}\s*", stripped):
+                fence = None
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+            continue
+
+        ac_line = re.sub(r"^#{1,6}\s+", "", stripped)
+        ac_match = AC_LINE_RE.match(_bullet_text(ac_line) or ac_line)
+        if ac_match and current_section in AC_SECTIONS:
             ac_ids.append(ac_match.group(1).upper())
+            continue
 
         if current_section == "open questions":
             normalized_line = _normalize_item(line)
@@ -104,7 +127,16 @@ def _plan_state(plan_body: str) -> dict[str, Any]:
 
         heading = _heading_title(line)
         if heading is not None:
-            current_section = heading
+            heading_match = re.match(r"^\s*(#{1,6})\s+", line)
+            level = len(heading_match.group(1)) if heading_match else 2
+            known_section = (
+                heading in AC_SECTIONS
+                or heading in {"open questions", "regression areas", "p3 regression", "p3 regressions"}
+                or QE_CHECKS_HEADING_RE.match(heading) is not None
+            )
+            if known_section or current_section is None or level <= section_level:
+                current_section = heading
+                section_level = level
             continue
 
         bullet = _bullet_text(line)
@@ -119,6 +151,11 @@ def _plan_state(plan_body: str) -> dict[str, Any]:
             if bullet:
                 regression_by_line[line_number] = _normalize_item(bullet)
 
+        if current_section and QE_CHECKS_HEADING_RE.match(current_section) and stripped:
+            item = _normalize_item(line)
+            regression_by_line[line_number] = item
+            acceptance_required_items.append(item)
+
         if P3_REGRESSION_RE.match(line):
             regression_by_line[line_number] = _normalize_item(line)
 
@@ -127,6 +164,7 @@ def _plan_state(plan_body: str) -> dict[str, Any]:
         "open_question_refs": open_question_refs,
         "unnumbered_open_questions": unnumbered_open_questions,
         "regression_items": list(regression_by_line.values()),
+        "acceptance_required_items": acceptance_required_items,
     }
 
 
@@ -285,6 +323,7 @@ def _validate_regression(
     plan_items = state["regression_items"]
     plan_counts = Counter(plan_items)
     ac_ids = set(state["ac_ids"])
+    acceptance_required = set(state["acceptance_required_items"])
     problems: list[str] = []
 
     duplicate_plan_items = sorted(item for item, count in plan_counts.items() if count > 1)
@@ -323,6 +362,12 @@ def _validate_regression(
             continue
 
         ac_ref = str(record.get("ac_ref") or "").strip().upper()
+        if item in acceptance_required and category != "IN_SCOPE_BEHAVIOR":
+            problems.append(_problem(
+                "QE/reviewer checks must be IN_SCOPE_BEHAVIOR with a real AC reference, "
+                "not parked as SAFETY_RETEST. Put an undecided product outcome in Open Questions: "
+                + item
+            ))
         if category == "IN_SCOPE_BEHAVIOR" and not ac_ref:
             problems.append(_problem(
                 f"IN_SCOPE_BEHAVIOR requires ac_ref to a real AC in the plan: {item}"
@@ -367,7 +412,7 @@ def validate(
         return []
     if block is None:
         return [_problem(
-            "the plan contains real Open Questions or regression items, but the "
+            "the plan contains real Open Questions, regression items, or QE/reviewer checks, but the "
             "qe_completeness block is missing"
         )]
     if not isinstance(block, dict):

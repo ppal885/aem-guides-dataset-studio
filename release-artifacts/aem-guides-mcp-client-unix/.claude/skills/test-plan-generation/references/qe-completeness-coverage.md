@@ -14,7 +14,8 @@ The gate activates when either condition is true:
 
 - `Open Questions` contains a real question; or
 - `Regression Areas`, `P3 Regression`, or a `P3 [Regression]` scenario contains
-  an item.
+  an item; or
+- a QE/QA/reviewer-checks section contains an item (see the rule below).
 
 The exact sentinel `No open questions from current evidence` is not a real
 question. A plan with that sentinel and no regression items passes without a
@@ -65,10 +66,40 @@ containing the QE-expected contract and allow development to down-scope it in
 review. Without `promoted_ac_ref`, the gate emits `QE COMPLETENESS REVIEW:`. The
 command keeps exit code 0, but the gate receipt is non-postable.
 
+## Reviewer-requested Coverage Is Acceptance Coverage
+
+For a UAC request, put each checkable, in-scope reviewer requirement in the
+Acceptance Criteria. Do not move it to a separate `QE checks`, `QA checks`,
+`Reviewer checks`, or `QE regression coverage` section instead. An unchanged
+behavior explicitly required by the reviewer also belongs in the ACs.
+
+Use a short setup/action and a clear expected result. Merge checks only when
+they verify the same behavior; do not drop distinct coverage to shorten the
+list. Keep unresolved product decisions in Open Questions. Do not invent an
+expected result just to turn a question into an AC.
+
+Before responding, map every requested check to an AC or a genuinely unresolved
+Open Question. For UAC-only output, remove the separate checklist after this
+review; no coverage should exist only there.
+
+The gate recognizes QE/QA/reviewer check headings, including qualifiers such as
+"retained from the review", and checks their bullet, numbered, or plain-text
+items through the existing `regression_classification` ledger. Each such item
+must be `IN_SCOPE_BEHAVIOR` with an `ac_ref` to an AC in the Acceptance Criteria
+or Acceptance Contract section. A mention of an AC inside the checklist or a
+code example does not count. Mislabeling these items as `SAFETY_RETEST` fails.
+A mapped execution checklist may remain in a full test plan, but cannot
+substitute for its ACs.
+
+This is a structural guard, not a semantic proof: the author must still check
+that the referenced AC actually covers the requirement. The gate never writes
+ACs or decides unresolved product behavior.
+
 ## Regression Decisions
 
-Use `SAFETY_RETEST` for unchanged behavior re-tested because the fix may affect
-it. It does not need an AC reference.
+In a full test plan, use `SAFETY_RETEST` for optional, unchanged adjacent behavior
+re-tested because the fix may affect it. It does not need an AC reference.
+This exception does not apply to reviewer-required checks.
 
 Use `IN_SCOPE_BEHAVIOR` when the item itself states behavior the ticket must
 deliver. It must name a real plan AC in `ac_ref`; otherwise the item is only a
@@ -94,4 +125,3 @@ the ledger:
 ```text
 python scripts/run_gates.py --plan <body.md> --combined <combined.md> --manifest <manifest.json> --receipt <receipt.json>
 ```
-

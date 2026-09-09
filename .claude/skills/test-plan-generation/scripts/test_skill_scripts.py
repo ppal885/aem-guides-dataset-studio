@@ -9946,6 +9946,90 @@ def test_qe_completeness_coverage() -> None:
     check("genuine decision promoted to a real AC passes", gate.validate(positive_plan, promoted_manifest) == [])
     check("promoted genuine decision clears REVIEW", gate.review(positive_plan, promoted_manifest) == [])
 
+# Reviewer-requested coverage must not disappear behind alternate headings.
+    check_item = "Open the secondary view and confirm its saved text stays intact."
+    empty_ledger = {
+        "qe_completeness": {
+            "schema_version": gate.SCHEMA_VERSION,
+            "open_question_classification": [],
+            "regression_classification": [],
+        },
+    }
+    mapped_ledger = json.loads(json.dumps(empty_ledger))
+    mapped_ledger["qe_completeness"]["regression_classification"] = [{
+        "item": check_item, "category": "IN_SCOPE_BEHAVIOR", "ac_ref": "AC-01",
+    }]
+    headings = [
+        "## QE checks retained from the review",
+        "**QE checks**",
+        "## QA checks:",
+        "## Reviewer checks",
+        "## Reviewer-requested checks",
+        "## Additional QE checks",
+        "## QE regression coverage",
+        "## **QE checks:** ##",
+    ]
+    for heading in headings:
+        for marker in ("- ", "* ", "+ ", "1. ", "1) ", ""):
+            alias_plan = nl.join([
+                "# Test plan", "## Acceptance Criteria",
+                "- AC-01: The secondary view keeps the saved text intact.",
+                heading, marker + check_item,
+            ])
+            check(f"checklist activates: {heading}/{marker}", gate.is_present(alias_plan, {}))
+            check(f"unclassified checklist fails: {heading}/{marker}", bool(gate.validate(alias_plan, {})))
+            check(f"empty ledger cannot hide checklist: {heading}/{marker}",
+                  any("missing from regression_classification" in p for p in gate.validate(alias_plan, empty_ledger)))
+            check(f"mapped checklist in full plan passes: {heading}/{marker}",
+                  gate.validate(alias_plan, mapped_ledger) == [])
+
+    alias_plan = nl.join([
+        "## Acceptance Criteria", "- AC-01: The secondary view keeps the saved text intact.",
+        "## QE checks retained from the review", "- " + check_item,
+    ])
+    safety_ledger = json.loads(json.dumps(mapped_ledger))
+    safety_ledger["qe_completeness"]["regression_classification"][0]["category"] = "SAFETY_RETEST"
+    check("reviewer checklist cannot be labeled safety retest even with an AC reference",
+          any("not parked as SAFETY_RETEST" in p for p in gate.validate(alias_plan, safety_ledger)))
+    for invalid_ref in ("", "AC-99"):
+        invalid_ledger = json.loads(json.dumps(mapped_ledger))
+        invalid_ledger["qe_completeness"]["regression_classification"][0]["ac_ref"] = invalid_ref
+        check(f"reviewer checklist needs a real AC: {invalid_ref}",
+              bool(gate.validate(alias_plan, invalid_ledger)))
+
+    fake_item = "AC-01: " + check_item
+    fake_ledger = json.loads(json.dumps(mapped_ledger))
+    fake_ledger["qe_completeness"]["regression_classification"][0]["item"] = fake_item
+    fake_plan = nl.join(["## QE checks", "- " + fake_item])
+    check("AC label only in checklist is not an acceptance criterion",
+          any("not present in the plan" in p for p in gate.validate(fake_plan, fake_ledger)))
+    for fence in ("`" * 3, "~" * 3):
+        example_plan = nl.join([
+            "## Acceptance Criteria", fence, "- AC-01: An example is not an AC.", fence,
+            "## QE checks", "- " + check_item,
+        ])
+        check("AC in a fenced example cannot satisfy a checklist reference",
+              any("not present in the plan" in p for p in gate.validate(example_plan, mapped_ledger)))
+    nested_plan = alias_plan.replace("- " + check_item, "### Secondary view" + nl + "- " + check_item)
+    check("nested check heading cannot hide coverage", bool(gate.validate(nested_plan, empty_ledger)))
+    check("nested check can map to real AC", gate.validate(nested_plan, mapped_ledger) == [])
+    for ac_heading in ("Acceptance Criteria", "Acceptance Contract", "Proposed acceptance contract"):
+        headed_ac_plan = alias_plan.replace("Acceptance Criteria", ac_heading).replace(
+            "- AC-01:", "### AC-01:"
+        )
+        check("AC subheading remains a real acceptance criterion",
+              gate.validate(headed_ac_plan, mapped_ledger) == [])
+    ac_only_plan = nl.join([
+        "## Acceptance Criteria", "- AC-01: The secondary view keeps the saved text intact.",
+    ])
+    check("moving reviewer coverage into ACs needs no duplicate checklist",
+          gate.validate(ac_only_plan, {}) == [])
+    evidence_plan = ac_only_plan + nl + "## Evidence gaps" + nl + "- An optional source was unavailable."
+    check("unrelated evidence headings are not reviewer checklists", gate.validate(evidence_plan, {}) == [])
+    check("existing genuine undecided outcomes remain questions",
+          gate.validate(positive_plan, positive_manifest) == []
+          and gate.review(positive_plan, positive_manifest) == [])
+
     run_gates_source = Path(__file__).with_name("run_gates.py").read_text(encoding="utf-8")
     check("run_gates loads QE completeness", 'qe_completeness_coverage_mod = _load(' in run_gates_source)
     check("run_gates invokes QE completeness validation", "qe_completeness_coverage_mod.validate(body, manifest_data)" in run_gates_source)
