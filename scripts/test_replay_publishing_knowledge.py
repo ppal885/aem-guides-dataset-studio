@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import contextlib
+import copy
+import hashlib
 import io
 import json
+import logging
 import os
 import tempfile
 from types import SimpleNamespace
@@ -12,6 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts import replay_publishing_knowledge as replay
+from scripts import ingest_urls as ingest
 
 
 URLS = [
@@ -380,6 +384,18 @@ class MainModeTests(unittest.TestCase):
         check.assert_called_once_with()
         apply.assert_not_called()
 
+    def test_single_url_dispatches_without_changing_the_default_url_list(self) -> None:
+        result, _, check, apply = self.run_main(["--check", "--url", URLS[0]])
+        self.assertEqual(result, 0)
+        check.assert_called_once_with(single_url=URLS[0])
+        apply.assert_not_called()
+
+    def test_single_url_apply_dispatches_after_single_url_check(self) -> None:
+        result, _, check, apply = self.run_main(["--apply", "--url", URLS[0]])
+        self.assertEqual(result, 0)
+        check.assert_called_once_with(single_url=URLS[0])
+        apply.assert_called_once()
+
     def test_explicit_apply_dispatches_only_after_the_check(self) -> None:
         result, receipt, check, apply = self.run_main(["--apply", "--output-parent", "mock-output-parent"])
         self.assertEqual(result, 0)
@@ -419,6 +435,294 @@ class MainModeTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 2)
         check.assert_not_called()
         apply.assert_not_called()
+
+
+class PreparedPageTests(unittest.TestCase):
+    """The new path never calls the permissive legacy fetch, a model, or a database."""
+
+    def response(self, *, status=200, body=b"<title>Variables</title><p>Variable Sets use values.</p>",
+                 content_type="text/html; charset=utf-8", location=None):
+        headers = {"content-type": content_type}
+        if location:
+            headers["location"] = location
+        value = mock.MagicMock(status_code=status, headers=headers, encoding="utf-8")
+        value.__enter__.return_value = value
+        value.iter_bytes.return_value = [body]
+        return value
+
+    def prepare(self, responses, url=URLS[0]):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.stream.side_effect = responses
+        httpx = SimpleNamespace(Client=mock.Mock(return_value=client))
+        with (mock.patch.dict(replay.sys.modules, {"httpx": httpx}),
+              mock.patch("ssl.create_default_context", return_value="verified-CA") as tls,
+              mock.patch.object(ingest, "_fetch_text", side_effect=AssertionError("No legacy refetch")),
+              mock.patch.object(ingest, "_split", side_effect=lambda text, size, overlap: [text]) as split):
+            result = ingest.prepare_guides_page(url, cafile="reviewed-CA-file")
+        tls.assert_called_once_with(cafile="reviewed-CA-file")
+        httpx.Client.assert_called_once_with(timeout=30, follow_redirects=False, verify="verified-CA")
+        return result, client, split
+
+    def test_fetches_once_and_uses_existing_split_and_id_contract(self):
+        result, client, split = self.prepare([self.response()])
+        client.stream.assert_called_once_with("GET", URLS[0])
+        split.assert_called_once_with("Variables Variable Sets use values.", 1000, 200)
+        self.assertEqual(result["ids"], ["aem_ingest_" + hashlib.md5(URLS[0].encode()).hexdigest()[:10] + "_0"])
+        self.assertEqual(result["metadatas"], [{"url": URLS[0], "title": "Variables"}])
+        self.assertEqual(len(result["page_sha256"]), 64)
+        self.assertEqual(result["text_sha256"], hashlib.sha256(result["documents"][0].encode()).hexdigest())
+
+    def test_valid_same_origin_redirect_keeps_original_provenance(self):
+        result, client, _ = self.prepare([self.response(status=302, location=URLS[1]), self.response()])
+        self.assertEqual(result["url"], URLS[0])
+        self.assertEqual(result["final_url"], URLS[1])
+        self.assertEqual(client.stream.call_count, 2)
+
+    def test_cross_origin_redirect_is_never_requested(self):
+        with self.assertRaisesRegex(ValueError, "UNEXPECTED_URL"):
+            self.prepare([self.response(status=302, location="http://127.0.0.1/private")])
+
+    def test_rejects_status_content_type_empty_text_and_oversize(self):
+        for response in [self.response(status=404), self.response(status=500),
+                         self.response(content_type="application/json"), self.response(body=b"<p></p>"),
+                         self.response(body=b"x" * (2 * 1024 * 1024 + 1))]:
+            with self.subTest(response=response), self.assertRaises(ValueError):
+                self.prepare([response])
+
+    def test_rejects_excessive_redirects(self):
+        with self.assertRaisesRegex(ValueError, "PAGE_REDIRECT_LIMIT"):
+            self.prepare([self.response(status=302, location=URLS[0]) for _ in range(6)])
+
+    def test_rejects_http_200_soft_error_and_access_pages(self):
+        for html in [b"<title>Page not found</title><main><h1>404</h1><p>The requested page could not be found.</p></main>",
+                     b"<title>Access denied | Adobe</title><h1>Forbidden</h1>",
+                     b"<title>Variables</title><h1>Sign in</h1><p>Authentication required</p>",
+                     b"<title>Just a moment...</title><p>Verify you are human.</p>"]:
+            with self.subTest(html=html), self.assertRaisesRegex(ValueError, "PAGE_ERROR_DOCUMENT"):
+                self.prepare([self.response(body=html)])
+
+    def test_rejects_generic_landing_after_same_origin_redirect(self):
+        with self.assertRaisesRegex(ValueError, "PAGE_GENERIC_LANDING"):
+            self.prepare([self.response(status=302, location=URLS[1]),
+                          self.response(body=b"<title>Experience League | Adobe</title><h1>Welcome</h1>")])
+
+    def test_accepts_real_document_that_mentions_error_message_in_its_body(self):
+        html = b"<title>Native PDF troubleshooting</title><h1>Fix publishing problems</h1><p>A missing image can show Page not found or Access denied.</p>"
+        prepared, _, _ = self.prepare([self.response(body=html)])
+        self.assertIn("Page not found", prepared["documents"][0])
+
+    def test_rejects_url_credentials_ports_queries_fragments_and_other_products(self):
+        for url in [URLS[0].replace("https://", "https://user:secret@"), URLS[0] + "?token=secret",
+                    URLS[0] + "#heading", URLS[0].replace(".com/", ".com:443/"),
+                    URLS[0].replace("experience-manager-guides", "experience-manager"), URLS[0] + "\n",
+                    URLS[0].replace("/using/", "/../"), URLS[0].replace("/using/", "/%2e%2e/"),
+                    URLS[0].replace("/using/", "/%5c..%5c/")]:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                ingest.validate_guides_url(url)
+
+
+class MissingOnlyAppendTests(unittest.TestCase):
+    def setUp(self):
+        self.prepared = {"url": URLS[0], "final_url": URLS[1], "ids": ["aem_ingest_fixture_0"],
+                         "documents": ["Public documentation about Variables."],
+                         "metadatas": [{"url": URLS[0], "title": "Variables"}]}
+        self.vectors = [[0.125] * 384]
+        self.receipt = {"index_write_requested": False}
+        self.rows = {}
+        self.collection = mock.Mock()
+        self.collection.get.side_effect = self.get
+        self.collection.add.side_effect = self.add
+        self.embed = mock.Mock(return_value=self.vectors)
+        self.queue = mock.Mock(return_value=True)
+        self.state = mock.Mock()
+
+    def get(self, *, ids=None, where=None, **kwargs):
+        keys = [key for key, value in self.rows.items()
+                if (key in ids if ids is not None else all(value["metadata"].get(k) == v for k, v in where.items()))]
+        return {"ids": keys, "documents": [self.rows[key]["document"] for key in keys],
+                "metadatas": [self.rows[key]["metadata"] for key in keys],
+                "embeddings": [self.rows[key]["embedding"] for key in keys]}
+
+    def add(self, *, ids, documents, metadatas, embeddings):
+        # Chroma add, unlike upsert, leaves existing IDs unchanged.
+        for key, doc, meta, vector in zip(ids, documents, metadatas, embeddings):
+            self.rows.setdefault(key, {"document": doc, "metadata": meta, "embedding": vector})
+
+    def run_append(self):
+        replay.append_missing_page(self.collection, self.prepared, self.embed, self.queue, self.state, self.receipt)
+
+    def test_adds_frozen_payload_without_upsert_and_verifies_all_payload_fields(self):
+        self.run_append()
+        self.collection.add.assert_called_once_with(ids=self.prepared["ids"], documents=self.prepared["documents"],
+                                                    metadatas=self.prepared["metadatas"], embeddings=self.vectors)
+        self.collection.upsert.assert_not_called()
+        self.assertTrue(self.receipt["exact_payload_readback"])
+        self.assertTrue(self.receipt["index_write_requested"])
+        self.state.assert_called_once()
+        self.queue.assert_called_once()
+
+    def test_existing_url_under_any_metadata_field_or_alternate_id_stops_without_write(self):
+        for field in ("url", "source_url", "source"):
+            for url in (URLS[0], URLS[1], URLS[0] + "/"):
+                with self.subTest(field=field, url=url):
+                    self.rows = {"crawler-other-id": {"document": "Existing page", "metadata": {field: url},
+                                                      "embedding": self.vectors[0]}}
+                    with self.assertRaisesRegex(replay.ReplayError, "URL_ALREADY_PRESENT_NO_WRITE"):
+                        self.run_append()
+        self.embed.assert_not_called()
+        self.collection.add.assert_not_called()
+        self.queue.assert_not_called()
+        self.assertFalse(self.receipt["index_write_requested"])
+
+    def test_id_collision_even_with_unrelated_metadata_stops_without_write(self):
+        self.rows[self.prepared["ids"][0]] = {"document": "Unrelated", "metadata": {}, "embedding": self.vectors[0]}
+        with self.assertRaisesRegex(replay.ReplayError, "INGEST_ID_ALREADY_PRESENT_NO_WRITE"):
+            self.run_append()
+        self.collection.add.assert_not_called()
+
+    def test_repeated_run_never_overwrites_or_duplicates(self):
+        self.run_append()
+        original = copy.deepcopy(self.rows)
+        with self.assertRaisesRegex(replay.ReplayError, "URL_ALREADY_PRESENT_NO_WRITE"):
+            self.run_append()
+        self.assertEqual(self.rows, original)
+        self.collection.add.assert_called_once()
+
+    def test_changed_identity_during_embedding_stops_before_add(self):
+        self.state.side_effect = replay.ReplayError("STATE_CHANGED_BEFORE_ADD")
+        with self.assertRaisesRegex(replay.ReplayError, "STATE_CHANGED_BEFORE_ADD"):
+            self.run_append()
+        self.collection.add.assert_not_called()
+
+    def test_second_absence_check_catches_writer_during_embedding(self):
+        def encode(documents):
+            self.rows["new-crawler-id"] = {"document": "Writer added page", "metadata": {"url": URLS[0]},
+                                           "embedding": self.vectors[0]}
+            return self.vectors
+        self.embed.side_effect = encode
+        with self.assertRaisesRegex(replay.ReplayError, "URL_ALREADY_PRESENT_NO_WRITE"):
+            self.run_append()
+        self.collection.add.assert_not_called()
+
+    def test_conflicting_race_at_add_never_overwrites_and_fails_readback(self):
+        conflict = {"document": "Concurrent content", "metadata": {"url": URLS[0]}, "embedding": self.vectors[0]}
+        def racing_add(**kwargs):
+            self.rows[self.prepared["ids"][0]] = copy.deepcopy(conflict)
+            self.add(**kwargs)
+        self.collection.add.side_effect = racing_add
+        with self.assertRaisesRegex(replay.ReplayError, "EXACT_PAYLOAD_READBACK_MISMATCH"):
+            self.run_append()
+        self.assertEqual(self.rows[self.prepared["ids"][0]], conflict)
+        self.queue.assert_not_called()
+        self.assertTrue(self.receipt["index_write_requested"])
+
+    def test_incomplete_readback_fails_without_graph_event(self):
+        self.collection.add.side_effect = None
+        with self.assertRaisesRegex(replay.ReplayError, "INGEST_RECORDS_MISSING"):
+            self.run_append()
+        self.queue.assert_not_called()
+
+    def test_wrong_vector_readback_fails(self):
+        def changed_vector(**kwargs):
+            self.add(**kwargs)
+            self.rows[self.prepared["ids"][0]]["embedding"] = [0.25] * 384
+        self.collection.add.side_effect = changed_vector
+        with self.assertRaisesRegex(replay.ReplayError, "EXACT_PAYLOAD_READBACK_MISMATCH"):
+            self.run_append()
+
+    def test_graph_failure_is_honest_about_already_added_vectors(self):
+        self.queue.return_value = False
+        with self.assertRaisesRegex(replay.ReplayError, "GRAPH_EVENT_CAPTURE_FAILED_AFTER_ADD"):
+            self.run_append()
+        self.assertTrue(self.receipt["index_write_requested"])
+        self.assertTrue(self.receipt["exact_payload_readback"])
+        self.assertEqual(len(self.rows), 1)
+
+    def test_graph_exception_and_logs_are_suppressed_and_logging_restored(self):
+        fixture_secret = "fixture-secret-not-for-terminal"
+        original_level = logging.root.manager.disable
+        output, errors = io.StringIO(), io.StringIO()
+        def fail(*args, **kwargs):
+            logging.getLogger("graph-fixture").error(fixture_secret)
+            print(fixture_secret)
+            print(fixture_secret, file=replay.sys.stderr)
+            raise RuntimeError(fixture_secret)
+        self.queue.side_effect = fail
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            with self.assertRaisesRegex(replay.ReplayError, "GRAPH_EVENT_CAPTURE_FAILED_AFTER_ADD"):
+                self.run_append()
+        self.assertNotIn(fixture_secret, output.getvalue() + errors.getvalue())
+        self.assertEqual(logging.root.manager.disable, original_level)
+        self.assertTrue(self.receipt["index_write_requested"])
+        self.assertTrue(self.receipt["exact_payload_readback"])
+
+    def test_bad_embedding_never_reaches_add(self):
+        for vectors in [None, [], [[0.1] * 383], [[0] * 384], [[float("nan")] * 384],
+                        [[float("inf")] * 384], [[1e100] * 384], [[True] * 384]]:
+            self.embed.return_value = vectors
+            with self.subTest(vectors=str(vectors)[:30]), self.assertRaises(replay.ReplayError):
+                self.run_append()
+        self.collection.add.assert_not_called()
+
+    def test_malformed_absence_result_never_reaches_embedding(self):
+        self.collection.get.side_effect = None
+        self.collection.get.return_value = {"missing": "ids"}
+        with self.assertRaisesRegex(replay.ReplayError, "ABSENCE_RESPONSE_INVALID"):
+            self.run_append()
+        self.embed.assert_not_called()
+
+    def test_apply_writes_frozen_receipt_without_refetch_or_legacy_ingest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / "repo"
+            config = root / "backend/config/aem_guides_crawl_urls.json"
+            config.parent.mkdir(parents=True)
+            original_config = json.dumps({"urls": [URLS[0]]}).encode()
+            config.write_bytes(original_config)
+            prepared = {**self.prepared, "page_sha256": "a" * 64, "text_sha256": "b" * 64}
+            context = {"urls": [URLS[0]], "prepared": prepared, "token": "fixture-only", "services": {},
+                       "identity": {"collections": {"aem_guides": {"id": "fixture-aem", "count": 100},
+                                                   "jira_qa": {"id": "fixture-jira", "count": 50}}}}
+            self.collection.id = "fixture-aem"
+            original_get = self.collection.get.side_effect
+            def get(**kwargs):
+                if kwargs.get("limit") == 20:
+                    return {"documents": ["First canary", "Second canary", "Third canary"],
+                            "embeddings": self.vectors * 3}
+                return original_get(**kwargs)
+            self.collection.get.side_effect = get
+            vector_service = SimpleNamespace(_get_client=lambda: SimpleNamespace(get_collection=lambda name: self.collection),
+                                             get_index_identity=lambda: context["identity"],
+                                             _queue_evidence_graph_events=self.queue)
+            model_check = SimpleNamespace(model_hash=lambda path: replay.MODEL_HASH,
+                                          compare_canaries=mock.Mock(return_value={"status": "PASS_SAMPLES"}))
+            imports = {"app": SimpleNamespace(), "app.services": SimpleNamespace(
+                embedding_service=SimpleNamespace(embed_texts=self.embed), vector_store_service=vector_service)}
+            helpers = {"verify_local_embedding_canaries": model_check, "vm_chroma_routing_checks":
+                       SimpleNamespace(_checked_identity=lambda identity, collections: identity)}
+            def identity(token):
+                actual = copy.deepcopy(context["identity"])
+                actual["collections"]["aem_guides"]["count"] += len(self.rows)
+                return actual
+            receipt = {}
+            with (mock.patch.object(replay, "ROOT", root), mock.patch.dict(replay.sys.modules, imports),
+                  mock.patch.object(replay, "helper", side_effect=lambda name: helpers[name]),
+                  mock.patch.object(replay, "service_snapshot", return_value={}),
+                  mock.patch.object(replay, "shared_identity", side_effect=identity),
+                  mock.patch.object(replay, "missing_url_lock", return_value=contextlib.nullcontext()),
+                  mock.patch.object(replay, "ingest_helper", side_effect=AssertionError("No refetch")),
+                  mock.patch.object(replay.subprocess, "run", side_effect=AssertionError("No legacy upsert"))):
+                replay.apply(context, parent, receipt)
+            self.assertEqual(receipt["status"], "PASS_SINGLE_URL_APPENDED")
+            self.assertEqual(receipt["chunks_by_url"], {URLS[0]: 1})
+            self.assertFalse(receipt["crawl_config_changed"])
+            self.assertEqual(config.read_bytes(), original_config)
+            frozen_file = Path(receipt["output_directory"]) / "prepared-page.json"
+            self.assertEqual(json.loads(frozen_file.read_text(encoding="utf-8")), prepared)
+            self.assertEqual(hashlib.sha256(frozen_file.read_bytes()).hexdigest(), receipt["prepared_payload_sha256"])
+            self.collection.upsert.assert_not_called()
+            model_check.compare_canaries.assert_called_once()
 
 
 if __name__ == "__main__":

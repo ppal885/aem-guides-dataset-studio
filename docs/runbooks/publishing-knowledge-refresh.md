@@ -76,6 +76,86 @@ insufficient. Stable IDs make repeated identical ingestion an upsert, but a shor
 page can leave trailing old chunks, and another crawler's IDs can coexist. This
 procedure does not remove either set or run the collection-replacing full crawler.
 
+## Optional: append one missing Guides page, without refreshing other URLs
+
+Use `--url` only for a reviewed Experience League Guides page that is missing from
+the shared collection. The default commands above still process the same nine URLs;
+this option selects exactly one URL and uses a stricter **add-only** path instead
+of the legacy upsert. The URL must already be in the committed crawl configuration.
+The wrapper will not rewrite the crawl configuration in this mode.
+
+For the documented Native PDF **Variables** feature (different from **Language
+Variables**), run on the VM, not from a teammate's local Python environment:
+
+```bash
+cd /root/aem-guides-dataset-studio
+PY=/opt/aem-backend-candidate-sPxFr6YU/venv/bin/python
+PAGE_URL=https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-variables
+"$PY" -I -B scripts/replay_publishing_knowledge.py --check --url "$PAGE_URL"
+```
+
+After `PASS_CHECK_ONLY`, with team writes/imports still paused:
+
+```bash
+"$PY" -I -B scripts/replay_publishing_knowledge.py --apply --url "$PAGE_URL"
+```
+
+Require `PASS_SINGLE_URL_APPENDED`. This path:
+
+- Allows only HTTPS Guides documentation on Experience League, including every
+  redirect; requires HTTP 200 HTML and bounds response size and redirect count.
+  Rejects recognizable soft-error/login page titles or primary headings and generic
+  landing titles before embedding. Ordinary troubleshooting prose is not blocked.
+- Fetches the source once per invocation. Apply uses exactly those frozen chunks
+  from the shared `ingest_urls.py` extractor/splitter, without a second fetch.
+- Uses the same reviewed model, three stored-vector canaries, routing identities,
+  and paused-writer checks as the nine-page workflow.
+- Rejects existing source URLs under `url`, `source_url`, or `source`, including the
+  final redirect URL and trailing-slash variant. It also rejects existing stable
+  ingest IDs. `URL_ALREADY_PRESENT_NO_WRITE` or `INGEST_ID_ALREADY_PRESENT_NO_WRITE`
+  means **nothing was overwritten**; it is not permission to run the legacy upsert.
+- Serializes cooperating single-URL imports with a local exclusive lock. Rechecks
+  absence after embedding, then uses Chroma **add**, never upsert, update, delete,
+  or get-or-create. Existing IDs cannot be overwritten even if another writer races.
+- Reads back every expected ID and compares complete text, metadata and float32
+  vectors against the prepared payload. The AEM count must increase by exactly the
+  number of prepared chunks; other reported collection counts and UUIDs must stay
+  unchanged. Backend and Chroma service identities must remain unchanged.
+- Saves `prepared-page.json`, its SHA-256, source hashes, original crawl config,
+  and the receipt in the printed private run directory. It preserves the existing
+  evidence-graph event-capture policy; enabled capture may write SQL events.
+  Raw library logs from that narrow SQL event-capture call are suppressed only in
+  this CLI process; failures produce a fixed diagnostic code, never DB/auth text.
+
+`--check` fetches and validates the source and runtime configuration, but does not
+load the model or test URL absence in Chroma. The absence, sampled-model and exact
+readback checks happen during `--apply`. A rerun on an already present page stops
+without adding duplicates; this mode intentionally does not repair an earlier
+partial import or refresh changed documentation.
+
+The lock is not a distributed writer lock. Keep all other writers paused. A racing
+writer or failure after `add` can leave newly added records; the receipt reports
+`index_write_requested=true` and the failing phase. Preserve that receipt and the
+frozen payload for review—do not blindly retry, delete records, or fall back to
+upsert. A `PASS` is exact readback for this one import, not whole-corpus equivalence,
+cross-client semantic retrieval, visual inspection, or automatic skill learning.
+HTTP 200 and bounded error-page checks are not a full semantic review of a page;
+inspect the saved source text. Unrecognized error/landing page formats remain a
+limitation, not a claim of complete semantic page-identity validation.
+Alternate/legacy source URLs beyond the checked locator variants are not deduped.
+
+After success, use the VM-backed **semantic** knowledge search to confirm the page
+is actually returned with its source URL, and inspect its returned text. Counts
+alone are not proof that the UAC skill can retrieve it. No service restart is
+requested by this helper. It cannot run this VM-local workflow through port 4502
+from a workstation; an authorized VM terminal/SSH operator must run the commands.
+
+Local, service-free regression tests:
+
+```bash
+python -B -m unittest scripts.test_replay_publishing_knowledge
+```
+
 ## 3. Optional: download the page images
 
 ```bash

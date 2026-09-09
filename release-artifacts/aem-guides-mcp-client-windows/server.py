@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
+import math
 import os
 import re
 import shutil
@@ -50,8 +51,25 @@ _load_env_file(CLIENT_ROOT / ".env")
 _load_env_file(CLIENT_ROOT / "client.env")
 
 BACKEND_URL = os.environ.get("AEM_STUDIO_URL", "http://10.42.46.78:4502").rstrip("/")
-AUTH_TOKEN = os.environ.get("AEM_STUDIO_TOKEN", "dev-bypass")
+AUTH_TOKEN = os.environ.get("AEM_STUDIO_TOKEN", "")
 TIMEOUT_SECONDS = float(os.environ.get("AEM_STUDIO_TIMEOUT_SECONDS", "300"))
+READ_ONLY = os.environ.get("AEM_STUDIO_READ_ONLY", "").strip().lower() == "true"
+READ_ONLY_TOOLS = frozenset({
+    "ask_dita_expert", "search_jira_history", "query_test_evidence_graph", "check_rag_status",
+})
+READ_ONLY_LOOKUPS = frozenset({
+    "/api/v1/mcp/lookup-aem-guides", "/api/v1/mcp/lookup-dita-spec",
+    "/api/v1/mcp/lookup-dita-attribute",
+})
+MAX_READ_RESPONSE_BYTES = 4 * 1024 * 1024
+
+
+class TransportConfigurationError(ValueError):
+    """A safe configuration diagnostic containing no supplied values."""
+
+
+class VmTransportError(RuntimeError):
+    """A safe remote transport diagnostic containing no response body."""
 
 UPLOAD_PROPERTY_KEYS = {
     "aem.base.url": "aem_base_url",
@@ -67,10 +85,62 @@ server = Server("aem-guides-dataset-studio")
 
 
 def _headers() -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {AUTH_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    _validate_service_origin()
+    headers = {"Content-Type": "application/json"}
+    if AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {AUTH_TOKEN}"
+    elif not READ_ONLY:
+        raise TransportConfigurationError("Configure a service token or explicitly enable AEM_STUDIO_READ_ONLY=true for unauthenticated reads.")
+    return headers
+
+
+def _validate_service_origin() -> None:
+    if READ_ONLY and not os.environ.get("AEM_STUDIO_URL", "").strip():
+        raise TransportConfigurationError("Read-only VM access requires an explicit AEM_STUDIO_URL origin.")
+    try:
+        parsed = urlsplit(BACKEND_URL)
+        port = parsed.port
+        if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+                or parsed.username is not None or parsed.password is not None
+                or parsed.query or parsed.fragment or parsed.path not in {"", "/"}
+                or any(ord(char) <= 32 or ord(char) == 127 for char in BACKEND_URL)
+                or "\\" in BACKEND_URL or parsed.netloc.endswith(":")):
+            raise ValueError
+        if port is not None and not 1 <= port <= 65535:
+            raise ValueError
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+            loopback = address.is_loopback
+        except ValueError:
+            if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?", parsed.hostname):
+                raise ValueError
+            loopback = parsed.hostname.lower() == "localhost"
+    except ValueError:
+        raise TransportConfigurationError("AEM_STUDIO_URL must be an absolute credential-free HTTP(S) origin.") from None
+    if AUTH_TOKEN and any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in AUTH_TOKEN):
+        raise TransportConfigurationError("The configured service token has an invalid format.")
+    if parsed.scheme == "http" and not loopback:
+        # An explicit private-VM plaintext read is supported, never a plaintext credential.
+        if AUTH_TOKEN:
+            raise TransportConfigurationError("Service tokens require HTTPS or a loopback transport; HTTP opt-in never permits sending a token.")
+        if READ_ONLY and os.environ.get("AEM_STUDIO_ALLOW_INSECURE_HTTP", "").strip().lower() != "true":
+            raise TransportConfigurationError("Plaintext VM reads require explicit AEM_STUDIO_ALLOW_INSECURE_HTTP=true.")
+
+
+def _expected_index_fingerprint() -> str:
+    expected = os.environ.get("AEM_STUDIO_EXPECTED_INDEX_FINGERPRINT", "").strip().lower()
+    if expected and not re.fullmatch(r"[a-f0-9]{64}", expected):
+        raise TransportConfigurationError("AEM_STUDIO_EXPECTED_INDEX_FINGERPRINT must contain 64 hexadecimal characters.")
+    return expected
+
+
+def _verify_index_pin(status: Any, expected: str) -> None:
+    identity = status.get("index_identity") if isinstance(status, dict) else None
+    if (not isinstance(identity, dict) or identity.get("schema_version") != "chroma-index-identity-v1"
+            or identity.get("status") not in {"OK", "PARTIAL"}
+            or identity.get("mode") != "REMOTE"
+            or identity.get("target_fingerprint") != expected):
+        raise VmTransportError("VM index identity is unavailable or does not match the configured fingerprint pin. No retrieval was attempted.")
 
 
 def _resolve_client_path(path_value: str) -> Path:
@@ -113,10 +183,37 @@ def _load_upload_config() -> dict[str, str]:
 
 
 async def _post(path: str, body: dict[str, Any]) -> Any:
+    headers = _headers()
+    if READ_ONLY:
+        if path == "/mcp":
+            params = body.get("params")
+            if (body.get("method") != "tools/call" or not isinstance(params, dict)
+                    or params.get("name") not in READ_ONLY_TOOLS):
+                raise TransportConfigurationError("This VM profile permits only the four read-only evidence tools.")
+        elif path not in READ_ONLY_LOOKUPS:
+            raise TransportConfigurationError("This VM profile permits only the documented evidence lookup routes.")
+        if not math.isfinite(TIMEOUT_SECONDS) or TIMEOUT_SECONDS <= 0:
+            raise TransportConfigurationError("AEM_STUDIO_TIMEOUT_SECONDS must be a positive finite number.")
+        timeout = min(TIMEOUT_SECONDS, 30.0)
+        async def read_response():
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False) as client:
+                async with client.stream("POST", f"{BACKEND_URL}{path}", headers=headers, json=body) as response:
+                    response.raise_for_status()
+                    data = bytearray()
+                    async for chunk in response.aiter_bytes(chunk_size=65536):
+                        if len(data) + len(chunk) > MAX_READ_RESPONSE_BYTES:
+                            raise VmTransportError("VM response exceeded the read-only transport size limit.")
+                        data.extend(chunk)
+                    try:
+                        return json.loads(data)
+                    except (ValueError, UnicodeError):
+                        raise VmTransportError("VM service returned an invalid JSON response.") from None
+        # wait_for provides a total deadline on the supported Python 3.10 runtime.
+        return await asyncio.wait_for(read_response(), timeout=timeout)
     feedback_call = path == "/mcp" and body.get("params", {}).get("name") in FEEDBACK_TOOL_NAMES
     timeout = min(TIMEOUT_SECONDS, 30) if feedback_call else TIMEOUT_SECONDS
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-        response = await client.post(f"{BACKEND_URL}{path}", headers=_headers(), json=body)
+        response = await client.post(f"{BACKEND_URL}{path}", headers=headers, json=body)
         response.raise_for_status()
         return response.json()
 
@@ -125,6 +222,8 @@ async def _safe_post(path: str, body: dict[str, Any]) -> Any:
     try:
         return await _post(path, body)
     except Exception as exc:
+        if READ_ONLY:
+            return {"error": "VM evidence lookup failed; evidence is unavailable. No local fallback was attempted."}
         return {"error": str(exc), "query": body}
 
 
@@ -136,6 +235,8 @@ async def _remote_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:
         "params": {"name": name, "arguments": arguments},
     }
     response = await _post("/mcp", payload)
+    if READ_ONLY:
+        return _read_only_mcp_result(response, payload["id"])
     if response.get("error"):
         error = response["error"]
         raise RuntimeError(str(error.get("message") if isinstance(error, dict) else error))
@@ -150,6 +251,32 @@ async def _remote_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:
         except json.JSONDecodeError:
             return text
     return result
+
+
+def _read_only_mcp_result(response: Any, request_id: str) -> dict[str, Any]:
+    if (not isinstance(response, dict) or response.get("jsonrpc") != "2.0"
+            or response.get("id") != request_id):
+        raise VmTransportError("VM MCP service returned an invalid response envelope.")
+    if "error" in response:
+        raise VmTransportError("VM MCP service rejected the evidence request.")
+    result = response.get("result")
+    if not isinstance(result, dict) or result.get("isError", False) is not False:
+        raise VmTransportError("VM MCP evidence operation failed.")
+    if "structuredContent" in result:
+        value = result["structuredContent"]
+    else:
+        content = result.get("content")
+        if (not isinstance(content, list) or len(content) != 1
+                or not isinstance(content[0], dict) or content[0].get("type") != "text"
+                or not isinstance(content[0].get("text"), str) or not content[0]["text"].strip()):
+            raise VmTransportError("VM MCP service returned no structured evidence.")
+        try:
+            value = json.loads(content[0]["text"])
+        except (ValueError, UnicodeError):
+            raise VmTransportError("VM MCP service returned invalid structured evidence.") from None
+    if not isinstance(value, dict) or not value:
+        raise VmTransportError("VM MCP service returned no structured evidence.")
+    return value
 
 
 def _fmt(result: Any) -> str:
@@ -569,7 +696,7 @@ def _feedback_tools() -> list[types.Tool]:
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return [
+    tools = [
         *_feedback_tools(),
         _text_tool(
             "ask_dita_expert",
@@ -662,26 +789,47 @@ async def list_tools() -> list[types.Tool]:
             ["source_path", "target_path"],
         ),
     ]
+    return [tool for tool in tools if tool.name in READ_ONLY_TOOLS] if READ_ONLY else tools
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent] | types.CallToolResult:
     try:
         result = await _dispatch(name, arguments or {})
         return [types.TextContent(type="text", text=_fmt(result))]
     except httpx.HTTPStatusError as exc:
+        if READ_ONLY:
+            return types.CallToolResult(isError=True, content=[types.TextContent(type="text", text=f"ERROR: VM request returned HTTP {exc.response.status_code}. Response details were withheld; no local fallback was attempted.")])
         if name in FEEDBACK_TOOL_NAMES:
             return [types.TextContent(type="text", text="ERROR: Shared feedback request failed; verify service access and request status before retrying. No approval retry was attempted.")]
         body = exc.response.text[:2000] if exc.response is not None else ""
         status = exc.response.status_code if exc.response is not None else "unknown"
         return [types.TextContent(type="text", text=f"HTTP {status}: {body}")]
     except Exception as exc:
+        if READ_ONLY:
+            message = str(exc) if isinstance(exc, (TransportConfigurationError, VmTransportError)) else "VM transport request failed. No local fallback was attempted."
+            return types.CallToolResult(isError=True, content=[types.TextContent(type="text", text=f"ERROR: {message}")])
         if name in FEEDBACK_TOOL_NAMES:
             return [types.TextContent(type="text", text="ERROR: Shared feedback operation failed; verify the personal token, HTTPS or explicit HTTP opt-in, tenant and request schema. No approval retry was attempted.")]
         return [types.TextContent(type="text", text=f"ERROR: {exc}")]
 
 
 async def _dispatch(name: str, args: dict[str, Any]) -> Any:
+    if READ_ONLY:
+        if name not in READ_ONLY_TOOLS:
+            raise TransportConfigurationError("This VM profile permits only the four read-only evidence tools.")
+        _validate_service_origin()
+        expected = _expected_index_fingerprint()
+        if name == "check_rag_status":
+            status = await _remote_mcp_tool(name, args)
+            if expected:
+                _verify_index_pin(status, expected)
+            return status
+        if expected:
+            status = await _remote_mcp_tool("check_rag_status", {
+                "tenant_id": str(args.get("tenant_id") or "kone"),
+            })
+            _verify_index_pin(status, expected)
     if name in FEEDBACK_TOOL_NAMES:
         _require_personal_feedback_identity()
         return await _remote_mcp_tool(name, args)

@@ -1,5 +1,13 @@
 # AEM Guides Minimal MCP Client for Claude Code on macOS/Linux
 
+> **September 2026 VM RAG update:** use [READ_ONLY_RAG.md](READ_ONLY_RAG.md)
+> for the new evidence-only connection in Claude Desktop/Code or Codex. Updating
+> GitHub/ZIPs does not update an installed client automatically. The historical
+> full-client setup below is not the read-only setup. Its `dev-bypass` + plaintext
+> HTTP combination is no longer accepted; do not run its smoke/doctor scripts for
+> the new profile. Authenticated full-client access needs an approved secure origin
+> and a separately provisioned credential.
+
 Lightweight macOS/Linux client for team members who use Claude Code with the central VM-hosted AEM Guides RAG backend.
 
 This package does **not** contain the full dataset-studio repo, RAG corpus, ChromaDB, JSON chunks, or backend code. Live RAG stays on the VM.

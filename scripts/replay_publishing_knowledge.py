@@ -1,14 +1,19 @@
-"""Replay the nine publishing URLs through the reviewed VM runtime; default is --check."""
+"""Replay the reviewed URLs, or append one missing Guides URL; default is --check."""
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import hashlib
 import importlib
 import json
+import logging
+import math
 import os
 from pathlib import Path
 import re
 import subprocess
+import stat
+import struct
 import sys
 import tempfile
 from urllib.parse import urlsplit
@@ -34,6 +39,12 @@ def require(condition, code):
 def helper(name):
     sys.path.insert(0, str(ROOT / "scripts/uac_eval"))
     return importlib.import_module(name)
+
+
+def ingest_helper():
+    # Also works under the reviewed -I invocation, without backend imports.
+    sys.path.insert(0, str(ROOT / "scripts"))
+    return importlib.import_module("ingest_urls")
 
 
 def read_urls(path):
@@ -160,26 +171,145 @@ def verify_records(records, url, expected_ids):
             "INGEST_READBACK_INVALID")
 
 
-def check():
+def check(single_url=None):
     require(sys.platform == "linux" and os.geteuid() == 0, "RUN_AS_ROOT_ON_VM")
     require(ROOT == Path("/root/aem-guides-dataset-studio") and Path(sys.executable) == PYTHON
             and sys.version_info.releaselevel == "final", "REVIEWED_INTERPRETER_REQUIRED")
     snapshot = service_snapshot()
     token = load_live_configuration(snapshot)
-    urls = read_urls(URL_FILE)
+    if single_url is None:
+        urls = read_urls(URL_FILE)
+    else:
+        try:
+            urls = [ingest_helper().validate_guides_url(single_url)]
+        except ValueError:
+            raise ReplayError("UNEXPECTED_URL") from None
     configured = json.loads((ROOT / "backend/config/aem_guides_crawl_urls.json").read_text())["urls"]
     require(set(urls).issubset(configured), "PULL_UPDATED_CRAWL_CONFIG_FIRST")
     identity = shared_identity(token)
-    import httpx
-    import ssl
-    with httpx.Client(timeout=30, follow_redirects=True, verify=ssl.create_default_context(cafile=CA)) as client:
-        for url in urls:
-            response = client.get(url)
-            require(response.status_code == 200 and response.url.scheme == "https"
-                    and response.url.host == "experienceleague.adobe.com"
-                    and "text/html" in response.headers.get("content-type", "").lower(), "PAGE_PREFLIGHT_FAILED")
+    prepared = None
+    if single_url is not None:
+        # Freeze the successful response now. Apply never refetches this page.
+        try:
+            prepared = ingest_helper().prepare_guides_page(urls[0], cafile=CA)
+        except ValueError:
+            raise ReplayError("SINGLE_URL_PAGE_PREFLIGHT_FAILED") from None
+    else:
+        import httpx
+        import ssl
+        with httpx.Client(timeout=30, follow_redirects=True, verify=ssl.create_default_context(cafile=CA)) as client:
+            for url in urls:
+                response = client.get(url)
+                require(response.status_code == 200 and response.url.scheme == "https"
+                        and response.url.host == "experienceleague.adobe.com"
+                        and "text/html" in response.headers.get("content-type", "").lower(), "PAGE_PREFLIGHT_FAILED")
     require(service_snapshot() == snapshot, "SERVICE_CHANGED_DURING_CHECK")
-    return {"urls": urls, "token": token, "services": snapshot, "identity": identity}
+    return {"urls": urls, "token": token, "services": snapshot, "identity": identity, "prepared": prepared}
+
+
+@contextmanager
+def missing_url_lock():
+    """Serialize cooperating one-URL imports; never delete a lock another process uses."""
+    import fcntl
+    descriptor = os.open(ROOT.parent / ".aem-guides-missing-url.lock",
+                         os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        details = os.fstat(descriptor)
+        require(stat.S_ISREG(details.st_mode) and details.st_uid == 0
+                and not details.st_mode & 0o077, "UNSAFE_IMPORT_LOCK")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ReplayError("ANOTHER_SINGLE_URL_IMPORT_RUNNING") from None
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def require_page_absent(collection, prepared):
+    """Check both source locators and stable IDs, regardless of existing ID scheme."""
+    for url in {prepared["url"], prepared["final_url"]}:
+        for locator in {url, url.rstrip("/") + "/"}:
+            for field in ("url", "source_url", "source"):
+                records = collection.get(where={field: locator}, limit=1, include=["metadatas"])
+                require(isinstance(records, dict) and isinstance(records.get("ids"), list),
+                        "ABSENCE_RESPONSE_INVALID")
+                require(not records["ids"], "URL_ALREADY_PRESENT_NO_WRITE")
+    records = collection.get(ids=prepared["ids"], include=["metadatas"])
+    require(isinstance(records, dict) and isinstance(records.get("ids"), list), "ABSENCE_RESPONSE_INVALID")
+    require(not records["ids"], "INGEST_ID_ALREADY_PRESENT_NO_WRITE")
+
+
+def checked_vectors(vectors, expected):
+    """Require actual finite, nonzero local embeddings before any add request."""
+    if hasattr(vectors, "tolist"):
+        vectors = vectors.tolist()
+    require(isinstance(vectors, list) and len(vectors) == expected, "EMBEDDINGS_INVALID")
+    result = []
+    for vector in vectors:
+        if hasattr(vector, "tolist"):
+            vector = vector.tolist()
+        require(isinstance(vector, (list, tuple)) and len(vector) == 384
+                and all(type(value) in (int, float) and math.isfinite(value) for value in vector)
+                and any(value != 0 for value in vector), "EMBEDDINGS_INVALID")
+        try:
+            encoded = struct.pack("<384f", *vector)
+        except (OverflowError, struct.error):
+            raise ReplayError("EMBEDDINGS_INVALID") from None
+        require(all(math.isfinite(value) for value in struct.unpack("<384f", encoded)), "EMBEDDINGS_INVALID")
+        result.append(list(vector))
+    return result
+
+
+def verify_exact_payload(records, prepared, vectors):
+    verify_records(records, prepared["url"], prepared["ids"])
+    stored = checked_vectors(records.get("embeddings"), len(prepared["ids"]))
+    actual = {key: index for index, key in enumerate(records["ids"])}
+    for index, key in enumerate(prepared["ids"]):
+        position = actual[key]
+        require(records["documents"][position] == prepared["documents"][index]
+                and records["metadatas"][position] == prepared["metadatas"][index]
+                and struct.pack("<384f", *stored[position]) == struct.pack("<384f", *vectors[index]),
+                "EXACT_PAYLOAD_READBACK_MISMATCH")
+
+
+def capture_graph_events_safely(queue_events, prepared):
+    """Do not expose downstream DB/import exception text from this CLI process.
+
+    Existing graph policy is unchanged. Restore logging after this narrow call;
+    running backend/Chroma processes are not affected. Public result is fixed-code.
+    """
+    previous = logging.root.manager.disable
+    try:
+        logging.disable(logging.CRITICAL)
+        with open(os.devnull, "w", encoding="utf-8") as sink, redirect_stdout(sink), redirect_stderr(sink):
+            try:
+                return queue_events("aem_guides", ids=prepared["ids"], documents=prepared["documents"],
+                                    metadatas=prepared["metadatas"], event_type="upsert") is True
+            except Exception:
+                return False
+    finally:
+        logging.disable(previous)
+
+
+def append_missing_page(collection, prepared, embed_texts, queue_events, assert_state, receipt):
+    """Add frozen content only. Chroma add cannot overwrite a raced existing ID."""
+    require_page_absent(collection, prepared)
+    vectors = checked_vectors(embed_texts(prepared["documents"]), len(prepared["ids"]))
+    assert_state()
+    # A second check closes the long model-load window. An uncooperative writer
+    # still can race, so use add (not upsert), then exact payload/count verification.
+    require_page_absent(collection, prepared)
+    receipt["phase"] = "MISSING_ONLY_ADD"
+    receipt["index_write_requested"] = True
+    collection.add(ids=prepared["ids"], documents=prepared["documents"],
+                   metadatas=prepared["metadatas"], embeddings=vectors)
+    receipt["phase"] = "EXACT_READBACK"
+    verify_exact_payload(collection.get(ids=prepared["ids"], include=["documents", "metadatas", "embeddings"]),
+                         prepared, vectors)
+    receipt["exact_payload_readback"] = True
+    receipt["phase"] = "GRAPH_EVENT_CAPTURE"
+    require(capture_graph_events_safely(queue_events, prepared), "GRAPH_EVENT_CAPTURE_FAILED_AFTER_ADD")
 
 
 def apply(context, output_parent, receipt):
@@ -212,6 +342,35 @@ def apply(context, output_parent, receipt):
     run = Path(tempfile.mkdtemp(prefix="aem-publishing-refresh-", dir=parent))
     receipt["output_directory"] = str(run)
     (run / "crawl-urls.before.json").write_bytes((ROOT / "backend/config/aem_guides_crawl_urls.json").read_bytes())
+    if context.get("prepared") is not None:
+        prepared = context["prepared"]
+        require(context["urls"] == [prepared["url"]], "PREPARED_URL_MISMATCH")
+        receipt.update(index_write_requested=False, operation="SINGLE_URL_MISSING_ONLY_ADD",
+                       overwrite_requested=False, crawl_config_changed=False,
+                       source_page_sha256=prepared["page_sha256"], source_text_sha256=prepared["text_sha256"])
+        frozen = (json.dumps(prepared, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+        (run / "prepared-page.json").write_bytes(frozen)
+        receipt["prepared_payload_sha256"] = hashlib.sha256(frozen).hexdigest()
+
+        def unchanged():
+            require(service_snapshot() == context["services"]
+                    and shared_identity(context["token"]) == context["identity"], "STATE_CHANGED_BEFORE_ADD")
+
+        with missing_url_lock():
+            unchanged()
+            append_missing_page(collection, prepared, embedding_service.embed_texts,
+                                vector_store_service._queue_evidence_graph_events, unchanged, receipt)
+            receipt["phase"] = "IDENTITY_AND_COUNT_READBACK"
+            after = shared_identity(context["token"])
+            for name, before in context["identity"]["collections"].items():
+                actual = after["collections"][name]
+                require(actual["id"] == before["id"], "COLLECTION_UUID_CHANGED")
+                expected_count = before["count"] + (len(prepared["ids"]) if name == "aem_guides" else 0)
+                require(actual["count"] == expected_count, "UNEXPECTED_COUNT_CHANGE")
+            require(service_snapshot() == context["services"], "SERVICE_CHANGED_DURING_INGEST")
+        receipt.update(status="PASS_SINGLE_URL_APPENDED", phase="COMPLETE",
+                       chunks_by_url={prepared["url"]: len(prepared["ids"])}, identity_after=after)
+        return
     receipt["phase"] = "INGEST"
     result = subprocess.run([str(PYTHON), "-I", "-B", str(ROOT / "scripts/ingest_urls.py"), *context["urls"]],
                             cwd=ROOT / "backend", env=dict(os.environ), capture_output=True, text=True, timeout=1800)
@@ -236,12 +395,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="Default: HTTP/config checks only; no model load/index writes")
-    mode.add_argument("--apply", action="store_true", help="Check, compare sampled vectors, ingest and verify all nine URLs")
+    mode.add_argument("--apply", action="store_true", help="Check, compare sampled vectors, ingest and verify selected URLs")
+    parser.add_argument("--url", help="Optional single Guides URL: missing-only add, never refresh/overwrite existing records")
     parser.add_argument("--output-parent", type=Path, default=Path("/root"))
     args = parser.parse_args(argv)
     receipt = {"status": "STOP", "phase": "PREFLIGHT", "mode": "apply" if args.apply else "check"}
     try:
-        context = check()
+        context = check(single_url=args.url) if args.url is not None else check()
         receipt.update(identity_before=context["identity"], url_count=len(context["urls"]),
                        graph_event_capture_enabled=os.environ.get("EVIDENCE_GRAPH_EVENT_CAPTURE_ENABLED",
                                                                    os.environ.get("EVIDENCE_GRAPH_ENABLED", "false")).lower()

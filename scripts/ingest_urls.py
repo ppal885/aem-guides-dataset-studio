@@ -17,6 +17,116 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from urllib.parse import unquote, urljoin, urlsplit
+
+
+def _text_from_html(html: str, url: str) -> tuple[str, str]:
+    """The existing non-LangChain extraction, shared by the guarded replay."""
+    import re
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+    title = (match.group(1).strip() if match else "") or url.rsplit("/", 1)[-1]
+    html = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.I | re.S)
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = re.sub(r"&nbsp;", " ", text)
+    text = re.sub(r"[ \t\r\f]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n", text)
+    return text.strip(), title
+
+
+def validate_guides_url(url: str) -> str:
+    """Allow only the reviewed public Guides documentation origin and path."""
+    if not isinstance(url, str) or any(ord(char) <= 32 or ord(char) == 127 for char in url):
+        raise ValueError("UNEXPECTED_URL")
+    parts = urlsplit(url)
+    decoded_path = unquote(parts.path)
+    if not (parts.scheme == "https" and parts.netloc == "experienceleague.adobe.com"
+            and parts.path.startswith("/en/docs/experience-manager-guides/")
+            and "\\" not in decoded_path and not any(part in {".", ".."} for part in decoded_path.split("/"))
+            and not parts.query and not parts.fragment):
+        raise ValueError("UNEXPECTED_URL")
+    return url
+
+
+def _reject_non_document_html(html: str, title: str) -> None:
+    """Catch recognizable HTTP-200 error/login/landing responses before embedding.
+
+    Check page identity, not prose: real troubleshooting articles can mention
+    error messages in their body. This is not a general semantic page validator.
+    """
+    from html import unescape
+    import re
+
+    headings = re.findall(r"<h1\b[^>]*>(.*?)</h1\s*>", html, flags=re.I | re.S)[:3]
+    labels = [unescape(re.sub(r"<[^>]*>", " ", item)).strip().lower() for item in [title, *headings]]
+    errors = re.compile(
+        r"^(?:(?:error\s*)?(?:401|403|404|500|502|503)(?:\b|\s)|"
+        r"(?:page |document |resource )?not found\b|access denied\b|forbidden\b|"
+        r"unauthorized\b|permission denied\b|service unavailable\b|temporarily unavailable\b|"
+        r"internal server error\b|sign[ -]?in\b|log[ -]?in\b|authentication required\b|"
+        r"verify (?:that )?you are human\b|just a moment\b)")
+    generic = {"experience league", "adobe experience league", "experience manager guides",
+               "adobe experience manager guides", "aem guides", "documentation", "welcome", "home"}
+    for label in labels:
+        normalized = re.sub(r"\s+", " ", label)
+        if errors.search(normalized):
+            raise ValueError("PAGE_ERROR_DOCUMENT")
+    main_title = re.split(r"\s*[|\u2013\u2014]\s*", labels[0], maxsplit=1)[0].strip()
+    if main_title in generic:
+        raise ValueError("PAGE_GENERIC_LANDING")
+
+
+def prepare_guides_page(url: str, *, cafile: str) -> dict:
+    """Fetch ONCE and prepare existing ingest-format chunks without any index write.
+
+    The optional missing-only replay uses this instead of the permissive legacy
+    fetch. Every redirect is checked before it is followed; HTTP error responses,
+    another origin, non-HTML, oversized bodies and empty text are rejected.
+    The original URL remains the existing stable ingest-ID/provenance contract.
+    """
+    import httpx
+    import ssl
+
+    original = validate_guides_url(url)
+    current = original
+    maximum = 2 * 1024 * 1024
+    context = ssl.create_default_context(cafile=cafile)
+    with httpx.Client(timeout=30, follow_redirects=False, verify=context) as client:
+        for _ in range(6):
+            with client.stream("GET", current) as response:
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise ValueError("PAGE_REDIRECT_INVALID")
+                    current = validate_guides_url(urljoin(current, location))
+                    continue
+                if (response.status_code != 200 or response.headers.get("content-type", "")
+                        .split(";", 1)[0].strip().lower() != "text/html"):
+                    raise ValueError("PAGE_PREFLIGHT_FAILED")
+                body = bytearray()
+                for part in response.iter_bytes():
+                    body.extend(part)
+                    if len(body) > maximum:
+                        raise ValueError("PAGE_TOO_LARGE")
+                html = bytes(body).decode(response.encoding or "utf-8", errors="strict")
+                break
+        else:
+            raise ValueError("PAGE_REDIRECT_LIMIT")
+    text, title = _text_from_html(html, current)
+    if not text:
+        raise ValueError("PAGE_TEXT_EMPTY")
+    _reject_non_document_html(html, title)
+    chunks = [chunk for chunk in _split(text, 1000, 200) if chunk.strip()]
+    if not chunks or len(chunks) > 3000:
+        raise ValueError("PAGE_CHUNKS_INVALID")
+    key = hashlib.md5(original.encode()).hexdigest()[:10]  # Existing nonsecurity ingest-ID contract.
+    return {
+        "url": original, "final_url": current,
+        "page_sha256": hashlib.sha256(body).hexdigest(),
+        "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "ids": [f"aem_ingest_{key}_{index}" for index in range(len(chunks))],
+        "documents": chunks,
+        "metadatas": [{"url": original, "title": title} for _ in chunks],
+    }
 
 
 def _fetch_text(url: str) -> tuple[str, str]:
@@ -29,18 +139,9 @@ def _fetch_text(url: str) -> tuple[str, str]:
         title = (docs[0].metadata.get("title") if docs else "") or url.rsplit("/", 1)[-1]
         return text, title
     except Exception:  # noqa: BLE001 - langchain missing or load failed; fall back
-        import re
         import httpx
         html = httpx.get(url, timeout=30, follow_redirects=True).text
-        m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
-        title = (m.group(1).strip() if m else "") or url.rsplit("/", 1)[-1]
-        # strip script/style then tags, collapse whitespace
-        html = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.I | re.S)
-        text = re.sub(r"<[^>]+>", " ", html)
-        text = re.sub(r"&nbsp;", " ", text)
-        text = re.sub(r"[ \t\r\f]+", " ", text)
-        text = re.sub(r"\n\s*\n+", "\n", text)
-        return text.strip(), title
+        return _text_from_html(html, url)
 
 
 def _split(text: str, size: int, overlap: int) -> list[str]:

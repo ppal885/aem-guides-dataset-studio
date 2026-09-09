@@ -6,8 +6,30 @@ model_reasoning_effort = "xhigh"
 
 [mcp_servers.aem_dataset_studio]
 command = "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\venv\\Scripts\\python.exe"
+args = ["C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\release-artifacts\\aem-guides-mcp-client-windows\\server.py"]
+cwd = "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio"
+enabled_tools = ["check_rag_status", "ask_dita_expert", "search_jira_history", "query_test_evidence_graph"]
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+
+[mcp_servers.aem_dataset_studio.env]
+PYTHONUTF8 = "1"
+AEM_STUDIO_URL = "http://10.42.46.78:4502"
+AEM_STUDIO_READ_ONLY = "true"
+AEM_STUDIO_TIMEOUT_SECONDS = "30"
+AEM_STUDIO_EXPECTED_INDEX_FINGERPRINT = "f95efbe8495f6d492d324e24808867a40d4469539720c41761a1315ad4bab125"
+# Explicitly use the existing anonymous intranet read endpoint; never send a
+# personal credential over plaintext. Team authentication is NOT proven by this.
+AEM_STUDIO_TOKEN = ""
+AEM_STUDIO_ALLOW_INSECURE_HTTP = "true"
+
+# Preserve local DITA generation, validation and file tools under a clear name.
+# Shared UAC retrieval/status must not silently read this workstation's corpus.
+[mcp_servers.aem_local_dita_tools]
+command = "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\venv\\Scripts\\python.exe"
 args = ["C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio\\mcp_server.py"]
 cwd = "C:\\Users\\prashantp\\Videos\\aem-guides-dataset-studio"
+disabled_tools = ["check_rag_status", "ask_dita_expert", "search_jira_history", "query_test_evidence_graph", "show_rag_index_status", "show_mcp_rag_corpus_status"]
 env_vars = [
   "ANTHROPIC_API_KEY",
   "AWS_ACCESS_KEY_ID",
@@ -25,5 +47,5 @@ env_vars = [
   "TAVILY_API_KEY",
 ]
 
-[mcp_servers.aem_dataset_studio.env]
+[mcp_servers.aem_local_dita_tools.env]
 PYTHONUTF8 = "1"
