@@ -3707,10 +3707,18 @@ class CanonicalTestPlanReasoningService:
                 facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT
                 or candidate.accepted_human_contract
             )
+            ticket_scope_supported = candidate.accepted_human_contract or any(
+                row.authority_class == AuthorityClass.CUSTOMER_REQUEST
+                for row in source_facts
+            )
             candidate_text = candidate.statement.casefold()
-            scope_established = candidate.in_scope and not any(
-                value and value in candidate_text
-                for value in map(_scope_clause_value, scope.out_of_scope)
+            scope_established = (
+                candidate.in_scope
+                and ticket_scope_supported
+                and not any(
+                    value and value in candidate_text
+                    for value in map(_scope_clause_value, scope.out_of_scope)
+                )
             )
             unresolved = bool(candidate.unresolved_decision_ids)
             reasons: list[str] = []
@@ -3737,7 +3745,8 @@ class CanonicalTestPlanReasoningService:
                 )
             if not scope_established:
                 reasons.append(
-                    "The candidate conflicts with or falls outside established scope."
+                    "The candidate lacks current-ticket applicability or conflicts "
+                    "with established scope."
                 )
             if not candidate.observable:
                 reasons.append("The expected result is not observable.")
