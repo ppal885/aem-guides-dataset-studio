@@ -6,6 +6,26 @@ on:
   pull_request:
 
 jobs:
+  test-plan-skill-parity:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check all test-plan skill copies
+        run: python scripts/check_test_plan_evidence_graph_parity.py
+
+      - name: Install parity test dependency
+        run: python -m pip install pytest
+
+      - name: Test parity failure detection without backend services
+        run: python -m pytest --noconftest backend/tests/test_test_plan_evidence_graph_parity.py -q
+
   backend:
     runs-on: ubuntu-latest
     defaults:
