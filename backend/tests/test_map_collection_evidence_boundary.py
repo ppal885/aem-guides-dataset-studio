@@ -107,11 +107,9 @@ class MapCollectionEvidenceBoundaryTests(unittest.TestCase):
             promoted, {REQUIREMENT: CoverageDisposition.ACCEPTANCE_CONTRACT}
         )
 
-    @unittest.expectedFailure
     def test_nearby_documentation_cannot_expand_proposed_uac(self):
-        # Known cb55d104 gap: documentation becomes authoritative contract facts;
-        # proposed candidates default to in_scope=True without applicability proof.
-        # Keep the desired assertion visible; unexpected success fails unittest.
+        # Documentation remains authoritative investigation evidence, but it cannot
+        # establish current-ticket applicability without a ticket-scoped fact.
         _, _, promoted = evaluate_boundary(human_accepted=False)
         self.assertEqual(
             promoted,
