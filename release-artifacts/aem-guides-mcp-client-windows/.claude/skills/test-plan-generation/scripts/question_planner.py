@@ -72,7 +72,10 @@ QUESTION_APPLICABILITY = (
 
 DEFAULT_QUESTION_BUDGET = 12
 
-OVERFLOW_STATES = ("OVERFLOW",)
+# Budget overflow escalates explicitly instead of silently dropping questions.
+# ``QUESTION_BUDGET_EXCEEDED`` is the canonical state; ``OVERFLOW`` remains
+# accepted for earlier manifests.
+OVERFLOW_STATES = ("QUESTION_BUDGET_EXCEEDED", "OVERFLOW")
 
 
 def is_present(manifest):
@@ -177,8 +180,8 @@ def validate(manifest):
         else:
             if overflow.get("state") not in OVERFLOW_STATES:
                 problems.append(
-                    "question_plan.overflow.state must be OVERFLOW - the overflow "
-                    "state is the explicit escalation, not silence"
+                    "question_plan.overflow.state must be QUESTION_BUDGET_EXCEEDED "
+                    "- the overflow state is the explicit escalation, not silence"
                 )
             if not _nonempty(overflow.get("escalation")):
                 problems.append(

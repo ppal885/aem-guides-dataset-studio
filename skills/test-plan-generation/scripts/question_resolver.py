@@ -109,6 +109,13 @@ INVESTIGATION_TOPICS = (
 # Research outcomes that can never ground an answered claim.
 _NON_ANSWERING_RESEARCH_STATUSES = frozenset({"PENDING", "NOT_FOUND"})
 
+# Research requirements that route through the existing R1 Doc Researcher.
+_DOC_DEPENDENT_REQUIREMENTS = frozenset({
+    "DOCUMENTATION",
+    "DOCUMENTATION_AND_IMPLEMENTATION",
+    "MULTI_SOURCE",
+})
+
 
 def is_present(manifest):
     return isinstance(manifest, dict) and isinstance(
@@ -166,18 +173,45 @@ def _validate_answer(i, status, answer):
     return problems
 
 
+def _normalized(item):
+    """Normalize the two accepted resolution shapes.
+
+    Canonical Q1 shape: ``question_id`` + ``disposition`` with a flat
+    ``answer`` claim and top-level ``source_ids`` / ``source_authority`` /
+    ``applicability`` / ``limitations`` / ``contradictions``.  The earlier
+    nested shape (``question_ref`` + ``status`` with an ``answer`` object) is
+    accepted unchanged.
+    """
+
+    if not isinstance(item, dict):
+        return None, None, None
+    ref = item.get("question_ref") or item.get("question_id")
+    status = item.get("status") or item.get("disposition")
+    answer = item.get("answer")
+    if isinstance(answer, str):
+        answer = {
+            "claim": answer,
+            "source_ids": item.get("source_ids"),
+            "source_authority": item.get("source_authority"),
+            "applicability": item.get("applicability"),
+            "limitations": item.get("limitations", []),
+            "contradictions": item.get("contradictions", []),
+        }
+    return ref, status, answer
+
+
 def _validate_item(i, item):
     problems = []
     tag = f"question_resolutions.items[{i}]"
     if not isinstance(item, dict):
         return [f"{tag}: each resolution must be an object"]
 
-    if not _nonempty(item.get("question_ref")):
-        problems.append(f"{tag}: missing question_ref")
-    status = item.get("status")
+    ref, status, answer = _normalized(item)
+    if not _nonempty(ref):
+        problems.append(f"{tag}: missing question_id (question_ref)")
     if status not in RESOLUTION_STATUSES:
         problems.append(
-            f"{tag}: status '{status}' must be one of "
+            f"{tag}: disposition '{status}' must be one of "
             f"{', '.join(RESOLUTION_STATUSES)}"
         )
         return problems
@@ -188,7 +222,21 @@ def _validate_item(i, item):
             "cannot declare acceptance identity"
         )
 
-    problems.extend(_validate_answer(i, status, item.get("answer")))
+    problems.extend(_validate_answer(i, status, answer))
+
+    # An equal-authority conflict remains unresolved: ANSWERED with retained
+    # contradictions requires the higher-authority basis that settled it;
+    # otherwise the question stays CONFLICTED.
+    contradictions = (answer or {}).get("contradictions")
+    if status == "ANSWERED" and contradictions and not _nonempty(
+        item.get("conflict_resolution")
+        or (answer or {}).get("conflict_resolution")
+    ):
+        problems.append(
+            f"{tag}: an equal-authority conflict remains unresolved - stay "
+            "CONFLICTED or record the higher-authority basis in "
+            "conflict_resolution"
+        )
 
     if status == "ACCEPTANCE_TBD":
         impact = item.get("material_impact")
@@ -215,7 +263,7 @@ def _validate_item(i, item):
                 f"{tag}: DUPLICATE requires duplicate_of pointing at the "
                 "surviving question"
             )
-        elif item.get("duplicate_of") == item.get("question_ref"):
+        elif item.get("duplicate_of") == ref:
             problems.append(f"{tag}: DUPLICATE cannot reference itself")
     if status == "NOT_APPLICABLE" and not _nonempty(item.get("reason")):
         problems.append(f"{tag}: NOT_APPLICABLE requires a reason")
@@ -254,9 +302,10 @@ def validate(manifest):
         return ["question_resolutions.items must be a list"]
     problems = []
     seen_refs = set()
+    normalized_status = {}
     for i, item in enumerate(items):
         problems.extend(_validate_item(i, item))
-        ref = item.get("question_ref") if isinstance(item, dict) else None
+        ref, status, _answer = _normalized(item)
         if ref:
             if ref in seen_refs:
                 problems.append(
@@ -264,6 +313,7 @@ def validate(manifest):
                     f"'{ref}'"
                 )
             seen_refs.add(ref)
+            normalized_status[ref] = status
 
     # Chain integrity with the planner: every resolved question must have been
     # planned, and every applicable planned question must reach a terminal
@@ -300,10 +350,10 @@ def validate(manifest):
         for i, item in enumerate(items):
             if not isinstance(item, dict):
                 continue
-            status = item.get("status")
+            ref, status, _answer = _normalized(item)
             if status not in {"ANSWERED", "PARTIALLY_ANSWERED"}:
                 continue
-            route = research_by_ref.get(item.get("question_ref"))
+            route = research_by_ref.get(ref)
             if route is None:
                 continue
             research_status = route.get("research_status")
@@ -316,6 +366,74 @@ def validate(manifest):
                     f"{requirement} research is {research_status} - required "
                     "research cannot be skipped, and NOT_FOUND is not negative "
                     "proof"
+                )
+
+    # R1 reuse: documentation-requiring questions depend on the existing Doc
+    # Researcher routing contract.  R1-required research cannot be skipped.
+    doc_research = manifest.get("doc_research")
+    if isinstance(doc_research, dict):
+        routing = doc_research.get("routing") or {}
+        routing_state = routing.get("state")
+        doc_dependent: set[str] = set()
+        research_block = manifest.get("question_research")
+        if isinstance(research_block, dict):
+            for row in research_block.get("items", []):
+                if not isinstance(row, dict):
+                    continue
+                if row.get("research_requirement") in (
+                    _DOC_DEPENDENT_REQUIREMENTS
+                ) and row.get("material", True):
+                    doc_dependent.add(row.get("question_ref"))
+        plan_block = manifest.get("question_plan")
+        if isinstance(plan_block, dict):
+            for source in (plan_block.get("items"),
+                           (plan_block.get("overflow") or {}).get("items")):
+                if not isinstance(source, list):
+                    continue
+                for row in source:
+                    if isinstance(row, dict) and row.get(
+                        "research_requirement"
+                    ) in _DOC_DEPENDENT_REQUIREMENTS:
+                        doc_dependent.add(row.get("question_id"))
+        doc_dependent.discard(None)
+        if routing_state == "RESEARCH_NOT_REQUIRED" and doc_dependent:
+            problems.append(
+                "question_resolutions: documentation-requiring material "
+                f"questions {sorted(doc_dependent)} exist, but doc research was "
+                "routed RESEARCH_NOT_REQUIRED - R1-required research cannot be "
+                "skipped"
+            )
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            ref, status, answer = _normalized(item)
+            if ref not in doc_dependent:
+                continue
+            if routing_state == "DOC_RESEARCH_REQUIRED" and status in {
+                "ANSWERED",
+                "PARTIALLY_ANSWERED",
+            }:
+                problems.append(
+                    f"question_resolutions.items[{i}]: R1-required doc research "
+                    "has no terminal result - Coverage/Writer must not proceed, "
+                    "so the question cannot resolve ANSWERED/PARTIALLY_ANSWERED"
+                )
+            if routing_state == "DOC_RESEARCH_UNAVAILABLE" and (
+                status == "ANSWERED"
+                and (answer or {}).get("source_authority")
+                == "OFFICIAL_DOCUMENTATION"
+            ):
+                problems.append(
+                    f"question_resolutions.items[{i}]: doc research was "
+                    "UNAVAILABLE - a documentation answer cannot be claimed"
+                )
+            if routing_state == "DOC_RESEARCH_CONFLICTED" and status == (
+                "ANSWERED"
+            ):
+                problems.append(
+                    f"question_resolutions.items[{i}]: doc research is "
+                    "CONFLICTED - the question stays CONFLICTED until the "
+                    "conflict is settled"
                 )
     return problems
 

@@ -2317,6 +2317,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_doc_research_routing_regressions()
             if hasattr(self_tests, "test_question_reasoning_chain_regressions"):
                 self_tests.test_question_reasoning_chain_regressions()
+            if hasattr(self_tests, "test_question_reasoning_unseen_fixture"):
+                self_tests.test_question_reasoning_unseen_fixture()
             self_tests.test_scope_applicability()
             self_tests.test_ac_language_policy()
             self_tests.test_publishing_scope_coverage()

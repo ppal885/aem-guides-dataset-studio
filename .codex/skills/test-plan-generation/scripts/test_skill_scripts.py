@@ -7190,8 +7190,15 @@ def test_question_planner() -> None:
         "items": [dict(many[12], status="ESCALATED")],
     })
     check("explicit overflow/escalation passes", qp.validate(over_budget) == [])
+    canonical_overflow = wrap(many[:12], overflow={
+        "state": "QUESTION_BUDGET_EXCEEDED",
+        "escalation": "Reviewer triage decides which escalated question enters the plan.",
+        "items": [dict(many[12], status="ESCALATED")],
+    })
+    check("QUESTION_BUDGET_EXCEEDED is the canonical overflow state",
+          qp.validate(canonical_overflow) == [])
     check("overflow without state fails",
-          any("OVERFLOW" in p for p in qp.validate(
+          any("QUESTION_BUDGET_EXCEEDED" in p for p in qp.validate(
               wrap(many[:12], overflow={"items": [many[12]]}))))
     check("overflow items keep full question fields",
           any("why_material" in p for p in qp.validate(
@@ -7342,6 +7349,80 @@ def test_question_resolver() -> None:
     check("ANSWERED on NOT_FOUND research fails",
           any("not negative proof" in p for p in qres.validate(
               wrap([item("MQ-01", research_outcome="NOT_FOUND")]))))
+
+    # Q1 schema: question_id + disposition with a flat answer claim and
+    # top-level retention fields.
+    flat = {
+        "question_id": "MQ-01",
+        "disposition": "ANSWERED",
+        "answer": "The documented baseline removes aged entries.",
+        "source_ids": ["DOC-1"],
+        "source_authority": "OFFICIAL_DOCUMENTATION",
+        "applicability": "current release",
+        "limitations": [],
+        "contradictions": [],
+    }
+    check("Q1 flat resolution shape passes", qres.validate(wrap([flat])) == [])
+    flat_missing = dict(flat, source_ids=[])
+    check("flat shape keeps the retention contract",
+          any("source_ids" in p for p in qres.validate(wrap([flat_missing]))))
+
+    # Equal-authority conflict remains unresolved: ANSWERED with retained
+    # contradictions requires the higher-authority basis, else CONFLICTED.
+    answered_with_conflict = item(
+        "MQ-01", answer=answer(contradictions=["DOC-2 says the opposite."]))
+    check("ANSWERED with an unresolved equal-authority conflict fails",
+          any("equal-authority conflict" in p
+              for p in qres.validate(wrap([answered_with_conflict]))))
+    resolved_by_authority = item(
+        "MQ-01",
+        answer=answer(contradictions=["DOC-2 says the opposite."]),
+        conflict_resolution="The current Human Accepted AC outranks the older "
+        "documentation page.")
+    check("ANSWERED with a higher-authority basis passes",
+          qres.validate(wrap([resolved_by_authority])) == [])
+
+    # R1 reuse: R1-required research cannot be skipped.
+    doc_dependent = {
+        "question_plan": {"items": [{
+            "question_id": "MQ-01", "category": "EXPECTED_OUTCOME",
+            "question": "What does the documented baseline do?",
+            "why_material": "m", "triggering_evidence_ids": ["JIRA-1"],
+            "acceptance_impact": "a", "applicability": "APPLICABLE",
+            "research_requirement": "DOCUMENTATION", "status": "RESOLVED"}]},
+        "doc_research": {"routing": {"state": "DOC_RESEARCH_REQUIRED",
+                                     "triggers": ["EVIDENCE_AGENT_REQUEST"]}},
+    }
+    check("ANSWERED over R1-required research fails",
+          any("R1-required" in p for p in qres.validate(
+              wrap([item("MQ-01")], **doc_dependent))))
+    check("doc-requiring questions contradict RESEARCH_NOT_REQUIRED",
+          any("cannot be skipped" in p for p in qres.validate(
+              wrap([item("MQ-01")], **{
+                  "question_plan": doc_dependent["question_plan"],
+                  "doc_research": {"routing": {
+                      "state": "RESEARCH_NOT_REQUIRED",
+                      "not_required_reason": "x"}}}))))
+    doc_unavailable = dict(doc_dependent)
+    doc_unavailable["doc_research"] = {"routing": {
+        "state": "DOC_RESEARCH_UNAVAILABLE",
+        "triggers": ["EVIDENCE_AGENT_REQUEST"]}}
+    check("documentation answer over UNAVAILABLE research fails",
+          any("UNAVAILABLE" in p for p in qres.validate(
+              wrap([item("MQ-01")], **doc_unavailable))))
+    doc_conflicted = dict(doc_dependent)
+    doc_conflicted["doc_research"] = {"routing": {
+        "state": "DOC_RESEARCH_CONFLICTED",
+        "triggers": ["EVIDENCE_AGENT_REQUEST"]}}
+    check("ANSWERED over CONFLICTED doc research fails",
+          any("CONFLICTED" in p for p in qres.validate(
+              wrap([item("MQ-01")], **doc_conflicted))))
+    doc_completed = dict(doc_dependent)
+    doc_completed["doc_research"] = {"routing": {
+        "state": "DOC_RESEARCH_COMPLETED",
+        "triggers": ["EVIDENCE_AGENT_REQUEST"], "research_id": "DR-1"}}
+    check("ANSWERED over completed doc research passes",
+          qres.validate(wrap([item("MQ-01")], **doc_completed)) == [])
 
     print("test_question_resolver: OK")
 
@@ -8760,12 +8841,12 @@ def test_question_reasoning_chain_regressions() -> None:
 
     domains = {
         "Translation": [
-            ("Q-T1", "EXPECTED_OUTCOME", "What exact status must a completed "
-             "translation job show in the panel?", "NONE", ["JIRA-T1"]),
-            ("Q-T2", "PRESERVATION", "Which existing translation jobs must remain "
-             "unchanged after the fix?", "DOCUMENTATION", ["JIRA-T1"]),
-            ("Q-T3", "STATE_TRANSITION", "Which job states can the panel move "
-             "between when a translation completes?", "DOCUMENTATION", ["JIRA-T1"]),
+            ("Q-T1", "PRESERVATION", "Does an Approved translation file remain "
+             "Approved after a refresh?", "NONE", ["JIRA-T1"]),
+            ("Q-T2", "NEGATIVE_CONTRACT", "Must a refresh never return an "
+             "Approved file to Ready for Review?", "NONE", ["JIRA-T1"]),
+            ("Q-T3", "STATE_TRANSITION", "Which review states can a translation "
+             "job transition between?", "DOCUMENTATION", ["JIRA-T1"]),
         ],
         "Output History": [
             ("Q-O1", "EXPECTED_OUTCOME", "What is the documented baseline of the "
@@ -8778,16 +8859,16 @@ def test_question_reasoning_chain_regressions() -> None:
              "for existing presets?", "DOCUMENTATION", ["JIRA-O1"]),
         ],
         "Broken Links": [
-            ("Q-B1", "NEGATIVE_CONTRACT", "How must a broken link surface when "
-             "validation runs?", "NONE", ["JIRA-B1"]),
+            ("Q-B1", "NEGATIVE_CONTRACT", "How must a broken keyword-key link "
+             "surface when validation runs?", "NONE", ["JIRA-B1"]),
             ("Q-B2", "ENTRY_PATH", "Which entry paths can start link validation?",
              "IMPLEMENTATION", ["JIRA-B1"]),
             ("Q-B3", "ERROR_RECOVERY", "What happens when link validation fails "
              "mid-run?", "DOCUMENTATION", ["JIRA-B1"]),
         ],
         "Native PDF": [
-            ("Q-P1", "VARIANT", "Which preset types does the rendering fix apply "
-             "to?", "NONE", ["JIRA-P1"]),
+            ("Q-P1", "VARIANT", "Which output engines does the rendering fix "
+             "apply to, Native PDF and DITA-OT?", "NONE", ["JIRA-P1"]),
             ("Q-P2", "PRESERVATION", "Which existing rendering behavior must remain "
              "unchanged for unaffected constructs?", "DOCUMENTATION", ["JIRA-P1"]),
             ("Q-P3", "ERROR_RECOVERY", "What must the product show when rendering "
@@ -8812,9 +8893,9 @@ def test_question_reasoning_chain_regressions() -> None:
     domain_coverage = {
         "Translation": [
             ("COV-T1", "Q-T1", "P0", "ACCEPTANCE", "POSITIVE",
-             ["STATE_TRANSITIONS"]),
-            ("COV-T2", "Q-T2", "P1", "QE_REGRESSION", "POSITIVE",
-             ["PRESERVATION"]),
+             ["PRESERVATION", "REFRESH_REVISIT"]),
+            ("COV-T2", "Q-T2", "P1", "QE_REGRESSION", "NEGATIVE",
+             ["NEGATIVE_CONTRACTS", "REFRESH_REVISIT"]),
             ("COV-T3", "Q-T3", "P1", "QE_REGRESSION", "POSITIVE",
              ["STATE_TRANSITIONS", "ALTERNATE_UI_PATHS"]),
         ],
@@ -8875,14 +8956,75 @@ def test_question_reasoning_chain_regressions() -> None:
         }
 
     # One semantic equivalence comparison per domain, recorded on the coverage
-    # decisions (distinct outcomes - nothing merges merely to reduce AC count).
+    # decisions. The Translation fixture is the human UAC state-preservation
+    # example: the positive and negative phrasings of the same refresh outcome
+    # merge into one AC; every other domain compares DISTINCT_OUTCOMEs and
+    # nothing merges merely to reduce AC count.
     domain_equivalence = {
-        "Translation": ("EQ-T1", "COV-T2", "COV-T3"),
-        "Output History": ("EQ-O1", "COV-O3", "COV-O4"),
-        "Broken Links": ("EQ-B1", "COV-B2", "COV-B3"),
-        "Native PDF": ("EQ-P1", "COV-P3", "COV-P4"),
-        "Editor": ("EQ-E1", "COV-E2", "COV-E3"),
+        "Translation": {
+            "decision": ("EQ-T1", "COV-T1", "COV-T2", "SAME_OUTCOME_VARIANT",
+                         ["EXPECTED_OUTCOME", "STATE_TRANSITION",
+                          "APPLICABILITY"], ["QUESTION_IDS"]),
+            "merge_id": "MERGE-T1",
+        },
+        "Output History": {
+            "decision": ("EQ-O1", "COV-O3", "COV-O4", "DISTINCT_OUTCOME",
+                         ["APPLICABILITY"], ["EXPECTED_OUTCOME"]),
+            "merge_id": None,
+        },
+        "Broken Links": {
+            "decision": ("EQ-B1", "COV-B2", "COV-B3", "DISTINCT_OUTCOME",
+                         ["APPLICABILITY"], ["EXPECTED_OUTCOME"]),
+            "merge_id": None,
+        },
+        "Native PDF": {
+            "decision": ("EQ-P1", "COV-P3", "COV-P4", "DISTINCT_OUTCOME",
+                         ["APPLICABILITY"], ["EXPECTED_OUTCOME"]),
+            "merge_id": None,
+        },
+        "Editor": {
+            "decision": ("EQ-E1", "COV-E2", "COV-E3", "DISTINCT_OUTCOME",
+                         ["APPLICABILITY"], ["EXPECTED_OUTCOME"]),
+            "merge_id": None,
+        },
     }
+
+    # R1 reuse: every domain has documentation-requiring questions, so the
+    # existing Doc Researcher routing contract produces a terminal result the
+    # resolver can rely on.
+    def doc_block(domain, doc_question_ids):
+        rid = f"DR-{domain}"
+        findings = [
+            {
+                "claim": f"Documentation establishes the baseline for {qid}.",
+                "source_id": f"EV-{qid}",
+                "source_type": "OFFICIAL_DOCUMENTATION",
+                "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                "applicability": "current release",
+                "currentness": "CURRENT",
+                "evidence_role": "EXISTING_BEHAVIOR",
+            }
+            for qid in doc_question_ids
+        ]
+        return {
+            "routing": {
+                "state": "DOC_RESEARCH_COMPLETED",
+                "triggers": ["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                "research_id": rid,
+            },
+            "results": [{
+                "research_id": rid,
+                "status": "DOC_RESEARCH_COMPLETED",
+                "produced_by": "uac-doc-researcher",
+                "topics": ["documented baseline behavior"],
+                "findings": findings,
+                "source_ids": sorted({f["source_id"] for f in findings}),
+                "applicability": "current release",
+                "limitations": [],
+                "conflicts": [],
+            }],
+            "admitted_research_ids": [rid],
+        }
 
     for domain, rows in domains.items():
         plan_items = [
@@ -8904,16 +9046,39 @@ def test_question_reasoning_chain_regressions() -> None:
         ]
         coverage_items = [coverage(*row) for row in domain_coverage[domain]]
         writer_handoff = [row[0] for row in domain_coverage[domain]]
-        eq_id, eq_left, eq_right = domain_equivalence[domain]
+        eq = domain_equivalence[domain]
+        eq_id, eq_left, eq_right, eq_class, eq_shared, eq_diff = eq["decision"]
         equivalence = {
             "decision_id": eq_id,
             "left_coverage_id": eq_left,
             "right_coverage_id": eq_right,
-            "classification": "DISTINCT_OUTCOME",
-            "shared_dimensions": ["APPLICABILITY"],
-            "differing_dimensions": ["EXPECTED_OUTCOME"],
-            "reason": "The two decisions cover materially different outcomes.",
+            "classification": eq_class,
+            "shared_dimensions": eq_shared,
+            "differing_dimensions": eq_diff,
+            "reason": "Structural comparison of the coverage decisions.",
         }
+        merges = []
+        if eq["merge_id"]:
+            merged_ids = [eq_left, eq_right]
+            members = [c for c in coverage_items
+                       if c["coverage_id"] in merged_ids]
+            merges.append({
+                "merge_id": eq["merge_id"],
+                "merged_coverage_ids": merged_ids,
+                "classification": "SAME_OUTCOME_VARIANT",
+                "priority": "P0",
+                "question_ids": sorted({
+                    q for c in members for q in c["question_ids"]}),
+                "evidence_ids": sorted({
+                    e for c in members for e in c["evidence_ids"]}),
+                "variants": ["positive assertion", "negative assertion"],
+                "source_lineage": sorted({
+                    ref for c in members
+                    for ref in [c["coverage_id"], *c["question_ids"]]}),
+            })
+        doc_questions = [
+            row[0] for row in rows if row[3] == "DOCUMENTATION"
+        ]
         question_assessments = [
             {
                 "question_ref": row[0],
@@ -8939,11 +9104,15 @@ def test_question_reasoning_chain_regressions() -> None:
             "question_plan": {"items": plan_items},
             "question_research": {"items": research_items},
             "question_resolutions": {"items": resolution_items},
+            "doc_research": doc_block(domain, doc_questions),
             "coverage_decisions": {
                 "items": coverage_items,
                 "writer_handoff": writer_handoff,
             },
-            "coverage_equivalence": {"decisions": [equivalence]},
+            "coverage_equivalence": {
+                "decisions": [equivalence],
+                "merges": merges,
+            },
             "evidence_sufficiency": {
                 "question_assessments": question_assessments,
                 "coverage_assessments": coverage_assessments,
@@ -8952,40 +9121,50 @@ def test_question_reasoning_chain_regressions() -> None:
         planner_problems = qp.validate(manifest)
         research_problems = qr.validate(manifest)
         resolver_problems = qres.validate(manifest)
+        doc_problems = doc_research_mod.validate(manifest)
         coverage_problems = cr.validate(manifest)
         equivalence_problems = ce.validate(manifest)
         sufficiency_problems = es.validate(manifest)
         check(f"{domain}: planner gate clean", planner_problems == [])
         check(f"{domain}: research router gate clean", research_problems == [])
         check(f"{domain}: resolver gate clean", resolver_problems == [])
+        check(f"{domain}: doc research routing gate clean", doc_problems == [])
         check(f"{domain}: coverage reasoner gate clean", coverage_problems == [])
         check(f"{domain}: equivalence gate clean", equivalence_problems == [])
         check(f"{domain}: sufficiency gate clean", sufficiency_problems == [])
 
-        # Deliver the question trace for the regression.
+        # Deliver the question, research, and resolution traces.
         print(f"  question trace [{domain}]:")
-        print(
-            f"    {eq_id}: {eq_left} vs {eq_right} -> DISTINCT_OUTCOME "
-            "(not merged)"
-        )
         for item_row in plan_items:
-            route = next(r for r in research_items
-                         if r["question_ref"] == item_row["question_id"])
-            outcome = next(r for r in resolution_items
-                           if r["question_ref"] == item_row["question_id"])
+            print(
+                f"    {item_row['question_id']} [{item_row['category']}]: "
+                f"{item_row['question']}"
+            )
+        print(f"  research trace [{domain}]:")
+        print(
+            f"    doc routing: DOC_RESEARCH_REQUIRED -> uac-doc-researcher "
+            f"-> DOC_RESEARCH_COMPLETED (DR-{domain})"
+        )
+        for route in research_items:
+            print(
+                f"    {route['question_ref']}: "
+                f"{route['research_requirement']}/{route['research_status']}"
+            )
+        print(f"  resolution trace [{domain}]:")
+        for outcome in resolution_items:
             decisions = [
                 c for c in coverage_items
-                if item_row["question_id"] in c["question_ids"]
+                if outcome["question_ref"] in c["question_ids"]
             ]
             tail = " ".join(
                 f"-> {c['coverage_id']} {c['priority']}/{c['coverage_class']}"
                 for c in decisions
             )
-            print(
-                f"    {item_row['question_id']} [{item_row['category']}] "
-                f"-> {route['research_requirement']}/{route['research_status']} "
-                f"-> {outcome['status']} {tail}"
-            )
+            print(f"    {outcome['question_ref']} -> {outcome['status']} {tail}")
+        merge_note = (
+            f"-> {eq['merge_id']} (one AC)" if eq["merge_id"] else "(not merged)"
+        )
+        print(f"    {eq_id}: {eq_left} vs {eq_right} -> {eq_class} {merge_note}")
 
     # Cross-gate: required research cannot be skipped anywhere in the chain.
     manifest = {
@@ -9025,6 +9204,176 @@ def test_question_reasoning_chain_regressions() -> None:
           any("never planned" in p for p in qres.validate(manifest)))
 
     print("test_question_reasoning_chain_regressions: OK")
+
+
+def test_question_reasoning_unseen_fixture() -> None:
+    """Structurally different unseen-style fixture: an unfamiliar ticket whose
+    chain includes a DUPLICATE question, an equal-authority CONFLICTED
+    question, a NOT_APPLICABLE question, and PARTIAL doc research - exercising
+    the same planner -> router -> resolver contract without any named fixture."""
+
+    qp = question_planner_mod
+    qr = question_research_mod
+    qres = question_resolver_mod
+    dr = doc_research_mod
+
+    plan_items = [
+        {"question_id": "Q-N1", "category": "PERSISTENCE",
+         "question": "Where does the dialog persist the last used folder?",
+         "why_material": "The answer decides the persistence oracle.",
+         "triggering_evidence_ids": ["JIRA-N1"],
+         "acceptance_impact": "Decides whether re-open state is asserted.",
+         "applicability": "APPLICABLE",
+         "research_requirement": "DOCUMENTATION", "status": "RESOLVED"},
+        {"question_id": "Q-N2", "category": "APPLICABILITY",
+         "question": "Does the dialog apply to collections as well as single "
+         "assets?",
+         "why_material": "The answer bounds the applicable surfaces.",
+         "triggering_evidence_ids": ["JIRA-N1"],
+         "acceptance_impact": "Decides which surfaces the AC covers.",
+         "applicability": "APPLICABLE",
+         "research_requirement": "DOCUMENTATION", "status": "RESOLVED"},
+        {"question_id": "Q-N3", "category": "VARIANT",
+         "question": "Does the export include referenced content metadata?",
+         "why_material": "The answer changes the export contract.",
+         "triggering_evidence_ids": ["JIRA-N1"],
+         "acceptance_impact": "Decides the export payload oracle.",
+         "applicability": "APPLICABLE",
+         "research_requirement": "DOCUMENTATION", "status": "RESOLVED"},
+        {"question_id": "Q-N4", "category": "PERSISTENCE",
+         "question": "Where does the dialog persist the last used folder?",
+         "why_material": "Duplicate trigger from a second evidence row.",
+         "triggering_evidence_ids": ["JIRA-N2"],
+         "acceptance_impact": "Same oracle as Q-N1.",
+         "applicability": "APPLICABLE",
+         "research_requirement": "NONE", "status": "RESOLVED"},
+        {"question_id": "Q-N5", "category": "SCOPE",
+         "question": "Does the export include binary content?",
+         "why_material": "The ticket marks binary content out of scope.",
+         "triggering_evidence_ids": ["JIRA-N1"],
+         "acceptance_impact": "Confirms the scope boundary.",
+         "applicability": "APPLICABLE",
+         "research_requirement": "NONE", "status": "RESOLVED"},
+    ]
+    research_items = [
+        {"question_ref": "Q-N1", "material": True,
+         "research_requirement": "DOCUMENTATION",
+         "research_status": "ANSWER_FOUND", "research_requests": ["RQ-N1"],
+         "research_evidence_ids": ["DOC-N1"]},
+        {"question_ref": "Q-N2", "material": True,
+         "research_requirement": "DOCUMENTATION",
+         "research_status": "PARTIAL", "research_requests": ["RQ-N2"],
+         "research_evidence_ids": ["DOC-N2"]},
+        {"question_ref": "Q-N3", "material": True,
+         "research_requirement": "DOCUMENTATION",
+         "research_status": "CONFLICTED", "research_requests": ["RQ-N3"],
+         "research_evidence_ids": ["DOC-N3A", "DOC-N3B"]},
+        {"question_ref": "Q-N4", "material": True,
+         "research_requirement": "NONE", "research_status": "NOT_REQUIRED"},
+        {"question_ref": "Q-N5", "material": True,
+         "research_requirement": "NONE", "research_status": "NOT_REQUIRED"},
+    ]
+    resolution_items = [
+        {"question_id": "Q-N1", "disposition": "ANSWERED",
+         "answer": "The documented dialog persists the last used folder per "
+         "user.",
+         "source_ids": ["DOC-N1"], "source_authority": "OFFICIAL_DOCUMENTATION",
+         "applicability": "current release", "limitations": [],
+         "contradictions": []},
+        {"question_id": "Q-N2", "disposition": "PARTIALLY_ANSWERED",
+         "answer": "Single assets are covered; collections are undocumented.",
+         "source_ids": ["DOC-N2"], "source_authority": "OFFICIAL_DOCUMENTATION",
+         "applicability": "current release",
+         "limitations": ["Collection applicability is not documented."],
+         "contradictions": []},
+        {"question_id": "Q-N3", "disposition": "CONFLICTED",
+         "answer": "Two equally authoritative pages disagree on referenced "
+         "metadata.",
+         "source_ids": ["DOC-N3A", "DOC-N3B"],
+         "source_authority": "OFFICIAL_DOCUMENTATION",
+         "applicability": "current release", "limitations": [],
+         "contradictions": ["DOC-N3A includes referenced metadata; "
+                            "DOC-N3B excludes it."]},
+        {"question_id": "Q-N4", "disposition": "DUPLICATE",
+         "duplicate_of": "Q-N1"},
+        {"question_id": "Q-N5", "disposition": "NOT_APPLICABLE",
+         "reason": "Binary content is explicitly out of scope for the ticket."},
+    ]
+    doc_block = {
+        "routing": {
+            "state": "DOC_RESEARCH_PARTIAL",
+            "triggers": ["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+            "research_id": "DR-UNSEEN",
+        },
+        "results": [{
+            "research_id": "DR-UNSEEN",
+            "status": "DOC_RESEARCH_PARTIAL",
+            "produced_by": "uac-doc-researcher",
+            "topics": ["dialog persistence", "collection applicability"],
+            "findings": [
+                {"claim": "The documented dialog persists the last used folder "
+                 "per user.",
+                 "source_id": "DOC-N1",
+                 "source_type": "OFFICIAL_DOCUMENTATION",
+                 "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                 "applicability": "current release", "currentness": "CURRENT",
+                 "evidence_role": "EXISTING_BEHAVIOR"},
+                {"claim": "Single-asset applicability is documented; "
+                 "collections are not addressed.",
+                 "source_id": "DOC-N2",
+                 "source_type": "OFFICIAL_DOCUMENTATION",
+                 "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                 "applicability": "current release", "currentness": "CURRENT",
+                 "evidence_role": "REQUIREMENT_CLARIFICATION"},
+            ],
+            "source_ids": ["DOC-N1", "DOC-N2"],
+            "applicability": "current release",
+            "limitations": ["Collection applicability is not documented."],
+            "conflicts": [],
+        }],
+        "admitted_research_ids": ["DR-UNSEEN"],
+    }
+    manifest = {
+        "question_plan": {"items": plan_items},
+        "question_research": {"items": research_items},
+        "question_resolutions": {"items": resolution_items},
+        "doc_research": doc_block,
+    }
+    check("unseen fixture: planner gate clean", qp.validate(manifest) == [])
+    check("unseen fixture: research router gate clean",
+          qr.validate(manifest) == [])
+    check("unseen fixture: resolver gate clean", qres.validate(manifest) == [])
+    check("unseen fixture: doc research routing gate clean",
+          dr.validate(manifest) == [])
+
+    print("  question trace [unseen fixture]:")
+    for row in plan_items:
+        print(f"    {row['question_id']} [{row['category']}]: {row['question']}")
+    print("  research trace [unseen fixture]:")
+    print("    doc routing: DOC_RESEARCH_REQUIRED -> uac-doc-researcher "
+          "-> DOC_RESEARCH_PARTIAL (DR-UNSEEN)")
+    for route in research_items:
+        print(f"    {route['question_ref']}: "
+              f"{route['research_requirement']}/{route['research_status']}")
+    print("  resolution trace [unseen fixture]:")
+    for outcome in resolution_items:
+        print(f"    {outcome['question_id']} -> {outcome['disposition']}")
+
+    # The equal-authority conflict must stay unresolved - it cannot be
+    # rewritten as ANSWERED without a higher-authority basis.
+    manifest["question_resolutions"]["items"][2] = {
+        "question_id": "Q-N3", "disposition": "ANSWERED",
+        "answer": "Referenced metadata is included.",
+        "source_ids": ["DOC-N3A"],
+        "source_authority": "OFFICIAL_DOCUMENTATION",
+        "applicability": "current release", "limitations": [],
+        "contradictions": ["DOC-N3B excludes it."],
+    }
+    check("equal-authority conflict cannot be resolved by picking one side",
+          any("equal-authority conflict" in p
+              for p in qres.validate(manifest)))
+
+    print("test_question_reasoning_unseen_fixture: OK")
 
 
 def test_scope_applicability() -> None:
@@ -12827,6 +13176,7 @@ def main() -> int:
     test_doc_research_routing()
     test_doc_research_routing_regressions()
     test_question_reasoning_chain_regressions()
+    test_question_reasoning_unseen_fixture()
     test_scope_applicability()
     test_ac_language_policy()
     test_publishing_scope_coverage()

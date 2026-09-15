@@ -42,17 +42,19 @@ near-complete category carpet fails review.
 
 `question_plan.budget` (default 12) bounds the main plan. If the material
 questions exceed it, **never silently discard them**: move the excess into
-`question_plan.overflow` with `state: OVERFLOW` and an `escalation` note naming
-who/what the overflow escalates to. Overflow questions keep the full question
-record shape.
+`question_plan.overflow` with `state: QUESTION_BUDGET_EXCEEDED` and an
+`escalation` note naming who/what the overflow escalates to. Overflow questions
+keep the full question record shape.
 
 ## Resolution record (`question_resolutions.items[]`)
 
-One terminal resolution per planned question: `question_ref`, `status`
-(`ANSWERED`, `PARTIALLY_ANSWERED`, `ACCEPTANCE_TBD`, `INVESTIGATION_ONLY`,
-`NOT_APPLICABLE`, `DUPLICATE`, `CONFLICTED`), and for answering statuses a
-retained `answer` with `claim`, `source_ids`, `source_authority`,
-`applicability`, `limitations[]`, `contradictions[]`.
+One terminal resolution per planned question. Canonical Q1 shape:
+`question_id`, `disposition` (`ANSWERED`, `PARTIALLY_ANSWERED`,
+`ACCEPTANCE_TBD`, `INVESTIGATION_ONLY`, `NOT_APPLICABLE`, `DUPLICATE`,
+`CONFLICTED`), `answer` (the claim text), `source_ids`, `source_authority`,
+`applicability`, `limitations[]`, `contradictions[]`. The earlier nested shape
+(`question_ref` + `status` + an `answer` object holding the same retention
+fields) is accepted unchanged.
 
 - `PARTIALLY_ANSWERED` must record what remains unresolved in `limitations`.
 - `CONFLICTED` must retain the competing claims in `contradictions`.
@@ -73,12 +75,23 @@ retained `answer` with `claim`, `source_ids`, `source_authority`,
 3. Actual Result cannot establish Expected Result.
 4. Do not reverse a reported failure to invent desired behavior.
 5. A suspected root cause does not become acceptance behavior.
-6. An attachment observation does not establish desired behavior.
+6. An attachment observation does not establish desired behavior without
+   authority.
 7. Historical Jira does not automatically establish current behavior.
 8. NOT_FOUND is not negative proof.
-9. Required research cannot be skipped.
-10. ACCEPTANCE_TBD only under the material-impact condition above.
-11. Root cause / diagnostics / implementation mechanics are normally
+9. Required research cannot be skipped — including R1-required research: a
+   documentation-requiring material question depends on the existing Doc
+   Researcher routing contract (`doc_research`, see
+   `references/doc-research-routing.md`). It cannot resolve
+   ANSWERED/PARTIALLY_ANSWERED while the doc routing has no terminal result; a
+   `RESEARCH_NOT_REQUIRED` doc routing contradicts documentation-requiring
+   questions; `DOC_RESEARCH_UNAVAILABLE` forbids documentation-based answers;
+   `DOC_RESEARCH_CONFLICTED` keeps the question CONFLICTED.
+10. An equal-authority conflict remains unresolved — an `ANSWERED` resolution
+    carrying contradictions must record the higher-authority basis in
+    `conflict_resolution`, otherwise the question stays CONFLICTED.
+11. ACCEPTANCE_TBD only under the material-impact condition above.
+12. Root cause / diagnostics / implementation mechanics are normally
     INVESTIGATION_ONLY.
 
 Structurally, none of `ACTUAL_RESULT`, `SUSPECTED_ROOT_CAUSE`,

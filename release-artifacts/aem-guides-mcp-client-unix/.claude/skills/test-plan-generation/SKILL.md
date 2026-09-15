@@ -523,21 +523,28 @@ and `question_resolutions` blocks, validated by `scripts/question_planner.py` an
   `research_requirement`, and `status`.
 - **The question budget is bounded** (`question_plan.budget`, default 12). If the
   material-question budget is exceeded, do not silently discard questions: move the excess
-  into `question_plan.overflow` with `state: OVERFLOW` and an explicit escalation note.
+  into `question_plan.overflow` with `state: QUESTION_BUDGET_EXCEEDED` and an explicit
+  escalation note.
 - **Route every question through the Research Router** (`question_research` block) before
-  resolving it. Required research cannot be skipped; NOT_FOUND is not negative proof.
-- **Resolve every planned question exactly once** with a terminal status: ANSWERED,
+  resolving it, reusing the R1 Doc Researcher routing contract (Phase 5.5): a
+  documentation-requiring material question requires a terminal `doc_research` routing
+  state — R1-required research cannot be skipped, and a `RESEARCH_NOT_REQUIRED` doc
+  routing contradicts documentation-requiring questions. Required research cannot be
+  skipped; NOT_FOUND is not negative proof.
+- **Resolve every planned question exactly once** with a terminal disposition: ANSWERED,
   PARTIALLY_ANSWERED, ACCEPTANCE_TBD, INVESTIGATION_ONLY, NOT_APPLICABLE, DUPLICATE, or
-  CONFLICTED. Every retained answer keeps `claim`, `source_ids`, `source_authority`,
-  `applicability`, `limitations`, and `contradictions`.
+  CONFLICTED. The resolution carries `question_id`, `disposition`, `answer`,
+  `source_ids`, `source_authority`, `applicability`, `limitations`, and `contradictions`.
 - **Hard rules:** a question is not an AC; an answer is not automatically an AC; Actual
   Result cannot establish Expected Result; never reverse a reported failure to invent
   desired behavior; a suspected root cause does not become acceptance behavior; an
   attachment observation does not establish desired behavior; historical Jira does not
-  automatically establish current behavior; ACCEPTANCE_TBD is allowed only when different
-  plausible answers materially change acceptance behavior/scope/configuration/
-  applicability/compatibility/preservation; root cause, diagnostics, and implementation
-  mechanics are normally INVESTIGATION_ONLY.
+  automatically establish current behavior; an equal-authority conflict remains
+  unresolved (stay CONFLICTED, or record the higher-authority basis in
+  `conflict_resolution`); ACCEPTANCE_TBD is allowed only when different plausible answers
+  materially change acceptance behavior/scope/configuration/applicability/compatibility/
+  preservation; root cause, diagnostics, and implementation mechanics are normally
+  INVESTIGATION_ONLY.
 - **Preserved invariants:** source authority, observation-vs-requirement separation, exact
   Jira intake, attachment evidence handling, Doc Researcher routing, the Writer language
   contract, Reviewer independence, and draft-only behavior all remain exactly as defined
