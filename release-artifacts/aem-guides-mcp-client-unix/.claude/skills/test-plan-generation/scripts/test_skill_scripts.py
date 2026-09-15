@@ -125,6 +125,7 @@ question_planner_mod = _load("question_planner", "question_planner.py")
 question_resolver_mod = _load("question_resolver", "question_resolver.py")
 coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
 coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
+evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -7740,6 +7741,593 @@ def test_coverage_equivalence() -> None:
     print("test_coverage_equivalence: OK")
 
 
+def test_evidence_sufficiency() -> None:
+    es = evidence_sufficiency_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent evidence_sufficiency passes", es.validate({}) == [])
+
+    def dims():
+        return {name: "evaluated" for name in es.EVALUATION_DIMENSIONS}
+
+    def q_assessment(ref, state, **over):
+        base = {
+            "question_ref": ref,
+            "sufficiency": state,
+            "dimensions": dims(),
+            "reason": "Evidence evaluated across every dimension.",
+        }
+        base.update(over)
+        return base
+
+    def c_assessment(ref, state, question_refs, **over):
+        base = {
+            "coverage_ref": ref,
+            "sufficiency": state,
+            "question_refs": question_refs,
+            "reason": "Computed from the underlying questions.",
+        }
+        base.update(over)
+        return base
+
+    def coverage(cid, qids, priority="P0", klass="ACCEPTANCE", evidence=None):
+        return {
+            "coverage_id": cid,
+            "behavior": f"Coverage derived from {qids}.",
+            "question_ids": qids,
+            "evidence_ids": evidence if evidence is not None
+            else [f"EV-{qid}" for qid in qids],
+            "priority": priority,
+            "coverage_class": klass,
+            "positive_or_negative": "POSITIVE",
+            "surface": "the affected surface",
+            "state": "",
+            "configuration": "",
+            "applicability": "current release",
+            "reason": "Traces to resolved question evidence.",
+            "acceptance_impact": "Defines what the Writer may assert.",
+            "dimensions_considered": ["STATE_TRANSITIONS"],
+        }
+
+    # One authoritative current-ticket AC may be SUFFICIENT on its own.
+    solo = {
+        "evidence_sufficiency": {
+            "question_assessments": [
+                q_assessment("Q-1", "SUFFICIENT",
+                             establishing_authority="CURRENT_TICKET_REQUIREMENT")],
+        }
+    }
+    check("one authoritative Jira AC may be SUFFICIENT", es.validate(solo) == [])
+
+    # Volume alone is not sufficient without an establishing authority.
+    check("supporting volume alone is not SUFFICIENT",
+          any("establishing_authority" in p for p in es.validate({
+              "evidence_sufficiency": {"question_assessments": [
+                  q_assessment("Q-1", "SUFFICIENT")]}})))
+
+    # Every evaluation dimension must be evaluated.
+    incomplete = q_assessment("Q-1", "INSUFFICIENT")
+    del incomplete["dimensions"]["CONTRADICTIONS"]
+    check("unevaluated dimension rejected",
+          any("CONTRADICTIONS" in p for p in es.validate({
+              "evidence_sufficiency": {"question_assessments": [incomplete]}})))
+
+    # PARTIAL names the established portion; CONFLICTED retains contradictions.
+    check("PARTIAL requires the established portion",
+          any("established_portion" in p for p in es.validate({
+              "evidence_sufficiency": {"question_assessments": [
+                  q_assessment("Q-1", "PARTIAL")]}})))
+    check("PARTIAL with the established portion passes",
+          es.validate({"evidence_sufficiency": {"question_assessments": [
+              q_assessment("Q-1", "PARTIAL",
+                           established_portion="Only the default mode is "
+                           "established.")]}}) == [])
+    check("CONFLICTED requires contradictions",
+          any("contradictions" in p for p in es.validate({
+              "evidence_sufficiency": {"question_assessments": [
+                  q_assessment("Q-1", "CONFLICTED")]}})))
+    check("CONFLICTED with contradictions passes",
+          es.validate({"evidence_sufficiency": {"question_assessments": [
+              q_assessment("Q-1", "CONFLICTED",
+                           contradictions=["DOC-2 disagrees."])]}}) == [])
+
+    # A question requiring documentation cannot be SUFFICIENT while its
+    # mandatory research is pending (or otherwise unresolved).
+    research_pending = {
+        "question_research": {"items": [{
+            "question_ref": "Q-1", "material": True,
+            "research_requirement": "DOCUMENTATION",
+            "research_status": "PENDING"}]},
+        "evidence_sufficiency": {"question_assessments": [
+            q_assessment("Q-1", "SUFFICIENT")]},
+    }
+    check("SUFFICIENT over PENDING mandatory research fails",
+          any("mandatory research is PENDING" in p
+              for p in es.validate(research_pending)))
+    research_pending["question_research"]["items"][0]["research_status"] = (
+        "NOT_FOUND"
+    )
+    check("SUFFICIENT over NOT_FOUND research fails",
+          any("NOT_FOUND" in p for p in es.validate(research_pending)))
+    research_pending["question_research"]["items"][0]["research_status"] = (
+        "PARTIAL"
+    )
+    research_pending["question_research"]["items"][0]["research_requests"] = ["R1"]
+    check("SUFFICIENT over PARTIAL research fails",
+          any("caps the assessment at PARTIAL" in p
+              for p in es.validate(research_pending)))
+    research_pending["evidence_sufficiency"]["question_assessments"] = [
+        q_assessment("Q-1", "PARTIAL", established_portion="Default mode only.")]
+    check("PARTIAL under PARTIAL research passes",
+          es.validate(research_pending) == [])
+
+    # Coverage sufficiency is computed from the underlying questions.
+    base_chain = {
+        "question_resolutions": {"items": [{
+            "question_ref": "Q-1", "status": "ANSWERED",
+            "answer": {"claim": "c", "source_ids": ["JIRA-1"],
+                       "source_authority": "CURRENT_TICKET_REQUIREMENT",
+                       "applicability": "current", "limitations": [],
+                       "contradictions": []}}]},
+        "coverage_decisions": {"items": [coverage("COV-1", ["Q-1"])]},
+    }
+    good = dict(base_chain)
+    good["evidence_sufficiency"] = {
+        "question_assessments": [q_assessment("Q-1", "SUFFICIENT")],
+        "coverage_assessments": [c_assessment("COV-1", "SUFFICIENT", ["Q-1"])],
+    }
+    check("SUFFICIENT question grounds SUFFICIENT P0 ACCEPTANCE",
+          es.validate(good) == [])
+
+    insufficient = dict(base_chain)
+    insufficient["evidence_sufficiency"] = {
+        "question_assessments": [q_assessment("Q-1", "INSUFFICIENT")],
+        "coverage_assessments": [c_assessment("COV-1", "SUFFICIENT", ["Q-1"])],
+    }
+    check("INSUFFICIENT underneath cannot surface as SUFFICIENT",
+          any("only as strong as its underlying" in p
+              for p in es.validate(insufficient)))
+    insufficient["evidence_sufficiency"]["coverage_assessments"] = [
+        c_assessment("COV-1", "INSUFFICIENT", ["Q-1"])]
+    check("INSUFFICIENT cannot generate ACCEPTANCE coverage",
+          any("cannot generate Acceptance" in p
+              for p in es.validate(insufficient)))
+    insufficient["coverage_decisions"] = {
+        "items": [coverage("COV-1", ["Q-1"], priority="P1", klass="QE_REGRESSION")]
+    }
+    check("INSUFFICIENT regression coverage passes",
+          es.validate(insufficient) == [])
+
+    # CONFLICTED questions cannot silently generate an AC.
+    conflicted = dict(base_chain)
+    conflicted["question_resolutions"] = {"items": [{
+        "question_ref": "Q-1", "status": "CONFLICTED",
+        "answer": {"claim": "c", "source_ids": ["JIRA-1"],
+                   "source_authority": "CURRENT_TICKET_REQUIREMENT",
+                   "applicability": "current", "limitations": [],
+                   "contradictions": ["DOC-2 disagrees."]}}]}
+    conflicted["evidence_sufficiency"] = {
+        "question_assessments": [q_assessment("Q-1", "SUFFICIENT")],
+        "coverage_assessments": [c_assessment("COV-1", "SUFFICIENT", ["Q-1"])],
+    }
+    check("CONFLICTED resolution forces CONFLICTED assessment",
+          any("CONFLICTED" in p for p in es.validate(conflicted)))
+    conflicted["evidence_sufficiency"]["question_assessments"] = [
+        q_assessment("Q-1", "CONFLICTED", contradictions=["DOC-2 disagrees."])]
+    check("CONFLICTED question cannot surface SUFFICIENT coverage",
+          any("CONFLICTED" in p for p in es.validate(conflicted)))
+    conflicted["evidence_sufficiency"]["coverage_assessments"] = [
+        c_assessment("COV-1", "CONFLICTED", ["Q-1"])]
+    check("CONFLICTED coverage cannot be ACCEPTANCE class",
+          any("silently generate an AC" in p for p in es.validate(conflicted)))
+
+    # P0 ACCEPTANCE requires SUFFICIENT unless explicitly ACCEPTANCE_TBD.
+    tbd = dict(base_chain)
+    tbd["evidence_sufficiency"] = {
+        "question_assessments": [q_assessment("Q-1", "PARTIAL",
+                                              established_portion="Default mode.")],
+        "coverage_assessments": [c_assessment("COV-1", "PARTIAL", ["Q-1"],
+                                              established_portion="Default mode.")],
+    }
+    check("P0 ACCEPTANCE below SUFFICIENT fails without TBD representation",
+          any("represented_as_acceptance_tbd" in p for p in es.validate(tbd)))
+    tbd["evidence_sufficiency"]["coverage_assessments"] = [
+        c_assessment("COV-1", "PARTIAL", ["Q-1"],
+                     established_portion="Default mode.",
+                     represented_as_acceptance_tbd=True)]
+    check("explicit ACCEPTANCE_TBD representation passes",
+          es.validate(tbd) == [])
+
+    # The Writer must not receive unsupported coverage as confirmed behavior.
+    handoff = dict(base_chain)
+    handoff["coverage_decisions"] = {
+        "items": [coverage("COV-1", ["Q-1"], priority="P1",
+                           klass="QE_REGRESSION")],
+        "writer_handoff": ["COV-1"],
+    }
+    handoff["evidence_sufficiency"] = {
+        "question_assessments": [q_assessment("Q-1", "INSUFFICIENT")],
+        "coverage_assessments": [c_assessment("COV-1", "INSUFFICIENT", ["Q-1"])],
+    }
+    check("INSUFFICIENT coverage never reaches the Writer",
+          any("must not receive unsupported" in p for p in es.validate(handoff)))
+    handoff["evidence_sufficiency"]["coverage_assessments"] = [
+        c_assessment("COV-1", "PARTIAL", ["Q-1"])]
+    check("PARTIAL in the handoff requires the established portion",
+          any("established portion" in p for p in es.validate(handoff)))
+
+    # Lineage: question_refs must match the coverage decision exactly.
+    bad_lineage = dict(base_chain)
+    bad_lineage["evidence_sufficiency"] = {
+        "question_assessments": [q_assessment("Q-1", "SUFFICIENT")],
+        "coverage_assessments": [c_assessment("COV-1", "SUFFICIENT", ["Q-2"])],
+    }
+    check("sufficiency lineage must match the coverage decision",
+          any("sufficiency lineage" in p for p in es.validate(bad_lineage)))
+
+    # Reviewer lineage: every non-EXCLUDED decision is assessed.
+    missing_assessment = dict(base_chain)
+    missing_assessment["evidence_sufficiency"] = {
+        "question_assessments": [q_assessment("Q-1", "SUFFICIENT")],
+    }
+    check("unassessed coverage decision fails",
+          any("no sufficiency assessment" in p
+              for p in es.validate(missing_assessment)))
+
+    print("test_evidence_sufficiency: OK")
+
+
+def test_evidence_sufficiency_output_history_regression() -> None:
+    """Output History purge regression for evidence sufficiency.
+
+    - Existing AGE behavior: documentation makes the evidence SUFFICIENT.
+    - COUNT: the Jira requirement establishes the new behavior -> SUFFICIENT.
+    - COUNT scope: unresolved -> INSUFFICIENT / ACCEPTANCE_TBD.
+    - LOGS_ONLY: Jira may establish the deletion/preservation contract.
+    - Mode/action cross-product: not SUFFICIENT merely because both controls
+      exist - it needs evidence that covers the combination.
+    """
+
+    es = evidence_sufficiency_mod
+
+    def dims():
+        return {name: "evaluated" for name in es.EVALUATION_DIMENSIONS}
+
+    def question(qid, category, text, requirement, evidence):
+        return {
+            "question_id": qid, "category": category, "question": text,
+            "why_material": "The answer changes the acceptance oracle.",
+            "triggering_evidence_ids": evidence,
+            "acceptance_impact": "Decides what the AC may assert.",
+            "applicability": "APPLICABLE",
+            "research_requirement": requirement,
+            "status": "RESOLVED",
+        }
+
+    def research(ref, requirement, status, evidence=None):
+        item = {
+            "question_ref": ref, "material": True,
+            "research_requirement": requirement, "research_status": status,
+        }
+        if status not in {"NOT_REQUIRED", "PENDING"}:
+            item["research_requests"] = [f"RQ-{ref}"]
+        if evidence:
+            item["research_evidence_ids"] = evidence
+        return item
+
+    def resolution(ref, status, authority, sources, **over):
+        item = {"question_ref": ref, "status": status}
+        if status in {"ANSWERED", "PARTIALLY_ANSWERED"}:
+            item["answer"] = {
+                "claim": over.pop("claim", f"Resolved answer for {ref}."),
+                "source_ids": sources,
+                "source_authority": authority,
+                "applicability": "5.0 on-prem",
+                "limitations": over.pop("limitations", []),
+                "contradictions": over.pop("contradictions", []),
+            }
+        item.update(over)
+        return item
+
+    def q_assessment(ref, state, **over):
+        base = {"question_ref": ref, "sufficiency": state,
+                "dimensions": dims(), "reason": "Evaluated per dimension."}
+        base.update(over)
+        return base
+
+    def c_assessment(ref, state, refs, **over):
+        base = {"coverage_ref": ref, "sufficiency": state,
+                "question_refs": refs, "reason": "Computed from questions."}
+        base.update(over)
+        return base
+
+    def coverage(cid, qids, priority, klass, evidence):
+        return {
+            "coverage_id": cid, "behavior": f"Coverage for {qids}.",
+            "question_ids": qids, "evidence_ids": evidence,
+            "priority": priority, "coverage_class": klass,
+            "positive_or_negative": "POSITIVE",
+            "surface": "Map Dashboard Outputs tab", "state": "",
+            "configuration": "", "applicability": "5.0 on-prem",
+            "reason": "Traces to resolved question evidence.",
+            "acceptance_impact": "Defines what the Writer may assert.",
+            "dimensions_considered": ["CONFIGURATION_BRANCHES"],
+        }
+
+    questions = [
+        question("Q-AGE", "EXPECTED_OUTCOME", "What is the documented baseline "
+                 "of the existing time-based purge?", "DOCUMENTATION", ["JIRA-1"]),
+        question("Q-COUNT", "VARIANT", "Which retention count does the ticket "
+                 "add?", "NONE", ["JIRA-1"]),
+        question("Q-COUNT-SCOPE", "SCOPE", "Which entries does the count "
+                 "retention apply to?", "DOCUMENTATION", ["JIRA-1"]),
+        question("Q-LOGS-ONLY", "VARIANT", "What does the log-only action retain "
+                 "and delete?", "NONE", ["JIRA-1"]),
+        question("Q-MODE", "CONFIGURATION", "Which purge modes exist?", 
+                 "DOCUMENTATION", ["JIRA-1"]),
+        question("Q-ACTION", "ENTRY_PATH", "Which purge actions exist?",
+                 "DOCUMENTATION", ["JIRA-1"]),
+    ]
+    research_items = [
+        research("Q-AGE", "DOCUMENTATION", "ANSWER_FOUND", ["DOC-AGE"]),
+        research("Q-COUNT", "NONE", "NOT_REQUIRED"),
+        research("Q-COUNT-SCOPE", "DOCUMENTATION", "PARTIAL", ["DOC-AGE"]),
+        research("Q-LOGS-ONLY", "NONE", "NOT_REQUIRED"),
+        research("Q-MODE", "DOCUMENTATION", "ANSWER_FOUND", ["DOC-MODE"]),
+        research("Q-ACTION", "DOCUMENTATION", "ANSWER_FOUND", ["DOC-ACTION"]),
+    ]
+    resolutions = [
+        resolution("Q-AGE", "ANSWERED", "OFFICIAL_DOCUMENTATION", ["DOC-AGE"]),
+        resolution("Q-COUNT", "ANSWERED", "CURRENT_TICKET_REQUIREMENT",
+                   ["JIRA-1"]),
+        resolution("Q-COUNT-SCOPE", "ACCEPTANCE_TBD", None, [],
+                   material_impact=["SCOPE"],
+                   plausible_answers=["all entries", "only generated outputs"]),
+        resolution("Q-LOGS-ONLY", "ANSWERED", "CURRENT_TICKET_REQUIREMENT",
+                   ["JIRA-1"]),
+        resolution("Q-MODE", "ANSWERED", "OFFICIAL_DOCUMENTATION", ["DOC-MODE"]),
+        resolution("Q-ACTION", "ANSWERED", "OFFICIAL_DOCUMENTATION",
+                   ["DOC-ACTION"]),
+    ]
+    coverage_items = [
+        coverage("COV-AGE", ["Q-AGE"], "P1", "QE_REGRESSION", ["DOC-AGE"]),
+        coverage("COV-COUNT", ["Q-COUNT"], "P0", "ACCEPTANCE", ["JIRA-1"]),
+        coverage("COV-COUNT-SCOPE", ["Q-COUNT-SCOPE"], "P1", "QE_REGRESSION",
+                 ["DOC-AGE"]),
+        coverage("COV-LOGS-ONLY", ["Q-LOGS-ONLY"], "P0", "ACCEPTANCE",
+                 ["JIRA-1"]),
+        coverage("COV-MODE-ACTION", ["Q-MODE", "Q-ACTION"], "P1",
+                 "QE_REGRESSION", ["DOC-MODE", "DOC-ACTION"]),
+    ]
+    question_assessments = [
+        q_assessment("Q-AGE", "SUFFICIENT"),
+        q_assessment("Q-COUNT", "SUFFICIENT"),
+        q_assessment("Q-COUNT-SCOPE", "INSUFFICIENT"),
+        q_assessment("Q-LOGS-ONLY", "SUFFICIENT"),
+        q_assessment("Q-MODE", "SUFFICIENT"),
+        q_assessment("Q-ACTION", "SUFFICIENT"),
+    ]
+    coverage_assessments = [
+        c_assessment("COV-AGE", "SUFFICIENT", ["Q-AGE"]),
+        c_assessment("COV-COUNT", "SUFFICIENT", ["Q-COUNT"]),
+        c_assessment("COV-COUNT-SCOPE", "INSUFFICIENT", ["Q-COUNT-SCOPE"]),
+        c_assessment("COV-LOGS-ONLY", "SUFFICIENT", ["Q-LOGS-ONLY"]),
+        c_assessment("COV-MODE-ACTION", "PARTIAL", ["Q-MODE", "Q-ACTION"],
+                     established_portion="Each control alone is established; "
+                     "their combination is not."),
+    ]
+    manifest = {
+        "question_plan": {"items": questions},
+        "question_research": {"items": research_items},
+        "question_resolutions": {"items": resolutions},
+        "coverage_decisions": {
+            "items": coverage_items,
+            "writer_handoff": ["COV-AGE", "COV-COUNT", "COV-LOGS-ONLY"],
+        },
+        "evidence_sufficiency": {
+            "question_assessments": question_assessments,
+            "coverage_assessments": coverage_assessments,
+        },
+    }
+    problems = es.validate(manifest)
+    check("Output History sufficiency chain is clean", problems == [])
+
+    print("  question trace [Output History sufficiency]:")
+    for assessment in question_assessments:
+        print(f"    {assessment['question_ref']}: {assessment['sufficiency']}")
+    for assessment in coverage_assessments:
+        print(f"    {assessment['coverage_ref']}: {assessment['sufficiency']}")
+
+    # Cross-product must not become SUFFICIENT merely because both controls
+    # exist: member evidence alone never suffices for the combination.
+    manifest["evidence_sufficiency"]["coverage_assessments"] = [
+        c_assessment("COV-MODE-ACTION", "SUFFICIENT", ["Q-MODE", "Q-ACTION"]),
+    ]
+    manifest["coverage_decisions"].pop("writer_handoff")
+    manifest["coverage_decisions"]["items"] = [
+        row for row in coverage_items
+        if row["coverage_id"] == "COV-MODE-ACTION"
+    ]
+    manifest["question_plan"]["items"] = [
+        row for row in questions
+        if row["question_id"] in {"Q-MODE", "Q-ACTION"}
+    ]
+    manifest["evidence_sufficiency"]["question_assessments"] = [
+        q_assessment("Q-MODE", "SUFFICIENT"),
+        q_assessment("Q-ACTION", "SUFFICIENT"),
+    ]
+    check("cross-product is not sufficient merely because both controls exist",
+          any("combination" in p for p in es.validate(manifest)))
+    manifest["evidence_sufficiency"]["coverage_assessments"] = [
+        c_assessment("COV-MODE-ACTION", "SUFFICIENT", ["Q-MODE", "Q-ACTION"],
+                     combination_evidence_ids=["DOC-CROSS"]),
+    ]
+    check("combination evidence makes the cross-product sufficient",
+          es.validate(manifest) == [])
+
+    print("test_evidence_sufficiency_output_history_regression: OK")
+
+
+def test_evidence_sufficiency_unfamiliar_ticket() -> None:
+    """The same sufficiency contract on a structurally different, unfamiliar
+    ticket: different domain, different categories, an ACCEPTED_UAC authority,
+    a CONFLICTED path, and a PENDING-research path - no named fixture ticket.
+    """
+
+    es = evidence_sufficiency_mod
+
+    def dims():
+        return {name: "evaluated" for name in es.EVALUATION_DIMENSIONS}
+
+    def question(qid, category, text, requirement, evidence):
+        return {
+            "question_id": qid, "category": category, "question": text,
+            "why_material": "The answer changes the acceptance oracle.",
+            "triggering_evidence_ids": evidence,
+            "acceptance_impact": "Decides what the AC may assert.",
+            "applicability": "APPLICABLE",
+            "research_requirement": requirement,
+            "status": "RESOLVED",
+        }
+
+    def research(ref, requirement, status, evidence=None):
+        item = {
+            "question_ref": ref, "material": True,
+            "research_requirement": requirement, "research_status": status,
+        }
+        if status not in {"NOT_REQUIRED", "PENDING"}:
+            item["research_requests"] = [f"RQ-{ref}"]
+        if evidence:
+            item["research_evidence_ids"] = evidence
+        return item
+
+    def q_assessment(ref, state, **over):
+        base = {"question_ref": ref, "sufficiency": state,
+                "dimensions": dims(), "reason": "Evaluated per dimension."}
+        base.update(over)
+        return base
+
+    def c_assessment(ref, state, refs, **over):
+        base = {"coverage_ref": ref, "sufficiency": state,
+                "question_refs": refs, "reason": "Computed from questions."}
+        base.update(over)
+        return base
+
+    def coverage(cid, qids, priority, klass, evidence):
+        return {
+            "coverage_id": cid, "behavior": f"Coverage for {qids}.",
+            "question_ids": qids, "evidence_ids": evidence,
+            "priority": priority, "coverage_class": klass,
+            "positive_or_negative": "POSITIVE",
+            "surface": "the settings dialog", "state": "",
+            "configuration": "", "applicability": "cloud",
+            "reason": "Traces to resolved question evidence.",
+            "acceptance_impact": "Defines what the Writer may assert.",
+            "dimensions_considered": ["CLOUD_65"],
+        }
+
+    manifest = {
+        "question_plan": {"items": [
+            question("Q-U1", "APPLICABILITY", "Which deployments does the "
+                     "toggle apply to?", "DOCUMENTATION", ["JIRA-U1"]),
+            question("Q-U2", "ERROR_RECOVERY", "What must happen when saving "
+                     "the toggle fails?", "NONE", ["JIRA-U1"]),
+            question("Q-U3", "NEGATIVE_CONTRACT", "Must the toggle reject "
+                     "unknown channels?", "DOCUMENTATION", ["JIRA-U1"]),
+            question("Q-U4", "SCALE", "What volume limit applies to the "
+                     "queue?", "DOCUMENTATION", ["JIRA-U1"]),
+        ]},
+        "question_research": {"items": [
+            research("Q-U1", "DOCUMENTATION", "ANSWER_FOUND", ["DOC-U1"]),
+            research("Q-U2", "NONE", "NOT_REQUIRED"),
+            research("Q-U3", "DOCUMENTATION", "CONFLICTED",
+                     ["DOC-U3A", "DOC-U3B"]),
+            research("Q-U4", "DOCUMENTATION", "PENDING"),
+        ]},
+        "question_resolutions": {"items": [
+            {"question_ref": "Q-U1", "status": "ANSWERED",
+             "answer": {"claim": "The toggle applies on cloud only.",
+                        "source_ids": ["DOC-U1"],
+                        "source_authority": "OFFICIAL_DOCUMENTATION",
+                        "applicability": "cloud", "limitations": [],
+                        "contradictions": []}},
+            {"question_ref": "Q-U2", "status": "ANSWERED",
+             "answer": {"claim": "A failed save keeps the previous value and "
+                        "shows an error.",
+                        "source_ids": ["JIRA-U1"],
+                        "source_authority": "ACCEPTED_UAC",
+                        "applicability": "cloud", "limitations": [],
+                        "contradictions": []}},
+            {"question_ref": "Q-U3", "status": "CONFLICTED",
+             "answer": {"claim": "Sources disagree on rejecting unknown "
+                        "channels.",
+                        "source_ids": ["DOC-U3A", "DOC-U3B"],
+                        "source_authority": "OFFICIAL_DOCUMENTATION",
+                        "applicability": "cloud", "limitations": [],
+                        "contradictions": ["DOC-U3A rejects; DOC-U3B accepts."]}},
+        ]},
+        "coverage_decisions": {
+            "items": [
+                coverage("COV-U1", ["Q-U1"], "P1", "QE_REGRESSION", ["DOC-U1"]),
+                coverage("COV-U2", ["Q-U2"], "P0", "ACCEPTANCE", ["JIRA-U1"]),
+                coverage("COV-U3", ["Q-U3"], "P1", "QE_REGRESSION",
+                         ["DOC-U3A", "DOC-U3B"]),
+                coverage("COV-U4", ["Q-U4"], "SUPPORTING", "QE_REGRESSION",
+                         ["JIRA-U1"]),
+            ],
+            "writer_handoff": ["COV-U2", "COV-U1"],
+        },
+    }
+    # Q-U4 is planned and applicable but unresolved (research still PENDING),
+    # so the resolver gate requires its absence to stay visible in the chain:
+    # it has no resolution, and the resolver gate's planned-vs-resolved check
+    # would fail - the chain stops at the resolver for it. The sufficiency
+    # gate therefore assesses it directly as INSUFFICIENT.
+    manifest["evidence_sufficiency"] = {
+        "question_assessments": [
+            q_assessment("Q-U1", "SUFFICIENT"),
+            q_assessment("Q-U2", "SUFFICIENT"),
+            q_assessment("Q-U3", "CONFLICTED",
+                         contradictions=["DOC-U3A rejects; DOC-U3B accepts."]),
+            q_assessment("Q-U4", "INSUFFICIENT"),
+        ],
+        "coverage_assessments": [
+            c_assessment("COV-U1", "SUFFICIENT", ["Q-U1"]),
+            c_assessment("COV-U2", "SUFFICIENT", ["Q-U2"]),
+            c_assessment("COV-U3", "CONFLICTED", ["Q-U3"]),
+            c_assessment("COV-U4", "INSUFFICIENT", ["Q-U4"]),
+        ],
+    }
+    problems = es.validate(manifest)
+    check("unfamiliar ticket sufficiency chain is clean", problems == [])
+
+    print("  question trace [unfamiliar ticket sufficiency]:")
+    for assessment in manifest["evidence_sufficiency"]["question_assessments"]:
+        print(f"    {assessment['question_ref']}: {assessment['sufficiency']}")
+    for assessment in manifest["evidence_sufficiency"]["coverage_assessments"]:
+        print(f"    {assessment['coverage_ref']}: {assessment['sufficiency']}")
+
+    # The conflicted question can never silently become sufficient.
+    manifest["evidence_sufficiency"]["question_assessments"][2] = (
+        q_assessment("Q-U3", "SUFFICIENT")
+    )
+    check("CONFLICTED research cannot be assessed SUFFICIENT",
+          any("CONFLICTED" in p for p in es.validate(manifest)))
+
+    # The pending-research question can never be assessed SUFFICIENT.
+    manifest["evidence_sufficiency"]["question_assessments"][2] = (
+        q_assessment("Q-U3", "CONFLICTED",
+                     contradictions=["DOC-U3A rejects; DOC-U3B accepts."])
+    )
+    manifest["evidence_sufficiency"]["question_assessments"][3] = (
+        q_assessment("Q-U4", "SUFFICIENT")
+    )
+    check("PENDING mandatory research cannot be SUFFICIENT",
+          any("mandatory research is PENDING" in p for p in es.validate(manifest)))
+
+    print("test_evidence_sufficiency_unfamiliar_ticket: OK")
+
+
 def test_question_reasoning_chain_regressions() -> None:
     """End-to-end Question Planner -> Research Router -> Question Resolver ->
     Coverage Reasoner regressions per domain, each delivering its question
@@ -7750,6 +8338,7 @@ def test_question_reasoning_chain_regressions() -> None:
     qres = question_resolver_mod
     cr = coverage_reasoner_mod
     ce = coverage_equivalence_mod
+    es = evidence_sufficiency_mod
 
     def question(qid, category, text, requirement, evidence):
         return {
@@ -7947,6 +8536,27 @@ def test_question_reasoning_chain_regressions() -> None:
             "differing_dimensions": ["EXPECTED_OUTCOME"],
             "reason": "The two decisions cover materially different outcomes.",
         }
+        question_assessments = [
+            {
+                "question_ref": row[0],
+                "sufficiency": "SUFFICIENT",
+                "dimensions": {
+                    name: "evaluated"
+                    for name in es.EVALUATION_DIMENSIONS
+                },
+                "reason": "Evidence evaluated across every dimension.",
+            }
+            for row in rows
+        ]
+        coverage_assessments = [
+            {
+                "coverage_ref": row[0],
+                "sufficiency": "SUFFICIENT",
+                "question_refs": [row[1]],
+                "reason": "Computed from the underlying question.",
+            }
+            for row in domain_coverage[domain]
+        ]
         manifest = {
             "question_plan": {"items": plan_items},
             "question_research": {"items": research_items},
@@ -7956,17 +8566,23 @@ def test_question_reasoning_chain_regressions() -> None:
                 "writer_handoff": writer_handoff,
             },
             "coverage_equivalence": {"decisions": [equivalence]},
+            "evidence_sufficiency": {
+                "question_assessments": question_assessments,
+                "coverage_assessments": coverage_assessments,
+            },
         }
         planner_problems = qp.validate(manifest)
         research_problems = qr.validate(manifest)
         resolver_problems = qres.validate(manifest)
         coverage_problems = cr.validate(manifest)
         equivalence_problems = ce.validate(manifest)
+        sufficiency_problems = es.validate(manifest)
         check(f"{domain}: planner gate clean", planner_problems == [])
         check(f"{domain}: research router gate clean", research_problems == [])
         check(f"{domain}: resolver gate clean", resolver_problems == [])
         check(f"{domain}: coverage reasoner gate clean", coverage_problems == [])
         check(f"{domain}: equivalence gate clean", equivalence_problems == [])
+        check(f"{domain}: sufficiency gate clean", sufficiency_problems == [])
 
         # Deliver the question trace for the regression.
         print(f"  question trace [{domain}]:")
@@ -11827,6 +12443,9 @@ def main() -> int:
     test_question_resolver()
     test_coverage_reasoner()
     test_coverage_equivalence()
+    test_evidence_sufficiency()
+    test_evidence_sufficiency_output_history_regression()
+    test_evidence_sufficiency_unfamiliar_ticket()
     test_question_reasoning_chain_regressions()
     test_scope_applicability()
     test_ac_language_policy()
