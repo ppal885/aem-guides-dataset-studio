@@ -112,6 +112,8 @@ skill_fingerprint_mod = _load("skill_bundle_fingerprint", "skill_bundle_fingerpr
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
+question_research_mod = _load("question_research", "question_research.py")
+behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
@@ -1508,6 +1510,26 @@ def check_relationship_traversal(
         for problem in evidence_conflict_resolver_mod.validate(data)
     )
 
+    # Mandatory research routing for question-based coverage (optional,
+    # backward-compatible). Absent -> clean pass. When present, enforce that
+    # every material question carries a research requirement + status, that
+    # PENDING mandatory research fails review, and that NOT_FOUND never grounds
+    # an opposite-behavior disposition.
+    failures.extend(
+        f"[question-research] {problem}"
+        for problem in question_research_mod.validate(data)
+    )
+
+    # Existing-vs-New behavior classification (optional, backward-compatible).
+    # Absent -> clean pass. When present, keep "documented today" separate from
+    # "required after this fix": documentation establishes baselines, the ticket
+    # establishes new requirements, and a source line never credits a source for
+    # behavior it does not establish.
+    failures.extend(
+        f"[behavior-classification] {problem}"
+        for problem in behavior_classification_mod.validate(data)
+    )
+
     # Scope-applicability (UACFIX-03, optional, backward-compatible). Absent -> pass.
     # Prevents name-only scope expansion; unresolved shared-path scope -> Open Question.
     failures.extend(
@@ -2204,6 +2226,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_fluffyjaws_evidence()
             self_tests.test_temporal_evidence()
             self_tests.test_evidence_conflict_resolver()
+            if hasattr(self_tests, "test_question_research"):
+                self_tests.test_question_research()
+            if hasattr(self_tests, "test_behavior_classification"):
+                self_tests.test_behavior_classification()
             self_tests.test_scope_applicability()
             self_tests.test_ac_language_policy()
             self_tests.test_publishing_scope_coverage()

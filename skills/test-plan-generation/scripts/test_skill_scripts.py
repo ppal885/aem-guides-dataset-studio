@@ -120,6 +120,8 @@ role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
+question_research_mod = _load("question_research", "question_research.py")
+behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
@@ -6887,6 +6889,233 @@ def test_evidence_conflict_resolver() -> None:
     print("test_evidence_conflict_resolver: OK")
 
 
+def test_question_research() -> None:
+    qr = question_research_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent question_research passes", qr.validate({}) == [])
+
+    def wrap(item, questions=None):
+        block = {"question_research": {"items": [item]}}
+        if questions is not None:
+            block["missing_questions"] = {"questions": questions}
+        return block
+
+    base = {
+        "question_ref": "MQ-1",
+        "material": True,
+        "research_requirement": "DOCUMENTATION",
+        "research_status": "ANSWER_FOUND",
+        "research_requests": ["RQ-1"],
+        "research_evidence_ids": ["E-1"],
+        "coverage_disposition": "OPEN_QUESTION",
+    }
+
+    # A fully routed, answered question passes.
+    check("answered documentation research passes", qr.validate(wrap(base)) == [])
+
+    # Invalid enum values rejected.
+    check("invalid research_requirement rejected",
+          any("research_requirement" in p for p in qr.validate(
+              wrap(dict(base, research_requirement="GUESS")))))
+    check("invalid research_status rejected",
+          any("research_status" in p for p in qr.validate(
+              wrap(dict(base, research_status="FOUND")))))
+
+    # NONE <-> NOT_REQUIRED consistency; no requests allowed.
+    none_ok = {
+        "question_ref": "MQ-2",
+        "material": True,
+        "research_requirement": "NONE",
+        "research_status": "NOT_REQUIRED",
+    }
+    check("explicit current-ticket authority proceeds without research",
+          qr.validate(wrap(none_ok)) == [])
+    check("NONE cannot terminate as ANSWER_FOUND",
+          any("NOT_REQUIRED" in p for p in qr.validate(
+              wrap(dict(none_ok, research_status="ANSWER_FOUND",
+                        research_requests=["RQ-9"])))))
+    check("NONE cannot issue research requests",
+          any("cannot issue research requests" in p for p in qr.validate(
+              wrap(dict(none_ok, research_requests=["RQ-9"])))))
+
+    # Hard gate: material routed question still PENDING fails the review, with or
+    # without a finalizing coverage disposition.
+    pending = dict(base, research_status="PENDING", research_requests=[],
+                   research_evidence_ids=[], coverage_disposition="OPEN_QUESTION")
+    check("PENDING mandatory research fails review",
+          any("still PENDING" in p for p in qr.validate(wrap(pending))))
+    pending_finalized = dict(pending, coverage_disposition="COVERED")
+    check("PENDING mandatory research cannot finalize coverage",
+          any("cannot finalize" in p for p in qr.validate(wrap(pending_finalized))))
+
+    # Incomplete research (PARTIAL / SOURCE_UNAVAILABLE / CONFLICTED) keeps the
+    # question open; a finalizing disposition is rejected.
+    for state in ("PARTIAL", "SOURCE_UNAVAILABLE", "CONFLICTED"):
+        item = dict(base, research_status=state, coverage_disposition="COVERED")
+        check(f"{state} research cannot finalize coverage",
+              any("cannot finalize" in p for p in qr.validate(wrap(item))))
+        item_open = dict(item, coverage_disposition="OPEN_QUESTION")
+        check(f"{state} research stays an open question",
+              qr.validate(wrap(item_open)) == [])
+
+    # NOT_FOUND never means the opposite behavior is true.
+    not_found = dict(base, research_status="NOT_FOUND",
+                     coverage_disposition="INVESTIGATED_AND_REJECTED")
+    check("NOT_FOUND cannot ground a rejection",
+          any("never means the opposite behavior" in p
+              for p in qr.validate(wrap(not_found))))
+    not_found_open = dict(not_found, coverage_disposition="OPEN_QUESTION")
+    check("NOT_FOUND as an open question passes",
+          qr.validate(wrap(not_found_open)) == [])
+
+    # NOT_APPLICABLE applies only to non-material questions.
+    not_applicable = {
+        "question_ref": "MQ-3",
+        "material": False,
+        "research_requirement": "DOCUMENTATION",
+        "research_status": "NOT_APPLICABLE",
+    }
+    check("non-material question routing is not applicable",
+          qr.validate(wrap(not_applicable)) == [])
+    check("material question cannot be NOT_APPLICABLE",
+          any("non-material" in p for p in qr.validate(
+              wrap(dict(not_applicable, material=True)))))
+
+    # ANSWER_FOUND requires the research request that found the answer.
+    check("ANSWER_FOUND requires a research request",
+          any("requires the research request" in p for p in qr.validate(
+              wrap(dict(base, research_requests=[])))))
+
+    # Duplicate routing entries are rejected.
+    dup_manifest = {"question_research": {"items": [base, dict(base)]}}
+    check("duplicate question_ref rejected",
+          any("duplicate question_ref" in p for p in qr.validate(dup_manifest)))
+
+    # Cross-check: a material missing question must carry a routing entry.
+    unrouted = qr.validate(wrap(none_ok, questions=[
+        {"question_id": "MQ-UNROUTED", "blocking": True},
+    ]))
+    check("material missing question without routing entry is flagged",
+          any("no question_research routing entry" in p for p in unrouted))
+    routed = qr.validate(wrap(none_ok, questions=[
+        {"question_id": "MQ-2", "blocking": True},
+    ]))
+    check("routed material missing question passes", routed == [])
+
+    print("test_question_research: OK")
+
+
+def test_behavior_classification() -> None:
+    bc = behavior_classification_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent behavior_classification passes", bc.validate({}) == [])
+
+    def wrap(item):
+        return {"behavior_classification": {"items": [item]}}
+
+    documented = {
+        "target_ref": "DISP-1",
+        "behavior_class": "EXISTING_CONFIRMED",
+        "existing_evidence_ids": ["DOC-1"],
+        "source_line": "Official product documentation",
+    }
+    check("documented baseline behavior passes", bc.validate(wrap(documented)) == [])
+
+    requested = {
+        "target_ref": "DISP-2",
+        "behavior_class": "NEW_REQUIREMENT",
+        "requested_evidence_ids": ["JIRA-1"],
+        "source_line": "Current ticket acceptance criteria",
+    }
+    check("ticket-requested new behavior passes", bc.validate(wrap(requested)) == [])
+
+    # Rule 1: EXISTING_CONFIRMED needs existing-behavior evidence.
+    check("EXISTING_CONFIRMED requires existing evidence",
+          any("requires existing-behavior evidence" in p for p in bc.validate(
+              wrap({"target_ref": "D", "behavior_class": "EXISTING_CONFIRMED"}))))
+
+    # Rule 3: existing documentation cannot claim a new feature, and the source
+    # line cannot credit a documentation source the record does not carry.
+    check("NEW_REQUIREMENT cannot cite existing documentation",
+          any("must not claim a new feature" in p for p in bc.validate(
+              wrap(dict(requested, existing_evidence_ids=["DOC-9"])))))
+    check("NEW_REQUIREMENT source line cannot credit documentation",
+          any("must not credit a documentation source" in p for p in bc.validate(
+              wrap(dict(requested, source_line="Experience League")))))
+
+    # Rule 4: a change-set-only behavior is NEW_REQUIREMENT, never existing.
+    change_only = {
+        "target_ref": "DISP-3",
+        "behavior_class": "NEW_REQUIREMENT",
+        "change_evidence_ids": ["PR-1"],
+    }
+    check("change-set-only behavior is a new requirement",
+          bc.validate(wrap(change_only)) == [])
+    check("change-set-only behavior cannot be EXISTING_CONFIRMED",
+          any("requires existing-behavior evidence" in p for p in bc.validate(
+              wrap({"target_ref": "DISP-3b", "behavior_class": "EXISTING_CONFIRMED",
+                    "change_evidence_ids": ["PR-1"]}))))
+
+    # Rule 5: preserved behavior names its existing evidence.
+    preserved = {
+        "target_ref": "DISP-4",
+        "behavior_class": "PRESERVED_EXISTING_BEHAVIOR",
+        "existing_evidence_ids": ["DOC-2"],
+        "requested_evidence_ids": ["JIRA-2"],
+    }
+    check("preserved existing behavior passes", bc.validate(wrap(preserved)) == [])
+    check("PRESERVED requires existing evidence",
+          any("requires existing-behavior evidence" in p for p in bc.validate(
+              wrap({"target_ref": "D", "behavior_class": "PRESERVED_EXISTING_BEHAVIOR",
+                    "requested_evidence_ids": ["JIRA-2"]}))))
+
+    # MODIFIED needs both the documented baseline and the ticket's change.
+    modified = {
+        "target_ref": "DISP-5",
+        "behavior_class": "MODIFIED_EXISTING_BEHAVIOR",
+        "existing_evidence_ids": ["DOC-3"],
+        "requested_evidence_ids": ["JIRA-3"],
+    }
+    check("modified existing behavior passes", bc.validate(wrap(modified)) == [])
+    check("MODIFIED requires the ticket's change evidence",
+          any("current-ticket" in p for p in bc.validate(
+              wrap({"target_ref": "D", "behavior_class": "MODIFIED_EXISTING_BEHAVIOR",
+                    "existing_evidence_ids": ["DOC-3"]}))))
+
+    # Rule 6: combining sources requires each side to genuinely support.
+    check("combined source line needs existing-behavior evidence",
+          any("genuinely supports part" in p for p in bc.validate(
+              wrap(dict(modified, existing_evidence_ids=[] ,
+                        requested_evidence_ids=["JIRA-3"],
+                        source_line="Current ticket + Experience League")))))
+
+    # Rule 7 / unresolved: UNKNOWN stays open until resolved.
+    unknown_open = {
+        "target_ref": "DISP-6",
+        "behavior_class": "UNKNOWN",
+        "coverage_disposition": "OPEN_QUESTION",
+    }
+    check("UNKNOWN stays an open question", bc.validate(wrap(unknown_open)) == [])
+    check("UNKNOWN cannot finalize coverage",
+          any("cannot finalize" in p for p in bc.validate(
+              wrap(dict(unknown_open, coverage_disposition="COVERED")))))
+    check("UNKNOWN must stay visible",
+          any("must stay visible" in p for p in bc.validate(
+              wrap({"target_ref": "D", "behavior_class": "CONFLICTED"}))))
+
+    # Invalid class and duplicate targets rejected.
+    check("invalid behavior_class rejected",
+          any("behavior_class" in p for p in bc.validate(
+              wrap({"target_ref": "D", "behavior_class": "LEGACY"}))))
+    dup = {"behavior_classification": {"items": [documented, dict(documented)]}}
+    check("duplicate target_ref rejected",
+          any("duplicate target_ref" in p for p in bc.validate(dup)))
+
+    print("test_behavior_classification: OK")
+
+
 def test_scope_applicability() -> None:
     sa = scope_applicability_mod
 
@@ -10675,6 +10904,8 @@ def main() -> int:
     test_fluffyjaws_evidence()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
+    test_question_research()
+    test_behavior_classification()
     test_scope_applicability()
     test_ac_language_policy()
     test_publishing_scope_coverage()

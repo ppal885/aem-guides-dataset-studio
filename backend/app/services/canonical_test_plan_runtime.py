@@ -22,6 +22,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     AcceptanceCandidate,
     AcceptanceResolutionBatch,
     AcceptancePromotionDecision,
+    BehaviorClassificationRecord,
     BehaviorHypothesis,
     CanonicalBehaviorModel,
     CanonicalEvidenceBundle,
@@ -51,6 +52,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     PromotionStatus,
     QeInvestigationPreparation,
     QuestionGenerationDiagnosticTrace,
+    QuestionResearchRecord,
+    ResearchRequirementRecord,
     RuntimeEntryPoint,
     RuntimePrincipal,
     RuntimeStageTrace,
@@ -405,6 +408,9 @@ class CanonicalTestPlanRuntime:
         missing_question_quality: MissingQuestionQualityReport | None = None,
         missing_question_resolutions: list[MissingQuestionResolutionRecord]
         | None = None,
+        research_requirements: list[ResearchRequirementRecord] | None = None,
+        question_research: list[QuestionResearchRecord] | None = None,
+        behavior_classifications: list[BehaviorClassificationRecord] | None = None,
     ) -> RuntimeTrace:
         closure = closure or []
         retrievals = retrievals or []
@@ -447,6 +453,9 @@ class CanonicalTestPlanRuntime:
             qe_investigation=qe_investigation,
             missing_question_quality=missing_question_quality,
             missing_question_resolutions=missing_question_resolutions or [],
+            research_requirements=research_requirements or [],
+            question_research=question_research or [],
+            behavior_classifications=behavior_classifications or [],
             source_counts=evidence.source_counts,
             compatibility_projection=compatibility_projection,
             compatibility_adapter=compatibility_adapter,
@@ -1008,6 +1017,11 @@ class CanonicalTestPlanRuntime:
             investigation=investigation,
         )
         questions_for_trace = list(questions)
+        research_requirements = stage(
+            CanonicalRuntimeStage.RESEARCH_REQUIREMENT_CLASSIFIER,
+            [questions, facts],
+            lambda: self._reasoning.classify_research_requirements(questions, facts),
+        )
 
         def retrieve_with_optional_second_pass() -> (
             list[DirectedRetrievalRecord] | ReasoningEvidenceSemanticBatch
@@ -1158,6 +1172,18 @@ class CanonicalTestPlanRuntime:
                 )
             except Exception:
                 runtime_warnings.append("SEMANTIC_USAGE_TRACE_UPDATE_FAILED")
+        question_research = self._reasoning.resolve_question_research(
+            questions,
+            research_requirements,
+            retrievals,
+            hypotheses,
+            evidence=runtime_evidence,
+            implementation_handoffs=implementation_handoffs_for_trace,
+            unresolved_implementation_handoff_ids=(
+                unresolved_implementation_handoff_ids_for_trace
+            ),
+            pattern_provider_status=investigation.pattern_lookup.status,
+        )
         hypotheses_for_trace = list(hypotheses)
         impact_model = pre_verifier_model if semantic_batch is not None else model
         impacts = stage(
@@ -1167,12 +1193,25 @@ class CanonicalTestPlanRuntime:
         )
         dispositions = stage(
             CanonicalRuntimeStage.COVERAGE_DISPOSITION_CLASSIFIER,
-            [facts, closure, impacts, hypotheses, scope, questions],
+            [facts, closure, impacts, hypotheses, scope, questions, question_research],
             lambda: self._reasoning.classify_coverage(
-                facts, closure, impacts, hypotheses, scope, questions
+                facts,
+                closure,
+                impacts,
+                hypotheses,
+                scope,
+                questions,
+                question_research,
             ),
         )
         dispositions_for_trace = list(dispositions)
+        behavior_classifications = stage(
+            CanonicalRuntimeStage.BEHAVIOR_CHANGE_CLASSIFIER,
+            [facts, dispositions, runtime_evidence],
+            lambda: self._reasoning.classify_behavior_changes(
+                facts, dispositions, runtime_evidence
+            ),
+        )
         missing_question_resolutions = self._missing_questions.resolve_after_evidence(
             report=missing_question_quality,
             retrievals=retrievals,
@@ -1201,6 +1240,9 @@ class CanonicalTestPlanRuntime:
                 hypotheses,
                 dispositions,
                 missing_question_quality,
+                research_requirements,
+                question_research,
+                behavior_classifications,
             ],
             lambda: self._reasoning.behavioral_completeness_gate(
                 closure,
@@ -1209,6 +1251,9 @@ class CanonicalTestPlanRuntime:
                 hypotheses,
                 dispositions,
                 missing_question_quality,
+                research_requirements,
+                question_research,
+                behavior_classifications,
             ),
         )
         def promote_with_lifecycle() -> tuple[
@@ -1217,7 +1262,7 @@ class CanonicalTestPlanRuntime:
             list[CandidateLifecycleRecord],
         ]:
             gate, decisions = self._reasoning.acceptance_promotion_gate(
-                candidates, facts, scope, dispositions
+                candidates, facts, scope, dispositions, behavior_classifications
             )
             lifecycle = self._reasoning.build_candidate_lifecycle(
                 candidate_resolution, decisions
@@ -1226,7 +1271,7 @@ class CanonicalTestPlanRuntime:
 
         promotion_gate, promotions, candidate_lifecycle = stage(
             CanonicalRuntimeStage.ACCEPTANCE_PROMOTION_GATE,
-            [candidate_resolution, facts, scope, dispositions],
+            [candidate_resolution, facts, scope, dispositions, behavior_classifications],
             promote_with_lifecycle,
         )
         promotions_for_trace = list(promotions)
@@ -1247,6 +1292,8 @@ class CanonicalTestPlanRuntime:
                 gates,
                 candidate_resolution,
                 candidate_lifecycle,
+                question_research,
+                behavior_classifications,
             ],
             lambda: self._reasoning.render_final_plan(
                 request,
@@ -1262,6 +1309,8 @@ class CanonicalTestPlanRuntime:
                 gates,
                 candidate_resolution,
                 candidate_lifecycle,
+                question_research,
+                behavior_classifications,
             ),
         )
         structured_plan_for_trace = structured_plan
@@ -1296,6 +1345,9 @@ class CanonicalTestPlanRuntime:
             qe_investigation=investigation,
             missing_question_quality=missing_question_quality,
             missing_question_resolutions=missing_question_resolutions,
+            research_requirements=research_requirements,
+            question_research=question_research,
+            behavior_classifications=behavior_classifications,
         )
         _LAST_RUNTIME_TRACE.set(trace)
         blocked = any(
@@ -1328,6 +1380,12 @@ class CanonicalTestPlanRuntime:
             "missing_question_resolutions": [
                 row.model_dump(mode="json") for row in missing_question_resolutions
             ],
+            "research_requirements": [
+                row.model_dump(mode="json") for row in research_requirements
+            ],
+            "question_research": [
+                row.model_dump(mode="json") for row in question_research
+            ],
             "behavior_model": model.model_dump(mode="json"),
             "semantic_closure": [row.model_dump(mode="json") for row in closure],
             "missing_questions": [row.model_dump(mode="json") for row in questions],
@@ -1336,6 +1394,9 @@ class CanonicalTestPlanRuntime:
             "domain_impacts": [row.model_dump(mode="json") for row in impacts],
             "coverage_dispositions": [
                 row.model_dump(mode="json") for row in dispositions
+            ],
+            "behavior_classifications": [
+                row.model_dump(mode="json") for row in behavior_classifications
             ],
             "acceptance_candidates": [
                 row.model_dump(mode="json") for row in candidates
