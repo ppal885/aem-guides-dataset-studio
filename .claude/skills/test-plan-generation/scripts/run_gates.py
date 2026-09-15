@@ -2311,6 +2311,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_evidence_sufficiency_output_history_regression()
             if hasattr(self_tests, "test_evidence_sufficiency_unfamiliar_ticket"):
                 self_tests.test_evidence_sufficiency_unfamiliar_ticket()
+            if hasattr(self_tests, "test_evidence_sufficiency_hard_negatives"):
+                self_tests.test_evidence_sufficiency_hard_negatives()
+            if hasattr(self_tests, "test_evidence_sufficiency_claim_level_unfamiliar"):
+                self_tests.test_evidence_sufficiency_claim_level_unfamiliar()
             if hasattr(self_tests, "test_doc_research_routing"):
                 self_tests.test_doc_research_routing()
             if hasattr(self_tests, "test_doc_research_routing_regressions"):

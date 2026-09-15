@@ -8119,6 +8119,17 @@ def test_evidence_sufficiency() -> None:
             "question_ref": ref,
             "sufficiency": state,
             "dimensions": dims(),
+            "authority_status": "ESTABLISHING",
+            "research_completion": "COMPLETED",
+            "applicability_status": "APPLICABLE",
+            "currentness_status": "CURRENT",
+            "contradiction_status": "NONE",
+            "supported_claims": [f"The established answer to {ref}."],
+            "unsupported_claims": [],
+            "limitations": [],
+            "evidence_ids": [],
+            "research_ids": [],
+            "decision_reason": "Evidence evaluated across every dimension.",
             "reason": "Evidence evaluated across every dimension.",
         }
         base.update(over)
@@ -8130,6 +8141,9 @@ def test_evidence_sufficiency() -> None:
             "sufficiency": state,
             "question_refs": question_refs,
             "reason": "Computed from the underlying questions.",
+            "sufficiency_reason": "Computed from the underlying questions.",
+            "evidence_ids": [f"EV-{qid}" for qid in question_refs],
+            "research_ids": [],
         }
         base.update(over)
         return base
@@ -8185,7 +8199,8 @@ def test_evidence_sufficiency() -> None:
           es.validate({"evidence_sufficiency": {"question_assessments": [
               q_assessment("Q-1", "PARTIAL",
                            established_portion="Only the default mode is "
-                           "established.")]}}) == [])
+                           "established.",
+                           unsupported_claims=["The multi-mode matrix."])]}}) == [])
     check("CONFLICTED requires contradictions",
           any("contradictions" in p for p in es.validate({
               "evidence_sufficiency": {"question_assessments": [
@@ -8193,6 +8208,7 @@ def test_evidence_sufficiency() -> None:
     check("CONFLICTED with contradictions passes",
           es.validate({"evidence_sufficiency": {"question_assessments": [
               q_assessment("Q-1", "CONFLICTED",
+                           contradiction_status="CONFLICTING",
                            contradictions=["DOC-2 disagrees."])]}}) == [])
 
     # A question requiring documentation cannot be SUFFICIENT while its
@@ -8221,7 +8237,9 @@ def test_evidence_sufficiency() -> None:
           any("caps the assessment at PARTIAL" in p
               for p in es.validate(research_pending)))
     research_pending["evidence_sufficiency"]["question_assessments"] = [
-        q_assessment("Q-1", "PARTIAL", established_portion="Default mode only.")]
+        q_assessment("Q-1", "PARTIAL", established_portion="Default mode only.",
+                     unsupported_claims=["The multi-mode matrix."],
+                     research_completion="PARTIAL")]
     check("PARTIAL under PARTIAL research passes",
           es.validate(research_pending) == [])
 
@@ -8277,7 +8295,8 @@ def test_evidence_sufficiency() -> None:
     check("CONFLICTED resolution forces CONFLICTED assessment",
           any("CONFLICTED" in p for p in es.validate(conflicted)))
     conflicted["evidence_sufficiency"]["question_assessments"] = [
-        q_assessment("Q-1", "CONFLICTED", contradictions=["DOC-2 disagrees."])]
+        q_assessment("Q-1", "CONFLICTED", contradiction_status="CONFLICTING",
+                     contradictions=["DOC-2 disagrees."])]
     check("CONFLICTED question cannot surface SUFFICIENT coverage",
           any("CONFLICTED" in p for p in es.validate(conflicted)))
     conflicted["evidence_sufficiency"]["coverage_assessments"] = [
@@ -8289,7 +8308,9 @@ def test_evidence_sufficiency() -> None:
     tbd = dict(base_chain)
     tbd["evidence_sufficiency"] = {
         "question_assessments": [q_assessment("Q-1", "PARTIAL",
-                                              established_portion="Default mode.")],
+                                              established_portion="Default mode.",
+                                              unsupported_claims=["The multi-"
+                                              "mode matrix."])],
         "coverage_assessments": [c_assessment("COV-1", "PARTIAL", ["Q-1"],
                                               established_portion="Default mode.")],
     }
@@ -8398,13 +8419,26 @@ def test_evidence_sufficiency_output_history_regression() -> None:
 
     def q_assessment(ref, state, **over):
         base = {"question_ref": ref, "sufficiency": state,
-                "dimensions": dims(), "reason": "Evaluated per dimension."}
+                "dimensions": dims(),
+                "authority_status": "ESTABLISHING",
+                "research_completion": "COMPLETED",
+                "applicability_status": "APPLICABLE",
+                "currentness_status": "CURRENT",
+                "contradiction_status": "NONE",
+                "supported_claims": [f"The established answer to {ref}."],
+                "unsupported_claims": [],
+                "limitations": [],
+                "evidence_ids": [],
+                "research_ids": [],
+                "decision_reason": "Evaluated per dimension.",
+                "reason": "Evaluated per dimension."}
         base.update(over)
         return base
 
     def c_assessment(ref, state, refs, **over):
         base = {"coverage_ref": ref, "sufficiency": state,
-                "question_refs": refs, "reason": "Computed from questions."}
+                "question_refs": refs, "reason": "Computed from questions.",
+                "evidence_ids": None, "research_ids": []}
         base.update(over)
         return base
 
@@ -8467,12 +8501,18 @@ def test_evidence_sufficiency_output_history_regression() -> None:
                  "QE_REGRESSION", ["DOC-MODE", "DOC-ACTION"]),
     ]
     question_assessments = [
-        q_assessment("Q-AGE", "SUFFICIENT"),
-        q_assessment("Q-COUNT", "SUFFICIENT"),
-        q_assessment("Q-COUNT-SCOPE", "INSUFFICIENT"),
-        q_assessment("Q-LOGS-ONLY", "SUFFICIENT"),
-        q_assessment("Q-MODE", "SUFFICIENT"),
-        q_assessment("Q-ACTION", "SUFFICIENT"),
+        q_assessment("Q-AGE", "SUFFICIENT", evidence_ids=["DOC-AGE"]),
+        q_assessment("Q-COUNT", "SUFFICIENT", research_completion="NOT_REQUIRED",
+                     evidence_ids=["JIRA-1"]),
+        q_assessment("Q-COUNT-SCOPE", "INSUFFICIENT",
+                     research_completion="PARTIAL",
+                     evidence_ids=["DOC-AGE"],
+                     limitations=["The retention scope of the count control is "
+                                  "not documented."]),
+        q_assessment("Q-LOGS-ONLY", "SUFFICIENT",
+                     research_completion="NOT_REQUIRED", evidence_ids=["JIRA-1"]),
+        q_assessment("Q-MODE", "SUFFICIENT", evidence_ids=["DOC-MODE"]),
+        q_assessment("Q-ACTION", "SUFFICIENT", evidence_ids=["DOC-ACTION"]),
     ]
     coverage_assessments = [
         c_assessment("COV-AGE", "SUFFICIENT", ["Q-AGE"]),
@@ -8570,13 +8610,26 @@ def test_evidence_sufficiency_unfamiliar_ticket() -> None:
 
     def q_assessment(ref, state, **over):
         base = {"question_ref": ref, "sufficiency": state,
-                "dimensions": dims(), "reason": "Evaluated per dimension."}
+                "dimensions": dims(),
+                "authority_status": "ESTABLISHING",
+                "research_completion": "COMPLETED",
+                "applicability_status": "APPLICABLE",
+                "currentness_status": "CURRENT",
+                "contradiction_status": "NONE",
+                "supported_claims": [f"The established answer to {ref}."],
+                "unsupported_claims": [],
+                "limitations": [],
+                "evidence_ids": [],
+                "research_ids": [],
+                "decision_reason": "Evaluated per dimension.",
+                "reason": "Evaluated per dimension."}
         base.update(over)
         return base
 
     def c_assessment(ref, state, refs, **over):
         base = {"coverage_ref": ref, "sufficiency": state,
-                "question_refs": refs, "reason": "Computed from questions."}
+                "question_refs": refs, "reason": "Computed from questions.",
+                "evidence_ids": None, "research_ids": []}
         base.update(over)
         return base
 
@@ -8655,11 +8708,15 @@ def test_evidence_sufficiency_unfamiliar_ticket() -> None:
     # gate therefore assesses it directly as INSUFFICIENT.
     manifest["evidence_sufficiency"] = {
         "question_assessments": [
-            q_assessment("Q-U1", "SUFFICIENT"),
-            q_assessment("Q-U2", "SUFFICIENT"),
+            q_assessment("Q-U1", "SUFFICIENT", evidence_ids=["DOC-U1"]),
+            q_assessment("Q-U2", "SUFFICIENT",
+                         research_completion="NOT_REQUIRED",
+                         evidence_ids=["JIRA-U1"]),
             q_assessment("Q-U3", "CONFLICTED",
+                         research_completion="CONFLICTED",
+                         contradiction_status="CONFLICTING",
                          contradictions=["DOC-U3A rejects; DOC-U3B accepts."]),
-            q_assessment("Q-U4", "INSUFFICIENT"),
+            q_assessment("Q-U4", "INSUFFICIENT", research_completion="PENDING"),
         ],
         "coverage_assessments": [
             c_assessment("COV-U1", "SUFFICIENT", ["Q-U1"]),
@@ -8687,6 +8744,8 @@ def test_evidence_sufficiency_unfamiliar_ticket() -> None:
     # The pending-research question can never be assessed SUFFICIENT.
     manifest["evidence_sufficiency"]["question_assessments"][2] = (
         q_assessment("Q-U3", "CONFLICTED",
+                     research_completion="CONFLICTED",
+                     contradiction_status="CONFLICTING",
                      contradictions=["DOC-U3A rejects; DOC-U3B accepts."])
     )
     manifest["evidence_sufficiency"]["question_assessments"][3] = (
@@ -8696,6 +8755,273 @@ def test_evidence_sufficiency_unfamiliar_ticket() -> None:
           any("mandatory research is PENDING" in p for p in es.validate(manifest)))
 
     print("test_evidence_sufficiency_unfamiliar_ticket: OK")
+
+
+def test_evidence_sufficiency_hard_negatives() -> None:
+    """Hard negatives: sufficiency never comes from volume, wrong
+    applicability, observation-only evidence, unresolved research, or
+    neighboring-claim evidence bleed."""
+
+    es = evidence_sufficiency_mod
+
+    def dims():
+        return {name: "evaluated" for name in es.EVALUATION_DIMENSIONS}
+
+    def q_assessment(ref, state, **over):
+        base = {
+            "question_ref": ref,
+            "sufficiency": state,
+            "dimensions": dims(),
+            "authority_status": "ESTABLISHING",
+            "research_completion": "COMPLETED",
+            "applicability_status": "APPLICABLE",
+            "currentness_status": "CURRENT",
+            "contradiction_status": "NONE",
+            "supported_claims": [f"The established answer to {ref}."],
+            "unsupported_claims": [],
+            "limitations": [],
+            "evidence_ids": [],
+            "research_ids": [],
+            "decision_reason": "Evaluated per dimension.",
+            "reason": "Evaluated per dimension.",
+        }
+        base.update(over)
+        return base
+
+    def wrap(*assessments, **blocks):
+        manifest = {"evidence_sufficiency": {"question_assessments": list(assessments)}}
+        manifest.update(blocks)
+        return manifest
+
+    # Many non-decisive passages are not sufficient; one authoritative source is.
+    check("many irrelevant results without establishing authority fail",
+          any("establishing_authority" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT",
+                                evidence_ids=["RAG-1", "RAG-2", "RAG-3"])))))
+    check("NON_ESTABLISHING authority is never SUFFICIENT",
+          any("ESTABLISHING authority_status" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT",
+                                authority_status="NON_ESTABLISHING",
+                                establishing_authority="ACCEPTED_UAC")))))
+    check("one authoritative source may be SUFFICIENT",
+          es.validate(wrap(q_assessment(
+              "Q-1", "SUFFICIENT",
+              establishing_authority="ACCEPTED_UAC",
+              evidence_ids=["UAC-1"]))) == [])
+
+    # Wrong applicability (version/engine/surface) is insufficient without an
+    # explicit compatibility bridge; UNCLEAR is never confirmed.
+    check("wrong-version evidence is not SUFFICIENT",
+          any("wrong-applicability" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT",
+                                applicability_status="WRONG_APPLICABILITY",
+                                establishing_authority="OFFICIAL_DOCUMENTATION")))))
+    check("explicit compatibility evidence bridges applicability",
+          es.validate(wrap(q_assessment(
+              "Q-1", "SUFFICIENT",
+              applicability_status="WRONG_APPLICABILITY",
+              establishing_authority="OFFICIAL_DOCUMENTATION",
+              compatibility_evidence_ids=["COMPAT-1"]))) == [])
+    check("UNCLEAR applicability is never confirmed",
+          any("UNCLEAR" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT",
+                                applicability_status="UNCLEAR",
+                                establishing_authority="OFFICIAL_DOCUMENTATION")))))
+    check("stale-currentness evidence needs a compatibility bridge",
+          any("stale" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT", currentness_status="STALE",
+                                establishing_authority="OFFICIAL_DOCUMENTATION")))))
+
+    # Research completion: NOT_FOUND is not negative proof; PARTIAL caps;
+    # PENDING blocks.
+    check("NOT_FOUND research cannot be SUFFICIENT",
+          any("NOT_FOUND" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT",
+                                research_completion="NOT_FOUND",
+                                establishing_authority="ACCEPTED_UAC")))))
+    check("NOT_FOUND never establishes the opposite behavior",
+          any("opposite" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "INSUFFICIENT",
+                                research_completion="NOT_FOUND",
+                                supported_claims=[],
+                                unsupported_claims=["The actual question."],
+                                proves_opposite=True)))))
+    check("INSUFFICIENT without opposite-claim fields passes",
+          es.validate(wrap(q_assessment(
+              "Q-1", "INSUFFICIENT", research_completion="NOT_FOUND",
+              supported_claims=[],
+              unsupported_claims=["The actual question."]))) == [])
+    check("PARTIAL research caps a full answer",
+          any("immaterial" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT",
+                                research_completion="PARTIAL",
+                                establishing_authority="ACCEPTED_UAC")))))
+    check("PARTIAL research with a demonstrably immaterial limitation passes",
+          es.validate(wrap(q_assessment(
+              "Q-1", "SUFFICIENT", research_completion="PARTIAL",
+              establishing_authority="ACCEPTED_UAC",
+              immaterial_limitation="The undocumented mode is out of scope for "
+              "this answer."))) == [])
+    check("PENDING research cannot be SUFFICIENT",
+          any("PENDING" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT",
+                                research_completion="PENDING",
+                                establishing_authority="ACCEPTED_UAC")))))
+
+    # Equal-authority conflict stays CONFLICTED - never settled by convenience.
+    check("CONFLICTING evidence forces CONFLICTED",
+          any("CONFLICTED" in p for p in es.validate(
+              wrap(q_assessment("Q-1", "SUFFICIENT",
+                                contradiction_status="CONFLICTING",
+                                establishing_authority="ACCEPTED_UAC")))))
+    check("CONFLICTED with retained contradictions passes",
+          es.validate(wrap(q_assessment(
+              "Q-1", "CONFLICTED", contradiction_status="CONFLICTING",
+              supported_claims=[],
+              limitations=["Unsettled equal-authority conflict."],
+              contradictions=["Two equal authorities disagree."]))) == [])
+
+    # Claim bleed: evidence bound to a neighboring question cannot support
+    # this claim, even when the numeric values match.
+    bleed = wrap(
+        q_assessment("Q-B", "SUFFICIENT",
+                     establishing_authority="OFFICIAL_DOCUMENTATION",
+                     evidence_ids=["DOC-A"]),
+        question_plan={"items": [
+            {"question_id": "Q-A", "category": "CONFIGURATION",
+             "question": "What does setting A control?", "why_material": "m",
+             "triggering_evidence_ids": ["DOC-A"], "acceptance_impact": "a",
+             "applicability": "APPLICABLE", "research_requirement": "NONE",
+             "status": "RESOLVED"},
+            {"question_id": "Q-B", "category": "CONFIGURATION",
+             "question": "What does setting B control?", "why_material": "m",
+             "triggering_evidence_ids": ["DOC-B"], "acceptance_impact": "a",
+             "applicability": "APPLICABLE", "research_requirement": "NONE",
+             "status": "RESOLVED"},
+        ]},
+    )
+    check("evidence cannot bleed into a neighboring claim",
+          any("cannot bleed" in p for p in es.validate(bleed)))
+    bleed["evidence_sufficiency"]["question_assessments"] = [
+        q_assessment("Q-A", "SUFFICIENT",
+                     establishing_authority="OFFICIAL_DOCUMENTATION",
+                     evidence_ids=["DOC-A"]),
+        q_assessment("Q-B", "SUFFICIENT",
+                     establishing_authority="OFFICIAL_DOCUMENTATION",
+                     evidence_ids=["DOC-B"]),
+    ]
+    check("claim-bound evidence passes",
+          es.validate(bleed) == [])
+
+    # Stale sufficiency records cannot be reused after a question revision.
+    stale = wrap(
+        q_assessment("Q-A", "SUFFICIENT",
+                     establishing_authority="ACCEPTED_UAC",
+                     evidence_ids=["JIRA-A"], question_revision="r1"),
+        question_plan={"items": [
+            {"question_id": "Q-A", "category": "EXPECTED_OUTCOME",
+             "question": "What is the outcome?", "why_material": "m",
+             "triggering_evidence_ids": ["JIRA-A"], "acceptance_impact": "a",
+             "applicability": "APPLICABLE", "research_requirement": "NONE",
+             "status": "RESOLVED", "revision": "r2"},
+        ]},
+    )
+    check("stale sufficiency record rejected after question revision",
+          any("stale" in p for p in es.validate(stale)))
+
+    # The research_completion sub-state must match the mandatory research state.
+    mismatch = wrap(
+        q_assessment("Q-1", "SUFFICIENT", research_completion="COMPLETED",
+                     establishing_authority="ACCEPTED_UAC"),
+        question_research={"items": [{
+            "question_ref": "Q-1", "material": True,
+            "research_requirement": "NONE", "research_status": "NOT_REQUIRED"}]},
+    )
+    check("research_completion must match the research state",
+          any("does not match" in p for p in es.validate(mismatch)))
+
+    print("test_evidence_sufficiency_hard_negatives: OK")
+
+
+def test_evidence_sufficiency_claim_level_unfamiliar() -> None:
+    """Unfamiliar structurally different fixture: one authoritative source is
+    sufficient for one claim while a related claim remains insufficient despite
+    multiple supporting but non-decisive sources."""
+
+    es = evidence_sufficiency_mod
+
+    def dims():
+        return {name: "evaluated" for name in es.EVALUATION_DIMENSIONS}
+
+    manifest = {
+        "question_plan": {"items": [
+            {"question_id": "Q-C1", "category": "EXPECTED_OUTCOME",
+             "question": "What must the dialog show after saving?",
+             "why_material": "Primary acceptance oracle.",
+             "triggering_evidence_ids": ["UAC-C1"],
+             "acceptance_impact": "Defines the AC.", "applicability": "APPLICABLE",
+             "research_requirement": "NONE", "status": "RESOLVED"},
+            {"question_id": "Q-C2", "category": "SCALE",
+             "question": "What happens at the documented volume limit?",
+             "why_material": "A related claim the ticket hints at.",
+             "triggering_evidence_ids": ["UAC-C1"],
+             "acceptance_impact": "Bounds the regression scope.",
+             "applicability": "APPLICABLE",
+             "research_requirement": "NONE", "status": "RESOLVED"},
+        ]},
+        "question_research": {"items": [
+            {"question_ref": "Q-C1", "material": True,
+             "research_requirement": "NONE", "research_status": "NOT_REQUIRED"},
+            {"question_ref": "Q-C2", "material": True,
+             "research_requirement": "NONE", "research_status": "NOT_REQUIRED"},
+        ]},
+        "evidence_sufficiency": {"question_assessments": [
+            {
+                "question_ref": "Q-C1", "sufficiency": "SUFFICIENT",
+                "dimensions": dims(),
+                "authority_status": "ESTABLISHING",
+                "research_completion": "NOT_REQUIRED",
+                "applicability_status": "APPLICABLE",
+                "currentness_status": "CURRENT",
+                "contradiction_status": "NONE",
+                "supported_claims": ["The dialog shows the saved state."],
+                "unsupported_claims": [],
+                "limitations": [], "evidence_ids": ["UAC-C1"],
+                "research_ids": [],
+                "establishing_authority": "ACCEPTED_UAC",
+                "decision_reason": "The accepted UAC directly establishes the "
+                "expected behavior.",
+                "reason": "The accepted UAC directly establishes it.",
+            },
+            {
+                "question_ref": "Q-C2", "sufficiency": "INSUFFICIENT",
+                "dimensions": dims(),
+                "authority_status": "ESTABLISHING",
+                "research_completion": "NOT_REQUIRED",
+                "applicability_status": "APPLICABLE",
+                "currentness_status": "CURRENT",
+                "contradiction_status": "NONE",
+                "supported_claims": [],
+                "unsupported_claims": ["The behavior at the volume limit."],
+                "limitations": ["Three related passages discuss the limit but "
+                                "none answers it decisively."],
+                "evidence_ids": ["UAC-C1"],
+                "research_ids": [],
+                "decision_reason": "Supporting volume without a decisive answer "
+                "is not sufficient.",
+                "reason": "Non-decisive support is not sufficient.",
+            },
+        ]},
+    }
+    check("claim-level unfamiliar fixture is clean",
+          es.validate(manifest) == [])
+    print("  sufficiency trace [unfamiliar claim-level fixture]:")
+    for row in manifest["evidence_sufficiency"]["question_assessments"]:
+        print(f"    {row['question_ref']}: {row['sufficiency']} "
+              f"(supported={len(row['supported_claims'])}, "
+              f"unsupported={len(row['unsupported_claims'])})")
+
+    print("test_evidence_sufficiency_claim_level_unfamiliar: OK")
 
 
 def test_doc_research_routing() -> None:
@@ -9469,6 +9795,12 @@ def test_question_reasoning_chain_regressions() -> None:
         resolutions_by_qid = {
             row["question_ref"]: row for row in resolution_items
         }
+        research_by_qid = {row["question_ref"]: row for row in research_items}
+        completion_by_status = {
+            "NOT_REQUIRED": "NOT_REQUIRED",
+            "ANSWER_FOUND": "COMPLETED",
+            "PARTIAL": "PARTIAL",
+        }
         for row in rows:
             qid = row[0]
             if resolutions_by_qid[qid]["status"] in {
@@ -9477,13 +9809,35 @@ def test_question_reasoning_chain_regressions() -> None:
                 "DUPLICATE",
             }:
                 continue
+            state = sufficiency_overrides.get(qid, "SUFFICIENT")
             question_assessments.append({
                 "question_ref": qid,
-                "sufficiency": sufficiency_overrides.get(qid, "SUFFICIENT"),
+                "sufficiency": state,
                 "dimensions": {
                     name: "evaluated"
                     for name in es.EVALUATION_DIMENSIONS
                 },
+                "authority_status": "ESTABLISHING",
+                "research_completion": completion_by_status[
+                    research_by_qid[qid]["research_status"]
+                ],
+                "applicability_status": "APPLICABLE",
+                "currentness_status": "CURRENT",
+                "contradiction_status": "NONE",
+                "supported_claims": (
+                    [f"The established answer to {qid}."]
+                    if state in {"SUFFICIENT", "PARTIAL"}
+                    else []
+                ),
+                "unsupported_claims": (
+                    [] if state == "SUFFICIENT" else ["The unresolved portion."]
+                ),
+                "limitations": [],
+                "evidence_ids": [] if state == "INSUFFICIENT" else [f"EV-{qid}"],
+                "research_ids": (
+                    [f"DR-{domain}"] if row[3] == "DOCUMENTATION" else []
+                ),
+                "decision_reason": "Evidence evaluated across every dimension.",
                 "reason": "Evidence evaluated across every dimension.",
             })
         coverage_assessments = [
@@ -9492,6 +9846,13 @@ def test_question_reasoning_chain_regressions() -> None:
                 "sufficiency": "SUFFICIENT",
                 "question_refs": [row[1]],
                 "reason": "Computed from the underlying question.",
+                "sufficiency_reason": "Computed from the underlying question.",
+                "evidence_ids": [f"EV-{row[1]}"],
+                "research_ids": (
+                    [f"DR-{domain}"]
+                    if requirements_by_qid[row[1]] == "DOCUMENTATION"
+                    else []
+                ),
             }
             for row in domain_coverage[domain]
         ]
@@ -13651,6 +14012,8 @@ def main() -> int:
     test_evidence_sufficiency()
     test_evidence_sufficiency_output_history_regression()
     test_evidence_sufficiency_unfamiliar_ticket()
+    test_evidence_sufficiency_hard_negatives()
+    test_evidence_sufficiency_claim_level_unfamiliar()
     test_doc_research_routing()
     test_doc_research_routing_regressions()
     test_question_reasoning_chain_regressions()

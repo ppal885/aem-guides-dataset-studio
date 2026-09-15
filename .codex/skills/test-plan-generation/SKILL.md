@@ -561,6 +561,34 @@ and `question_resolutions` blocks, validated by `scripts/question_planner.py` an
   elsewhere in this skill — these stages only add traceable structure between discovery
   and authoring.
 
+### Phase 6.6.5 — Evidence Sufficiency (before coverage decisions)
+
+"Evidence exists" is not "evidence is sufficient to support this answer or coverage."
+Evaluate sufficiency at BOTH the resolved-question level and the coverage-decision
+level in the manifest `evidence_sufficiency` block, enforced by
+`scripts/evidence_sufficiency.py` (see `references/evidence-sufficiency.md`).
+
+- Every material resolved question carries `sufficiency_status` (SUFFICIENT / PARTIAL /
+  INSUFFICIENT / CONFLICTED) with the structured sub-states `authority_status`,
+  `research_completion`, `applicability_status`, `currentness_status`,
+  `contradiction_status`, plus claim-level `supported_claims[]` /
+  `unsupported_claims[]`, `limitations[]`, bound `evidence_ids[]` / `research_ids[]`,
+  and `decision_reason`. No numeric confidence as authority.
+- One applicable authoritative source may be SUFFICIENT; many related passages are not
+  automatically sufficient. Do not require documentation when Jira authority itself is
+  sufficient. PARTIAL research caps the answer at the established portion unless the
+  remaining limitation is demonstrably immaterial to that specific answer; NOT_FOUND is
+  never proof of the opposite behavior; CONFLICTED stays CONFLICTED until an existing
+  authority rule settles it.
+- Wrong-applicability evidence (wrong version / engine / surface) stays insufficient
+  without explicit compatibility evidence; UNCLEAR applicability is never confirmed
+  applicability. Sufficiency for one claim never bleeds into a neighboring claim.
+- Coverage sufficiency is computed from the underlying questions and evidence; P0/P1
+  ACCEPTANCE coverage requires SUFFICIENT unless explicitly represented as
+  ACCEPTANCE_TBD; the Writer handoff never carries INSUFFICIENT/CONFLICTED coverage or
+  an unnamed PARTIAL portion, and the Writer cannot reinterpret evidence to upgrade
+  sufficiency.
+
 ### Phase 6.7 — Coverage Reasoning (dedicated Coverage Reasoner)
 
 A dedicated Coverage Reasoner — never the Writer — decides coverage on top of resolved
