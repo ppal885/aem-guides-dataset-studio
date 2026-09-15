@@ -123,6 +123,7 @@ evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_c
 question_research_mod = _load("question_research", "question_research.py")
 question_planner_mod = _load("question_planner", "question_planner.py")
 question_resolver_mod = _load("question_resolver", "question_resolver.py")
+coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -7342,13 +7343,187 @@ def test_question_resolver() -> None:
     print("test_question_resolver: OK")
 
 
+def test_coverage_reasoner() -> None:
+    cr = coverage_reasoner_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent coverage_decisions passes", cr.validate({}) == [])
+
+    def wrap(items, **extra):
+        manifest = {"coverage_decisions": {"items": items}}
+        for key, value in extra.items():
+            if key == "writer_handoff":
+                manifest["coverage_decisions"]["writer_handoff"] = value
+            else:
+                manifest[key] = value
+        return manifest
+
+    def item(cid, priority="P0", klass="ACCEPTANCE", **over):
+        base = {
+            "coverage_id": cid,
+            "behavior": "The fixed surface shows the true state.",
+            "question_ids": ["Q-1"],
+            "evidence_ids": ["EV-1"],
+            "priority": priority,
+            "coverage_class": klass,
+            "positive_or_negative": "POSITIVE",
+            "surface": "Map Dashboard",
+            "state": "",
+            "configuration": "",
+            "applicability": "current release",
+            "reason": "Proves the primary ticket contract.",
+            "acceptance_impact": "Without it the fix is unverifiable.",
+            "dimensions_considered": ["STATE_TRANSITIONS", "PRESERVATION"],
+        }
+        base.update(over)
+        return base
+
+    check("a well-formed P0 decision passes", cr.validate(wrap([item("COV-01")])) == [])
+
+    # Required fields.
+    for field in ("coverage_id", "behavior", "applicability", "reason",
+                  "acceptance_impact"):
+        broken = item("COV-01")
+        broken[field] = ""
+        check(f"missing {field} rejected",
+              any(field in p for p in cr.validate(wrap([broken]))))
+    for field in ("surface", "state", "configuration", "dimensions_considered"):
+        broken = item("COV-01")
+        del broken[field]
+        check(f"absent {field} rejected",
+              any(field in p for p in cr.validate(wrap([broken]))))
+
+    # Closed vocabularies.
+    check("unknown priority rejected",
+          any("priority" in p for p in cr.validate(wrap([item("COV-01", priority="P2")]))))
+    check("unknown class rejected",
+          any("coverage_class" in p for p in cr.validate(wrap([item("COV-01", klass="IDEA")]))))
+    check("unknown polarity rejected",
+          any("positive_or_negative" in p for p in cr.validate(
+              wrap([item("COV-01", positive_or_negative="BOTH")]))))
+    check("unknown axis rejected",
+          any("dimensions_considered" in p for p in cr.validate(
+              wrap([item("COV-01", dimensions_considered=["MOOD"])]))))
+
+    # Priority/class pairing.
+    check("P0 must be ACCEPTANCE",
+          any("primary ticket contract" in p for p in cr.validate(
+              wrap([item("COV-01", priority="P0", klass="QE_REGRESSION")]))))
+    check("P1 must be QE_REGRESSION",
+          any("materially related regression" in p for p in cr.validate(
+              wrap([item("COV-01", priority="P1", klass="ACCEPTANCE")]))))
+    check("SUPPORTING regression passes",
+          cr.validate(wrap([item("COV-02", priority="SUPPORTING",
+                                 klass="QE_REGRESSION")])) == [])
+    check("EXCLUDED passes with a reason",
+          cr.validate(wrap([item("COV-03", priority="EXCLUDED", klass="INVESTIGATION",
+                                 reason="Out of scope per the ticket.")])) == [])
+
+    # Do not promote generic test ideas.
+    check("untraced coverage decision rejected",
+          any("generic test ideas" in p for p in cr.validate(
+              wrap([item("COV-01", question_ids=[], evidence_ids=[])]))))
+    check("evidence-only trace passes",
+          cr.validate(wrap([item("COV-01", question_ids=[])])) == [])
+
+    # Writer receives only accepted decisions; Reviewer sees all P0 represented.
+    excluded = item("COV-03", priority="EXCLUDED", klass="INVESTIGATION",
+                    reason="Out of scope per the ticket.")
+    check("EXCLUDED in writer handoff rejected",
+          any("never reaches the Writer" in p for p in cr.validate(
+              wrap([item("COV-01"), excluded], writer_handoff=["COV-01", "COV-03"]))))
+    check("P0 missing from writer handoff rejected",
+          any("not represented" in p for p in cr.validate(
+              wrap([item("COV-01"), item("COV-02", priority="P1", klass="QE_REGRESSION")],
+                   writer_handoff=["COV-02"]))))
+    check("complete writer handoff passes",
+          cr.validate(wrap([item("COV-01"), excluded],
+                           writer_handoff=["COV-01"])) == [])
+
+    # Chain integrity with resolved questions.
+    chain = {
+        "question_plan": {"items": [{
+            "question_id": "Q-1", "category": "EXPECTED_OUTCOME",
+            "question": "What must the panel show?",
+            "why_material": "m", "triggering_evidence_ids": ["JIRA-1"],
+            "acceptance_impact": "a", "applicability": "APPLICABLE",
+            "research_requirement": "NONE", "status": "RESOLVED",
+        }]},
+        "question_resolutions": {"items": [{
+            "question_ref": "Q-1", "status": "PARTIALLY_ANSWERED",
+            "answer": {"claim": "c", "source_ids": ["E1"],
+                       "source_authority": "OFFICIAL_DOCUMENTATION",
+                       "applicability": "current", "limitations": ["one mode"],
+                       "contradictions": []},
+        }]},
+    }
+    manifest = wrap([item("COV-01")], **chain)
+    check("PARTIALLY_ANSWERED cannot ground ACCEPTANCE",
+          any("cannot ground ACCEPTANCE" in p for p in cr.validate(manifest)))
+    ok = wrap([item("COV-01", klass="QE_REGRESSION", priority="P1")], **chain)
+    check("PARTIALLY_ANSWERED can ground QE_REGRESSION", cr.validate(ok) == [])
+
+    chain_tbd = {"question_resolutions": {"items": [
+        {"question_ref": "Q-1", "status": "ACCEPTANCE_TBD",
+         "material_impact": ["BEHAVIOR"], "plausible_answers": ["a", "b"]}]}}
+    check("ACCEPTANCE_TBD grounds only INVESTIGATION",
+          any("cannot ground" in p for p in cr.validate(
+              wrap([item("COV-01", klass="QE_REGRESSION", priority="P1")],
+                   **chain_tbd))))
+
+    chain_unresolved = {"question_plan": {"items": [{
+        "question_id": "Q-1", "category": "EXPECTED_OUTCOME",
+        "question": "What must the panel show?",
+        "why_material": "m", "triggering_evidence_ids": ["JIRA-1"],
+        "acceptance_impact": "a", "applicability": "APPLICABLE",
+        "research_requirement": "NONE", "status": "PLANNED"}]}}
+    check("unresolved planned question cannot ground coverage",
+          any("unresolved" in p for p in cr.validate(
+              wrap([item("COV-01")], **chain_unresolved))))
+    check("never-planned question cannot ground coverage",
+          any("never planned" in p for p in cr.validate(
+              wrap([item("COV-01", question_ids=["Q-9"])], **chain_unresolved))))
+
+    # Required research cannot be skipped into an ACCEPTANCE decision.
+    chain_research = dict(chain)
+    chain_research["question_research"] = {"items": [{
+        "question_ref": "Q-1", "material": True,
+        "research_requirement": "DOCUMENTATION", "research_status": "NOT_FOUND",
+        "research_requests": ["RQ-1"]}]}
+    check("NOT_FOUND research cannot ground ACCEPTANCE",
+          any("cannot be skipped" in p or "not negative proof" in p
+              for p in cr.validate(wrap([item("COV-01")], **chain_research))))
+
+    # Existing documented behavior must not be repackaged as new acceptance.
+    chain_behavior = dict(chain)
+    chain_behavior["question_resolutions"] = {"items": [{
+        "question_ref": "Q-1", "status": "ANSWERED",
+        "answer": {"claim": "c", "source_ids": ["E1"],
+                   "source_authority": "OFFICIAL_DOCUMENTATION",
+                   "applicability": "current", "limitations": [],
+                   "contradictions": []}}]}
+    chain_behavior["behavior_classification"] = {"items": [{
+        "target_ref": "B-1", "behavior_class": "EXISTING_CONFIRMED",
+        "existing_evidence_ids": ["DOC-1"]}]}
+    check("EXISTING_CONFIRMED cannot ground new ACCEPTANCE",
+          any("documented-today" in p for p in cr.validate(
+              wrap([item("COV-01", behavior_ref="B-1")], **chain_behavior))))
+    check("EXISTING_CONFIRMED can ground QE_REGRESSION",
+          cr.validate(wrap([item("COV-01", priority="P1", klass="QE_REGRESSION",
+                                 behavior_ref="B-1")], **chain_behavior)) == [])
+
+    print("test_coverage_reasoner: OK")
+
+
 def test_question_reasoning_chain_regressions() -> None:
-    """End-to-end Question Planner -> Research Router -> Question Resolver
-    regressions per domain, each delivering its question trace."""
+    """End-to-end Question Planner -> Research Router -> Question Resolver ->
+    Coverage Reasoner regressions per domain, each delivering its question
+    trace."""
 
     qp = question_planner_mod
     qr = question_research_mod
     qres = question_resolver_mod
+    cr = coverage_reasoner_mod
 
     def question(qid, category, text, requirement, evidence):
         return {
@@ -7437,6 +7612,75 @@ def test_question_reasoning_chain_regressions() -> None:
         ],
     }
 
+    # The dedicated Coverage Reasoner maps each domain's resolved questions to
+    # coverage decisions: (coverage_id, question_id, priority, class, polarity,
+    # axes). P0 proves the primary ticket contract; P1 is materially related
+    # regression behavior.
+    domain_coverage = {
+        "Translation": [
+            ("COV-T1", "Q-T1", "P0", "ACCEPTANCE", "POSITIVE",
+             ["STATE_TRANSITIONS"]),
+            ("COV-T2", "Q-T2", "P1", "QE_REGRESSION", "POSITIVE",
+             ["PRESERVATION"]),
+            ("COV-T3", "Q-T3", "P1", "QE_REGRESSION", "POSITIVE",
+             ["STATE_TRANSITIONS", "ALTERNATE_UI_PATHS"]),
+        ],
+        "Output History": [
+            ("COV-O1", "Q-O2", "P0", "ACCEPTANCE", "POSITIVE",
+             ["CONFIGURATION_BRANCHES"]),
+            ("COV-O2", "Q-O1", "P1", "QE_REGRESSION", "POSITIVE",
+             ["PRESERVATION"]),
+            ("COV-O3", "Q-O3", "P1", "QE_REGRESSION", "POSITIVE",
+             ["PRESERVATION", "NEGATIVE_CONTRACTS"]),
+            ("COV-O4", "Q-O4", "P1", "QE_REGRESSION", "POSITIVE",
+             ["CONFIGURATION_BRANCHES", "CLOUD_65"]),
+        ],
+        "Broken Links": [
+            ("COV-B1", "Q-B1", "P0", "ACCEPTANCE", "NEGATIVE",
+             ["NEGATIVE_CONTRACTS"]),
+            ("COV-B2", "Q-B2", "P1", "QE_REGRESSION", "POSITIVE",
+             ["ALTERNATE_UI_PATHS", "SINGLE_BULK"]),
+            ("COV-B3", "Q-B3", "P1", "QE_REGRESSION", "NEGATIVE",
+             ["STATE_TRANSITIONS"]),
+        ],
+        "Native PDF": [
+            ("COV-P1", "Q-P1", "P0", "ACCEPTANCE", "POSITIVE",
+             ["NATIVE_PDF_DITA_OT", "CONFIGURATION_BRANCHES"]),
+            ("COV-P2", "Q-P2", "P1", "QE_REGRESSION", "POSITIVE",
+             ["PRESERVATION", "NATIVE_PDF_DITA_OT"]),
+            ("COV-P3", "Q-P3", "P1", "QE_REGRESSION", "NEGATIVE",
+             ["SCALE"]),
+            ("COV-P4", "Q-P4", "SUPPORTING", "QE_REGRESSION", "POSITIVE",
+             ["SCALE"]),
+        ],
+        "Editor": [
+            ("COV-E1", "Q-E2", "P0", "ACCEPTANCE", "NEGATIVE",
+             ["NEGATIVE_CONTRACTS", "NEW_OLD_EDITOR"]),
+            ("COV-E2", "Q-E1", "P1", "QE_REGRESSION", "POSITIVE",
+             ["STATE_TRANSITIONS", "NEW_OLD_EDITOR", "AUTHOR_SOURCE"]),
+            ("COV-E3", "Q-E3", "P1", "QE_REGRESSION", "POSITIVE",
+             ["ALTERNATE_UI_PATHS", "NEW_OLD_EDITOR"]),
+        ],
+    }
+
+    def coverage(cid, qid, priority, klass, polarity, axes):
+        return {
+            "coverage_id": cid,
+            "behavior": f"Coverage derived from {qid}.",
+            "question_ids": [qid],
+            "evidence_ids": [f"EV-{qid}"],
+            "priority": priority,
+            "coverage_class": klass,
+            "positive_or_negative": polarity,
+            "surface": "the affected surface",
+            "state": "",
+            "configuration": "",
+            "applicability": "current release",
+            "reason": "Traces to the resolved question evidence.",
+            "acceptance_impact": "Defines what the Writer may assert.",
+            "dimensions_considered": axes,
+        }
+
     for domain, rows in domains.items():
         plan_items = [
             question(row[0], row[1], row[2], row[3], row[4]) for row in rows
@@ -7455,17 +7699,25 @@ def test_question_reasoning_chain_regressions() -> None:
             )
             for qid, _category, _text, requirement, _evidence in rows
         ]
+        coverage_items = [coverage(*row) for row in domain_coverage[domain]]
+        writer_handoff = [row[0] for row in domain_coverage[domain]]
         manifest = {
             "question_plan": {"items": plan_items},
             "question_research": {"items": research_items},
             "question_resolutions": {"items": resolution_items},
+            "coverage_decisions": {
+                "items": coverage_items,
+                "writer_handoff": writer_handoff,
+            },
         }
         planner_problems = qp.validate(manifest)
         research_problems = qr.validate(manifest)
         resolver_problems = qres.validate(manifest)
+        coverage_problems = cr.validate(manifest)
         check(f"{domain}: planner gate clean", planner_problems == [])
         check(f"{domain}: research router gate clean", research_problems == [])
         check(f"{domain}: resolver gate clean", resolver_problems == [])
+        check(f"{domain}: coverage reasoner gate clean", coverage_problems == [])
 
         # Deliver the question trace for the regression.
         print(f"  question trace [{domain}]:")
@@ -7474,10 +7726,18 @@ def test_question_reasoning_chain_regressions() -> None:
                          if r["question_ref"] == item_row["question_id"])
             outcome = next(r for r in resolution_items
                            if r["question_ref"] == item_row["question_id"])
+            decisions = [
+                c for c in coverage_items
+                if item_row["question_id"] in c["question_ids"]
+            ]
+            tail = " ".join(
+                f"-> {c['coverage_id']} {c['priority']}/{c['coverage_class']}"
+                for c in decisions
+            )
             print(
                 f"    {item_row['question_id']} [{item_row['category']}] "
                 f"-> {route['research_requirement']}/{route['research_status']} "
-                f"-> {outcome['status']}"
+                f"-> {outcome['status']} {tail}"
             )
 
     # Cross-gate: required research cannot be skipped anywhere in the chain.
@@ -7493,13 +7753,21 @@ def test_question_reasoning_chain_regressions() -> None:
     check("ANSWERED over skipped research fails the resolver",
           any("cannot be skipped" in p or "not negative proof" in p
               for p in qres.validate(manifest)))
+    manifest["coverage_decisions"] = {"items": [
+        coverage("COV-X1", "Q-X1", "P0", "ACCEPTANCE", "POSITIVE",
+                 ["CONFIGURATION_BRANCHES"])]}
+    check("PENDING research cannot ground ACCEPTANCE coverage",
+          any("cannot be skipped" in p for p in cr.validate(manifest)))
 
     # NOT_FOUND never grounds an answer through the chain.
     manifest["question_research"] = {"items": [research("Q-X1", "DOCUMENTATION", "NOT_FOUND")]}
     check("ANSWERED over NOT_FOUND fails the resolver",
           any("not negative proof" in p for p in qres.validate(manifest)))
+    check("NOT_FOUND research cannot ground ACCEPTANCE coverage",
+          any("not negative proof" in p for p in cr.validate(manifest)))
 
     # A planned question is never silently dropped before resolution.
+    del manifest["coverage_decisions"]
     manifest["question_resolutions"] = {"items": []}
     check("planned question without resolution fails",
           any("never silently dropped" in p for p in qres.validate(manifest)))
@@ -11304,6 +11572,7 @@ def main() -> int:
     test_behavior_classification()
     test_question_planner()
     test_question_resolver()
+    test_coverage_reasoner()
     test_question_reasoning_chain_regressions()
     test_scope_applicability()
     test_ac_language_policy()

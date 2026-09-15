@@ -115,6 +115,7 @@ evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_c
 question_research_mod = _load("question_research", "question_research.py")
 question_planner_mod = _load("question_planner", "question_planner.py")
 question_resolver_mod = _load("question_resolver", "question_resolver.py")
+coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -1539,6 +1540,18 @@ def check_relationship_traversal(
         for problem in question_resolver_mod.validate(data)
     )
 
+    # Dedicated UAC Coverage Reasoner (optional, backward-compatible). Absent ->
+    # clean pass. Coverage is decided on resolved question evidence, never by
+    # the Writer: P0/ACCEPTANCE proves the primary ticket contract, P1/
+    # QE_REGRESSION covers materially related regression behavior, generic
+    # untraced test ideas are rejected, EXCLUDED never reaches the writer
+    # handoff, and unresolved/TBD/conflicted questions or skipped/NOT_FOUND
+    # required research cannot ground ACCEPTANCE decisions.
+    failures.extend(
+        f"[coverage-reasoner] {problem}"
+        for problem in coverage_reasoner_mod.validate(data)
+    )
+
     # Existing-vs-New behavior classification (optional, backward-compatible).
     # Absent -> clean pass. When present, keep "documented today" separate from
     # "required after this fix": documentation establishes baselines, the ticket
@@ -2253,6 +2266,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_question_planner()
             if hasattr(self_tests, "test_question_resolver"):
                 self_tests.test_question_resolver()
+            if hasattr(self_tests, "test_coverage_reasoner"):
+                self_tests.test_coverage_reasoner()
             if hasattr(self_tests, "test_question_reasoning_chain_regressions"):
                 self_tests.test_question_reasoning_chain_regressions()
             self_tests.test_scope_applicability()

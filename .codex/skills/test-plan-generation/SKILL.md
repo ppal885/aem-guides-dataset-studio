@@ -504,6 +504,37 @@ and `question_resolutions` blocks, validated by `scripts/question_planner.py` an
   elsewhere in this skill — these stages only add traceable structure between discovery
   and authoring.
 
+### Phase 6.7 — Coverage Reasoning (dedicated Coverage Reasoner)
+
+A dedicated Coverage Reasoner — never the Writer — decides coverage on top of resolved
+question evidence, recorded in the manifest `coverage_decisions` block and validated by
+`scripts/coverage_reasoner.py` (see `references/coverage-reasoner.md`). Inputs:
+authoritative requirements, resolved questions, research findings, applicability,
+conflicts, attachment observations, existing behavior, new behavior, and preservation
+requirements.
+
+- Emit one decision per candidate behavior with `coverage_id`, `behavior`,
+  `question_ids`, `evidence_ids`, `priority`, `coverage_class`, `positive_or_negative`,
+  `surface`, `state`, `configuration`, `applicability`, `reason`, `acceptance_impact`,
+  and the `dimensions_considered` axes reasoned about when applicable (single/bulk,
+  refresh/revisit, state transitions, negative contracts, alternate UI paths,
+  configuration branches, New/Old Editor, Author/Source, Collections/Explorer/Map
+  Console, Cloud/6.5, Native PDF/DITA-OT, preprocessing ON/OFF, scale, preservation).
+- **priority**: `P0` = behavior required to prove the primary ticket contract and prevent
+  the direct customer regression (class `ACCEPTANCE`); `P1` = materially related
+  regression behavior (class `QE_REGRESSION`); `SUPPORTING` = supporting regression or
+  investigation coverage; `EXCLUDED` = explicitly excluded with a reason, never reaching
+  the Writer. Do not promote generic test ideas: every decision traces to resolved
+  questions and/or evidence.
+- A decision may stand only on questions whose resolution and research permit it: an
+  unresolved, ACCEPTANCE_TBD, CONFLICTED, or INVESTIGATION_ONLY question cannot ground
+  acceptance coverage, and NOT_FOUND or otherwise incomplete required research cannot
+  ground an ACCEPTANCE decision. Documented-today (EXISTING_CONFIRMED) behavior must not
+  be repackaged as new acceptance coverage.
+- **The Writer receives only accepted coverage decisions** (the non-EXCLUDED handoff).
+  **The Reviewer verifies all P0 coverage is represented in that handoff and that P1 has
+  not expanded scope.**
+
 ### Phase 7 — Design Test Scenarios
 
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
