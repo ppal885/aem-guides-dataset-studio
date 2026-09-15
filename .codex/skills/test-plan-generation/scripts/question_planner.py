@@ -37,6 +37,16 @@ from __future__ import annotations
 
 from question_research import RESEARCH_REQUIREMENTS
 
+# The question-level research routing decision reuses the R1 vocabulary.
+# RESEARCH_NOT_REQUIRED == no research; DOC_RESEARCH_REQUIRED == the existing
+# Doc Researcher must run before the question can resolve.  The richer
+# question_research vocabulary remains accepted for manifests that already
+# carry it.
+QUESTION_RESEARCH_REQUIREMENTS = tuple(RESEARCH_REQUIREMENTS) + (
+    "RESEARCH_NOT_REQUIRED",
+    "DOC_RESEARCH_REQUIRED",
+)
+
 QUESTION_CATEGORIES = (
     "EXPECTED_OUTCOME",
     "STATE_TRANSITION",
@@ -127,11 +137,14 @@ def _validate_item(i, item, *, overflow=False):
             f"{', '.join(QUESTION_APPLICABILITY)}"
         )
     requirement = item.get("research_requirement")
-    if requirement not in RESEARCH_REQUIREMENTS:
+    if requirement not in QUESTION_RESEARCH_REQUIREMENTS:
         problems.append(
             f"{tag}: research_requirement '{requirement}' must be one of "
-            f"{', '.join(RESEARCH_REQUIREMENTS)}"
+            f"{', '.join(QUESTION_RESEARCH_REQUIREMENTS)}"
         )
+    research_topics = item.get("research_topics")
+    if research_topics is not None and not isinstance(research_topics, list):
+        problems.append(f"{tag}: research_topics must be a list when present")
     status = item.get("status")
     if status not in QUESTION_STATUSES:
         problems.append(
@@ -192,6 +205,17 @@ def validate(manifest):
             if not isinstance(overflow_items, list):
                 problems.append("question_plan.overflow.items must be a list")
                 overflow_items = []
+            unprocessed_count = overflow.get("unprocessed_count")
+            if unprocessed_count is not None and (
+                not isinstance(unprocessed_count, int)
+                or isinstance(unprocessed_count, bool)
+                or unprocessed_count != len(overflow_items)
+            ):
+                problems.append(
+                    "question_plan.overflow.unprocessed_count must equal the "
+                    "number of overflow items - the unprocessed material-"
+                    "question count is exposed, not silently dropped"
+                )
     if overflow_items:
         for i, item in enumerate(overflow_items):
             problems.extend(_validate_item(i, item, overflow=True))

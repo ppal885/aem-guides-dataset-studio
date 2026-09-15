@@ -109,11 +109,22 @@ INVESTIGATION_TOPICS = (
 # Research outcomes that can never ground an answered claim.
 _NON_ANSWERING_RESEARCH_STATUSES = frozenset({"PENDING", "NOT_FOUND"})
 
+# Rule 11: PARTIAL research cannot produce a fully confirmed answer.  It can
+# still ground a PARTIALLY_ANSWERED resolution for the established portion.
+_ANSWERED_BLOCKING_RESEARCH_STATUSES = frozenset({
+    "PENDING",
+    "PARTIAL",
+    "NOT_FOUND",
+    "SOURCE_UNAVAILABLE",
+    "CONFLICTED",
+})
+
 # Research requirements that route through the existing R1 Doc Researcher.
 _DOC_DEPENDENT_REQUIREMENTS = frozenset({
     "DOCUMENTATION",
     "DOCUMENTATION_AND_IMPLEMENTATION",
     "MULTI_SOURCE",
+    "DOC_RESEARCH_REQUIRED",
 })
 
 
@@ -216,6 +227,19 @@ def _validate_item(i, item):
         )
         return problems
 
+    # Externalized semantic decision: every material decision records its
+    # reason so downstream stages consume the artifact instead of
+    # reconstructing the answer from raw ticket text.
+    if not _nonempty(item.get("decision_reason")):
+        problems.append(
+            f"{tag}: missing decision_reason - every material semantic "
+            "decision is recorded with its reason"
+        )
+
+    research_ids = item.get("research_ids")
+    if research_ids is not None and not isinstance(research_ids, list):
+        problems.append(f"{tag}: research_ids must be a list when present")
+
     if item.get("ac_id") or item.get("promoted_to_ac"):
         problems.append(
             f"{tag}: an answer is not automatically an AC - resolution records "
@@ -274,6 +298,12 @@ def _validate_item(i, item):
             problems.append(
                 f"{tag}: investigation_topic '{topic}' must be one of "
                 f"{', '.join(INVESTIGATION_TOPICS)}"
+            )
+        elif status == "ACCEPTANCE_TBD":
+            problems.append(
+                f"{tag}: root-cause/diagnostic/mechanics uncertainty must not "
+                "become ACCEPTANCE_TBD merely because it is important to "
+                "engineering - it stays INVESTIGATION_ONLY"
             )
         elif status not in {"INVESTIGATION_ONLY", "NOT_APPLICABLE"} and not (
             _nonempty(item.get("acceptance_relevance"))
@@ -339,7 +369,8 @@ def validate(manifest):
                 )
 
     # Chain integrity with the research router: required research cannot be
-    # skipped, and NOT_FOUND is not negative proof.
+    # skipped, PARTIAL research cannot fully confirm, and NOT_FOUND is not
+    # negative proof.
     research = manifest.get("question_research")
     if isinstance(research, dict):
         research_by_ref = {
@@ -351,14 +382,30 @@ def validate(manifest):
             if not isinstance(item, dict):
                 continue
             ref, status, _answer = _normalized(item)
-            if status not in {"ANSWERED", "PARTIALLY_ANSWERED"}:
-                continue
             route = research_by_ref.get(ref)
             if route is None:
                 continue
             research_status = route.get("research_status")
             requirement = route.get("research_requirement")
-            if requirement != "NONE" and research_status in (
+            if requirement == "NONE":
+                continue
+            if research_status == "CONFLICTED" and status != "CONFLICTED":
+                problems.append(
+                    f"question_resolutions.items[{i}]: CONFLICTED research "
+                    "keeps the question CONFLICTED until the conflict is "
+                    "settled"
+                )
+            elif status == "ANSWERED" and research_status in (
+                _ANSWERED_BLOCKING_RESEARCH_STATUSES
+            ):
+                problems.append(
+                    f"question_resolutions.items[{i}]: required "
+                    f"{requirement} research is {research_status} - required "
+                    "research cannot be skipped, PARTIAL research cannot "
+                    "produce a fully confirmed answer, and NOT_FOUND is not "
+                    "negative proof"
+                )
+            elif status == "PARTIALLY_ANSWERED" and research_status in (
                 _NON_ANSWERING_RESEARCH_STATUSES
             ):
                 problems.append(
@@ -371,31 +418,31 @@ def validate(manifest):
     # R1 reuse: documentation-requiring questions depend on the existing Doc
     # Researcher routing contract.  R1-required research cannot be skipped.
     doc_research = manifest.get("doc_research")
+    doc_dependent: set[str] = set()
+    research_block = manifest.get("question_research")
+    if isinstance(research_block, dict):
+        for row in research_block.get("items", []):
+            if not isinstance(row, dict):
+                continue
+            if row.get("research_requirement") in (
+                _DOC_DEPENDENT_REQUIREMENTS
+            ) and row.get("material", True):
+                doc_dependent.add(row.get("question_ref"))
+    plan_block = manifest.get("question_plan")
+    if isinstance(plan_block, dict):
+        for source in (plan_block.get("items"),
+                       (plan_block.get("overflow") or {}).get("items")):
+            if not isinstance(source, list):
+                continue
+            for row in source:
+                if isinstance(row, dict) and row.get(
+                    "research_requirement"
+                ) in _DOC_DEPENDENT_REQUIREMENTS:
+                    doc_dependent.add(row.get("question_id"))
+    doc_dependent.discard(None)
     if isinstance(doc_research, dict):
         routing = doc_research.get("routing") or {}
         routing_state = routing.get("state")
-        doc_dependent: set[str] = set()
-        research_block = manifest.get("question_research")
-        if isinstance(research_block, dict):
-            for row in research_block.get("items", []):
-                if not isinstance(row, dict):
-                    continue
-                if row.get("research_requirement") in (
-                    _DOC_DEPENDENT_REQUIREMENTS
-                ) and row.get("material", True):
-                    doc_dependent.add(row.get("question_ref"))
-        plan_block = manifest.get("question_plan")
-        if isinstance(plan_block, dict):
-            for source in (plan_block.get("items"),
-                           (plan_block.get("overflow") or {}).get("items")):
-                if not isinstance(source, list):
-                    continue
-                for row in source:
-                    if isinstance(row, dict) and row.get(
-                        "research_requirement"
-                    ) in _DOC_DEPENDENT_REQUIREMENTS:
-                        doc_dependent.add(row.get("question_id"))
-        doc_dependent.discard(None)
         if routing_state == "RESEARCH_NOT_REQUIRED" and doc_dependent:
             problems.append(
                 "question_resolutions: documentation-requiring material "
@@ -434,6 +481,90 @@ def validate(manifest):
                     f"question_resolutions.items[{i}]: doc research is "
                     "CONFLICTED - the question stays CONFLICTED until the "
                     "conflict is settled"
+                )
+
+    # Research binding: a resolution may cite only admitted research that
+    # actually researched this question - stale or wrong-bound research cannot
+    # answer another question, and documentation is never cited without
+    # admitted research.
+    if isinstance(doc_research, dict):
+        results_by_id = {
+            row.get("research_id"): row
+            for row in doc_research.get("results", [])
+            if isinstance(row, dict)
+        }
+        admitted = doc_research.get("admitted_research_ids")
+        admitted_ids = (
+            set(admitted) if isinstance(admitted, list) else set(results_by_id)
+        )
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            ref, status, answer = _normalized(item)
+            research_ids = item.get("research_ids") or []
+            for rid in research_ids:
+                result = results_by_id.get(rid)
+                if result is None:
+                    problems.append(
+                        f"question_resolutions.items[{i}]: research '{rid}' is "
+                        "not a Doc Researcher result - stale research cannot "
+                        "answer a question"
+                    )
+                    continue
+                if rid not in admitted_ids:
+                    problems.append(
+                        f"question_resolutions.items[{i}]: research '{rid}' "
+                        "was never admitted to the reasoning path"
+                    )
+                bound = result.get("question_refs")
+                if isinstance(bound, list) and bound and ref not in bound:
+                    problems.append(
+                        f"question_resolutions.items[{i}]: research '{rid}' is "
+                        f"bound to {sorted(bound)} - wrong-bound research "
+                        "cannot answer another question"
+                    )
+            if (
+                status == "ANSWERED"
+                and (answer or {}).get("source_authority")
+                == "OFFICIAL_DOCUMENTATION"
+                and ref in doc_dependent
+                and not research_ids
+            ):
+                problems.append(
+                    f"question_resolutions.items[{i}]: a documentation answer "
+                    "must cite the admitted research_ids that produced it"
+                )
+
+    # Duplicate lineage: a DUPLICATE preserves its triggering evidence on the
+    # surviving question.
+    if isinstance(plan, dict):
+        planned = []
+        for source in (plan.get("items"), (plan.get("overflow") or {}).get("items")):
+            if isinstance(source, list):
+                planned.extend(row for row in source if isinstance(row, dict))
+        planned_by_id = {row.get("question_id"): row for row in planned}
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            ref, status, _answer = _normalized(item)
+            if status != "DUPLICATE":
+                continue
+            surviving_ref = item.get("duplicate_of")
+            duplicate = planned_by_id.get(ref)
+            surviving = planned_by_id.get(surviving_ref)
+            if duplicate is None or surviving is None:
+                continue
+            duplicate_evidence = set(
+                duplicate.get("triggering_evidence_ids") or []
+            )
+            surviving_evidence = set(
+                surviving.get("triggering_evidence_ids") or []
+            )
+            if not duplicate_evidence.issubset(surviving_evidence):
+                problems.append(
+                    f"question_resolutions.items[{i}]: DUPLICATE must preserve "
+                    "all triggering evidence IDs on the surviving question - "
+                    f"{sorted(duplicate_evidence - surviving_evidence)} lost"
                 )
     return problems
 

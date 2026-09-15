@@ -170,6 +170,12 @@ def _validate_result(i, result, behavior_new_ids):
     topics = result.get("topics")
     if not isinstance(topics, list) or not topics:
         problems.append(f"{tag}: topics must be a non-empty list")
+    question_refs = result.get("question_refs")
+    if question_refs is not None and not isinstance(question_refs, list):
+        problems.append(
+            f"{tag}: question_refs must be a list when present - it binds the "
+            "research to the questions it answered"
+        )
     findings = result.get("findings")
     if not isinstance(findings, list):
         problems.append(f"{tag}: findings must be a list")

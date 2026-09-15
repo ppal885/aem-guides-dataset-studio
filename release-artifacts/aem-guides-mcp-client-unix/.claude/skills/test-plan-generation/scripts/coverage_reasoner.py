@@ -277,6 +277,32 @@ def _chain_problems(manifest, items):
                     "documented-today behavior must not be repackaged as new "
                     "acceptance coverage"
                 )
+
+    # Writer boundary: a question is never rendered directly as coverage/AC
+    # text - the Writer consumes resolved coverage decisions, not raw
+    # questions.
+    question_texts = {}
+    if isinstance(plan, dict):
+        for source in (plan.get("items"), (plan.get("overflow") or {}).get("items")):
+            if isinstance(source, list):
+                for row in source:
+                    if isinstance(row, dict) and row.get("question_id"):
+                        question_texts[row["question_id"]] = str(
+                            row.get("question") or ""
+                        ).strip()
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        behavior = str(item.get("behavior") or "").strip()
+        if not behavior:
+            continue
+        for qid in item.get("question_ids") or []:
+            if question_texts.get(qid) and behavior == question_texts[qid]:
+                problems.append(
+                    f"coverage_decisions.items[{i}]: question '{qid}' is "
+                    "rendered directly as coverage text - a question is never "
+                    "an AC; the Writer consumes resolved decisions only"
+                )
     return problems
 
 

@@ -520,7 +520,7 @@ and `question_resolutions` blocks, validated by `scripts/question_planner.py` an
   SCOPE, VARIANT, ENTRY_PATH, CONFIGURATION, APPLICABILITY, PRESERVATION, ERROR_RECOVERY,
   SCALE, COMPATIBILITY. Every question carries `question_id`, `category`, `question`,
   `why_material`, `triggering_evidence_ids`, `acceptance_impact`, `applicability`,
-  `research_requirement`, and `status`.
+  `  research_requirement`, and `status` (plus `research_topics[]` when research is routed).
 - **The question budget is bounded** (`question_plan.budget`, default 12). If the
   material-question budget is exceeded, do not silently discard questions: move the excess
   into `question_plan.overflow` with `state: QUESTION_BUDGET_EXCEEDED` and an explicit
@@ -534,17 +534,27 @@ and `question_resolutions` blocks, validated by `scripts/question_planner.py` an
 - **Resolve every planned question exactly once** with a terminal disposition: ANSWERED,
   PARTIALLY_ANSWERED, ACCEPTANCE_TBD, INVESTIGATION_ONLY, NOT_APPLICABLE, DUPLICATE, or
   CONFLICTED. The resolution carries `question_id`, `disposition`, `answer`,
-  `source_ids`, `source_authority`, `applicability`, `limitations`, and `contradictions`.
+  `source_ids`, `source_authority`, `applicability`, `limitations`, `contradictions`,
+  `decision_reason`, and `research_ids` binding the admitted research that produced a
+  documentation answer - stale or wrong-bound research cannot answer another question,
+  and documentation is never cited without admitted research. Semantic decisions are
+  externalized in these artifacts; downstream stages consume them rather than
+  reconstructing answers from raw ticket text.
 - **Hard rules:** a question is not an AC; an answer is not automatically an AC; Actual
   Result cannot establish Expected Result; never reverse a reported failure to invent
   desired behavior; a suspected root cause does not become acceptance behavior; an
   attachment observation does not establish desired behavior; historical Jira does not
-  automatically establish current behavior; an equal-authority conflict remains
-  unresolved (stay CONFLICTED, or record the higher-authority basis in
-  `conflict_resolution`); ACCEPTANCE_TBD is allowed only when different plausible answers
-  materially change acceptance behavior/scope/configuration/applicability/compatibility/
-  preservation; root cause, diagnostics, and implementation mechanics are normally
-  INVESTIGATION_ONLY.
+  automatically establish current behavior; PARTIAL research cannot produce a fully
+  confirmed answer; an equal-authority conflict remains unresolved (stay CONFLICTED, or
+  record the higher-authority basis in `conflict_resolution`); a DUPLICATE preserves all
+  triggering evidence IDs on the surviving question; root-cause/diagnostic/mechanics
+  uncertainty never becomes ACCEPTANCE_TBD merely because it matters to engineering;
+  ACCEPTANCE_TBD is allowed only when different plausible answers materially change
+  acceptance behavior/scope/configuration/applicability/compatibility/preservation; root
+  cause, diagnostics, and implementation mechanics are normally INVESTIGATION_ONLY. The
+  Writer never receives raw unresolved questions, and a question is never rendered
+  directly as an AC - ACCEPTANCE_TBD questions reach the final Open Questions contract
+  only through the existing approved downstream path.
 - **Preserved invariants:** source authority, observation-vs-requirement separation, exact
   Jira intake, attachment evidence handling, Doc Researcher routing, the Writer language
   contract, Reviewer independence, and draft-only behavior all remain exactly as defined

@@ -388,13 +388,23 @@ def validate(manifest):
             seen_questions.add(ref)
 
     # Every applicable planned material question carries an assessment.
+    # Investigation-only, not-applicable, and duplicate resolutions have no
+    # acceptance stake, so they need no sufficiency assessment.
     if planned_ids is not None and isinstance(plan, dict):
+        resolutions_map = chain["resolutions_by_ref"] or {}
         for row in plan.get("items", []):
             if not isinstance(row, dict):
                 continue
             if row.get("applicability") == "NOT_APPLICABLE":
                 continue
             qid = row.get("question_id")
+            resolution = resolutions_map.get(qid)
+            if resolution is not None and resolution.get("status") in {
+                "INVESTIGATION_ONLY",
+                "NOT_APPLICABLE",
+                "DUPLICATE",
+            }:
+                continue
             if qid and qid not in seen_questions:
                 problems.append(
                     f"evidence_sufficiency: planned material question '{qid}' "

@@ -26,8 +26,10 @@ Jira + attachments
 Every material question carries: `question_id`, `category`, `question`,
 `why_material`, `triggering_evidence_ids`, `acceptance_impact`,
 `applicability` (`APPLICABLE` / `NOT_APPLICABLE` / `UNRESOLVED`),
-`research_requirement` (the research-routing vocabulary), and `status`
-(`PLANNED` / `ROUTED` / `RESOLVED` / `ESCALATED`).
+`research_requirement` (the R1 vocabulary `RESEARCH_NOT_REQUIRED` /
+`DOC_RESEARCH_REQUIRED`, or the richer research-routing vocabulary), optional
+`research_topics[]`, and `status` (`PLANNED` / `ROUTED` / `RESOLVED` /
+`ESCALATED`).
 
 Initial categories (closed vocabulary): `EXPECTED_OUTCOME`, `STATE_TRANSITION`,
 `PERSISTENCE`, `NEGATIVE_CONTRACT`, `SCOPE`, `VARIANT`, `ENTRY_PATH`,
@@ -52,9 +54,12 @@ One terminal resolution per planned question. Canonical Q1 shape:
 `question_id`, `disposition` (`ANSWERED`, `PARTIALLY_ANSWERED`,
 `ACCEPTANCE_TBD`, `INVESTIGATION_ONLY`, `NOT_APPLICABLE`, `DUPLICATE`,
 `CONFLICTED`), `answer` (the claim text), `source_ids`, `source_authority`,
-`applicability`, `limitations[]`, `contradictions[]`. The earlier nested shape
-(`question_ref` + `status` + an `answer` object holding the same retention
-fields) is accepted unchanged.
+`applicability`, `limitations[]`, `contradictions[]`, `decision_reason`
+(required — every material semantic decision is recorded with its reason so
+downstream stages consume the artifact instead of reconstructing the answer
+from raw ticket text), and `research_ids[]` binding the admitted research that
+produced the answer. The earlier nested shape (`question_ref` + `status` + an
+`answer` object holding the same retention fields) is accepted unchanged.
 
 - `PARTIALLY_ANSWERED` must record what remains unresolved in `limitations`.
 - `CONFLICTED` must retain the competing claims in `contradictions`.
@@ -62,11 +67,14 @@ fields) is accepted unchanged.
   materially change acceptance behavior / scope / configuration /
   applicability / compatibility / preservation — it requires `material_impact`
   (one or more of those areas) and at least two `plausible_answers`.
-- `DUPLICATE` requires `duplicate_of` (the surviving question).
+- `DUPLICATE` requires `duplicate_of` (the surviving question) and preserves
+  all of the duplicate's triggering evidence IDs on that surviving question.
 - `NOT_APPLICABLE` requires a `reason`.
 - Root cause, diagnostics, and implementation mechanics
   (`investigation_topic`) are normally `INVESTIGATION_ONLY`; any other status
-  requires an explicit `acceptance_relevance` justification.
+  requires an explicit `acceptance_relevance` justification, and they never
+  become `ACCEPTANCE_TBD` merely because the uncertainty matters to
+  engineering.
 
 ## Hard rules
 
@@ -86,13 +94,27 @@ fields) is accepted unchanged.
    ANSWERED/PARTIALLY_ANSWERED while the doc routing has no terminal result; a
    `RESEARCH_NOT_REQUIRED` doc routing contradicts documentation-requiring
    questions; `DOC_RESEARCH_UNAVAILABLE` forbids documentation-based answers;
-   `DOC_RESEARCH_CONFLICTED` keeps the question CONFLICTED.
+   `DOC_RESEARCH_CONFLICTED` keeps the question CONFLICTED. A documentation
+   answer must cite the admitted `research_ids` that produced it — stale or
+   wrong-bound research cannot answer another question.
 10. An equal-authority conflict remains unresolved — an `ANSWERED` resolution
     carrying contradictions must record the higher-authority basis in
     `conflict_resolution`, otherwise the question stays CONFLICTED.
-11. ACCEPTANCE_TBD only under the material-impact condition above.
-12. Root cause / diagnostics / implementation mechanics are normally
+11. PARTIAL research cannot produce a fully confirmed answer — at most
+    PARTIALLY_ANSWERED for the established portion.
+12. ACCEPTANCE_TBD only under the material-impact condition above, and never
+    for root-cause/diagnostic/mechanics uncertainty.
+13. Root cause / diagnostics / implementation mechanics are normally
     INVESTIGATION_ONLY.
+
+## Writer boundary
+
+The Writer must not receive raw unresolved questions as instructions to invent
+behavior; it consumes only downstream admitted behavior from the existing
+reasoning path. Questions themselves are never rendered directly as ACs (the
+coverage gate rejects a coverage decision whose text is the question text).
+ACCEPTANCE_TBD questions reach the final Open Questions contract only through
+the existing approved downstream path.
 
 Structurally, none of `ACTUAL_RESULT`, `SUSPECTED_ROOT_CAUSE`,
 `ATTACHMENT_OBSERVATION`, `HISTORICAL_JIRA`, or `AI_INFERENCE` may be the
