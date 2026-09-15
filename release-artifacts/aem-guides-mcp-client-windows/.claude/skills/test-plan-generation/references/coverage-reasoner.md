@@ -16,10 +16,13 @@ behavior, and preservation requirements.
 ## Decision record (`coverage_decisions.items[]`)
 
 One record per candidate behavior: `coverage_id`, `behavior`, `question_ids[]`,
-`evidence_ids[]`, `priority`, `coverage_class`, `positive_or_negative`
-(`POSITIVE`/`NEGATIVE`), `surface`, `state`, `configuration`, `applicability`,
-`reason`, `acceptance_impact`, and `dimensions_considered[]` (present always;
-empty asserts no axis applies).
+`evidence_ids[]`, `research_ids[]` (the admitted research behind the underlying
+questions), `priority`, `coverage_class`, `contract_type`
+(`POSITIVE`/`NEGATIVE`/`PRESERVATION`; the earlier `positive_or_negative` field
+remains an alias), `surface`, `state_or_transition`, `configuration`,
+`applicability`, `variants[]` (same-outcome variants, each with its own
+`label` + `evidence_ids`), `reason`, `acceptance_impact`, and
+`dimensions_considered[]` (present always; empty asserts no axis applies).
 
 ## Priority and class
 
@@ -46,9 +49,11 @@ A coverage decision may stand only on questions whose resolution and research
 permit it:
 
 - `ANSWERED` → any class; `PARTIALLY_ANSWERED` → `QE_REGRESSION` /
-  `INVESTIGATION`; `ACCEPTANCE_TBD` → `INVESTIGATION` only;
-  `INVESTIGATION_ONLY` → `INVESTIGATION` only; `NOT_APPLICABLE`, `DUPLICATE`,
-  `CONFLICTED` → ground nothing.
+  `INVESTIGATION` (the established portion only); `ACCEPTANCE_TBD` →
+  `INVESTIGATION` only (never converted into confirmed behavior);
+  `INVESTIGATION_ONLY` → `INVESTIGATION` only; `NOT_APPLICABLE`, and
+  `CONFLICTED` ground nothing; a `DUPLICATE` contributes linkage through its
+  surviving question and never creates duplicate coverage.
 - A planned-but-unresolved question cannot ground coverage; a question that was
   never planned cannot ground coverage.
 - Required research cannot be skipped: a question whose mandated research is
@@ -56,15 +61,29 @@ permit it:
   ground an `ACCEPTANCE` decision. NOT_FOUND is not negative proof.
 - `EXISTING_CONFIRMED` (documented-today) behavior must not be repackaged as a
   new `ACCEPTANCE` decision when linked via `behavior_ref` — it grounds
-  regression/preservation coverage.
+  regression/preservation coverage; a `NEW_REQUIREMENT` is never a
+  `PRESERVATION` contract.
+- An acceptance decision never rests on actual-result, observation, suspected
+  root-cause, historical-ticket, or inference answer authority.
+- `research_ids` must reference real Doc Researcher results and cover the
+  underlying resolutions' research bindings.
 
 ## Writer handoff and review
 
-- The Writer receives only accepted (non-`EXCLUDED`) decisions. When
-  `writer_handoff` is declared, it must contain no `EXCLUDED` decision and must
-  represent every `P0` decision.
-- The Reviewer verifies all P0 coverage is represented and that P1 has not
-  expanded scope.
+- The Writer receives an explicit admitted package: `writer_handoff` is
+  mandatory once decisions exist, contains no `EXCLUDED` decision, and
+  represents every `P0` decision.
+- The Writer must not invent acceptance behavior, promote `QE_REGRESSION` to
+  `ACCEPTANCE`, convert `INVESTIGATION` into an AC, resolve `ACCEPTANCE_TBD`,
+  add unapproved variants, or independently decide P0/P1. It may simplify
+  wording, combine approved same-outcome variants, and preserve required
+  product terminology.
+- The Reviewer verifies via the optional `writer_package.acs` block: every AC
+  maps to admitted `ACCEPTANCE` coverage ids; every admitted P0 acceptance
+  decision is represented by an AC; no `QE_REGRESSION`/`INVESTIGATION`/
+  `EXCLUDED` decision leaks into an AC; no unapproved variant appears. Semantic
+  failures route upstream to the Coverage Reasoner — the Reviewer never
+  silently repairs acceptance semantics.
 
 ## Backward compatibility
 

@@ -571,9 +571,12 @@ conflicts, attachment observations, existing behavior, new behavior, and preserv
 requirements.
 
 - Emit one decision per candidate behavior with `coverage_id`, `behavior`,
-  `question_ids`, `evidence_ids`, `priority`, `coverage_class`, `positive_or_negative`,
-  `surface`, `state`, `configuration`, `applicability`, `reason`, `acceptance_impact`,
-  and the `dimensions_considered` axes reasoned about when applicable (single/bulk,
+  `question_ids`, `evidence_ids`, `research_ids` (the admitted research behind the
+  underlying questions), `priority`, `coverage_class`, `contract_type`
+  (`POSITIVE`/`NEGATIVE`/`PRESERVATION`), `surface`, `state_or_transition`,
+  `configuration`, `applicability`, `variants` (same-outcome variants each bound by
+  their own evidence), `reason`, `acceptance_impact`, and the
+  `dimensions_considered` axes reasoned about when applicable (single/bulk,
   refresh/revisit, state transitions, negative contracts, alternate UI paths,
   configuration branches, New/Old Editor, Author/Source, Collections/Explorer/Map
   Console, Cloud/6.5, Native PDF/DITA-OT, preprocessing ON/OFF, scale, preservation).
@@ -583,14 +586,31 @@ requirements.
   investigation coverage; `EXCLUDED` = explicitly excluded with a reason, never reaching
   the Writer. Do not promote generic test ideas: every decision traces to resolved
   questions and/or evidence.
-- A decision may stand only on questions whose resolution and research permit it: an
-  unresolved, ACCEPTANCE_TBD, CONFLICTED, or INVESTIGATION_ONLY question cannot ground
-  acceptance coverage, and NOT_FOUND or otherwise incomplete required research cannot
-  ground an ACCEPTANCE decision. Documented-today (EXISTING_CONFIRMED) behavior must not
-  be repackaged as new acceptance coverage.
-- **The Writer receives only accepted coverage decisions** (the non-EXCLUDED handoff).
-  **The Reviewer verifies all P0 coverage is represented in that handoff and that P1 has
-  not expanded scope.**
+- A decision may stand only on questions whose resolution and research permit it:
+  ANSWERED is eligible; PARTIALLY_ANSWERED grounds only the established portion
+  (regression/investigation); ACCEPTANCE_TBD is never converted into confirmed
+  behavior; INVESTIGATION_ONLY never becomes acceptance coverage; NOT_APPLICABLE
+  produces no coverage; a DUPLICATE contributes linkage through its surviving
+  question and never creates duplicate coverage; CONFLICTED never silently produces
+  confirmed acceptance coverage. An acceptance decision never rests on actual-result,
+  observation, suspected-root-cause, or historical-ticket authority. NOT_FOUND or
+  otherwise incomplete required research cannot ground an ACCEPTANCE decision.
+  Documented-today (EXISTING_CONFIRMED) behavior must not be repackaged as new
+  acceptance coverage, and a NEW_REQUIREMENT is not a preservation contract.
+- **The Writer receives an explicit admitted coverage package** (`writer_handoff` is
+  mandatory once decisions exist) containing only accepted (non-EXCLUDED) decisions and
+  every P0 decision. The Writer must not invent additional acceptance behavior, promote
+  QE_REGRESSION to ACCEPTANCE, convert INVESTIGATION into an AC, resolve
+  ACCEPTANCE_TBD, add unapproved variants, or independently decide P0/P1 — it may
+  simplify wording, combine approved same-outcome variants, and preserve required
+  product terminology.
+- **The Reviewer verifies** (via the `writer_package` block) that every AC maps to
+  admitted ACCEPTANCE coverage ids, all P0 accepted behavior is represented, P1 did not
+  expand acceptance scope, QE_REGRESSION/INVESTIGATION never leak into ACs,
+  ACCEPTANCE_TBD was not silently resolved, no unapproved variants were introduced, and
+  source mapping stays consistent with the evidence/question/research bindings.
+  Semantic failures route upstream to the Coverage Reasoner; the Reviewer never
+  silently repairs acceptance semantics.
 
 ### Phase 6.8 — Semantic Coverage / AC Equivalence
 

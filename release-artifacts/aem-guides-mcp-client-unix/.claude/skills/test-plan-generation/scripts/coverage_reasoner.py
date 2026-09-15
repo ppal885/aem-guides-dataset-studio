@@ -12,9 +12,10 @@ receives only accepted coverage decisions; the Reviewer verifies all P0
 coverage is represented and that P1 has not expanded scope.
 
 Every decision carries: ``coverage_id``, ``behavior``, ``question_ids``,
-``evidence_ids``, ``priority``, ``coverage_class``, ``positive_or_negative``,
-``surface``, ``state``, ``configuration``, ``applicability``, ``reason``,
-``acceptance_impact``, and ``dimensions_considered``.
+``evidence_ids``, ``research_ids``, ``priority``, ``coverage_class``,
+``contract_type`` (POSITIVE / NEGATIVE / PRESERVATION), ``surface``,
+``state_or_transition``, ``configuration``, ``applicability``, ``variants``,
+``reason``, ``acceptance_impact``, and ``dimensions_considered``.
 
 Rules enforced (all generic):
 
@@ -23,17 +24,26 @@ Rules enforced (all generic):
   regression behavior (class QE_REGRESSION); ``SUPPORTING`` covers
   regression/investigation support; ``EXCLUDED`` records an explicit exclusion
   with a reason and never reaches the Writer.
-- coverage_class: ACCEPTANCE / QE_REGRESSION / INVESTIGATION.
+- coverage_class: ACCEPTANCE / QE_REGRESSION / INVESTIGATION.  INVESTIGATION
+  never becomes an AC; QE_REGRESSION never silently becomes Acceptance.
 - Do not promote generic test ideas: every decision traces to at least one
   resolved question or evidence id, and a decision may stand only on questions
   whose resolution and research permit it (an unresolved, TBD, conflicted, or
   investigation-only question cannot ground acceptance coverage; NOT_FOUND or
-  incomplete required research cannot ground ACCEPTANCE).
+  incomplete required research cannot ground ACCEPTANCE; a DUPLICATE question
+  contributes linkage through its surviving question, never duplicate
+  coverage).
 - Reason about the dimension axes when applicable
   (``dimensions_considered``); the field must be present (an empty list
   asserts none apply).
-- Writer handoff integrity: when ``writer_handoff`` is declared it contains
-  only accepted (non-EXCLUDED) decisions and every P0 decision.
+- Variants proving the SAME product outcome stay variants of one coverage
+  decision (``variants`` carry their own label and evidence).
+- Writer handoff integrity: the Writer receives an explicit admitted package
+  (``writer_handoff``) containing only accepted (non-EXCLUDED) decisions and
+  every P0 decision; when ``writer_package`` is declared, every AC binds to
+  admitted ACCEPTANCE coverage ids, every P0 decision is represented, and no
+  QE_REGRESSION/INVESTIGATION/EXCLUDED decision or unapproved variant leaks
+  into an AC.
 
 Backward-compatible: absent `coverage_decisions` -> clean pass.
 Generic only. Stdlib only.
@@ -44,7 +54,21 @@ COVERAGE_PRIORITIES = ("P0", "P1", "SUPPORTING", "EXCLUDED")
 
 COVERAGE_CLASSES = ("ACCEPTANCE", "QE_REGRESSION", "INVESTIGATION")
 
-COVERAGE_POLARITY = ("POSITIVE", "NEGATIVE")
+# C1 canonical name; the earlier positive_or_negative field remains accepted
+# as an alias for POSITIVE/NEGATIVE.
+CONTRACT_TYPES = ("POSITIVE", "NEGATIVE", "PRESERVATION")
+
+# Authorities that can never establish acceptance behavior - actual results,
+# observations, suspected root causes, diagnostics, historical tickets, and
+# inference are not requirement authority (defense in depth behind the
+# resolver's own rule).
+_NON_ESTABLISHING_AUTHORITIES = frozenset({
+    "ACTUAL_RESULT",
+    "SUSPECTED_ROOT_CAUSE",
+    "ATTACHMENT_OBSERVATION",
+    "HISTORICAL_JIRA",
+    "AI_INFERENCE",
+})
 
 # Dimension axes the reasoner considers when applicable.
 COVERAGE_AXES = (
@@ -136,11 +160,13 @@ def _validate_item(i, item):
         }[priority]
         problems.append(f"{tag}: {expectation} (got {coverage_class})")
 
-    polarity = item.get("positive_or_negative")
-    if polarity not in COVERAGE_POLARITY:
+    polarity = item.get("contract_type")
+    if polarity is None and item.get("positive_or_negative") is not None:
+        polarity = item.get("positive_or_negative")
+    if polarity not in CONTRACT_TYPES:
         problems.append(
-            f"{tag}: positive_or_negative '{polarity}' must be POSITIVE or "
-            "NEGATIVE"
+            f"{tag}: contract_type '{polarity}' must be one of "
+            f"{', '.join(CONTRACT_TYPES)}"
         )
 
     question_ids = item.get("question_ids")
@@ -156,12 +182,40 @@ def _validate_item(i, item):
             f"{tag}: generic test ideas are not promoted - a coverage decision "
             "traces to at least one resolved question or evidence id"
         )
+    research_ids = item.get("research_ids")
+    if research_ids is not None and not isinstance(research_ids, list):
+        problems.append(f"{tag}: research_ids must be a list when present")
 
-    for field in ("surface", "state", "configuration"):
+    if "state_or_transition" not in item and "state" not in item:
+        problems.append(
+            f"{tag}: missing state_or_transition (declare it, empty when not "
+            "applicable)"
+        )
+    for field in ("surface", "configuration"):
         if field not in item:
             problems.append(
                 f"{tag}: missing {field} (declare it, empty when not applicable)"
             )
+
+    variants = item.get("variants")
+    if variants is not None:
+        if not isinstance(variants, list):
+            problems.append(f"{tag}: variants must be a list when present")
+            variants = []
+        for j, variant in enumerate(variants):
+            vtag = f"{tag}.variants[{j}]"
+            if not isinstance(variant, dict):
+                problems.append(f"{vtag}: each variant must be an object")
+                continue
+            if not _nonempty(variant.get("label")):
+                problems.append(f"{vtag}: missing label")
+            if not isinstance(variant.get("evidence_ids"), list) or not (
+                variant.get("evidence_ids")
+            ):
+                problems.append(
+                    f"{vtag}: a variant stays bound to the same expected "
+                    "outcome through its own evidence_ids"
+                )
 
     axes = item.get("dimensions_considered")
     if not isinstance(axes, list):
@@ -197,7 +251,9 @@ def _chain_problems(manifest, items):
     if isinstance(resolutions, dict):
         for row in resolutions.get("items", []):
             if isinstance(row, dict):
-                resolutions_by_ref[row.get("question_ref")] = row
+                ref = row.get("question_ref") or row.get("question_id")
+                if ref:
+                    resolutions_by_ref[ref] = row
 
     research_by_ref = {}
     research = manifest.get("question_research")
@@ -205,6 +261,8 @@ def _chain_problems(manifest, items):
         for row in research.get("items", []):
             if isinstance(row, dict):
                 research_by_ref[row.get("question_ref")] = row
+
+    doc_research = manifest.get("doc_research")
 
     plan = manifest.get("question_plan")
     planned_ids = set()
@@ -232,7 +290,14 @@ def _chain_problems(manifest, items):
         for qid in item.get("question_ids") or []:
             resolution = resolutions_by_ref.get(qid)
             if resolution is not None:
-                status = resolution.get("status")
+                status = resolution.get("status") or resolution.get(
+                    "disposition"
+                )
+                if status == "DUPLICATE":
+                    # Linkage only: the surviving question grounds coverage;
+                    # the dedicated duplicate-linkage rule below guards the
+                    # duplicate standing alone.
+                    continue
                 allowed = _RESOLUTION_GROUNDING.get(status, set())
                 if coverage_class in COVERAGE_CLASSES and (
                     coverage_class not in allowed
@@ -266,6 +331,9 @@ def _chain_problems(manifest, items):
                     "an ACCEPTANCE decision"
                 )
         behavior_ref = item.get("behavior_ref")
+        item_contract = item.get("contract_type") or item.get(
+            "positive_or_negative"
+        )
         if behavior_ref and behavior_ref in behaviors_by_ref:
             behavior_class = behaviors_by_ref[behavior_ref].get("behavior_class")
             if (
@@ -277,6 +345,79 @@ def _chain_problems(manifest, items):
                     "documented-today behavior must not be repackaged as new "
                     "acceptance coverage"
                 )
+            if (
+                behavior_class == "NEW_REQUIREMENT"
+                and item_contract == "PRESERVATION"
+            ):
+                problems.append(
+                    f"{tag}: behavior '{behavior_ref}' is a NEW_REQUIREMENT - "
+                    "a new requirement is not a preservation contract"
+                )
+        # Observation/root-cause safety: an acceptance decision cannot rest on
+        # non-establishing answer authority, even if a resolution predates the
+        # resolver's own rule.
+        if coverage_class == "ACCEPTANCE":
+            for qid in item.get("question_ids") or []:
+                resolution = resolutions_by_ref.get(qid)
+                if resolution is None:
+                    continue
+                answer = resolution.get("answer")
+                authority = (
+                    answer.get("source_authority")
+                    if isinstance(answer, dict)
+                    else resolution.get("source_authority")
+                )
+                if authority in _NON_ESTABLISHING_AUTHORITIES:
+                    problems.append(
+                        f"{tag}: question '{qid}' was answered from "
+                        f"{authority} - actual results, observations, "
+                        "suspected root causes, and history cannot establish "
+                        "acceptance behavior"
+                    )
+        # DUPLICATE linkage: a duplicate contributes its evidence through
+        # the surviving question and never creates duplicate coverage.
+        for qid in item.get("question_ids") or []:
+            resolution = resolutions_by_ref.get(qid)
+            if resolution is None:
+                continue
+            resolution_status = resolution.get("status") or resolution.get(
+                "disposition"
+            )
+            if resolution_status != "DUPLICATE":
+                continue
+            surviving = resolution.get("duplicate_of")
+            if surviving and surviving not in (item.get("question_ids") or []):
+                problems.append(
+                    f"{tag}: question '{qid}' is a DUPLICATE of "
+                    f"'{surviving}' - coverage must link the surviving "
+                    "question instead of creating duplicate coverage"
+                )
+        # Research binding: coverage cites the admitted research behind its
+        # underlying questions.
+        research_ids = item.get("research_ids") or []
+        if isinstance(doc_research, dict):
+            known_research = {
+                row.get("research_id")
+                for row in doc_research.get("results", [])
+                if isinstance(row, dict)
+            }
+            for rid in research_ids:
+                if rid not in known_research:
+                    problems.append(
+                        f"{tag}: research '{rid}' is not a Doc Researcher "
+                        "result"
+                    )
+        underlying_research = set()
+        for qid in item.get("question_ids") or []:
+            resolution = resolutions_by_ref.get(qid)
+            if resolution is not None:
+                underlying_research.update(resolution.get("research_ids") or [])
+        missing_research = sorted(underlying_research - set(research_ids))
+        if missing_research:
+            problems.append(
+                f"{tag}: research binding must cover the underlying "
+                f"resolutions' research {missing_research}"
+            )
 
     # Writer boundary: a question is never rendered directly as coverage/AC
     # text - the Writer consumes resolved coverage decisions, not raw
@@ -328,9 +469,14 @@ def validate(manifest):
 
     problems.extend(_chain_problems(manifest, items))
 
-    # The Writer receives only accepted coverage decisions; the Reviewer
-    # verifies every P0 decision is represented in that handoff.
+    # The Writer receives an explicit admitted package; the Reviewer verifies
+    # every P0 decision is represented in that handoff.
     handoff = block.get("writer_handoff")
+    if items and handoff is None:
+        problems.append(
+            "coverage_decisions: the Writer must receive an explicit admitted "
+            "coverage package - declare writer_handoff"
+        )
     if handoff is not None:
         if not isinstance(handoff, list):
             problems.append("coverage_decisions.writer_handoff must be a list")
@@ -357,6 +503,87 @@ def validate(manifest):
                 problems.append(
                     f"coverage_decisions.writer_handoff: P0 decision '{cid}' is "
                     "not represented for the Writer"
+                )
+
+    # Reviewer binding: when the Writer's draft ACs are declared, every AC
+    # maps to admitted ACCEPTANCE coverage, every P0 decision is represented,
+    # and nothing EXCLUDED / regression / investigation leaks into an AC.
+    writer_package = manifest.get("writer_package")
+    if isinstance(writer_package, dict):
+        acs = writer_package.get("acs", [])
+        if not isinstance(acs, list):
+            problems.append("writer_package.acs must be a list")
+            acs = []
+        by_id = {
+            item.get("coverage_id"): item
+            for item in items
+            if isinstance(item, dict)
+        }
+        admitted = set(handoff) if isinstance(handoff, list) else {
+            cid
+            for cid, row in by_id.items()
+            if row.get("priority") != "EXCLUDED"
+        }
+        referenced = set()
+        seen_acs = set()
+        for j, ac in enumerate(acs):
+            atag = f"writer_package.acs[{j}]"
+            if not isinstance(ac, dict):
+                problems.append(f"{atag}: each AC must be an object")
+                continue
+            ac_id = ac.get("ac_id")
+            if not _nonempty(ac_id):
+                problems.append(f"{atag}: missing ac_id")
+            elif ac_id in seen_acs:
+                problems.append(f"{atag}: duplicate ac_id '{ac_id}'")
+            seen_acs.add(ac_id)
+            coverage_ids = ac.get("coverage_ids")
+            if not isinstance(coverage_ids, list) or not coverage_ids:
+                problems.append(
+                    f"{atag}: every AC maps to admitted coverage_ids - the "
+                    "Writer cannot add behavior absent from admitted coverage"
+                )
+                continue
+            for cid in coverage_ids:
+                target = by_id.get(cid)
+                if target is None:
+                    problems.append(f"{atag}: unknown coverage_id '{cid}'")
+                    continue
+                if cid not in admitted:
+                    problems.append(
+                        f"{atag}: coverage '{cid}' is not in the admitted "
+                        "writer package"
+                    )
+                if target.get("coverage_class") != "ACCEPTANCE":
+                    problems.append(
+                        f"{atag}: coverage '{cid}' is "
+                        f"{target.get('coverage_class')} - QE_REGRESSION and "
+                        "INVESTIGATION never leak into an AC"
+                    )
+                referenced.add(cid)
+            approved_variants = {
+                variant.get("label")
+                for cid in coverage_ids
+                for variant in (by_id.get(cid, {}).get("variants") or [])
+                if isinstance(variant, dict)
+            }
+            for label in ac.get("variants") or []:
+                if label not in approved_variants:
+                    problems.append(
+                        f"{atag}: variant '{label}' is not an approved variant "
+                        "of the bound coverage"
+                    )
+        for cid, row in sorted(by_id.items()):
+            if (
+                row.get("priority") == "P0"
+                and row.get("coverage_class") == "ACCEPTANCE"
+                and cid in admitted
+                and cid not in referenced
+            ):
+                problems.append(
+                    f"writer_package: P0 acceptance coverage '{cid}' is not "
+                    "represented by any AC - P0 accepted behavior cannot "
+                    "disappear from the final draft"
                 )
     return problems
 

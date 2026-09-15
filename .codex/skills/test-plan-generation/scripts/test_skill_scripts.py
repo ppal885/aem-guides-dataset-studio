@@ -7547,6 +7547,10 @@ def test_coverage_reasoner() -> None:
 
     def wrap(items, **extra):
         manifest = {"coverage_decisions": {"items": items}}
+        manifest["coverage_decisions"]["writer_handoff"] = [
+            entry["coverage_id"] for entry in items
+            if isinstance(entry, dict) and entry.get("priority") != "EXCLUDED"
+        ]
         for key, value in extra.items():
             if key == "writer_handoff":
                 manifest["coverage_decisions"]["writer_handoff"] = value
@@ -7562,9 +7566,9 @@ def test_coverage_reasoner() -> None:
             "evidence_ids": ["EV-1"],
             "priority": priority,
             "coverage_class": klass,
-            "positive_or_negative": "POSITIVE",
+            "contract_type": "POSITIVE",
             "surface": "Map Dashboard",
-            "state": "",
+            "state_or_transition": "",
             "configuration": "",
             "applicability": "current release",
             "reason": "Proves the primary ticket contract.",
@@ -7583,7 +7587,8 @@ def test_coverage_reasoner() -> None:
         broken[field] = ""
         check(f"missing {field} rejected",
               any(field in p for p in cr.validate(wrap([broken]))))
-    for field in ("surface", "state", "configuration", "dimensions_considered"):
+    for field in ("surface", "state_or_transition", "configuration",
+                  "dimensions_considered"):
         broken = item("COV-01")
         del broken[field]
         check(f"absent {field} rejected",
@@ -7594,9 +7599,15 @@ def test_coverage_reasoner() -> None:
           any("priority" in p for p in cr.validate(wrap([item("COV-01", priority="P2")]))))
     check("unknown class rejected",
           any("coverage_class" in p for p in cr.validate(wrap([item("COV-01", klass="IDEA")]))))
-    check("unknown polarity rejected",
-          any("positive_or_negative" in p for p in cr.validate(
-              wrap([item("COV-01", positive_or_negative="BOTH")]))))
+    check("unknown contract_type rejected",
+          any("contract_type" in p for p in cr.validate(
+              wrap([item("COV-01", contract_type="BOTH")]))))
+    check("positive_or_negative alias still validated",
+          any("contract_type" in p for p in cr.validate(
+              wrap([item("COV-01", contract_type=None,
+                         positive_or_negative="BOTH")]))))
+    check("PRESERVATION contract type passes",
+          cr.validate(wrap([item("COV-01", contract_type="PRESERVATION")])) == [])
     check("unknown axis rejected",
           any("dimensions_considered" in p for p in cr.validate(
               wrap([item("COV-01", dimensions_considered=["MOOD"])]))))
@@ -7707,6 +7718,165 @@ def test_coverage_reasoner() -> None:
     check("EXISTING_CONFIRMED can ground QE_REGRESSION",
           cr.validate(wrap([item("COV-01", priority="P1", klass="QE_REGRESSION",
                                  behavior_ref="B-1")], **chain_behavior)) == [])
+
+    # The Writer must receive an explicit admitted package.
+    no_handoff = {"coverage_decisions": {"items": [item("COV-01")]}}
+    check("missing writer_handoff fails",
+          any("explicit admitted" in p for p in cr.validate(no_handoff)))
+
+    # Research binding: coverage cites the admitted research of its questions.
+    chain_research_ids = dict(chain_behavior)
+    chain_research_ids["question_resolutions"] = {"items": [{
+        "question_ref": "Q-1", "status": "ANSWERED",
+        "decision_reason": "documented",
+        "answer": {"claim": "c", "source_ids": ["E1"],
+                   "source_authority": "OFFICIAL_DOCUMENTATION",
+                   "applicability": "current", "limitations": [],
+                   "contradictions": []},
+        "research_ids": ["DR-1"]}]}
+    chain_research_ids["doc_research"] = {
+        "routing": {"state": "DOC_RESEARCH_COMPLETED",
+                    "triggers": ["EVIDENCE_AGENT_REQUEST"],
+                    "research_id": "DR-1"},
+        "results": [{"research_id": "DR-1", "status": "DOC_RESEARCH_COMPLETED",
+                     "produced_by": "uac-doc-researcher",
+                     "topics": ["t"], "findings": [{
+                         "claim": "c", "source_id": "E1",
+                         "source_type": "OFFICIAL_DOCUMENTATION",
+                         "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                         "applicability": "current", "currentness": "CURRENT",
+                         "evidence_role": "EXISTING_BEHAVIOR"}],
+                     "source_ids": ["E1"], "applicability": "current",
+                     "limitations": [], "conflicts": [],
+                     "question_refs": ["Q-1"]}],
+        "admitted_research_ids": ["DR-1"],
+    }
+    check("research binding intact passes",
+          cr.validate(wrap([item("COV-01", research_ids=["DR-1"])],
+                           **chain_research_ids)) == [])
+    check("coverage dropping the underlying research binding fails",
+          any("research binding" in p for p in cr.validate(
+              wrap([item("COV-01")], **chain_research_ids))))
+    check("coverage citing unknown research fails",
+          any("not a Doc Researcher result" in p for p in cr.validate(
+              wrap([item("COV-01", research_ids=["DR-9"])],
+                   **chain_research_ids))))
+
+    # DUPLICATE linkage: coverage links the surviving question, never the
+    # duplicate alone.
+    dup_chain = dict(chain_behavior)
+    dup_chain["question_plan"] = {"items": [
+        {"question_id": "Q-1", "category": "EXPECTED_OUTCOME",
+         "question": "What must the panel show?",
+         "why_material": "m", "triggering_evidence_ids": ["JIRA-1"],
+         "acceptance_impact": "a", "applicability": "APPLICABLE",
+         "research_requirement": "NONE", "status": "RESOLVED"},
+        {"question_id": "Q-2", "category": "EXPECTED_OUTCOME",
+         "question": "What must the panel show?",
+         "why_material": "m", "triggering_evidence_ids": ["JIRA-2"],
+         "acceptance_impact": "a", "applicability": "APPLICABLE",
+         "research_requirement": "NONE", "status": "RESOLVED"},
+    ]}
+    dup_chain["question_resolutions"] = {"items": [
+        {"question_ref": "Q-1", "status": "ANSWERED",
+         "decision_reason": "documented",
+         "answer": {"claim": "c", "source_ids": ["E1"],
+                    "source_authority": "OFFICIAL_DOCUMENTATION",
+                    "applicability": "current", "limitations": [],
+                    "contradictions": []}},
+        {"question_ref": "Q-2", "status": "DUPLICATE", "duplicate_of": "Q-1",
+         "decision_reason": "same question"},
+    ]}
+    check("DUPLICATE-linked coverage without the survivor fails",
+          any("DUPLICATE" in p for p in cr.validate(
+              wrap([item("COV-01", priority="P1", klass="QE_REGRESSION",
+                         question_ids=["Q-2"])], **dup_chain))))
+    check("DUPLICATE linkage through the survivor passes",
+          cr.validate(wrap([item("COV-01", priority="P1", klass="QE_REGRESSION",
+                                 question_ids=["Q-1", "Q-2"])],
+                           **dup_chain)) == [])
+
+    # Observation/root-cause safety net on the coverage side.
+    observed = dict(chain_behavior)
+    observed["question_resolutions"] = {"items": [{
+        "question_ref": "Q-1", "status": "ANSWERED",
+        "decision_reason": "observed failure",
+        "answer": {"claim": "c", "source_ids": ["E1"],
+                   "source_authority": "ACTUAL_RESULT",
+                   "applicability": "current", "limitations": [],
+                   "contradictions": []}}]}
+    check("ACTUAL_RESULT cannot ground ACCEPTANCE coverage",
+          any("cannot establish acceptance behavior" in p
+              for p in cr.validate(wrap([item("COV-01")], **observed))))
+
+    # PRESERVATION contract cannot rest on a NEW_REQUIREMENT behavior.
+    preservation_conflict = dict(chain_behavior)
+    preservation_conflict["behavior_classification"] = {"items": [{
+        "target_ref": "B-1", "behavior_class": "NEW_REQUIREMENT",
+        "requested_evidence_ids": ["JIRA-1"]}]}
+    check("a new requirement is not a preservation contract",
+          any("not a preservation contract" in p for p in cr.validate(
+              wrap([item("COV-01", contract_type="PRESERVATION",
+                         behavior_ref="B-1")], **preservation_conflict))))
+
+    # Writer package / Reviewer binding.
+    def package(*acs):
+        return {"writer_package": {"acs": list(acs)}}
+
+    def ac(ac_id, coverage_ids, **over):
+        base = {"ac_id": ac_id, "text": "The approved outcome holds.",
+                "coverage_ids": coverage_ids}
+        base.update(over)
+        return base
+
+    regression_item = item("COV-02", priority="P1", klass="QE_REGRESSION")
+    investigation_item = item("COV-03", priority="SUPPORTING",
+                              klass="INVESTIGATION")
+    excluded_item = item("COV-04", priority="EXCLUDED", klass="INVESTIGATION",
+                         reason="Out of scope.")
+    items = [item("COV-01"), regression_item, investigation_item,
+             excluded_item]
+
+    check("writer package binding passes",
+          cr.validate(wrap(items, **package(ac("AC-1", ["COV-01"])))) == [])
+    check("Writer cannot add behavior absent from admitted coverage",
+          any("absent from admitted coverage" in p for p in cr.validate(
+              wrap(items, **package({"ac_id": "AC-1", "text": "x",
+                                     "coverage_ids": []})))))
+    check("AC cannot bind unknown coverage",
+          any("unknown coverage_id" in p for p in cr.validate(
+              wrap(items, **package(ac("AC-1", ["COV-99"]))))))
+    check("QE_REGRESSION never leaks into an AC",
+          any("never leak" in p for p in cr.validate(
+              wrap(items, **package(ac("AC-1", ["COV-01", "COV-02"]))))))
+    check("INVESTIGATION never becomes an AC",
+          any("never leak" in p for p in cr.validate(
+              wrap(items, **package(ac("AC-1", ["COV-01", "COV-03"]))))))
+    check("EXCLUDED never reaches an AC",
+          any("not in the admitted" in p for p in cr.validate(
+              wrap(items, **package(ac("AC-1", ["COV-01", "COV-04"]))))))
+    check("P0 cannot disappear from the final draft",
+          any("cannot disappear" in p for p in cr.validate(
+              wrap(items, **package()))))
+
+    # Variants stay bound to the same expected outcome.
+    variant_item = item("COV-01", variants=[
+        {"label": "single-item action", "evidence_ids": ["EV-1"]},
+        {"label": "bulk action", "evidence_ids": ["EV-1b"]},
+    ])
+    check("bound variants pass",
+          cr.validate(wrap([variant_item],
+                           **package(ac("AC-1", ["COV-01"],
+                                        variants=["single-item action",
+                                                  "bulk action"])))) == [])
+    check("variant without evidence binding fails",
+          any("evidence_ids" in p for p in cr.validate(
+              wrap([item("COV-01", variants=[{"label": "bulk action"}])]))))
+    check("Writer cannot add unapproved variants",
+          any("not an approved variant" in p for p in cr.validate(
+              wrap([variant_item],
+                   **package(ac("AC-1", ["COV-01"],
+                                variants=["scheduled run"]))))))
 
     print("test_coverage_reasoner: OK")
 
@@ -9073,9 +9243,9 @@ def test_question_reasoning_chain_regressions() -> None:
             "evidence_ids": [f"EV-{qid}"],
             "priority": priority,
             "coverage_class": klass,
-            "positive_or_negative": polarity,
+            "contract_type": polarity,
             "surface": "the affected surface",
-            "state": "",
+            "state_or_transition": "",
             "configuration": "",
             "applicability": "current release",
             "reason": "Traces to the resolved question evidence.",
@@ -9211,6 +9381,7 @@ def test_question_reasoning_chain_regressions() -> None:
         for qid, _category, _text, requirement, _evidence in rows:
             override = resolution_overrides.get(qid)
             if override is not None:
+                override = dict(override)
                 resolution_items.append(
                     resolution(qid, override.pop("status"), **override)
                 )
@@ -9228,8 +9399,39 @@ def test_question_reasoning_chain_regressions() -> None:
                     ),
                 )
             )
-        coverage_items = [coverage(*row) for row in domain_coverage[domain]]
+        coverage_items = []
+        requirements_by_qid = {row[0]: row[3] for row in rows}
+        for row in domain_coverage[domain]:
+            entry = coverage(*row)
+            if requirements_by_qid[row[1]] == "DOCUMENTATION":
+                # Research binding: cover the underlying resolution's research.
+                entry["research_ids"] = [f"DR-{domain}"]
+            coverage_items.append(entry)
+        if domain == "Translation":
+            # The approved outcome is proven by both the individual and the
+            # bulk action - variants of one coverage decision, one AC.
+            coverage_items[0]["variants"] = [
+                {"label": "individual approval", "evidence_ids": ["EV-Q-T1"]},
+                {"label": "bulk approval", "evidence_ids": ["EV-Q-T1b"]},
+            ]
         writer_handoff = [row[0] for row in domain_coverage[domain]]
+        p0_ids = [row[0] for row in domain_coverage[domain]
+                  if row[2] == "P0"]
+        writer_package = {
+            "acs": [
+                {
+                    "ac_id": f"AC-{domain}-{n}",
+                    "text": f"Accepted behavior for {p0}.",
+                    "coverage_ids": [p0],
+                    **(
+                        {"variants": ["individual approval", "bulk approval"]}
+                        if domain == "Translation"
+                        else {}
+                    ),
+                }
+                for n, p0 in enumerate(p0_ids, 1)
+            ],
+        }
         eq = domain_equivalence[domain]
         eq_id, eq_left, eq_right, eq_class, eq_shared, eq_diff = eq["decision"]
         equivalence = {
@@ -9310,6 +9512,7 @@ def test_question_reasoning_chain_regressions() -> None:
                 "question_assessments": question_assessments,
                 "coverage_assessments": coverage_assessments,
             },
+            "writer_package": writer_package,
         }
         planner_problems = qp.validate(manifest)
         research_problems = qr.validate(manifest)
@@ -9551,6 +9754,75 @@ def test_question_reasoning_unseen_fixture() -> None:
     check("unseen fixture: resolver gate clean", qres.validate(manifest) == [])
     check("unseen fixture: doc research routing gate clean",
           dr.validate(manifest) == [])
+
+    # C1 generalization: the same coverage contract holds on the unfamiliar
+    # fixture - the answered question grounds acceptance coverage, the
+    # partially answered question grounds regression coverage of the
+    # established portion, and CONFLICTED / DUPLICATE / NOT_APPLICABLE
+    # questions cannot produce coverage.
+    cr = coverage_reasoner_mod
+
+    def unseen_coverage(cid, qids, priority, klass, research_ids):
+        return {
+            "coverage_id": cid,
+            "behavior": f"Coverage derived from {qids}.",
+            "question_ids": qids,
+            "evidence_ids": [f"EV-{qid}" for qid in qids],
+            "research_ids": research_ids,
+            "priority": priority,
+            "coverage_class": klass,
+            "contract_type": "POSITIVE",
+            "surface": "the export dialog",
+            "state_or_transition": "",
+            "configuration": "",
+            "applicability": "current release",
+            "reason": "Traces to the resolved question evidence.",
+            "acceptance_impact": "Defines what the Writer may assert.",
+            "dimensions_considered": ["PRESERVATION"],
+        }
+
+    manifest["coverage_decisions"] = {
+        "items": [
+            unseen_coverage("COV-N1", ["Q-N1"], "P0", "ACCEPTANCE",
+                            ["DR-UNSEEN"]),
+            unseen_coverage("COV-N2", ["Q-N2"], "P1", "QE_REGRESSION",
+                            ["DR-UNSEEN"]),
+        ],
+        "writer_handoff": ["COV-N1", "COV-N2"],
+    }
+    manifest["writer_package"] = {
+        "acs": [{"ac_id": "AC-N1", "text": "The persisted folder is restored.",
+                 "coverage_ids": ["COV-N1"]}],
+    }
+    check("unseen fixture: coverage gate clean",
+          cr.validate(manifest) == [])
+    check("unfamiliar fixture follows the generic coverage contract",
+          cr.validate(manifest) == [])
+
+    conflicted_coverage = dict(manifest["coverage_decisions"])
+    conflicted_coverage["items"] = [
+        *manifest["coverage_decisions"]["items"],
+        unseen_coverage("COV-N3", ["Q-N3"], "P1", "QE_REGRESSION", []),
+    ]
+    check("CONFLICTED question cannot produce coverage",
+          any("cannot ground" in p for p in cr.validate(
+              dict(manifest, coverage_decisions=conflicted_coverage))))
+    applicable_coverage = dict(manifest["coverage_decisions"])
+    applicable_coverage["items"] = [
+        *manifest["coverage_decisions"]["items"],
+        unseen_coverage("COV-N5", ["Q-N5"], "P1", "QE_REGRESSION", []),
+    ]
+    check("NOT_APPLICABLE question cannot produce coverage",
+          any("cannot ground" in p for p in cr.validate(
+              dict(manifest, coverage_decisions=applicable_coverage))))
+    duplicate_only = dict(manifest["coverage_decisions"])
+    duplicate_only["items"] = [
+        *manifest["coverage_decisions"]["items"],
+        unseen_coverage("COV-N4", ["Q-N4"], "P1", "QE_REGRESSION", []),
+    ]
+    check("DUPLICATE must link the surviving question",
+          any("DUPLICATE" in p for p in cr.validate(
+              dict(manifest, coverage_decisions=duplicate_only))))
 
     print("  question trace [unseen fixture]:")
     for row in plan_items:

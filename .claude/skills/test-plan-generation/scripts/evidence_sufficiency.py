@@ -184,11 +184,14 @@ def _validate_question_assessment(i, item, chain):
     resolutions_by_ref = chain["resolutions_by_ref"] or {}
     resolution = resolutions_by_ref.get(ref)
     if resolution is not None:
-        if resolution.get("status") == "CONFLICTED" and sufficiency != "CONFLICTED":
+        resolution_status = resolution.get("status") or resolution.get(
+            "disposition"
+        )
+        if resolution_status == "CONFLICTED" and sufficiency != "CONFLICTED":
             problems.append(
                 f"{tag}: a CONFLICTED resolution forces a CONFLICTED assessment"
             )
-        if sufficiency == "SUFFICIENT" and resolution.get("status") == "ANSWERED":
+        if sufficiency == "SUFFICIENT" and resolution_status == "ANSWERED":
             answer = resolution.get("answer") or {}
             authority = answer.get("source_authority")
             if authority and authority not in ESTABLISHING_AUTHORITIES:
@@ -343,7 +346,9 @@ def validate(manifest):
         resolutions_by_ref = {}
         for row in resolutions.get("items", []):
             if isinstance(row, dict):
-                resolutions_by_ref[row.get("question_ref")] = row
+                ref = row.get("question_ref") or row.get("question_id")
+                if ref:
+                    resolutions_by_ref[ref] = row
     coverage_by_id = None
     coverage = manifest.get("coverage_decisions")
     if isinstance(coverage, dict) and isinstance(coverage.get("items"), list):
@@ -399,7 +404,12 @@ def validate(manifest):
                 continue
             qid = row.get("question_id")
             resolution = resolutions_map.get(qid)
-            if resolution is not None and resolution.get("status") in {
+            resolution_status = (
+                resolution.get("status") or resolution.get("disposition")
+                if resolution is not None
+                else None
+            )
+            if resolution_status in {
                 "INVESTIGATION_ONLY",
                 "NOT_APPLICABLE",
                 "DUPLICATE",
