@@ -126,6 +126,7 @@ question_resolver_mod = _load("question_resolver", "question_resolver.py")
 coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
 coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
 evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
+doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -8328,6 +8329,383 @@ def test_evidence_sufficiency_unfamiliar_ticket() -> None:
     print("test_evidence_sufficiency_unfamiliar_ticket: OK")
 
 
+def test_doc_research_routing() -> None:
+    dr = doc_research_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent doc_research passes", dr.validate({}) == [])
+
+    def result(rid, status="DOC_RESEARCH_COMPLETED", **over):
+        base = {
+            "research_id": rid,
+            "status": status,
+            "produced_by": "uac-doc-researcher",
+            "topics": ["documented baseline behavior"],
+            "findings": [{
+                "claim": "The documented baseline removes aged entries.",
+                "source_id": "DOC-1",
+                "source_type": "OFFICIAL_DOCUMENTATION",
+                "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                "applicability": "current release",
+                "currentness": "CURRENT",
+                "evidence_role": "EXISTING_BEHAVIOR",
+            }],
+            "source_ids": ["DOC-1"],
+            "applicability": "current release",
+            "limitations": [],
+            "conflicts": [],
+        }
+        base.update(over)
+        return base
+
+    def routing(state, **over):
+        base = {"state": state}
+        base.update(over)
+        return base
+
+    # HARD GATE: required research with no terminal result blocks the plan.
+    check("DOC_RESEARCH_REQUIRED without a terminal result fails the hard gate",
+          any("MUST NOT proceed" in p for p in dr.validate({
+              "doc_research": {"routing": routing(
+                  "DOC_RESEARCH_REQUIRED",
+                  triggers=["CHANGES_DOCUMENTED_FUNCTIONALITY"])}})))
+
+    # Routing only on material triggers - never merely because docs exist.
+    check("terminal routing without a trigger fails",
+          any("merely" in p for p in dr.validate({
+              "doc_research": {
+                  "routing": routing("DOC_RESEARCH_COMPLETED",
+                                     research_id="DR-1"),
+                  "results": [result("DR-1")]}})))
+    check("unknown trigger rejected",
+          any("unknown triggers" in p for p in dr.validate({
+              "doc_research": {
+                  "routing": routing("DOC_RESEARCH_COMPLETED",
+                                     triggers=["NICE_TO_HAVE"],
+                                     research_id="DR-1"),
+                  "results": [result("DR-1")]}})))
+
+    # Terminal routing requires the matching Doc Researcher result.
+    check("terminal state without results fails",
+          any("requires the Doc Researcher result" in p for p in dr.validate({
+              "doc_research": {"routing": routing(
+                  "DOC_RESEARCH_COMPLETED",
+                  triggers=["EVIDENCE_AGENT_REQUEST"])}})))
+    check("routing state must match a result status",
+          any("no matching result status" in p for p in dr.validate({
+              "doc_research": {
+                  "routing": routing("DOC_RESEARCH_COMPLETED",
+                                     triggers=["EVIDENCE_AGENT_REQUEST"],
+                                     research_id="DR-1"),
+                  "results": [result("DR-1", status="DOC_RESEARCH_PARTIAL",
+                                     limitations=["one topic unanswered"])]}})))
+    check("PARTIAL represented as COMPLETE fails",
+          any("PARTIAL research must not be represented as complete" in p
+              for p in dr.validate({
+                  "doc_research": {
+                      "routing": routing(
+                          "DOC_RESEARCH_COMPLETED",
+                          triggers=["EVIDENCE_AGENT_REQUEST"],
+                          research_id="DR-1"),
+                      "results": [result("DR-1", status="DOC_RESEARCH_PARTIAL",
+                                         limitations=["one topic unanswered"])]}})))
+
+    # RESEARCH_NOT_REQUIRED discipline.
+    not_required = {"doc_research": {"routing": routing(
+        "RESEARCH_NOT_REQUIRED",
+        not_required_reason="The Human Accepted AC is authoritative and "
+        "documentation would not materially change acceptance reasoning.")}}
+    check("justified RESEARCH_NOT_REQUIRED passes",
+          dr.validate(not_required) == [])
+    check("RESEARCH_NOT_REQUIRED requires the reason",
+          any("not_required_reason" in p for p in dr.validate(
+              {"doc_research": {"routing": routing("RESEARCH_NOT_REQUIRED")}})))
+    check("RESEARCH_NOT_REQUIRED cannot carry results",
+          any("cannot carry research results" in p for p in dr.validate({
+              "doc_research": {
+                  "routing": routing("RESEARCH_NOT_REQUIRED",
+                                     not_required_reason="x"),
+                  "results": [result("DR-1")]}})))
+
+    # Result contract.
+    completed = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_COMPLETED",
+                           triggers=["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                           research_id="DR-1"),
+        "results": [result("DR-1")],
+    }}
+    check("well-formed completed research passes", dr.validate(completed) == [])
+    impersonated = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_COMPLETED",
+                           triggers=["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                           research_id="DR-1"),
+        "results": [result("DR-1", produced_by="coordinator")],
+    }}
+    check("coordinator must not impersonate the Researcher",
+          any("impersonate" in p for p in dr.validate(impersonated)))
+    bad_role = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_COMPLETED",
+                           triggers=["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                           research_id="DR-1"),
+        "results": [result("DR-1", findings=[{
+            "claim": "c", "source_id": "DOC-1",
+            "source_type": "OFFICIAL_DOCUMENTATION",
+            "authority": "OFFICIAL_PRODUCT_CONTRACT",
+            "applicability": "current", "evidence_role": "NEW_FEATURE"}])],
+    }}
+    check("unknown evidence_role rejected",
+          any("evidence_role" in p for p in dr.validate(bad_role)))
+    uncited = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_COMPLETED",
+                           triggers=["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                           research_id="DR-1"),
+        "results": [result("DR-1", source_ids=[])],
+    }}
+    check("finding citing an unretrieved source fails",
+          any("missing from source_ids" in p for p in dr.validate(uncited)))
+    empty_completed = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_COMPLETED",
+                           triggers=["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                           research_id="DR-1"),
+        "results": [result("DR-1", findings=[], source_ids=[])],
+    }}
+    check("COMPLETED requires findings",
+          any("requires at least one finding" in p
+              for p in dr.validate(empty_completed)))
+    partial = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_PARTIAL",
+                           triggers=["JIRA_EVIDENCE_INSUFFICIENT_DOC_MAY_ANSWER"],
+                           research_id="DR-1"),
+        "results": [result("DR-1", status="DOC_RESEARCH_PARTIAL",
+                           limitations=["mode matrix undocumented"])],
+    }}
+    check("PARTIAL with limitations passes", dr.validate(partial) == [])
+    check("PARTIAL without limitations fails",
+          any("limitations" in p for p in dr.validate({"doc_research": {
+              "routing": routing("DOC_RESEARCH_PARTIAL",
+                                 triggers=["JIRA_EVIDENCE_INSUFFICIENT_DOC_MAY_ANSWER"],
+                                 research_id="DR-1"),
+              "results": [result("DR-1", status="DOC_RESEARCH_PARTIAL")]}})))
+    unavailable = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_UNAVAILABLE",
+                           triggers=["APPLICABILITY_NEEDS_CONFIRMATION"],
+                           research_id="DR-1"),
+        "results": [result("DR-1", status="DOC_RESEARCH_UNAVAILABLE",
+                           findings=[], source_ids=[],
+                           limitations=["docs unavailable for the version"])],
+    }}
+    check("UNAVAILABLE with limitations passes", dr.validate(unavailable) == [])
+    not_found_as_proof = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_COMPLETED",
+                           triggers=["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                           research_id="DR-1"),
+        "results": [result("DR-1", findings=[{
+            "claim": "The mode must not retain entries.",
+            "source_id": "DOC-1", "source_type": "OFFICIAL_DOCUMENTATION",
+            "authority": "OFFICIAL_PRODUCT_CONTRACT", "applicability": "current",
+            "evidence_role": "EXISTING_BEHAVIOR",
+            "absence_proves": True}])],
+    }}
+    check("NOT_FOUND is never evidence of the opposite behavior",
+          any("absence" in p for p in dr.validate(not_found_as_proof)))
+
+    # The Researcher never writes ACs or decides acceptance scope.
+    authoring = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_COMPLETED",
+                           triggers=["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                           research_id="DR-1"),
+        "results": [result("DR-1", ac_id="AC-01")],
+    }}
+    check("Researcher writing ACs fails",
+          any("does not write ACs" in p for p in dr.validate(authoring)))
+
+    # The Writer receives only admitted research.
+    check("unadmitted research id rejected",
+          any("never receives arbitrary" in p for p in dr.validate({
+              "doc_research": {
+                  "routing": routing("DOC_RESEARCH_COMPLETED",
+                                     triggers=["EVIDENCE_AGENT_REQUEST"],
+                                     research_id="DR-1"),
+                  "results": [result("DR-1")],
+                  "admitted_research_ids": ["DR-9"]}})))
+    admitted = {"doc_research": {
+        "routing": routing("DOC_RESEARCH_COMPLETED",
+                           triggers=["EVIDENCE_AGENT_REQUEST"],
+                           research_id="DR-1"),
+        "results": [result("DR-1")],
+        "admitted_research_ids": ["DR-1"],
+    }}
+    check("admitted research passes", dr.validate(admitted) == [])
+
+    print("test_doc_research_routing: OK")
+
+
+def test_doc_research_routing_regressions() -> None:
+    """Routing regressions: the named purge fixture must route through the Doc
+    Researcher; the Human Accepted AC ticket must not; an unfamiliar generic
+    scenario exercises the same hard gate."""
+
+    dr = doc_research_mod
+
+    def result(rid, topics, findings, **over):
+        base = {
+            "research_id": rid,
+            "status": "DOC_RESEARCH_COMPLETED",
+            "produced_by": "uac-doc-researcher",
+            "topics": topics,
+            "findings": findings,
+            "source_ids": sorted({f["source_id"] for f in findings}),
+            "applicability": "current release",
+            "limitations": [],
+            "conflicts": [],
+        }
+        base.update(over)
+        return base
+
+    # Regression fixture 1 (named ticket as fixture): an enhancement changing
+    # an existing documented feature MUST route through the Doc Researcher.
+    # Research distinguishes the documented baseline from the new behavior;
+    # existing docs are never cited as proof of the new behavior.
+    purge = {
+        "doc_research": {
+            "routing": {
+                "state": "DOC_RESEARCH_COMPLETED",
+                "triggers": [
+                    "CHANGES_DOCUMENTED_FUNCTIONALITY",
+                    "EXISTING_BEHAVIOR_MUST_BE_UNDERSTOOD_OR_PRESERVED",
+                    "BACKWARD_COMPATIBILITY_MATERIAL",
+                ],
+                "research_id": "DR-PURGE",
+            },
+            "results": [result(
+                "DR-PURGE",
+                ["existing time-based purge baseline",
+                 "retention semantics of the new ticket controls"],
+                [
+                    {"claim": "The documented time-based purge removes aged "
+                     "entries and their logs.",
+                     "source_id": "DOC-BASE",
+                     "source_type": "OFFICIAL_DOCUMENTATION",
+                     "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                     "applicability": "current release",
+                     "currentness": "CURRENT",
+                     "evidence_role": "EXISTING_BEHAVIOR"},
+                    {"claim": "The ticket adds a count-based retention option "
+                     "and a log-only action on top of that baseline.",
+                     "source_id": "JIRA-CURRENT",
+                     "source_type": "CURRENT_TICKET",
+                     "authority": "CURRENT_TICKET_REQUIREMENT",
+                     "applicability": "current release",
+                     "currentness": "CURRENT",
+                     "evidence_role": "REQUIREMENT_CLARIFICATION"},
+                ],
+            )],
+            "admitted_research_ids": ["DR-PURGE"],
+        },
+        "behavior_classification": {"items": [
+            {"target_ref": "B-BASELINE", "behavior_class": "EXISTING_CONFIRMED",
+             "existing_evidence_ids": ["DOC-BASE"]},
+            {"target_ref": "B-COUNT", "behavior_class": "NEW_REQUIREMENT",
+             "requested_evidence_ids": ["JIRA-CURRENT"]},
+        ]},
+    }
+    problems = dr.validate(purge)
+    check("purge fixture routes through the Doc Researcher cleanly",
+          problems == [])
+    print("  routing trace [documented-feature enhancement]:")
+    print("    triggers: " + ", ".join(purge["doc_research"]["routing"]["triggers"]))
+    print("    -> DOC_RESEARCH_REQUIRED -> invoke uac-doc-researcher")
+    for finding in purge["doc_research"]["results"][0]["findings"]:
+        print(f"    DR-PURGE finding [{finding['evidence_role']}] "
+              f"{finding['source_id']}: {finding['claim'][:60]}...")
+    print("    -> DOC_RESEARCH_COMPLETED -> admitted to Writer")
+
+    # Existing docs must not be falsely cited as proof of the new behavior.
+    falsely_cited = {
+        "doc_research": {
+            "routing": {
+                "state": "DOC_RESEARCH_COMPLETED",
+                "triggers": ["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                "research_id": "DR-PURGE",
+            },
+            "results": [result(
+                "DR-PURGE",
+                ["retention semantics"],
+                [{"claim": "The baseline purge removes aged entries.",
+                  "source_id": "DOC-BASE",
+                  "source_type": "OFFICIAL_DOCUMENTATION",
+                  "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                  "applicability": "current release",
+                  "currentness": "CURRENT",
+                  "evidence_role": "EXISTING_BEHAVIOR",
+                  "supports_behavior_ref": "B-COUNT"}],
+            )],
+        },
+        "behavior_classification": purge["behavior_classification"],
+    }
+    check("existing docs never prove the new behavior",
+          any("proof of new behavior" in p and "NEW_REQUIREMENT" in p
+              for p in dr.validate(falsely_cited)))
+
+    # Regression fixture 2 (structurally different): an explicit authoritative
+    # Human Accepted AC needs no external product clarification.
+    human_accepted = {
+        "doc_research": {"routing": {
+            "state": "RESEARCH_NOT_REQUIRED",
+            "not_required_reason": "The Human Accepted AC states the exact "
+            "expected behavior; documentation would not materially change "
+            "acceptance reasoning.",
+        }},
+    }
+    check("Human Accepted AC ticket routes RESEARCH_NOT_REQUIRED",
+          dr.validate(human_accepted) == [])
+    print("  routing trace [Human Accepted AC ticket]:")
+    print("    no material trigger -> RESEARCH_NOT_REQUIRED "
+          "(Jira authority sufficient) -> Writer proceeds")
+
+    # Unfamiliar generic scenario: a configuration-driven dialog ticket where
+    # the ticket never documents the config semantics -> research is required,
+    # and without a terminal result the hard gate blocks Coverage/Writer.
+    unfamiliar = {
+        "doc_research": {"routing": {
+            "state": "DOC_RESEARCH_REQUIRED",
+            "triggers": ["CONFIGURATION_SEMANTICS_UNESTABLISHED"],
+        }},
+    }
+    check("unfamiliar ticket: unestablished config semantics require research",
+          any("MUST NOT proceed" in p for p in dr.validate(unfamiliar)))
+    unfamiliar_done = {
+        "doc_research": {
+            "routing": {
+                "state": "DOC_RESEARCH_COMPLETED",
+                "triggers": ["CONFIGURATION_SEMANTICS_UNESTABLISHED"],
+                "research_id": "DR-U1",
+            },
+            "results": [result(
+                "DR-U1",
+                ["dialog configuration semantics"],
+                [{"claim": "The dialog reads its entries from the folder "
+                  "profile configuration.",
+                  "source_id": "DOC-U1",
+                  "source_type": "OFFICIAL_DOCUMENTATION",
+                  "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                  "applicability": "current release",
+                  "currentness": "CURRENT",
+                  "evidence_role": "EXISTING_BEHAVIOR"}],
+            )],
+            "admitted_research_ids": ["DR-U1"],
+        },
+    }
+    check("unfamiliar ticket completes through the same contract",
+          dr.validate(unfamiliar_done) == [])
+    print("  routing trace [unfamiliar config-semantics ticket]:")
+    print("    trigger: CONFIGURATION_SEMANTICS_UNESTABLISHED")
+    print("    -> DOC_RESEARCH_REQUIRED -> uac-doc-researcher -> "
+          "DOC_RESEARCH_COMPLETED -> admitted")
+
+    print("test_doc_research_routing_regressions: OK")
+
+
 def test_question_reasoning_chain_regressions() -> None:
     """End-to-end Question Planner -> Research Router -> Question Resolver ->
     Coverage Reasoner regressions per domain, each delivering its question
@@ -12446,6 +12824,8 @@ def main() -> int:
     test_evidence_sufficiency()
     test_evidence_sufficiency_output_history_regression()
     test_evidence_sufficiency_unfamiliar_ticket()
+    test_doc_research_routing()
+    test_doc_research_routing_regressions()
     test_question_reasoning_chain_regressions()
     test_scope_applicability()
     test_ac_language_policy()

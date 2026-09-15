@@ -117,6 +117,8 @@ question_planner_mod = _load("question_planner", "question_planner.py")
 question_resolver_mod = _load("question_resolver", "question_resolver.py")
 coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
 coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
+evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
+doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -1564,6 +1566,27 @@ def check_relationship_traversal(
         for problem in coverage_equivalence_mod.validate(data)
     )
 
+    # Evidence Sufficiency (optional, backward-compatible). Absent -> clean
+    # pass. Per-question and per-coverage-decision sufficiency computed from
+    # the underlying questions/evidence; P0 ACCEPTANCE requires SUFFICIENT
+    # unless explicitly ACCEPTANCE_TBD; the writer handoff never receives
+    # unsupported coverage as confirmed behavior.
+    failures.extend(
+        f"[evidence-sufficiency] {problem}"
+        for problem in evidence_sufficiency_mod.validate(data)
+    )
+
+    # Doc Research routing (optional, backward-compatible). Absent -> clean
+    # pass. Enforces invocation of the EXISTING UAC Doc Researcher after
+    # Evidence: DOC_RESEARCH_REQUIRED without a terminal Doc Researcher result
+    # hard-fails (Coverage/Writer MUST NOT proceed); the coordinator must not
+    # impersonate the Researcher; results follow the finding contract; the
+    # Writer receives only admitted research.
+    failures.extend(
+        f"[doc-research-routing] {problem}"
+        for problem in doc_research_mod.validate(data)
+    )
+
     # Existing-vs-New behavior classification (optional, backward-compatible).
     # Absent -> clean pass. When present, keep "documented today" separate from
     # "required after this fix": documentation establishes baselines, the ticket
@@ -2282,6 +2305,16 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_coverage_reasoner()
             if hasattr(self_tests, "test_coverage_equivalence"):
                 self_tests.test_coverage_equivalence()
+            if hasattr(self_tests, "test_evidence_sufficiency"):
+                self_tests.test_evidence_sufficiency()
+            if hasattr(self_tests, "test_evidence_sufficiency_output_history_regression"):
+                self_tests.test_evidence_sufficiency_output_history_regression()
+            if hasattr(self_tests, "test_evidence_sufficiency_unfamiliar_ticket"):
+                self_tests.test_evidence_sufficiency_unfamiliar_ticket()
+            if hasattr(self_tests, "test_doc_research_routing"):
+                self_tests.test_doc_research_routing()
+            if hasattr(self_tests, "test_doc_research_routing_regressions"):
+                self_tests.test_doc_research_routing_regressions()
             if hasattr(self_tests, "test_question_reasoning_chain_regressions"):
                 self_tests.test_question_reasoning_chain_regressions()
             self_tests.test_scope_applicability()

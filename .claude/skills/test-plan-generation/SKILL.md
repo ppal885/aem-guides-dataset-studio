@@ -407,6 +407,46 @@ FluffyJaws broadens *discovery* of relevant behaviour, but it is a synthesis eng
 - Never label files as changed without a real diff. Never infer current implementation from generic Jira keywords; require exact repo matches or label the area inferred.
 - If an implementation-stage diff is unavailable, add `Draft blocker: implementation diff not inspected`. Do not emit this blocker in pre-development.
 
+### Phase 5.5 — Doc Research Routing (MANDATORY contract after Evidence)
+
+After evidence collection and before any coverage/writing work, record the doc-research
+routing decision in the manifest `doc_research` block, validated by
+`scripts/doc_research_routing.py` (see `references/doc-research-routing.md`). This
+enforces invocation of the existing UAC Doc Researcher role
+(`agents/uac-doc-researcher.md`); it introduces no new agent and changes no source
+authority.
+
+- **Route to `DOC_RESEARCH_REQUIRED` when materially relevant**: the ticket changes
+  existing documented functionality; existing behavior must be understood or preserved;
+  configuration semantics are not sufficiently established by the ticket;
+  product/version/surface applicability needs confirmation; backward compatibility
+  materially affects acceptance; terminology materially affects behavior; the ticket's
+  evidence is insufficient but authorized product documentation may answer the missing
+  behavior; or the Evidence Agent explicitly requests documentation research. Declare
+  the fired triggers in `doc_research.routing.triggers`. Never invoke the Doc Researcher
+  merely because related documentation exists.
+- **An explicit authoritative Human Accepted AC may be sufficient without research**
+  when documentation would not materially change acceptance reasoning: record
+  `RESEARCH_NOT_REQUIRED` with `not_required_reason`.
+- **HARD GATE:** when the routing state is `DOC_RESEARCH_REQUIRED` and no terminal Doc
+  Researcher result exists (`DOC_RESEARCH_COMPLETED` / `DOC_RESEARCH_PARTIAL` /
+  `DOC_RESEARCH_UNAVAILABLE` / `DOC_RESEARCH_CONFLICTED`), Coverage/Writer MUST NOT
+  proceed, and the gate fails the plan. The coordinator/main agent must not impersonate
+  the missing Researcher — every result names `produced_by: uac-doc-researcher`.
+- **Doc Researcher output contract:** `research_id`, `status`, `topics[]`, `findings[]`,
+  `source_ids[]`, `applicability`, `limitations[]`, `conflicts[]`; every finding carries
+  `claim`, `source_id`, `source_type`, `authority`, `applicability`, currentness/version
+  when available, and `evidence_role` (`EXISTING_BEHAVIOR`, `REQUIREMENT_CLARIFICATION`,
+  `SUPPORTING_CONTEXT`).
+- **The Researcher must NOT** write ACs, decide final acceptance scope, override a Human
+  Accepted AC, infer new behavior from old documentation, promote nearby functionality,
+  or treat NOT_FOUND as evidence of the opposite behavior.
+- **The Writer receives only admitted research** (`admitted_research_ids`) through the
+  existing reasoning path — never arbitrary raw search results. The Reviewer fails the
+  plan when required research was skipped, an AC cites documentation that was never
+  retrieved, PARTIAL research is represented as complete, or documentation is used to
+  support behavior it does not establish.
+
 ### Phase 6 — Inspect Figma Design Evidence
 
 - Use Figma MCP when a design/prototype/frame is linked or when the Jira is UI-flow heavy and the user says Figma should be used.
