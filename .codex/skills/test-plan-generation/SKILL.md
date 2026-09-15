@@ -535,6 +535,29 @@ requirements.
   **The Reviewer verifies all P0 coverage is represented in that handoff and that P1 has
   not expanded scope.**
 
+### Phase 6.8 — Semantic Coverage / AC Equivalence
+
+After coverage reasoning, classify pairs of coverage decisions for semantic equivalence
+BEFORE the Writer authors ACs, recorded in the manifest `coverage_equivalence` block and
+validated by `scripts/coverage_equivalence.py` (see
+`references/coverage-equivalence.md`). The primary comparison happens on coverage
+decisions, not merely Writer prose: compare `coverage_id`s structurally across coverage
+IDs, question IDs, expected outcome, state transition, scope, configuration, and
+applicability — never textual similarity alone.
+
+- **Classifications:** `SAME_OUTCOME_VARIANT` (same expected outcome through variant
+  phrasing/polarity — e.g. "the state remains after refresh" and "refresh does not return
+  it to the prior state"; the Writer should normally create one AC), `DISTINCT_OUTCOME`
+  (different expected outcomes — e.g. "file remains in its state" vs "project becomes
+  Completed"), `DEPENDENT_OUTCOME` (one outcome depends on the other; record the
+  dependency), `CONFLICT` (the same outcome asserted contradictorily; keep the conflict
+  visible, never merge).
+- **Merging:** allowed only for `SAME_OUTCOME_VARIANT`. A merge preserves all question
+  IDs, all evidence IDs, all applicable variants, and the source lineage of every merged
+  decision, keeps the highest member priority, never includes an EXCLUDED decision, and
+  must cite a SAME_OUTCOME_VARIANT comparison between its members. One decision survives
+  into exactly one AC. Do not merge distinct behavior simply to reduce AC count.
+
 ### Phase 7 — Design Test Scenarios
 
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.

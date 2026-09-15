@@ -124,6 +124,7 @@ question_research_mod = _load("question_research", "question_research.py")
 question_planner_mod = _load("question_planner", "question_planner.py")
 question_resolver_mod = _load("question_resolver", "question_resolver.py")
 coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
+coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -7515,6 +7516,230 @@ def test_coverage_reasoner() -> None:
     print("test_coverage_reasoner: OK")
 
 
+def test_coverage_equivalence() -> None:
+    ce = coverage_equivalence_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent coverage_equivalence passes", ce.validate({}) == [])
+
+    def coverage(cid, behavior, qids, priority="P1", klass="QE_REGRESSION",
+                 polarity="POSITIVE"):
+        return {
+            "coverage_id": cid,
+            "behavior": behavior,
+            "question_ids": qids,
+            "evidence_ids": [f"EV-{qid}" for qid in qids],
+            "priority": priority,
+            "coverage_class": klass,
+            "positive_or_negative": polarity,
+            "surface": "the affected surface",
+            "state": "",
+            "configuration": "",
+            "applicability": "current release",
+            "reason": "Traces to resolved question evidence.",
+            "acceptance_impact": "Defines what the Writer may assert.",
+            "dimensions_considered": ["STATE_TRANSITIONS"],
+        }
+
+    def decision(did, left, right, classification, shared, differing, **over):
+        base = {
+            "decision_id": did,
+            "left_coverage_id": left,
+            "right_coverage_id": right,
+            "classification": classification,
+            "shared_dimensions": shared,
+            "differing_dimensions": differing,
+            "reason": "Structural comparison of the coverage decisions.",
+        }
+        base.update(over)
+        return base
+
+    # Human UAC example 1: "Approved remains Approved after refresh" and
+    # "Refresh does not return Approved to Ready for Review" describe the same
+    # outcome through positive and negative phrasing -> SAME_OUTCOME_VARIANT,
+    # and the Writer normally creates one AC (a merge preserving everything).
+    refresh_pair = [
+        coverage("COV-R1", "Approved remains Approved after refresh.",
+                 ["Q-R1"], priority="P0", klass="ACCEPTANCE"),
+        coverage("COV-R2", "Refresh does not return Approved to Ready for "
+                 "Review.", ["Q-R2"], polarity="NEGATIVE"),
+    ]
+    same_outcome = decision(
+        "EQ-R1", "COV-R1", "COV-R2", "SAME_OUTCOME_VARIANT",
+        ["EXPECTED_OUTCOME", "STATE_TRANSITION", "APPLICABILITY"],
+        ["QUESTION_IDS"],
+    )
+    merge = {
+        "merge_id": "MERGE-R1",
+        "merged_coverage_ids": ["COV-R1", "COV-R2"],
+        "classification": "SAME_OUTCOME_VARIANT",
+        "priority": "P0",
+        "question_ids": ["Q-R1", "Q-R2"],
+        "evidence_ids": ["EV-Q-R1", "EV-Q-R2"],
+        "variants": ["positive assertion", "negative assertion"],
+        "source_lineage": ["COV-R1", "COV-R2", "Q-R1", "Q-R2"],
+    }
+    manifest = {
+        "coverage_decisions": {"items": refresh_pair},
+        "coverage_equivalence": {"decisions": [same_outcome], "merges": [merge]},
+    }
+    check("human UAC refresh pair is SAME_OUTCOME_VARIANT and merges",
+          ce.validate(manifest) == [])
+
+    # Human UAC example 2: "Translation file remains Approved" vs "Translation
+    # project becomes Completed" -> DISTINCT_OUTCOME; merging them is rejected.
+    translation_pair = [
+        coverage("COV-T1", "Translation file remains Approved.", ["Q-T1"]),
+        coverage("COV-T2", "Translation project becomes Completed.", ["Q-T2"]),
+    ]
+    distinct = decision(
+        "EQ-T1", "COV-T1", "COV-T2", "DISTINCT_OUTCOME",
+        ["APPLICABILITY"], ["EXPECTED_OUTCOME", "STATE_TRANSITION"],
+    )
+    manifest = {
+        "coverage_decisions": {"items": translation_pair},
+        "coverage_equivalence": {"decisions": [distinct]},
+    }
+    check("translation file vs project outcomes are DISTINCT",
+          ce.validate(manifest) == [])
+    bad_merge = {
+        "merge_id": "MERGE-T1",
+        "merged_coverage_ids": ["COV-T1", "COV-T2"],
+        "classification": "DISTINCT_OUTCOME",
+        "priority": "P1",
+        "question_ids": ["Q-T1", "Q-T2"],
+        "evidence_ids": ["EV-Q-T1", "EV-Q-T2"],
+        "variants": ["file state", "project state"],
+        "source_lineage": ["COV-T1", "COV-T2"],
+    }
+    manifest["coverage_equivalence"]["merges"] = [bad_merge]
+    check("distinct behavior is never merged to reduce AC count",
+          any("never merged" in p for p in ce.validate(manifest)))
+
+    # Classification/dimension discipline.
+    check("SAME_OUTCOME_VARIANT requires a shared expected outcome",
+          any("EXPECTED_OUTCOME" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [decision(
+                  "EQ-1", "COV-A", "COV-B", "SAME_OUTCOME_VARIANT",
+                  ["STATE_TRANSITION"], ["EXPECTED_OUTCOME"])]}})))
+    check("DISTINCT_OUTCOME requires a differing expected outcome",
+          any("EXPECTED_OUTCOME" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [decision(
+                  "EQ-1", "COV-A", "COV-B", "DISTINCT_OUTCOME",
+                  ["EXPECTED_OUTCOME"], ["SCOPE"])]}})))
+    check("DEPENDENT_OUTCOME requires a differing outcome and dependency",
+          any("dependency" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [decision(
+                  "EQ-1", "COV-A", "COV-B", "DEPENDENT_OUTCOME",
+                  ["SCOPE"], ["EXPECTED_OUTCOME"])]}})))
+    dependent = decision("EQ-1", "COV-A", "COV-B", "DEPENDENT_OUTCOME",
+                         ["SCOPE"], ["EXPECTED_OUTCOME"],
+                         dependency="COV-B applies only after COV-A's state.")
+    check("dependent outcome with dependency passes",
+          ce.validate({"coverage_equivalence": {"decisions": [dependent]}}) == [])
+    check("CONFLICT requires the contradiction to stay visible",
+          any("conflict_summary" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [decision(
+                  "EQ-1", "COV-A", "COV-B", "CONFLICT",
+                  ["EXPECTED_OUTCOME"], ["POLARITY" ])]}})))
+    conflict = decision("EQ-1", "COV-A", "COV-B", "CONFLICT",
+                        ["EXPECTED_OUTCOME"], ["QUESTION_IDS"],
+                        conflict_summary="One decision keeps entries; the other purges them.")
+    check("visible conflict passes",
+          ce.validate({"coverage_equivalence": {"decisions": [conflict]}}) == [])
+    check("unknown comparison dimension rejected",
+          any("unknown" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [decision(
+                  "EQ-1", "COV-A", "COV-B", "CONFLICT",
+                  ["EXPECTED_OUTCOME"], ["POLARITY"],
+                  conflict_summary="x")]}})))
+    check("dimension cannot be shared and differing",
+          any("both shared and differing" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [decision(
+                  "EQ-1", "COV-A", "COV-B", "DISTINCT_OUTCOME",
+                  ["EXPECTED_OUTCOME"], ["EXPECTED_OUTCOME"])]}})))
+    check("unknown classification rejected",
+          any("classification" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [decision(
+                  "EQ-1", "COV-A", "COV-B", "SIMILAR",
+                  ["SCOPE"], ["EXPECTED_OUTCOME"])]}})))
+
+    # The comparison happens on coverage decisions, not Writer prose.
+    check("unknown coverage endpoints rejected",
+          any("not a known coverage decision" in p for p in ce.validate({
+              "coverage_decisions": {"items": refresh_pair},
+              "coverage_equivalence": {"decisions": [
+                  decision("EQ-1", "COV-R1", "COV-X9", "DISTINCT_OUTCOME",
+                           ["SCOPE"], ["EXPECTED_OUTCOME"])]}})))
+    check("self-comparison rejected",
+          any("compare to itself" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [
+                  decision("EQ-1", "COV-A", "COV-A", "DISTINCT_OUTCOME",
+                           ["SCOPE"], ["EXPECTED_OUTCOME"])]}})))
+
+    # Merge preservation: all question IDs, evidence IDs, variants, lineage.
+    no_basis = {
+        "coverage_decisions": {"items": refresh_pair},
+        "coverage_equivalence": {"merges": [merge]},
+    }
+    check("merge without a SAME_OUTCOME_VARIANT basis decision fails",
+          any("requires a SAME_OUTCOME_VARIANT decision" in p
+              for p in ce.validate(no_basis)))
+    thinned = dict(merge, question_ids=["Q-R1"])
+    check("merge dropping question IDs fails",
+          any("preserve all member question IDs" in p for p in ce.validate({
+              "coverage_decisions": {"items": refresh_pair},
+              "coverage_equivalence": {"decisions": [same_outcome],
+                                       "merges": [thinned]}})))
+    thinned = dict(merge, evidence_ids=["EV-Q-R1"])
+    check("merge dropping evidence IDs fails",
+          any("preserve all member evidence IDs" in p for p in ce.validate({
+              "coverage_decisions": {"items": refresh_pair},
+              "coverage_equivalence": {"decisions": [same_outcome],
+                                       "merges": [thinned]}})))
+    for field in ("variants", "source_lineage"):
+        thinned = dict(merge)
+        thinned[field] = []
+        check(f"merge without {field} fails",
+              any(field in p for p in ce.validate({
+                  "coverage_equivalence": {"decisions": [same_outcome],
+                                           "merges": [thinned]}})))
+    demoted = dict(merge, priority="P1")
+    check("merge must keep the highest member priority",
+          any("highest member priority" in p for p in ce.validate({
+              "coverage_decisions": {"items": refresh_pair},
+              "coverage_equivalence": {"decisions": [same_outcome],
+                                       "merges": [demoted]}})))
+    excluded_member = [
+        coverage("COV-R1", "Approved remains Approved after refresh.", ["Q-R1"],
+                 priority="P0", klass="ACCEPTANCE"),
+        coverage("COV-R3", "An excluded idea.", ["Q-R3"], priority="EXCLUDED",
+                 klass="INVESTIGATION"),
+    ]
+    excluded_merge = dict(merge, merged_coverage_ids=["COV-R1", "COV-R3"],
+                          question_ids=["Q-R1", "Q-R3"],
+                          evidence_ids=["EV-Q-R1", "EV-Q-R3"])
+    excluded_decision = decision("EQ-R3", "COV-R1", "COV-R3",
+                                 "SAME_OUTCOME_VARIANT",
+                                 ["EXPECTED_OUTCOME"], ["QUESTION_IDS"])
+    check("EXCLUDED coverage cannot be merged",
+          any("EXCLUDED" in p for p in ce.validate({
+              "coverage_decisions": {"items": excluded_member},
+              "coverage_equivalence": {"decisions": [excluded_decision],
+                                       "merges": [excluded_merge]}})))
+    double_merge = {
+        "coverage_decisions": {"items": refresh_pair},
+        "coverage_equivalence": {
+            "decisions": [same_outcome],
+            "merges": [merge, dict(merge, merge_id="MERGE-R2")],
+        },
+    }
+    check("one decision survives into exactly one AC",
+          any("already merged" in p for p in ce.validate(double_merge)))
+
+    print("test_coverage_equivalence: OK")
+
+
 def test_question_reasoning_chain_regressions() -> None:
     """End-to-end Question Planner -> Research Router -> Question Resolver ->
     Coverage Reasoner regressions per domain, each delivering its question
@@ -7524,6 +7749,7 @@ def test_question_reasoning_chain_regressions() -> None:
     qr = question_research_mod
     qres = question_resolver_mod
     cr = coverage_reasoner_mod
+    ce = coverage_equivalence_mod
 
     def question(qid, category, text, requirement, evidence):
         return {
@@ -7681,6 +7907,16 @@ def test_question_reasoning_chain_regressions() -> None:
             "dimensions_considered": axes,
         }
 
+    # One semantic equivalence comparison per domain, recorded on the coverage
+    # decisions (distinct outcomes - nothing merges merely to reduce AC count).
+    domain_equivalence = {
+        "Translation": ("EQ-T1", "COV-T2", "COV-T3"),
+        "Output History": ("EQ-O1", "COV-O3", "COV-O4"),
+        "Broken Links": ("EQ-B1", "COV-B2", "COV-B3"),
+        "Native PDF": ("EQ-P1", "COV-P3", "COV-P4"),
+        "Editor": ("EQ-E1", "COV-E2", "COV-E3"),
+    }
+
     for domain, rows in domains.items():
         plan_items = [
             question(row[0], row[1], row[2], row[3], row[4]) for row in rows
@@ -7701,6 +7937,16 @@ def test_question_reasoning_chain_regressions() -> None:
         ]
         coverage_items = [coverage(*row) for row in domain_coverage[domain]]
         writer_handoff = [row[0] for row in domain_coverage[domain]]
+        eq_id, eq_left, eq_right = domain_equivalence[domain]
+        equivalence = {
+            "decision_id": eq_id,
+            "left_coverage_id": eq_left,
+            "right_coverage_id": eq_right,
+            "classification": "DISTINCT_OUTCOME",
+            "shared_dimensions": ["APPLICABILITY"],
+            "differing_dimensions": ["EXPECTED_OUTCOME"],
+            "reason": "The two decisions cover materially different outcomes.",
+        }
         manifest = {
             "question_plan": {"items": plan_items},
             "question_research": {"items": research_items},
@@ -7709,18 +7955,25 @@ def test_question_reasoning_chain_regressions() -> None:
                 "items": coverage_items,
                 "writer_handoff": writer_handoff,
             },
+            "coverage_equivalence": {"decisions": [equivalence]},
         }
         planner_problems = qp.validate(manifest)
         research_problems = qr.validate(manifest)
         resolver_problems = qres.validate(manifest)
         coverage_problems = cr.validate(manifest)
+        equivalence_problems = ce.validate(manifest)
         check(f"{domain}: planner gate clean", planner_problems == [])
         check(f"{domain}: research router gate clean", research_problems == [])
         check(f"{domain}: resolver gate clean", resolver_problems == [])
         check(f"{domain}: coverage reasoner gate clean", coverage_problems == [])
+        check(f"{domain}: equivalence gate clean", equivalence_problems == [])
 
         # Deliver the question trace for the regression.
         print(f"  question trace [{domain}]:")
+        print(
+            f"    {eq_id}: {eq_left} vs {eq_right} -> DISTINCT_OUTCOME "
+            "(not merged)"
+        )
         for item_row in plan_items:
             route = next(r for r in research_items
                          if r["question_ref"] == item_row["question_id"])
@@ -11573,6 +11826,7 @@ def main() -> int:
     test_question_planner()
     test_question_resolver()
     test_coverage_reasoner()
+    test_coverage_equivalence()
     test_question_reasoning_chain_regressions()
     test_scope_applicability()
     test_ac_language_policy()

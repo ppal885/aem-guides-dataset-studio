@@ -116,6 +116,7 @@ question_research_mod = _load("question_research", "question_research.py")
 question_planner_mod = _load("question_planner", "question_planner.py")
 question_resolver_mod = _load("question_resolver", "question_resolver.py")
 coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
+coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -1552,6 +1553,17 @@ def check_relationship_traversal(
         for problem in coverage_reasoner_mod.validate(data)
     )
 
+    # Semantic Coverage/AC Equivalence (optional, backward-compatible). Absent
+    # -> clean pass. Equivalence compares coverage decisions on structured
+    # dimensions (expected outcome, state transition, scope, configuration,
+    # applicability, IDs) - never Writer prose alone - and only
+    # SAME_OUTCOME_VARIANT decisions may merge, preserving all question IDs,
+    # evidence IDs, variants, and source lineage.
+    failures.extend(
+        f"[coverage-equivalence] {problem}"
+        for problem in coverage_equivalence_mod.validate(data)
+    )
+
     # Existing-vs-New behavior classification (optional, backward-compatible).
     # Absent -> clean pass. When present, keep "documented today" separate from
     # "required after this fix": documentation establishes baselines, the ticket
@@ -2268,6 +2280,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_question_resolver()
             if hasattr(self_tests, "test_coverage_reasoner"):
                 self_tests.test_coverage_reasoner()
+            if hasattr(self_tests, "test_coverage_equivalence"):
+                self_tests.test_coverage_equivalence()
             if hasattr(self_tests, "test_question_reasoning_chain_regressions"):
                 self_tests.test_question_reasoning_chain_regressions()
             self_tests.test_scope_applicability()
