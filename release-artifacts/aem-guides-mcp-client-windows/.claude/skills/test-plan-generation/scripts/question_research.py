@@ -220,6 +220,25 @@ def validate(manifest):
                     f"missing_questions[{j}]: material question "
                     f"'{qid}' has no question_research routing entry"
                 )
+    # Cross-check against the Question Planner block: every planned material
+    # question must be routed through the Research Router.
+    plan = manifest.get("question_plan")
+    plan_items = []
+    if isinstance(plan, dict):
+        plan_items = plan.get("items", [])
+        overflow = plan.get("overflow")
+        if isinstance(overflow, dict) and isinstance(overflow.get("items"), list):
+            plan_items = [*plan_items, *overflow["items"]]
+    if isinstance(plan_items, list):
+        for j, item in enumerate(plan_items):
+            if not isinstance(item, dict):
+                continue
+            qid = item.get("question_id")
+            if qid and qid not in seen_refs:
+                problems.append(
+                    f"question_plan.items[{j}]: planned material question "
+                    f"'{qid}' has no question_research routing entry"
+                )
     return problems
 
 

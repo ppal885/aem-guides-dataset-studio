@@ -113,6 +113,8 @@ fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 question_research_mod = _load("question_research", "question_research.py")
+question_planner_mod = _load("question_planner", "question_planner.py")
+question_resolver_mod = _load("question_resolver", "question_resolver.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -1520,6 +1522,23 @@ def check_relationship_traversal(
         for problem in question_research_mod.validate(data)
     )
 
+    # Question-Based UAC reasoning stages (optional, backward-compatible).
+    # Absent -> clean pass. The Question Planner block enforces the material-
+    # question record contract, the closed category vocabulary, and the bounded
+    # question budget with explicit overflow/escalation. The Question Resolver
+    # block enforces the terminal statuses, the retained-answer contract, and
+    # the hard rules (a question is not an AC, an answer is not automatically
+    # an AC, non-establishing authorities, NOT_FOUND is not negative proof,
+    # required research cannot be skipped).
+    failures.extend(
+        f"[question-planner] {problem}"
+        for problem in question_planner_mod.validate(data)
+    )
+    failures.extend(
+        f"[question-resolver] {problem}"
+        for problem in question_resolver_mod.validate(data)
+    )
+
     # Existing-vs-New behavior classification (optional, backward-compatible).
     # Absent -> clean pass. When present, keep "documented today" separate from
     # "required after this fix": documentation establishes baselines, the ticket
@@ -2230,6 +2249,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_question_research()
             if hasattr(self_tests, "test_behavior_classification"):
                 self_tests.test_behavior_classification()
+            if hasattr(self_tests, "test_question_planner"):
+                self_tests.test_question_planner()
+            if hasattr(self_tests, "test_question_resolver"):
+                self_tests.test_question_resolver()
+            if hasattr(self_tests, "test_question_reasoning_chain_regressions"):
+                self_tests.test_question_reasoning_chain_regressions()
             self_tests.test_scope_applicability()
             self_tests.test_ac_language_policy()
             self_tests.test_publishing_scope_coverage()

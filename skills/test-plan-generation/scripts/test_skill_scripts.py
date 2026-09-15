@@ -121,6 +121,8 @@ fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 question_research_mod = _load("question_research", "question_research.py")
+question_planner_mod = _load("question_planner", "question_planner.py")
+question_resolver_mod = _load("question_resolver", "question_resolver.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
@@ -7116,6 +7118,400 @@ def test_behavior_classification() -> None:
     print("test_behavior_classification: OK")
 
 
+def test_question_planner() -> None:
+    qp = question_planner_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent question_plan passes", qp.validate({}) == [])
+
+    def wrap(items, **extra):
+        block = {"question_plan": {"items": items}}
+        block["question_plan"].update(extra)
+        return block
+
+    def item(qid, category="EXPECTED_OUTCOME", **over):
+        base = {
+            "question_id": qid,
+            "category": category,
+            "question": f"What behavior does {qid} establish?",
+            "why_material": "The answer changes the sign-off oracle.",
+            "triggering_evidence_ids": ["JIRA-1"],
+            "acceptance_impact": "Determines whether the fix has an AC.",
+            "applicability": "APPLICABLE",
+            "research_requirement": "DOCUMENTATION",
+            "status": "PLANNED",
+        }
+        base.update(over)
+        return base
+
+    check("a well-formed material question passes", qp.validate(wrap([item("MQ-01")])) == [])
+
+    # Every required field is enforced.
+    for field in ("question_id", "question", "why_material", "acceptance_impact"):
+        broken = item("MQ-01")
+        broken[field] = ""
+        check(f"missing {field} rejected",
+              any(field in p for p in qp.validate(wrap([broken]))))
+    broken = item("MQ-01", triggering_evidence_ids=[])
+    check("empty triggering_evidence_ids rejected",
+          any("triggering_evidence_ids" in p for p in qp.validate(wrap([broken]))))
+
+    # Closed vocabularies.
+    check("unknown category rejected",
+          any("category" in p for p in qp.validate(wrap([item("MQ-01", category="LUCK")]))))
+    check("unknown research requirement rejected",
+          any("research_requirement" in p for p in qp.validate(
+              wrap([item("MQ-01", research_requirement="VIBES")]))))
+    check("unknown status rejected",
+          any("status" in p for p in qp.validate(wrap([item("MQ-01", status="DONE")]))))
+    check("unknown applicability rejected",
+          any("applicability" in p for p in qp.validate(
+              wrap([item("MQ-01", applicability="MAYBE")]))))
+
+    # A question is not an AC.
+    check("assertion instead of question rejected",
+          any("evidence-seeking" in p for p in qp.validate(
+              wrap([item("MQ-01", question="The purge keeps the logs.")]))))
+    check("question record cannot declare an AC",
+          any("not an AC" in p for p in qp.validate(
+              wrap([item("MQ-01", ac_id="AC-01")]))))
+
+    # Bounded budget: overflow must be explicit, never a silent discard.
+    many = [item(f"MQ-{i:02d}") for i in range(1, 14)]
+    check("budget overflow without escalation fails",
+          any("budget" in p and "overflow" in p for p in qp.validate(wrap(many))))
+    over_budget = wrap(many[:12], overflow={
+        "state": "OVERFLOW",
+        "escalation": "Reviewer triage decides which escalated question enters the plan.",
+        "items": [dict(many[12], status="ESCALATED")],
+    })
+    check("explicit overflow/escalation passes", qp.validate(over_budget) == [])
+    check("overflow without state fails",
+          any("OVERFLOW" in p for p in qp.validate(
+              wrap(many[:12], overflow={"items": [many[12]]}))))
+    check("overflow items keep full question fields",
+          any("why_material" in p for p in qp.validate(
+              wrap(many[:12], overflow={
+                  "state": "OVERFLOW",
+                  "escalation": "Reviewer triage.",
+                  "items": [{"question_id": "MQ-13"}],
+              }))))
+    check("main plan must respect the budget once overflow exists",
+          any("move the excess" in p for p in qp.validate(
+              wrap(many, overflow={"state": "OVERFLOW", "escalation": "x",
+                                   "items": [dict(many[12], status="ESCALATED")]}))))
+    check("duplicate question_id rejected",
+          any("duplicate question_id" in p for p in qp.validate(
+              wrap([item("MQ-01"), item("MQ-01", category="SCOPE")]))))
+
+    # Do not emit every category for every ticket.
+    carpet = [
+        item(f"MQ-{i:02d}", category=category)
+        for i, category in enumerate(qp.QUESTION_CATEGORIES[:10], 1)
+    ]
+    check("category carpet rejected",
+          any("do not emit every category" in p for p in qp.validate(wrap(carpet))))
+    selective = [
+        item("MQ-01", category="EXPECTED_OUTCOME"),
+        item("MQ-02", category="PRESERVATION"),
+    ]
+    check("selective categories pass", qp.validate(wrap(selective)) == [])
+
+    print("test_question_planner: OK")
+
+
+def test_question_resolver() -> None:
+    qres = question_resolver_mod
+
+    # Backward-compatible: absent block passes.
+    check("absent question_resolutions passes", qres.validate({}) == [])
+
+    def wrap(items, **blocks):
+        manifest = {"question_resolutions": {"items": items}}
+        manifest.update(blocks)
+        return manifest
+
+    def answer(authority="OFFICIAL_DOCUMENTATION", **over):
+        base = {
+            "claim": "The documented purge removes entries older than the period.",
+            "source_ids": ["DOC-1"],
+            "source_authority": authority,
+            "applicability": "5.0 on-prem",
+            "limitations": [],
+            "contradictions": [],
+        }
+        base.update(over)
+        return base
+
+    def item(ref, status="ANSWERED", **over):
+        base = {"question_ref": ref, "status": status}
+        if status in {"ANSWERED", "PARTIALLY_ANSWERED", "CONFLICTED"}:
+            base["answer"] = answer()
+        base.update(over)
+        return base
+
+    check("answered resolution passes", qres.validate(wrap([item("MQ-01")])) == [])
+
+    # Answer retention contract.
+    no_claim = item("MQ-01", answer=answer(claim=""))
+    check("answer requires a claim", any("claim" in p for p in qres.validate(wrap([no_claim]))))
+    no_sources = item("MQ-01", answer=answer(source_ids=[]))
+    check("answer requires source_ids",
+          any("source_ids" in p for p in qres.validate(wrap([no_sources]))))
+    no_applicability = item("MQ-01", answer=answer(applicability=""))
+    check("answer requires applicability",
+          any("applicability" in p for p in qres.validate(wrap([no_applicability]))))
+    check("ANSWERED without a retained answer fails",
+          any("requires a retained answer" in p for p in qres.validate(
+              wrap([{"question_ref": "MQ-01", "status": "ANSWERED"}]))))
+
+    # An answer is not automatically an AC.
+    check("resolution cannot declare an AC",
+          any("not automatically an AC" in p for p in qres.validate(
+              wrap([item("MQ-01", ac_id="AC-01")]))))
+
+    # Non-establishing authorities cannot ground an ANSWERED expectation.
+    for authority in ("ACTUAL_RESULT", "SUSPECTED_ROOT_CAUSE",
+                      "ATTACHMENT_OBSERVATION", "HISTORICAL_JIRA", "AI_INFERENCE"):
+        check(f"{authority} cannot ground ANSWERED",
+              any("cannot establish an ANSWERED expectation" in p
+                  for p in qres.validate(wrap([item("MQ-01", answer=answer(authority))]))))
+    check("current-ticket requirement can ground ANSWERED",
+          qres.validate(wrap([item("MQ-01", answer=answer("CURRENT_TICKET_REQUIREMENT"))])) == [])
+
+    # PARTIALLY_ANSWERED must record limitations.
+    check("PARTIALLY_ANSWERED requires limitations",
+          any("limitations" in p for p in qres.validate(
+              wrap([item("MQ-01", status="PARTIALLY_ANSWERED")]))))
+    partial = item("MQ-01", status="PARTIALLY_ANSWERED",
+                   answer=answer(limitations=["Only the default mode was documented."]))
+    check("PARTIALLY_ANSWERED with limitations passes",
+          qres.validate(wrap([partial])) == [])
+
+    # ACCEPTANCE_TBD only when plausible answers materially change acceptance.
+    tbd = item("MQ-01", status="ACCEPTANCE_TBD", answer=None,
+               material_impact=["BEHAVIOR", "SCOPE"],
+               plausible_answers=["retain logs", "purge logs"])
+    check("material ACCEPTANCE_TBD passes", qres.validate(wrap([tbd])) == [])
+    check("ACCEPTANCE_TBD requires material impact",
+          any("material_impact" in p for p in qres.validate(
+              wrap([item("MQ-01", status="ACCEPTANCE_TBD", answer=None,
+                         plausible_answers=["a", "b"])]))))
+    check("ACCEPTANCE_TBD requires two plausible answers",
+          any("two plausible answers" in p for p in qres.validate(
+              wrap([item("MQ-01", status="ACCEPTANCE_TBD", answer=None,
+                         material_impact=["BEHAVIOR"], plausible_answers=["a"])]))))
+    check("ACCEPTANCE_TBD rejects unknown impact areas",
+          any("material_impact" in p for p in qres.validate(
+              wrap([item("MQ-01", status="ACCEPTANCE_TBD", answer=None,
+                         material_impact=["VIBES"], plausible_answers=["a", "b"])]))))
+
+    # Root cause / diagnostics / mechanics are normally INVESTIGATION_ONLY.
+    investigation = item("MQ-01", status="INVESTIGATION_ONLY", answer=None,
+                         investigation_topic="ROOT_CAUSE")
+    check("root cause as INVESTIGATION_ONLY passes",
+          qres.validate(wrap([investigation])) == [])
+    check("root cause as ANSWERED needs acceptance relevance",
+          any("acceptance_relevance" in p for p in qres.validate(
+              wrap([item("MQ-01", investigation_topic="ROOT_CAUSE")]))))
+    justified = item("MQ-01", investigation_topic="IMPLEMENTATION_MECHANICS",
+                     acceptance_relevance="The mechanic is itself the requested behavior.")
+    check("justified mechanics exception passes",
+          qres.validate(wrap([justified])) == [])
+
+    # DUPLICATE / NOT_APPLICABLE / CONFLICTED discipline.
+    check("DUPLICATE requires the surviving question",
+          any("duplicate_of" in p for p in qres.validate(
+              wrap([{"question_ref": "MQ-02", "status": "DUPLICATE"}]))))
+    check("NOT_APPLICABLE requires a reason",
+          any("reason" in p for p in qres.validate(
+              wrap([{"question_ref": "MQ-03", "status": "NOT_APPLICABLE"}]))))
+    check("CONFLICTED retains contradictions",
+          any("contradictions" in p for p in qres.validate(
+              wrap([item("MQ-01", status="CONFLICTED")]))))
+    conflicted = item("MQ-01", status="CONFLICTED",
+                      answer=answer(contradictions=["DOC-2 says the opposite."]))
+    check("CONFLICTED with contradictions passes",
+          qres.validate(wrap([conflicted])) == [])
+
+    # NOT_FOUND is not negative proof.
+    check("ANSWERED on NOT_FOUND research fails",
+          any("not negative proof" in p for p in qres.validate(
+              wrap([item("MQ-01", research_outcome="NOT_FOUND")]))))
+
+    print("test_question_resolver: OK")
+
+
+def test_question_reasoning_chain_regressions() -> None:
+    """End-to-end Question Planner -> Research Router -> Question Resolver
+    regressions per domain, each delivering its question trace."""
+
+    qp = question_planner_mod
+    qr = question_research_mod
+    qres = question_resolver_mod
+
+    def question(qid, category, text, requirement, evidence):
+        return {
+            "question_id": qid,
+            "category": category,
+            "question": text,
+            "why_material": "The answer changes the acceptance oracle or scope.",
+            "triggering_evidence_ids": evidence,
+            "acceptance_impact": "Decides what the AC may assert.",
+            "applicability": "APPLICABLE",
+            "research_requirement": requirement,
+            "status": "RESOLVED",
+        }
+
+    def research(ref, requirement, status):
+        item = {
+            "question_ref": ref,
+            "material": True,
+            "research_requirement": requirement,
+            "research_status": status,
+        }
+        if status not in {"NOT_REQUIRED", "PENDING"}:
+            item["research_requests"] = [f"RQ-{ref}"]
+        if status == "ANSWER_FOUND":
+            item["research_evidence_ids"] = [f"EV-{ref}"]
+        return item
+
+    def resolution(ref, status, authority="CURRENT_TICKET_REQUIREMENT", **over):
+        item = {"question_ref": ref, "status": status}
+        if status in {"ANSWERED", "PARTIALLY_ANSWERED", "CONFLICTED"}:
+            item["answer"] = {
+                "claim": over.pop("claim", f"The evidence answers {ref}."),
+                "source_ids": over.pop("source_ids", [f"EV-{ref}"]),
+                "source_authority": authority,
+                "applicability": over.pop("applicability", "current release"),
+                "limitations": over.pop("limitations", []),
+                "contradictions": over.pop("contradictions", []),
+            }
+        item.update(over)
+        return item
+
+    domains = {
+        "Translation": [
+            ("Q-T1", "EXPECTED_OUTCOME", "What exact status must a completed "
+             "translation job show in the panel?", "NONE", ["JIRA-T1"]),
+            ("Q-T2", "PRESERVATION", "Which existing translation jobs must remain "
+             "unchanged after the fix?", "DOCUMENTATION", ["JIRA-T1"]),
+            ("Q-T3", "STATE_TRANSITION", "Which job states can the panel move "
+             "between when a translation completes?", "DOCUMENTATION", ["JIRA-T1"]),
+        ],
+        "Output History": [
+            ("Q-O1", "EXPECTED_OUTCOME", "What is the documented baseline of the "
+             "existing time-based purge?", "DOCUMENTATION", ["DOC-O1"]),
+            ("Q-O2", "VARIANT", "Which retention modes does the ticket add beyond "
+             "the documented baseline?", "NONE", ["JIRA-O1"]),
+            ("Q-O3", "PRESERVATION", "Which generated output entries must remain "
+             "intact after a log-only purge?", "DOCUMENTATION", ["JIRA-O1"]),
+            ("Q-O4", "COMPATIBILITY", "Are the purge defaults backward-compatible "
+             "for existing presets?", "DOCUMENTATION", ["JIRA-O1"]),
+        ],
+        "Broken Links": [
+            ("Q-B1", "NEGATIVE_CONTRACT", "How must a broken link surface when "
+             "validation runs?", "NONE", ["JIRA-B1"]),
+            ("Q-B2", "ENTRY_PATH", "Which entry paths can start link validation?",
+             "IMPLEMENTATION", ["JIRA-B1"]),
+            ("Q-B3", "ERROR_RECOVERY", "What happens when link validation fails "
+             "mid-run?", "DOCUMENTATION", ["JIRA-B1"]),
+        ],
+        "Native PDF": [
+            ("Q-P1", "VARIANT", "Which preset types does the rendering fix apply "
+             "to?", "NONE", ["JIRA-P1"]),
+            ("Q-P2", "PRESERVATION", "Which existing rendering behavior must remain "
+             "unchanged for unaffected constructs?", "DOCUMENTATION", ["JIRA-P1"]),
+            ("Q-P3", "ERROR_RECOVERY", "What must the product show when rendering "
+             "fails for a large map?", "DOCUMENTATION", ["JIRA-P1"]),
+            ("Q-P4", "SCALE", "Which documented size limits apply to the affected "
+             "rendering path?", "DOCUMENTATION", ["JIRA-P1"]),
+        ],
+        "Editor": [
+            ("Q-E1", "STATE_TRANSITION", "Which save states must both editors "
+             "show for the changed content?", "DOCUMENTATION", ["JIRA-E1"]),
+            ("Q-E2", "NEGATIVE_CONTRACT", "What must the editor do when the "
+             "content is invalid?", "NONE", ["JIRA-E1"]),
+            ("Q-E3", "ENTRY_PATH", "Does the fix apply to both the Web Editor and "
+             "the new Editor?", "DOCUMENTATION", ["JIRA-E1"]),
+        ],
+    }
+
+    for domain, rows in domains.items():
+        plan_items = [
+            question(row[0], row[1], row[2], row[3], row[4]) for row in rows
+        ]
+        research_items = [
+            research(qid, requirement, "NOT_REQUIRED" if requirement == "NONE"
+                     else "ANSWER_FOUND")
+            for qid, _category, _text, requirement, _evidence in rows
+        ]
+        resolution_items = [
+            resolution(
+                qid,
+                "ANSWERED",
+                authority=("CURRENT_TICKET_REQUIREMENT" if requirement == "NONE"
+                           else "OFFICIAL_DOCUMENTATION"),
+            )
+            for qid, _category, _text, requirement, _evidence in rows
+        ]
+        manifest = {
+            "question_plan": {"items": plan_items},
+            "question_research": {"items": research_items},
+            "question_resolutions": {"items": resolution_items},
+        }
+        planner_problems = qp.validate(manifest)
+        research_problems = qr.validate(manifest)
+        resolver_problems = qres.validate(manifest)
+        check(f"{domain}: planner gate clean", planner_problems == [])
+        check(f"{domain}: research router gate clean", research_problems == [])
+        check(f"{domain}: resolver gate clean", resolver_problems == [])
+
+        # Deliver the question trace for the regression.
+        print(f"  question trace [{domain}]:")
+        for item_row in plan_items:
+            route = next(r for r in research_items
+                         if r["question_ref"] == item_row["question_id"])
+            outcome = next(r for r in resolution_items
+                           if r["question_ref"] == item_row["question_id"])
+            print(
+                f"    {item_row['question_id']} [{item_row['category']}] "
+                f"-> {route['research_requirement']}/{route['research_status']} "
+                f"-> {outcome['status']}"
+            )
+
+    # Cross-gate: required research cannot be skipped anywhere in the chain.
+    manifest = {
+        "question_plan": {"items": [question(
+            "Q-X1", "EXPECTED_OUTCOME", "What retention does the mode keep?",
+            "DOCUMENTATION", ["JIRA-X1"])]},
+        "question_research": {"items": [research("Q-X1", "DOCUMENTATION", "PENDING")]},
+        "question_resolutions": {"items": [resolution("Q-X1", "ANSWERED")]},
+    }
+    check("PENDING required research fails the router review",
+          any("still PENDING" in p for p in qr.validate(manifest)))
+    check("ANSWERED over skipped research fails the resolver",
+          any("cannot be skipped" in p or "not negative proof" in p
+              for p in qres.validate(manifest)))
+
+    # NOT_FOUND never grounds an answer through the chain.
+    manifest["question_research"] = {"items": [research("Q-X1", "DOCUMENTATION", "NOT_FOUND")]}
+    check("ANSWERED over NOT_FOUND fails the resolver",
+          any("not negative proof" in p for p in qres.validate(manifest)))
+
+    # A planned question is never silently dropped before resolution.
+    manifest["question_resolutions"] = {"items": []}
+    check("planned question without resolution fails",
+          any("never silently dropped" in p for p in qres.validate(manifest)))
+
+    # A resolution for a question that was never planned fails.
+    manifest["question_resolutions"] = {"items": [resolution("Q-X9", "ANSWERED")]}
+    check("resolution without planning fails",
+          any("never planned" in p for p in qres.validate(manifest)))
+
+    print("test_question_reasoning_chain_regressions: OK")
+
+
 def test_scope_applicability() -> None:
     sa = scope_applicability_mod
 
@@ -10906,6 +11302,9 @@ def main() -> int:
     test_evidence_conflict_resolver()
     test_question_research()
     test_behavior_classification()
+    test_question_planner()
+    test_question_resolver()
+    test_question_reasoning_chain_regressions()
     test_scope_applicability()
     test_ac_language_policy()
     test_publishing_scope_coverage()

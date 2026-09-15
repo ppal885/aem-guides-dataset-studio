@@ -463,6 +463,47 @@ Only when every dimension above is dispositioned may you proceed to Phase 7. If 
 surfaces a blocking unknown, resolve it from evidence or raise it as an Open Question FIRST
 — do not author around it.
 
+### Phase 6.6 — Question-Based Reasoning (Planner → Research Router → Resolver)
+
+Structured reasoning stages between discovery and authoring. The Question Planner and
+Question Resolver are coordinator/reasoning stages, NOT new autonomous agents — the
+existing Evidence Agent, Doc Researcher, Writer, and Reviewer roles are unchanged.
+Flow: evidence → Question Planner → material questions → Research Router → Doc
+Researcher / other authorized evidence routes → Question Resolver → coverage reasoning
+input → Writer → Reviewer → final UAC. Record the stages in the manifest `question_plan`
+and `question_resolutions` blocks, validated by `scripts/question_planner.py` and
+`scripts/question_resolver.py` (see `references/question-based-reasoning.md`).
+
+- **Plan only material questions.** Emit a question only when its answer could materially
+  improve acceptance understanding or coverage — never carpet every category. The closed
+  category vocabulary: EXPECTED_OUTCOME, STATE_TRANSITION, PERSISTENCE, NEGATIVE_CONTRACT,
+  SCOPE, VARIANT, ENTRY_PATH, CONFIGURATION, APPLICABILITY, PRESERVATION, ERROR_RECOVERY,
+  SCALE, COMPATIBILITY. Every question carries `question_id`, `category`, `question`,
+  `why_material`, `triggering_evidence_ids`, `acceptance_impact`, `applicability`,
+  `research_requirement`, and `status`.
+- **The question budget is bounded** (`question_plan.budget`, default 12). If the
+  material-question budget is exceeded, do not silently discard questions: move the excess
+  into `question_plan.overflow` with `state: OVERFLOW` and an explicit escalation note.
+- **Route every question through the Research Router** (`question_research` block) before
+  resolving it. Required research cannot be skipped; NOT_FOUND is not negative proof.
+- **Resolve every planned question exactly once** with a terminal status: ANSWERED,
+  PARTIALLY_ANSWERED, ACCEPTANCE_TBD, INVESTIGATION_ONLY, NOT_APPLICABLE, DUPLICATE, or
+  CONFLICTED. Every retained answer keeps `claim`, `source_ids`, `source_authority`,
+  `applicability`, `limitations`, and `contradictions`.
+- **Hard rules:** a question is not an AC; an answer is not automatically an AC; Actual
+  Result cannot establish Expected Result; never reverse a reported failure to invent
+  desired behavior; a suspected root cause does not become acceptance behavior; an
+  attachment observation does not establish desired behavior; historical Jira does not
+  automatically establish current behavior; ACCEPTANCE_TBD is allowed only when different
+  plausible answers materially change acceptance behavior/scope/configuration/
+  applicability/compatibility/preservation; root cause, diagnostics, and implementation
+  mechanics are normally INVESTIGATION_ONLY.
+- **Preserved invariants:** source authority, observation-vs-requirement separation, exact
+  Jira intake, attachment evidence handling, Doc Researcher routing, the Writer language
+  contract, Reviewer independence, and draft-only behavior all remain exactly as defined
+  elsewhere in this skill — these stages only add traceable structure between discovery
+  and authoring.
+
 ### Phase 7 — Design Test Scenarios
 
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
