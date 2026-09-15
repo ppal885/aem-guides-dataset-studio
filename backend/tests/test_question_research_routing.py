@@ -47,6 +47,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ProductOwnership,
     QuestionResearchRecord,
     ResearchRequirement,
+    ResearchRoutingProductContext,
+    ResearchRoutingRequest,
     ResearchStatus,
     RetrievalStatus,
     RuntimeEntryPoint,
@@ -61,6 +63,9 @@ from app.services.canonical_test_plan_reasoning_service import (
     CANONICAL_REASONING_SERVICE,
 )
 from app.services.canonical_test_plan_runtime import CANONICAL_TEST_PLAN_RUNTIME
+from app.services.question_research_routing_service import (
+    QUESTION_RESEARCH_ROUTER,
+)
 
 
 TENANT = "tenant-research-routing"
@@ -913,3 +918,170 @@ def test_human_accepted_runtime_proceeds_without_documentation_research() -> Non
         record = next(row for row in research if row["question_id"] == question_id)
         assert record["research_requirement"] == "NONE"
         assert record["research_status"] == "NOT_REQUIRED"
+
+# ---------------------------------------------------------------------------
+# Reusable per-question research-routing contract (Question Planner surface)
+# ---------------------------------------------------------------------------
+
+_ROUTING_PRODUCT_CONTEXT = ResearchRoutingProductContext(
+    product="AEM Guides",
+    product_area="Publishing",
+    product_versions=["5.0"],
+    deployment_modes=["on-prem"],
+)
+
+
+def test_routing_contract_binds_to_a_planned_question() -> None:
+    """The contract invokes per question; the batch path derives from it."""
+
+    question = _purge_questions()[0]
+    request = QUESTION_RESEARCH_ROUTER.build_request(question)
+    assert request.question_id == question.question_id
+    assert request.request_id.startswith("research-route:")
+
+    record = QUESTION_RESEARCH_ROUTER.classify(
+        request,
+        question=question,
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+    )
+    assert record.research_requirement == ResearchRequirement.DOCUMENTATION
+    assert record.routing_request_id == request.request_id
+    assert record.applicability == ApplicabilityState.APPLICABLE
+
+    # The ticket-level batch classifier is exactly this per-question contract.
+    (batch,) = CANONICAL_REASONING_SERVICE.classify_research_requirements(
+        [question], _facts(ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT)
+    )
+    assert batch.requirement_id == record.requirement_id
+
+
+def test_routing_contract_accepts_planner_supplied_fields() -> None:
+    """question_id + research_need + required_source_type + product_context +
+    applicability are accepted without another architectural rewrite."""
+
+    question = _purge_questions()[3]  # mode/action compatibility (implementation)
+    request = ResearchRoutingRequest(
+        question_id=question.question_id,
+        research_need=ResearchRequirement.DOCUMENTATION_AND_IMPLEMENTATION,
+        required_source_type=[
+            EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+            EvidenceSourceType.CURRENT_CODE,
+        ],
+        product_context=_ROUTING_PRODUCT_CONTEXT,
+        applicability=ApplicabilityState.APPLICABLE,
+    )
+    record = QUESTION_RESEARCH_ROUTER.classify(
+        request,
+        question=question,
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+    )
+    # The explicit need overrides the evidence-path derivation.
+    assert record.research_requirement == (
+        ResearchRequirement.DOCUMENTATION_AND_IMPLEMENTATION
+    )
+    assert record.required_source_types == [
+        EvidenceSourceType.CURRENT_CODE,
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+    ]
+    assert record.product_context == _ROUTING_PRODUCT_CONTEXT
+    assert record.applicability == ApplicabilityState.APPLICABLE
+    assert record.material is True
+
+
+def test_routing_contract_without_a_missing_question_object() -> None:
+    """A later Question Planner can route by question_id alone."""
+
+    question_id = "question:" + "0" * 32
+    request = ResearchRoutingRequest(
+        question_id=question_id,
+        research_need=ResearchRequirement.IMPLEMENTATION,
+        required_source_type=[EvidenceSourceType.CURRENT_CODE],
+        product_context=_ROUTING_PRODUCT_CONTEXT,
+        applicability=ApplicabilityState.APPLICABLE,
+    )
+    record = QUESTION_RESEARCH_ROUTER.classify(request)
+    assert record.question_id == question_id
+    assert record.research_requirement == ResearchRequirement.IMPLEMENTATION
+    assert record.required_source_types == [EvidenceSourceType.CURRENT_CODE]
+    assert record.material is True
+
+    # And the same record resolves per question through the contract.
+    code_record = _record(
+        source_type=EvidenceSourceType.CURRENT_CODE,
+        reference="repo:starling/purge.py",
+        text="The purge action keeps log entries in LOGS_ONLY mode.",
+        authority=AuthorityClass.IMPLEMENTATION_CONFIRMED,
+        authority_subject=AuthoritySubject.ACTUAL_IMPLEMENTATION,
+    )
+    bundle = build_bundle([code_record], tenant_id=TENANT)
+    retrieval = DirectedRetrievalRecord(
+        question_id=question_id,
+        query="LOGS_ONLY retained entries",
+        authority_subject=AuthoritySubject.ACTUAL_IMPLEMENTATION,
+        target_source_types=[EvidenceSourceType.CURRENT_CODE],
+        matched_evidence_ids=[code_record.evidence_id],
+        status=RetrievalStatus.USED,
+        reason="Targeted supplied evidence matched the question.",
+    )
+    hypothesis = BehaviorHypothesis(
+        statement="LOGS_ONLY retains log entries.",
+        state=HypothesisState.CONFIRMED,
+        supporting_evidence_ids=[code_record.evidence_id],
+        derived_from_question_id=question_id,
+        confidence=0.9,
+    )
+    research = QUESTION_RESEARCH_ROUTER.resolve(
+        record,
+        retrievals=[retrieval],
+        hypotheses=[hypothesis],
+        evidence=bundle,
+    )
+    assert research.research_status == ResearchStatus.ANSWER_FOUND
+    assert research.requirement_id == record.requirement_id
+    assert research.research_request_ids == [retrieval.retrieval_id]
+
+
+def test_routing_contract_applicability_makes_research_not_applicable() -> None:
+    question = _purge_questions()[0]
+    request = QUESTION_RESEARCH_ROUTER.build_request(
+        question,
+        applicability=ApplicabilityState.NOT_APPLICABLE,
+    )
+    record = QUESTION_RESEARCH_ROUTER.classify(
+        request,
+        question=question,
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+    )
+    assert record.material is False
+    research = QUESTION_RESEARCH_ROUTER.resolve(record)
+    assert research.research_status == ResearchStatus.NOT_APPLICABLE
+
+
+def test_routing_contract_rejects_incoherent_requests() -> None:
+    question = _purge_questions()[0]
+    with pytest.raises(ValueError, match="cannot mandate required source types"):
+        ResearchRoutingRequest(
+            question_id=question.question_id,
+            research_need=ResearchRequirement.NONE,
+            required_source_type=[EvidenceSourceType.CURRENT_CODE],
+        )
+    with pytest.raises(ValueError, match="or an explicit research_need"):
+        QUESTION_RESEARCH_ROUTER.classify(
+            ResearchRoutingRequest(question_id=question.question_id)
+        )
+    with pytest.raises(ValueError, match="disagree on question_id"):
+        QUESTION_RESEARCH_ROUTER.classify(
+            ResearchRoutingRequest(question_id="question:" + "1" * 32),
+            question=question,
+        )
+
+
+def test_routing_contract_request_identity_is_deterministic() -> None:
+    question = _purge_questions()[0]
+    first = QUESTION_RESEARCH_ROUTER.build_request(question)
+    second = QUESTION_RESEARCH_ROUTER.build_request(question)
+    assert first.request_id == second.request_id
+    other = QUESTION_RESEARCH_ROUTER.build_request(
+        question, research_need=ResearchRequirement.HISTORICAL
+    )
+    assert other.request_id != first.request_id

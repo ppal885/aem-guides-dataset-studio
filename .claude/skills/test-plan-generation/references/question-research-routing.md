@@ -69,3 +69,15 @@ finalize. An explicit Human Accepted AC needs none of this: it records
 Absent `question_research` block: clean pass. The canonical runtime produces
 these records on every run; the manifest block is how skill-authored plans carry
 the same contract.
+
+## Runtime contract (reusable, per question)
+
+The runtime's `ResearchRequirementClassifier` stage is a thin batch loop over
+the reusable per-question routing contract in
+`app/services/question_research_routing_service.py` (`QUESTION_RESEARCH_ROUTER`).
+A later Question Planner invokes the same contract per material question with
+`ResearchRoutingRequest` fields `question_id`, `research_need`,
+`required_source_type`, `product_context`, and `applicability` — the routing
+decision is identical whether it is derived from a planned question's evidence
+path or declared explicitly by the caller, and it is never hard-coded at ticket
+level.

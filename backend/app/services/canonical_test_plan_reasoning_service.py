@@ -62,7 +62,6 @@ from app.core.schemas_canonical_test_plan_runtime import (
     HypothesisState,
     IssueDomain,
     InvestigationFamilySatisfactionStatus,
-    InvestigationMateriality,
     LifecycleOperation,
     MandatoryInvestigationFamily,
     MissingQuestion,
@@ -72,7 +71,6 @@ from app.core.schemas_canonical_test_plan_runtime import (
     PromotionStatus,
     PublishingTransformationStage,
     QeInvestigationPreparation,
-    QuestionEvidenceProvider,
     QuestionGenerationDiagnosticTrace,
     QuestionGenerationFailureReason,
     QuestionGenerationStepOutcome,
@@ -93,6 +91,11 @@ from app.core.schemas_canonical_test_plan_runtime import (
     stable_sha256,
 )
 from app.services.canonical_evidence_service import record_visible_to
+from app.services.question_research_routing_service import (
+    DOCUMENTATION_RESEARCH_SOURCES,
+    JIRA_AUTHORITY_RESEARCH_SOURCES,
+    QUESTION_RESEARCH_ROUTER,
+)
 from app.services.reasoning_evidence_provider import (
     AuthorizedSemanticEvidence,
     QuestionEvidenceStance,
@@ -141,93 +144,9 @@ _SEMANTIC_HANDOFF_AUTHORITIES = {
     AuthorityClass.IMPLEMENTATION_CONFIRMED,
 }
 
-# Mandatory research routing.  The current Jira authority (description, accepted
-# ACs, product decisions, comments) is evidence, not research: a question that
-# only needs that authority requires no external research.  Every other source
-# category names research that must actually execute before coverage may
-# finalize a material question.
-_RESEARCH_CATEGORY_JIRA_AUTHORITY = "JIRA_AUTHORITY"
-_RESEARCH_CATEGORY_DOCUMENTATION = "DOCUMENTATION"
-_RESEARCH_CATEGORY_IMPLEMENTATION = "IMPLEMENTATION"
-_RESEARCH_CATEGORY_HISTORICAL = "HISTORICAL"
-
-_JIRA_AUTHORITY_RESEARCH_SOURCES = {
-    EvidenceSourceType.JIRA_DESCRIPTION,
-    EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
-    EvidenceSourceType.JIRA_COMMENT,
-    EvidenceSourceType.JIRA_ATTACHMENT,
-    EvidenceSourceType.CURRENT_JIRA,
-    EvidenceSourceType.ACCEPTED_UAC,
-    EvidenceSourceType.PRODUCT_DECISION,
-    EvidenceSourceType.ENGINEERING_DECISION,
-    EvidenceSourceType.CUSTOMER_REQUEST,
-    EvidenceSourceType.DRAFT_UAC,
-    EvidenceSourceType.CUSTOMER_WORKFLOW,
-    EvidenceSourceType.BUSINESS_IMPACT,
-    EvidenceSourceType.USER_FEEDBACK,
-    EvidenceSourceType.WORKAROUND,
-    EvidenceSourceType.SCALE_SIGNAL,
-}
-_DOCUMENTATION_RESEARCH_SOURCES = {
-    EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
-    EvidenceSourceType.DITA_SPECIFICATION,
-    EvidenceSourceType.DITA_OT_DOCUMENTATION,
-    EvidenceSourceType.AEM_ASSETS_PLATFORM_DOCUMENTATION,
-    EvidenceSourceType.UI_OBSERVATION,
-    EvidenceSourceType.OBSERVED_UI_FLOW,
-    EvidenceSourceType.SCREENSHOT_REPRODUCTION,
-}
-_IMPLEMENTATION_RESEARCH_SOURCES = _IMPLEMENTATION_SOURCES | {
-    EvidenceSourceType.EVIDENCE_GRAPH_LEAF,
-}
-_HISTORICAL_RESEARCH_SOURCES = {
-    EvidenceSourceType.HISTORICAL_JIRA,
-    EvidenceSourceType.LINKED_JIRA,
-}
-
-
-def _research_source_category(source_type: EvidenceSourceType) -> str:
-    if source_type in _JIRA_AUTHORITY_RESEARCH_SOURCES:
-        return _RESEARCH_CATEGORY_JIRA_AUTHORITY
-    if source_type in _DOCUMENTATION_RESEARCH_SOURCES:
-        return _RESEARCH_CATEGORY_DOCUMENTATION
-    if source_type in _IMPLEMENTATION_RESEARCH_SOURCES:
-        return _RESEARCH_CATEGORY_IMPLEMENTATION
-    if source_type in _HISTORICAL_RESEARCH_SOURCES:
-        return _RESEARCH_CATEGORY_HISTORICAL
-    # Uncategorised sources can never satisfy a named research route; they push
-    # the question to MULTI_SOURCE so a Human reviews the routing decision.
-    return f"OTHER:{source_type.value}"
-
-
-def _research_provider_category(
-    provider: QuestionEvidenceProvider,
-) -> str | None:
-    return {
-        QuestionEvidenceProvider.CURRENT_EVIDENCE: _RESEARCH_CATEGORY_JIRA_AUTHORITY,
-        QuestionEvidenceProvider.HUMAN_PRODUCT: _RESEARCH_CATEGORY_JIRA_AUTHORITY,
-        QuestionEvidenceProvider.DITA_SPECIFICATION: _RESEARCH_CATEGORY_DOCUMENTATION,
-        QuestionEvidenceProvider.DITA_OT: _RESEARCH_CATEGORY_DOCUMENTATION,
-        QuestionEvidenceProvider.EXPERIENCE_LEAGUE: _RESEARCH_CATEGORY_DOCUMENTATION,
-        QuestionEvidenceProvider.FLUFFYJAWS: _RESEARCH_CATEGORY_DOCUMENTATION,
-        QuestionEvidenceProvider.GITHUB_MCP: _RESEARCH_CATEGORY_IMPLEMENTATION,
-        QuestionEvidenceProvider.CONFIGURATION_OR_TESTS: (
-            _RESEARCH_CATEGORY_IMPLEMENTATION
-        ),
-        QuestionEvidenceProvider.PATTERN_MCP_DISCOVERY: _RESEARCH_CATEGORY_HISTORICAL,
-    }.get(provider)
-
-
-_REQUIREMENT_CATEGORY_SOURCES: dict[str, frozenset[EvidenceSourceType]] = {
-    _RESEARCH_CATEGORY_DOCUMENTATION: frozenset(_DOCUMENTATION_RESEARCH_SOURCES),
-    _RESEARCH_CATEGORY_IMPLEMENTATION: frozenset(_IMPLEMENTATION_RESEARCH_SOURCES),
-    _RESEARCH_CATEGORY_HISTORICAL: frozenset(_HISTORICAL_RESEARCH_SOURCES),
-}
-
-_MATERIAL_RESEARCH_MATERIALITY = {
-    InvestigationMateriality.P0,
-    InvestigationMateriality.P1,
-}
+# Mandatory research routing lives in the reusable per-question contract
+# (``app.services.question_research_routing_service``); the ticket-level batch
+# methods below delegate to it one question at a time.
 
 # Research states that leave the question without a terminal answer; coverage
 # must keep such a question open instead of finalizing it.
@@ -244,7 +163,7 @@ _INCOMPLETE_RESEARCH_STATUSES = {
 # establishes the documented baseline; the current Jira authority carries the
 # requested behavior; the change set (PR/diff) carries what is being
 # implemented now and is never historical documented behavior.
-_EXISTING_BEHAVIOR_SOURCES = _DOCUMENTATION_RESEARCH_SOURCES | {
+_EXISTING_BEHAVIOR_SOURCES = DOCUMENTATION_RESEARCH_SOURCES | {
     EvidenceSourceType.CURRENT_CODE,
     EvidenceSourceType.EXISTING_AUTOMATION,
 }
@@ -2978,107 +2897,22 @@ class CanonicalTestPlanReasoningService:
         Runs immediately after question planning and before any directed
         research, so the Coverage Reasoner can prove a documentation- or
         implementation-dependent question was never answered from inference
-        alone.  Source authority is not changed: classification only names the
-        research the question's own evidence path already requires.
+        alone.  This ticket-level batch is a thin loop over the reusable
+        per-question routing contract in ``QUESTION_RESEARCH_ROUTER``; a later
+        Question Planner invokes the same contract one question at a time.
+        Source authority is not changed: classification only names the research
+        the question's own evidence path already requires.
         """
 
-        human_accepted = facts.contract_mode == ContractMode.HUMAN_ACCEPTED_CONTRACT
-        records: list[ResearchRequirementRecord] = []
-        for question in sorted(questions, key=lambda row: row.question_id):
-            material = bool(
-                question.blocking
-                or question.materiality in _MATERIAL_RESEARCH_MATERIALITY
+        router = QUESTION_RESEARCH_ROUTER
+        return [
+            router.classify(
+                router.build_request(question),
+                question=question,
+                contract_mode=facts.contract_mode,
             )
-            if (
-                human_accepted
-                and question.authority_subject == AuthoritySubject.PRODUCT_CONTRACT
-            ):
-                records.append(
-                    ResearchRequirementRecord(
-                        question_id=question.question_id,
-                        research_requirement=ResearchRequirement.NONE,
-                        material=material,
-                        blocking=question.blocking,
-                        rationale=(
-                            "The Human Accepted contract is the acceptance authority; "
-                            "Jira authority alone answers this product-contract "
-                            "question, so no documentation, implementation, or "
-                            "historical research is required."
-                        ),
-                    )
-                )
-                continue
-            categories = {
-                _research_source_category(source_type)
-                for source_type in question.target_source_types
-            }
-            provider_category = _research_provider_category(
-                question.preferred_provider
-            )
-            if provider_category is not None:
-                categories.add(provider_category)
-            categories.discard(_RESEARCH_CATEGORY_JIRA_AUTHORITY)
-            if not categories:
-                records.append(
-                    ResearchRequirementRecord(
-                        question_id=question.question_id,
-                        research_requirement=ResearchRequirement.NONE,
-                        material=material,
-                        blocking=question.blocking,
-                        rationale=(
-                            "The question's evidence path targets only current Jira "
-                            "authority; no external research is required."
-                        ),
-                    )
-                )
-                continue
-            if categories == {_RESEARCH_CATEGORY_DOCUMENTATION}:
-                requirement = ResearchRequirement.DOCUMENTATION
-            elif categories == {_RESEARCH_CATEGORY_IMPLEMENTATION}:
-                requirement = ResearchRequirement.IMPLEMENTATION
-            elif categories == {_RESEARCH_CATEGORY_HISTORICAL}:
-                requirement = ResearchRequirement.HISTORICAL
-            elif categories == {
-                _RESEARCH_CATEGORY_DOCUMENTATION,
-                _RESEARCH_CATEGORY_IMPLEMENTATION,
-            }:
-                requirement = ResearchRequirement.DOCUMENTATION_AND_IMPLEMENTATION
-            else:
-                requirement = ResearchRequirement.MULTI_SOURCE
-            required_sources = sorted(
-                {
-                    source_type
-                    for source_type in question.target_source_types
-                    if _research_source_category(source_type) in categories
-                },
-                key=lambda row: row.value,
-            )
-            covered = {
-                _research_source_category(source_type)
-                for source_type in required_sources
-            }
-            for category in sorted(categories - covered):
-                required_sources.extend(
-                    sorted(
-                        _REQUIREMENT_CATEGORY_SOURCES.get(category, frozenset()),
-                        key=lambda row: row.value,
-                    )
-                )
-            records.append(
-                ResearchRequirementRecord(
-                    question_id=question.question_id,
-                    research_requirement=requirement,
-                    material=material,
-                    blocking=question.blocking,
-                    required_source_types=required_sources,
-                    rationale=(
-                        "The question's evidence path requires "
-                        f"{requirement.value.lower().replace('_', ' ')} research "
-                        "before coverage may finalize it."
-                    ),
-                )
-            )
-        return records
+            for question in sorted(questions, key=lambda row: row.question_id)
+        ]
 
     def resolve_question_research(
         self,
@@ -3095,30 +2929,12 @@ class CanonicalTestPlanReasoningService:
     ) -> list[QuestionResearchRecord]:
         """Resolve the terminal research status of every planned question.
 
-        ``NOT_FOUND`` means the mandated research executed and found no answer;
-        it never asserts that the opposite behavior is true.
+        Batch loop over the per-question ``QuestionResearchRouter.resolve``
+        contract.  ``NOT_FOUND`` means the mandated research executed and found
+        no answer; it never asserts that the opposite behavior is true.
         """
 
         requirements_by_question = {row.question_id: row for row in requirements}
-        retrievals_by_question: dict[str, list[DirectedRetrievalRecord]] = (
-            defaultdict(list)
-        )
-        for row in retrievals:
-            retrievals_by_question[row.question_id].append(row)
-        hypotheses_by_question: dict[str, list[BehaviorHypothesis]] = defaultdict(list)
-        for row in hypotheses:
-            if row.derived_from_question_id:
-                hypotheses_by_question[row.derived_from_question_id].append(row)
-        handoffs_by_question: dict[
-            str, list[GitHubImplementationVerificationHandoff]
-        ] = defaultdict(list)
-        for row in implementation_handoffs or []:
-            handoffs_by_question[row.question_id].append(row)
-        unresolved_handoffs = set(unresolved_implementation_handoff_ids or [])
-        source_type_by_evidence_id = {
-            row.evidence_id: row.source_type
-            for row in (evidence.records if evidence is not None else [])
-        }
         records: list[QuestionResearchRecord] = []
         for question in sorted(questions, key=lambda row: row.question_id):
             requirement = requirements_by_question.get(question.question_id)
@@ -3127,180 +2943,19 @@ class CanonicalTestPlanReasoningService:
                     "Research requirement classification is mandatory before "
                     f"research status resolution: {question.question_id}"
                 )
-
-            def build(
-                status: ResearchStatus,
-                reason: str,
-                request_ids: list[str] | None = None,
-                evidence_ids: list[str] | None = None,
-            ) -> QuestionResearchRecord:
-                return QuestionResearchRecord(
-                    question_id=question.question_id,
-                    requirement_id=requirement.requirement_id,
-                    research_requirement=requirement.research_requirement,
-                    research_status=status,
-                    research_request_ids=request_ids or [],
-                    evidence_ids=evidence_ids or [],
-                    reason=reason,
+            records.append(
+                QUESTION_RESEARCH_ROUTER.resolve(
+                    requirement,
+                    retrievals=retrievals,
+                    hypotheses=hypotheses,
+                    evidence=evidence,
+                    implementation_handoffs=implementation_handoffs or [],
+                    unresolved_implementation_handoff_ids=(
+                        unresolved_implementation_handoff_ids or []
+                    ),
+                    pattern_provider_status=pattern_provider_status,
                 )
-
-            if requirement.research_requirement == ResearchRequirement.NONE:
-                records.append(
-                    build(ResearchStatus.NOT_REQUIRED, requirement.rationale)
-                )
-                continue
-            if not requirement.material:
-                records.append(
-                    build(
-                        ResearchStatus.NOT_APPLICABLE,
-                        "The question is not material to the current change; "
-                        "mandatory research routing does not apply.",
-                    )
-                )
-                continue
-            question_retrievals = retrievals_by_question.get(question.question_id, [])
-            question_handoffs = handoffs_by_question.get(question.question_id, [])
-            request_ids = [row.retrieval_id for row in question_retrievals] + [
-                row.handoff_id for row in question_handoffs
-            ]
-            if not request_ids:
-                records.append(
-                    build(
-                        ResearchStatus.PENDING,
-                        "Mandatory research was classified but never executed; "
-                        "coverage must not finalize this question from the current "
-                        "Jira/configuration evidence alone.",
-                    )
-                )
-                continue
-            question_hypotheses = hypotheses_by_question.get(question.question_id, [])
-            evidence_ids = sorted(
-                {
-                    evidence_id
-                    for row in question_retrievals
-                    for evidence_id in row.matched_evidence_ids
-                }
-                | {
-                    evidence_id
-                    for row in question_hypotheses
-                    for evidence_id in (
-                        list(row.supporting_evidence_ids)
-                        + list(row.contradicting_evidence_ids)
-                        + list(row.verification_evidence_ids)
-                    )
-                }
             )
-            required_categories = {
-                _research_source_category(source_type)
-                for source_type in requirement.required_source_types
-            } - {_RESEARCH_CATEGORY_JIRA_AUTHORITY}
-            researched_categories = {
-                _research_source_category(source_type_by_evidence_id[evidence_id])
-                for evidence_id in evidence_ids
-                if evidence_id in source_type_by_evidence_id
-            }
-            resolved_handoffs = [
-                row
-                for row in question_handoffs
-                if row.handoff_id not in unresolved_handoffs
-            ]
-            if (
-                resolved_handoffs
-                and _RESEARCH_CATEGORY_IMPLEMENTATION in required_categories
-            ):
-                researched_categories.add(_RESEARCH_CATEGORY_IMPLEMENTATION)
-            unresearched = required_categories - researched_categories
-            states = {row.state for row in question_hypotheses}
-            has_contradiction = any(
-                row.contradicting_evidence_ids for row in question_hypotheses
-            )
-            terminal_states = states & {
-                HypothesisState.CONFIRMED,
-                HypothesisState.INFERRED_HIGH_CONFIDENCE,
-                HypothesisState.REJECTED,
-            }
-            if has_contradiction or len(states) > 1:
-                records.append(
-                    build(
-                        ResearchStatus.CONFLICTED,
-                        "Directed research produced conflicting evidence; a Human "
-                        "must settle the conflict before coverage finalizes.",
-                        request_ids,
-                        evidence_ids,
-                    )
-                )
-            elif terminal_states and not unresearched:
-                records.append(
-                    build(
-                        ResearchStatus.ANSWER_FOUND,
-                        "Mandatory research executed and produced a terminal answer "
-                        "from the required source.",
-                        request_ids,
-                        evidence_ids,
-                    )
-                )
-            elif not unresearched:
-                records.append(
-                    build(
-                        ResearchStatus.PARTIAL,
-                        "The mandated source was researched but yielded no terminal "
-                        "answer; the question remains partially answered.",
-                        request_ids,
-                        evidence_ids,
-                    )
-                )
-            elif evidence_ids or resolved_handoffs:
-                records.append(
-                    build(
-                        ResearchStatus.PARTIAL,
-                        "Research gathered evidence without consulting every mandated "
-                        "source; coverage must not finalize from the current "
-                        "Jira/configuration evidence alone.",
-                        request_ids,
-                        evidence_ids,
-                    )
-                )
-            elif (
-                _RESEARCH_CATEGORY_IMPLEMENTATION in unresearched
-                and question_handoffs
-                and not resolved_handoffs
-            ):
-                records.append(
-                    build(
-                        ResearchStatus.SOURCE_UNAVAILABLE,
-                        "The mandated implementation source could not be inspected; "
-                        "the question remains open.",
-                        request_ids,
-                        evidence_ids,
-                    )
-                )
-            elif (
-                _RESEARCH_CATEGORY_HISTORICAL in unresearched
-                and pattern_provider_status
-                in {
-                    PatternLookupRuntimeStatus.PROVIDER_UNAVAILABLE,
-                    PatternLookupRuntimeStatus.PROVIDER_ERROR,
-                }
-            ):
-                records.append(
-                    build(
-                        ResearchStatus.SOURCE_UNAVAILABLE,
-                        "The mandated historical source could not be inspected; "
-                        "the question remains open.",
-                        request_ids,
-                        evidence_ids,
-                    )
-                )
-            else:
-                records.append(
-                    build(
-                        ResearchStatus.NOT_FOUND,
-                        "Mandatory research executed and found no answer; absence "
-                        "of evidence is not treated as the opposite behavior.",
-                        request_ids,
-                        evidence_ids,
-                    )
-                )
         return records
 
     def retrieve_for_questions(
@@ -3938,7 +3593,7 @@ class CanonicalTestPlanReasoningService:
             requested_ids = sorted(
                 row.evidence_id
                 for row in linked
-                if row.source_type in _JIRA_AUTHORITY_RESEARCH_SOURCES
+                if row.source_type in JIRA_AUTHORITY_RESEARCH_SOURCES
             )
             change_ids = sorted(
                 row.evidence_id

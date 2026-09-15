@@ -604,6 +604,71 @@ class BehaviorChangeClass(StrEnum):
     CONFLICTED = "CONFLICTED"
 
 
+class ResearchRoutingProductContext(BaseModel):
+    """Product context a research-routing invocation applies to.
+
+    Carried through to the requirement record so a later Question Planner can
+    route the same question differently per product/version/deployment without
+    another architectural rewrite.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    product: str = Field(default="", max_length=200)
+    product_area: str = Field(default="", max_length=200)
+    product_versions: list[str] = Field(default_factory=list, max_length=20)
+    deployment_modes: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "ResearchRoutingProductContext":
+        self.product_versions = sorted(set(self.product_versions))
+        self.deployment_modes = sorted(set(self.deployment_modes))
+        return self
+
+
+class ResearchRoutingRequest(BaseModel):
+    """Reusable per-question research-routing contract.
+
+    The Question Planner (a later component) invokes this contract once per
+    material question: ``question_id`` binds it to the planned question,
+    ``research_need`` optionally declares the route explicitly,
+    ``required_source_type`` optionally declares the mandated sources,
+    ``product_context`` carries the product/version/deployment the route
+    applies to, and ``applicability`` lets the planner mark the question not
+    applicable in this context.  When the planner supplies only
+    ``question_id``, the router derives the route from the planned question's
+    evidence path exactly as the runtime classifier does today.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str = ""
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    research_need: ResearchRequirement | None = None
+    required_source_type: list[EvidenceSourceType] = Field(default_factory=list)
+    product_context: ResearchRoutingProductContext | None = None
+    applicability: ApplicabilityState = ApplicabilityState.APPLICABLE
+
+    @model_validator(mode="after")
+    def normalize_and_identify(self) -> "ResearchRoutingRequest":
+        self.required_source_type = sorted(
+            set(self.required_source_type), key=lambda row: row.value
+        )
+        if (
+            self.research_need == ResearchRequirement.NONE
+            and self.required_source_type
+        ):
+            raise ValueError(
+                "a NONE research need cannot mandate required source types"
+            )
+        identity = self.model_dump(mode="json", exclude={"request_id"})
+        expected = f"research-route:{stable_sha256(identity)[:32]}"
+        if self.request_id and self.request_id != expected:
+            raise ValueError("request_id does not match deterministic identity")
+        self.request_id = expected
+        return self
+
+
 class MissingQuestionQualityFailureReason(StrEnum):
     NO_CHANGED_BEHAVIOR_REFERENCE = "NO_CHANGED_BEHAVIOR_REFERENCE"
     NO_RELATIONSHIP = "NO_RELATIONSHIP"
@@ -2391,6 +2456,11 @@ class ResearchRequirementRecord(BaseModel):
     blocking: bool = False
     required_source_types: list[EvidenceSourceType] = Field(default_factory=list)
     rationale: str = Field(min_length=1, max_length=1000)
+    routing_request_id: str = Field(
+        default="", pattern=r"^(?:research-route:[a-f0-9]{32})?$"
+    )
+    product_context: ResearchRoutingProductContext | None = None
+    applicability: ApplicabilityState | None = None
 
     @model_validator(mode="after")
     def normalize_and_identify(self) -> "ResearchRequirementRecord":
@@ -4035,6 +4105,8 @@ __all__ = [
     "ReasoningQuestionFamily",
     "ResearchRequirement",
     "ResearchRequirementRecord",
+    "ResearchRoutingProductContext",
+    "ResearchRoutingRequest",
     "ResearchStatus",
     "QuestionResearchRecord",
     "ResolutionState",
