@@ -1,10 +1,11 @@
-"""Build deterministic Windows and Unix MCP client team archives."""
+"""Build or verify deterministic Windows and Unix MCP client team archives."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -94,9 +95,9 @@ def _validate_archive(output_path: Path) -> None:
             raise RuntimeError(f"ZIP version is {archived_version!r}")
 
 
-def build(platform: str) -> dict[str, object]:
+def build(platform: str, output_path: Path | None = None) -> dict[str, object]:
     source_dir = _source_dir(platform)
-    output_path = _output_path(platform)
+    output_path = output_path or _output_path(platform)
     _validate_source(source_dir)
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_STORED) as archive:
         for source in _included_files(source_dir):
@@ -117,12 +118,37 @@ def build(platform: str) -> dict[str, object]:
     }
 
 
+def check(platform: str) -> dict[str, object]:
+    checked_in = _output_path(platform)
+    if not checked_in.is_file():
+        raise RuntimeError(f"Missing current MCP client archive: {checked_in}")
+    with tempfile.TemporaryDirectory(prefix=f"mcp-{platform}-zip-check-") as temporary:
+        rebuilt = Path(temporary) / checked_in.name
+        result = build(platform, rebuilt)
+        expected = checked_in.read_bytes()
+        actual = rebuilt.read_bytes()
+    if actual != expected:
+        raise RuntimeError(
+            f"{checked_in} is stale; rebuild it with "
+            f"python scripts/package_mcp_client_bundles.py --platform {platform}"
+        )
+    result["output"] = str(checked_in)
+    result["status"] = "current"
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=("all",) + PLATFORMS, default="all")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail if either current MCP client ZIP differs from a deterministic rebuild",
+    )
     args = parser.parse_args()
     platforms = PLATFORMS if args.platform == "all" else (args.platform,)
-    print(json.dumps([build(platform) for platform in platforms], indent=2))
+    action = check if args.check else build
+    print(json.dumps([action(platform) for platform in platforms], indent=2))
     return 0
 
 
