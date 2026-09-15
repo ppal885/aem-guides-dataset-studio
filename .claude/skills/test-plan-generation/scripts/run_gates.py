@@ -2305,6 +2305,8 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_coverage_reasoner()
             if hasattr(self_tests, "test_coverage_equivalence"):
                 self_tests.test_coverage_equivalence()
+            if hasattr(self_tests, "test_coverage_equivalence_e1"):
+                self_tests.test_coverage_equivalence_e1()
             if hasattr(self_tests, "test_evidence_sufficiency"):
                 self_tests.test_evidence_sufficiency()
             if hasattr(self_tests, "test_evidence_sufficiency_output_history_regression"):

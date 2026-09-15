@@ -7915,6 +7915,7 @@ def test_coverage_equivalence() -> None:
             "shared_dimensions": shared,
             "differing_dimensions": differing,
             "reason": "Structural comparison of the coverage decisions.",
+            "merge_allowed": classification == "SAME_OUTCOME_VARIANT",
         }
         base.update(over)
         return base
@@ -7938,6 +7939,7 @@ def test_coverage_equivalence() -> None:
         "merge_id": "MERGE-R1",
         "merged_coverage_ids": ["COV-R1", "COV-R2"],
         "classification": "SAME_OUTCOME_VARIANT",
+        "canonical_outcome": "The approved state persists across a refresh.",
         "priority": "P0",
         "question_ids": ["Q-R1", "Q-R2"],
         "evidence_ids": ["EV-Q-R1", "EV-Q-R2"],
@@ -8103,6 +8105,248 @@ def test_coverage_equivalence() -> None:
           any("already merged" in p for p in ce.validate(double_merge)))
 
     print("test_coverage_equivalence: OK")
+
+
+def test_coverage_equivalence_e1() -> None:
+    """E1 hard negatives and the unfamiliar fixture for semantic coverage
+    equivalence."""
+
+    ce = coverage_equivalence_mod
+
+    check("absent coverage_equivalence passes (E1)", ce.validate({}) == [])
+
+    def coverage(cid, behavior, qids, **over):
+        base = {
+            "coverage_id": cid,
+            "behavior": behavior,
+            "question_ids": qids,
+            "evidence_ids": [f"EV-{qid}" for qid in qids],
+            "priority": "P1",
+            "coverage_class": "QE_REGRESSION",
+            "contract_type": "POSITIVE",
+            "surface": "the review surface",
+            "state_or_transition": "",
+            "configuration": "",
+            "applicability": "current release",
+            "reason": "r",
+            "acceptance_impact": "a",
+            "dimensions_considered": [],
+        }
+        base.update(over)
+        return base
+
+    def decision(did, left, right, classification, shared, differing, **over):
+        base = {
+            "decision_id": did,
+            "left_coverage_id": left,
+            "right_coverage_id": right,
+            "classification": classification,
+            "shared_dimensions": shared,
+            "differing_dimensions": differing,
+            "reason": "Structural comparison.",
+            "merge_allowed": classification == "SAME_OUTCOME_VARIANT",
+        }
+        base.update(over)
+        return base
+
+    def merge(mid, members, **over):
+        base = {
+            "merge_id": mid,
+            "merged_coverage_ids": members,
+            "classification": "SAME_OUTCOME_VARIANT",
+            "canonical_outcome": "The shared observable outcome.",
+            "priority": "P1",
+            "question_ids": sorted({q for q in members}),
+            "evidence_ids": sorted({f"EV-{q}" for q in members}),
+            "variants": ["individual path", "bulk path"],
+            "source_lineage": list(members),
+        }
+        base.update(over)
+        return base
+
+    # merge_allowed discipline.
+    check("merge_allowed is required",
+          any("merge_allowed" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [
+                  dict(decision("EQ-1", "COV-A", "COV-B", "DISTINCT_OUTCOME",
+                                ["SCOPE"], ["EXPECTED_OUTCOME"]),
+                       merge_allowed=None)]}})))
+    check("merge_allowed only for SAME_OUTCOME_VARIANT",
+          any("never merge" in p for p in ce.validate({
+              "coverage_equivalence": {"decisions": [
+                  decision("EQ-1", "COV-A", "COV-B", "DISTINCT_OUTCOME",
+                           ["SCOPE"], ["EXPECTED_OUTCOME"],
+                           merge_allowed=True)]}})))
+
+    pair = [
+        coverage("COV-A", "The saved state persists.", ["Q-A"]),
+        coverage("COV-B", "The saved state does not revert.", ["Q-B"],
+                 contract_type="NEGATIVE"),
+    ]
+    same = decision("EQ-1", "COV-A", "COV-B", "SAME_OUTCOME_VARIANT",
+                    ["EXPECTED_OUTCOME", "STATE_TRANSITION", "APPLICABILITY"],
+                    ["QUESTION_IDS"])
+
+    # Hard negative: same wording, different outcome.
+    distinct_same_words = decision(
+        "EQ-2", "COV-A", "COV-C", "DISTINCT_OUTCOME", ["APPLICABILITY"],
+        ["EXPECTED_OUTCOME"])
+    check("same terminology with different outcome stays DISTINCT",
+          ce.validate({
+              "coverage_decisions": {"items": [*pair, coverage(
+                  "COV-C", "The project becomes Completed.", ["Q-C"])]},
+              "coverage_equivalence": {"decisions": [distinct_same_words]},
+          }) == [])
+
+    # Hard negative: different applicability (engine/version/surface) never
+    # merges - parity is never inferred.
+    other_engine = coverage("COV-X", "The saved state persists.", ["Q-X"],
+                            applicability="legacy engine")
+    cross_engine_merge = merge("MERGE-X", ["COV-A", "COV-X"],
+                               question_ids=["Q-A", "Q-X"],
+                               evidence_ids=["EV-Q-A", "EV-Q-X"])
+    check("different applicability cannot merge (no parity inference)",
+          any("applicability" in p for p in ce.validate({
+              "coverage_decisions": {"items": [pair[0], other_engine]},
+              "coverage_equivalence": {
+                  "decisions": [decision(
+                      "EQ-X", "COV-A", "COV-X", "SAME_OUTCOME_VARIANT",
+                      ["EXPECTED_OUTCOME"], ["APPLICABILITY"])],
+                  "merges": [cross_engine_merge]}})))
+
+    # Hard negative: different material configuration never merges.
+    other_config = coverage("COV-CFG", "The saved state persists.", ["Q-CFG"],
+                            configuration="mode B")
+    check("different material configuration cannot merge",
+          any("configuration" in p for p in ce.validate({
+              "coverage_decisions": {"items": [pair[0], other_config]},
+              "coverage_equivalence": {
+                  "decisions": [decision(
+                      "EQ-C", "COV-A", "COV-CFG", "SAME_OUTCOME_VARIANT",
+                      ["EXPECTED_OUTCOME"], ["CONFIGURATION"])],
+                  "merges": [merge("MERGE-C", ["COV-A", "COV-CFG"],
+                                   question_ids=["Q-A", "Q-CFG"],
+                                   evidence_ids=["EV-Q-A", "EV-Q-CFG"])]}})))
+
+    # Sufficiency boundary: INSUFFICIENT / CONFLICTED members never merge;
+    # PARTIAL members must be explicitly bounded.
+    boundary_base = {
+        "coverage_decisions": {"items": pair},
+        "coverage_equivalence": {
+            "decisions": [same],
+            "merges": [merge("MERGE-1", ["COV-A", "COV-B"],
+                             question_ids=["Q-A", "Q-B"],
+                             evidence_ids=["EV-Q-A", "EV-Q-B"])],
+        },
+    }
+    for state, expectation in (("INSUFFICIENT", "cannot merge"),
+                               ("CONFLICTED", "never merge")):
+        blocked = {
+            **boundary_base,
+            "evidence_sufficiency": {"coverage_assessments": [
+                {"coverage_ref": "COV-B", "sufficiency": state,
+                 "question_refs": ["Q-B"], "sufficiency_reason": "r"}]},
+        }
+        check(f"{state} coverage {expectation}",
+              any(expectation.split()[0] in p or state in p
+                  for p in ce.validate(blocked)))
+    partial = {
+        **boundary_base,
+        "evidence_sufficiency": {"coverage_assessments": [
+            {"coverage_ref": "COV-B", "sufficiency": "PARTIAL",
+             "question_refs": ["Q-B"], "sufficiency_reason": "r",
+             "established_portion": "the default path"}]},
+    }
+    check("PARTIAL member must be explicitly bounded",
+          any("partial_members" in p for p in ce.validate(partial)))
+    bounded = {
+        **boundary_base,
+        "evidence_sufficiency": partial["evidence_sufficiency"],
+    }
+    bounded["coverage_equivalence"]["merges"][0]["partial_members"] = ["COV-B"]
+    check("bounded PARTIAL member passes", ce.validate(bounded) == [])
+
+    # ACCEPTANCE_TBD is never absorbed by a confirmed merge.
+    tbd = {
+        **boundary_base,
+        "question_resolutions": {"items": [
+            {"question_ref": "Q-B", "status": "ACCEPTANCE_TBD",
+             "decision_reason": "r", "material_impact": ["SCOPE"],
+             "plausible_answers": ["a", "b"]}]},
+    }
+    check("ACCEPTANCE_TBD never disappears into a merge",
+          any("ACCEPTANCE_TBD" in p for p in ce.validate(tbd)))
+
+    # Research preservation: member research ids must survive the merge.
+    researched = [
+        coverage("COV-RA", "The documented behavior holds.", ["Q-RA"],
+                 research_ids=["DR-1"]),
+        coverage("COV-RB", "The documented behavior does not regress.",
+                 ["Q-RB"], research_ids=["DR-2"], contract_type="NEGATIVE"),
+    ]
+    research_merge = merge("MERGE-R", ["COV-RA", "COV-RB"],
+                           question_ids=["Q-RA", "Q-RB"],
+                           evidence_ids=["EV-Q-RA", "EV-Q-RB"])
+    check("merge must preserve member research ids",
+          any("research" in p for p in ce.validate({
+              "coverage_decisions": {"items": researched},
+              "coverage_equivalence": {
+                  "decisions": [decision(
+                      "EQ-R", "COV-RA", "COV-RB", "SAME_OUTCOME_VARIANT",
+                      ["EXPECTED_OUTCOME"], ["QUESTION_IDS"])],
+                  "merges": [research_merge]}})))
+    research_merge["research_refs"] = ["DR-1", "DR-2"]
+    check("merge preserving research ids passes",
+          ce.validate({
+              "coverage_decisions": {"items": researched},
+              "coverage_equivalence": {
+                  "decisions": [decision(
+                      "EQ-R", "COV-RA", "COV-RB", "SAME_OUTCOME_VARIANT",
+                      ["EXPECTED_OUTCOME"], ["QUESTION_IDS"])],
+                  "merges": [research_merge]}}) == [])
+
+    # canonical_outcome is required and internal-only.
+    check("canonical_outcome required on merges",
+          any("canonical_outcome" in p for p in ce.validate({
+              "coverage_equivalence": {
+                  "decisions": [same],
+                  "merges": [dict(merge("MERGE-1", ["COV-A", "COV-B"],
+                                        question_ids=["Q-A", "Q-B"],
+                                        evidence_ids=["EV-Q-A", "EV-Q-B"]),
+                                 canonical_outcome="")]}})))
+
+    # Unfamiliar fixture: two differently-worded same-outcome decisions merge;
+    # one closely-related distinct outcome stays separate.
+    unfamiliar_items = [
+        coverage("COV-U1", "The saved filter is still applied when the panel "
+                 "reopens.", ["Q-U1"]),
+        coverage("COV-U2", "Reopening the panel never clears the saved "
+                 "filter.", ["Q-U2"], contract_type="NEGATIVE"),
+        coverage("COV-U3", "The export finishes with a completion marker.",
+                 ["Q-U3"]),
+    ]
+    unfamiliar = {
+        "coverage_decisions": {"items": unfamiliar_items},
+        "coverage_equivalence": {
+            "decisions": [
+                decision("EQ-U1", "COV-U1", "COV-U2", "SAME_OUTCOME_VARIANT",
+                         ["EXPECTED_OUTCOME", "STATE_TRANSITION",
+                          "APPLICABILITY"], ["QUESTION_IDS"]),
+                decision("EQ-U2", "COV-U1", "COV-U3", "DISTINCT_OUTCOME",
+                         ["APPLICABILITY"], ["EXPECTED_OUTCOME"]),
+            ],
+            "merges": [merge("MERGE-U1", ["COV-U1", "COV-U2"],
+                             question_ids=["Q-U1", "Q-U2"],
+                             evidence_ids=["EV-Q-U1", "EV-Q-U2"])],
+        },
+    }
+    check("unfamiliar fixture: differently-worded same outcomes merge, "
+          "distinct stays separate", ce.validate(unfamiliar) == [])
+    print("  equivalence trace [unfamiliar fixture]:")
+    print("    COV-U1 + COV-U2 -> SAME_OUTCOME_VARIANT -> MERGE-U1")
+    print("    COV-U1 vs COV-U3 -> DISTINCT_OUTCOME (not merged)")
+
+    print("test_coverage_equivalence_e1: OK")
 
 
 def test_evidence_sufficiency() -> None:
@@ -9768,6 +10012,7 @@ def test_question_reasoning_chain_regressions() -> None:
             "shared_dimensions": eq_shared,
             "differing_dimensions": eq_diff,
             "reason": "Structural comparison of the coverage decisions.",
+            "merge_allowed": eq_class == "SAME_OUTCOME_VARIANT",
         }
         merges = []
         if eq["merge_id"]:
@@ -9778,12 +10023,16 @@ def test_question_reasoning_chain_regressions() -> None:
                 "merge_id": eq["merge_id"],
                 "merged_coverage_ids": merged_ids,
                 "classification": "SAME_OUTCOME_VARIANT",
+                "canonical_outcome": (
+                    "The approved review state persists across a refresh."
+                ),
                 "priority": "P0",
                 "question_ids": sorted({
                     q for c in members for q in c["question_ids"]}),
                 "evidence_ids": sorted({
                     e for c in members for e in c["evidence_ids"]}),
-                "variants": ["positive assertion", "negative assertion"],
+                "variants": sorted({
+                    v["label"] for c in members for v in c.get("variants", [])}),
                 "source_lineage": sorted({
                     ref for c in members
                     for ref in [c["coverage_id"], *c["question_ids"]]}),
@@ -14009,6 +14258,7 @@ def main() -> int:
     test_question_resolver()
     test_coverage_reasoner()
     test_coverage_equivalence()
+    test_coverage_equivalence_e1()
     test_evidence_sufficiency()
     test_evidence_sufficiency_output_history_regression()
     test_evidence_sufficiency_unfamiliar_ticket()

@@ -648,22 +648,34 @@ validated by `scripts/coverage_equivalence.py` (see
 `references/coverage-equivalence.md`). The primary comparison happens on coverage
 decisions, not merely Writer prose: compare `coverage_id`s structurally across coverage
 IDs, question IDs, expected outcome, state transition, scope, configuration, and
-applicability — never textual similarity alone.
+applicability — never textual similarity alone. Same nouns do not mean the same outcome;
+different wording does not mean different outcomes.
 
 - **Classifications:** `SAME_OUTCOME_VARIANT` (same expected outcome through variant
-  phrasing/polarity — e.g. "the state remains after refresh" and "refresh does not return
-  it to the prior state"; the Writer should normally create one AC), `DISTINCT_OUTCOME`
-  (different expected outcomes — e.g. "file remains in its state" vs "project becomes
-  Completed"), `DEPENDENT_OUTCOME` (one outcome depends on the other; record the
-  dependency), `CONFLICT` (the same outcome asserted contradictorily; keep the conflict
-  visible, never merge).
-- **Merging:** allowed only for `SAME_OUTCOME_VARIANT`. A merge preserves all question
-  IDs, all evidence IDs, all applicable variants, and the source lineage of every merged
-  decision, keeps the highest member priority, never includes an EXCLUDED decision, and
-  must cite a SAME_OUTCOME_VARIANT comparison between its members. One decision survives
-  into exactly one AC. Do not merge distinct behavior simply to reduce AC count.
-
-### Phase 7 — Design Test Scenarios
+  phrasing/polarity — the Writer should normally create one AC), `DISTINCT_OUTCOME`
+  (different expected outcomes), `DEPENDENT_OUTCOME` (one outcome depends on the other;
+  record the dependency; never auto-merged), `CONFLICT` (the same outcome asserted
+  contradictorily; kept visible, never merged, routed upstream).
+- **Decision record:** `decision_id`, the two coverage ids, `classification`, declared
+  `shared_dimensions`/`differing_dimensions`, `reason`, and `merge_allowed` (true only
+  for SAME_OUTCOME_VARIANT).
+- **Merge groups** carry `equivalence_id`, `coverage_refs`, `canonical_outcome` (an
+  internal grouping label — never evidence), `question_refs`, `evidence_refs`,
+  `research_refs`, `variant_refs`, `source_lineage`, `priority`, `applicability`, and
+  `partial_members`. A merge requires a SAME_OUTCOME_VARIANT basis decision with
+  `merge_allowed`, preserves all question/evidence/research IDs, all approved variants,
+  and all lineage, keeps the highest member priority, and never crosses applicability,
+  surface, configuration, or state (parity is never inferred). INSUFFICIENT or
+  CONFLICTED coverage never merges; PARTIAL coverage participates only through its
+  bounded established portion; an ACCEPTANCE_TBD question is never absorbed into a
+  confirmed merge; EXCLUDED coverage never merges; one decision survives into exactly
+  one AC. Do not merge distinct behavior simply to reduce AC count.
+- **Writer/Reviewer binding:** the Writer receives equivalence-resolved groups; an AC
+  may reference a merge via `equivalence_refs` and must then carry every merged variant;
+  two ACs may never cover different members of the same merge. The Reviewer detects
+  duplicate ACs for a merged group, collapsed distinct outcomes, lost TBD dimensions,
+  omitted or invented variants, and lost source lineage — and routes semantic failures
+  upstream instead of repairing them.
 
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
 - Each P0/P1/P2 scenario must use the literal fields `Action:` and `Expected:` in one plain-English bullet. When an operational manifest references a scenario, add a stable `[TS-##]` token before the AC mapping, for example `- P0 [TS-01] [AC-01]: Action: ... Expected: ...`.

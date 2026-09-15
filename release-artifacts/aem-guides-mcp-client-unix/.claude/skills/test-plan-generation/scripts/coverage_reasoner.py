@@ -585,6 +585,70 @@ def validate(manifest):
                     "represented by any AC - P0 accepted behavior cannot "
                     "disappear from the final draft"
                 )
+
+        # Equivalence binding: the Writer receives equivalence-resolved groups
+        # and never re-runs equivalence independently.
+        equivalence = manifest.get("coverage_equivalence")
+        merges = []
+        if isinstance(equivalence, dict):
+            merges = [
+                row for row in equivalence.get("merges", [])
+                if isinstance(row, dict)
+            ]
+        merge_by_id = {}
+        for row in merges:
+            merge_id = row.get("equivalence_id") or row.get("merge_id")
+            if merge_id:
+                merge_by_id[merge_id] = row
+        merge_members = {
+            merge_id: set(
+                row.get("coverage_refs") or row.get("merged_coverage_ids") or []
+            )
+            for merge_id, row in merge_by_id.items()
+        }
+        merge_variants = {
+            merge_id: {
+                v.get("label") if isinstance(v, dict) else v
+                for v in (row.get("variant_refs") or row.get("variants") or [])
+            }
+            for merge_id, row in merge_by_id.items()
+        }
+        if merge_by_id:
+            ac_by_merge_member = {}
+            for j, ac in enumerate(acs):
+                if not isinstance(ac, dict):
+                    continue
+                atag = f"writer_package.acs[{j}]"
+                for ref in ac.get("equivalence_refs") or []:
+                    if ref not in merge_by_id:
+                        problems.append(
+                            f"{atag}: equivalence_ref '{ref}' is not an "
+                            "admitted equivalence group"
+                        )
+                        continue
+                    missing_variants = sorted(
+                        merge_variants[ref] - set(ac.get("variants") or [])
+                    )
+                    if missing_variants:
+                        problems.append(
+                            f"{atag}: merged variants {missing_variants} were "
+                            "omitted - a merge never flattens materially "
+                            "different variants into generic wording"
+                        )
+                for cid in ac.get("coverage_ids") or []:
+                    ac_by_merge_member.setdefault(cid, ac.get("ac_id"))
+            for merge_id, members in sorted(merge_members.items()):
+                referencing = {
+                    ac_by_merge_member[cid]
+                    for cid in members
+                    if cid in ac_by_merge_member
+                }
+                if len(referencing) > 1:
+                    problems.append(
+                        f"writer_package: merged outcome '{merge_id}' is "
+                        f"written by multiple ACs {sorted(referencing)} - one "
+                        "merged outcome becomes one AC"
+                    )
     return problems
 
 
