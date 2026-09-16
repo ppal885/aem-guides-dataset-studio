@@ -411,6 +411,7 @@ class CanonicalTestPlanRuntime:
         research_requirements: list[ResearchRequirementRecord] | None = None,
         question_research: list[QuestionResearchRecord] | None = None,
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
+        human_clarifications: list[Any] | None = None,
     ) -> RuntimeTrace:
         closure = closure or []
         retrievals = retrievals or []
@@ -456,6 +457,7 @@ class CanonicalTestPlanRuntime:
             research_requirements=research_requirements or [],
             question_research=question_research or [],
             behavior_classifications=behavior_classifications or [],
+            human_clarifications=human_clarifications or [],
             source_counts=evidence.source_counts,
             compatibility_projection=compatibility_projection,
             compatibility_adapter=compatibility_adapter,
@@ -891,6 +893,13 @@ class CanonicalTestPlanRuntime:
             if runtime_warnings != result.runtime_warnings:
                 result.runtime_warnings = list(runtime_warnings)
             return result
+        # P1: human clarifications from the request options channel bind to the
+        # exact unresolved questions of a previous run (resume, not restart).
+        raw_clarifications: list[dict[str, Any]] = [
+            row
+            for row in (getattr(request.options, "human_clarifications", None) or [])
+            if isinstance(row, dict)
+        ]
         domains = stage(
             CanonicalRuntimeStage.ISSUE_DOMAIN_ROUTER,
             [visible, facts],
@@ -899,7 +908,9 @@ class CanonicalTestPlanRuntime:
         scope = stage(
             CanonicalRuntimeStage.SCOPE_RESOLVER,
             [facts, domains],
-            lambda: self._reasoning.resolve_scope(facts, domains),
+            lambda: self._reasoning.resolve_scope(
+                facts, domains, clarifications=raw_clarifications
+            ),
         )
         surfaces = stage(
             CanonicalRuntimeStage.CHANGE_SURFACE_EXTRACTOR,
@@ -1222,11 +1233,25 @@ class CanonicalTestPlanRuntime:
         # terminal state is carried by the separate, evidence-linked resolution
         # records so second-pass evidence cannot rewrite question identity.
         questions_for_trace = list(questions)
+        admitted_clarifications, clarification_errors = (
+            self._reasoning.admit_clarifications(raw_clarifications, questions)
+        )
+        for error in clarification_errors:
+            if error not in runtime_warnings:
+                runtime_warnings.append(error)
+        clarified_resolved_ids = {
+            row.question_ref
+            for row in admitted_clarifications
+            if row.status.value == "ADMITTED"
+        }
         candidate_resolution = stage(
             CanonicalRuntimeStage.ACCEPTANCE_CONTRACT_RESOLVER,
             [facts, dispositions, questions],
             lambda: self._reasoning.resolve_acceptance_contract_with_trace(
-                facts, dispositions, questions
+                facts,
+                dispositions,
+                questions,
+                resolved_question_ids=clarified_resolved_ids,
             ),
         )
         candidates = candidate_resolution.candidates
@@ -1311,6 +1336,7 @@ class CanonicalTestPlanRuntime:
                 candidate_lifecycle,
                 question_research,
                 behavior_classifications,
+                clarifications=admitted_clarifications,
             ),
         )
         structured_plan_for_trace = structured_plan
@@ -1348,6 +1374,7 @@ class CanonicalTestPlanRuntime:
             research_requirements=research_requirements,
             question_research=question_research,
             behavior_classifications=behavior_classifications,
+            human_clarifications=admitted_clarifications,
         )
         _LAST_RUNTIME_TRACE.set(trace)
         blocked = any(

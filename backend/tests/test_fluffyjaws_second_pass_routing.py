@@ -780,7 +780,10 @@ def test_provider_failure_preserves_blocking_p0_as_an_open_question() -> None:
         "jira_key": "FWD-72",
         "issue": {
             "issue_key": "FWD-72",
-            "summary": "Change an output preset setting.",
+            # P1: the blocking scope question now requires material interaction
+            # evidence; "generated output" keeps the processing dimension
+            # materially connected so the blocking P0 premise still holds.
+            "summary": "Change an output preset setting used for generated output.",
         },
     }
     disabled_runtime = CanonicalTestPlanRuntime()
