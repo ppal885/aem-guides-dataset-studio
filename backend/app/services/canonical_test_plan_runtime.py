@@ -93,8 +93,8 @@ from app.services.fluffyjaws_second_pass_influence import (
     SecondPassInfluenceDecision,
     select_controlled_second_pass_result,
 )
-from app.services.reasoning_evidence_shadow_service import (
-    FluffyJawsRuntimeMode,
+from app.services.research_workers import RESEARCH_ORCHESTRATOR
+from app.services.reasoning_evidence_shadow_service import (    FluffyJawsRuntimeMode,
     FluffyJawsShadowConfig,
     ReasoningEvidenceSemanticBatch,
     ReasoningEvidenceShadowService,
@@ -413,6 +413,8 @@ class CanonicalTestPlanRuntime:
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
         human_clarifications: list[Any] | None = None,
         sufficiency: list[Any] | None = None,
+        research_worker_executions: list[Any] | None = None,
+        research_worker_results: list[Any] | None = None,
     ) -> RuntimeTrace:
         closure = closure or []
         retrievals = retrievals or []
@@ -460,6 +462,8 @@ class CanonicalTestPlanRuntime:
             behavior_classifications=behavior_classifications or [],
             human_clarifications=human_clarifications or [],
             sufficiency=sufficiency or [],
+            research_worker_executions=research_worker_executions or [],
+            research_worker_results=research_worker_results or [],
             source_counts=evidence.source_counts,
             compatibility_projection=compatibility_projection,
             compatibility_adapter=compatibility_adapter,
@@ -1035,6 +1039,19 @@ class CanonicalTestPlanRuntime:
             [questions, facts],
             lambda: self._reasoning.classify_research_requirements(questions, facts),
         )
+        # R2: RESEARCH_REQUIRED means a research worker actually executes (or
+        # the envelope records why it could not) - before any human-facing
+        # clarification is finalized.  A flag saying "research required" is
+        # not research.
+        research_worker_results: list = []
+        research_worker_executions: list = []
+        research_worker_results, research_worker_executions = stage(
+            CanonicalRuntimeStage.RESEARCH_ORCHESTRATOR,
+            [questions, research_requirements, visible],
+            lambda: RESEARCH_ORCHESTRATOR.execute(
+                questions, research_requirements, visible
+            ),
+        )
 
         def retrieve_with_optional_second_pass() -> (
             list[DirectedRetrievalRecord] | ReasoningEvidenceSemanticBatch
@@ -1196,7 +1213,62 @@ class CanonicalTestPlanRuntime:
                 unresolved_implementation_handoff_ids_for_trace
             ),
             pattern_provider_status=investigation.pattern_lookup.status,
+            worker_results=research_worker_results,
         )
+        # R2: research-before-clarification release.  A blocking product
+        # question stops reaching the human only when mandated research
+        # actually executed and produced a terminal answer bound to
+        # establishing-authority evidence; anything less stays blocking.
+        from app.services.canonical_test_plan_reasoning_service import (
+            _ESTABLISHING_FACT_AUTHORITIES,
+        )
+        # The evidence must actually be able to settle a product decision:
+        # Jira-authority sources (the ticket's own accepted/decided content)
+        # with an establishing authority class, carrying content beyond the
+        # problem statement itself.  Re-binding the problem description as
+        # its own answer is circular and never releases the question.
+        from app.services.question_research_routing_service import (
+            JIRA_AUTHORITY_RESEARCH_SOURCES,
+        )
+        from app.services.canonical_test_plan_reasoning_service import (
+            _content_tokens,
+        )
+        from app.services.research_workers import _record_text as _record_text_flat
+
+        problem_tokens: set[str] = set()
+        problem_record_ids: set[str] = set()
+        for fact in facts.facts:
+            if fact.fact_type.value == "PROBLEM_STATEMENT":
+                problem_tokens |= _content_tokens(fact.literal)
+                problem_record_ids |= set(fact.source_evidence_ids)
+        record_by_id = {row.evidence_id: row for row in runtime_evidence.records}
+
+        def _resolves(record) -> bool:
+            if record is None:
+                return False
+            # The record that stated the problem can never answer "which
+            # behavior or decision addresses this gap".
+            if record.evidence_id in problem_record_ids:
+                return False
+            if record.requirement_authority not in _ESTABLISHING_FACT_AUTHORITIES:
+                return False
+            if record.source_type not in JIRA_AUTHORITY_RESEARCH_SOURCES:
+                return False
+            if problem_tokens and not (
+                _content_tokens(_record_text_flat(record)) - problem_tokens
+            ):
+                return False
+            return True
+
+        research_resolved_ids = {
+            row.question_id
+            for row in question_research
+            if row.research_status.value == "ANSWER_FOUND"
+            and any(
+                _resolves(record_by_id.get(evidence_id))
+                for evidence_id in row.evidence_ids
+            )
+        }
         hypotheses_for_trace = list(hypotheses)
         impact_model = pre_verifier_model if semantic_batch is not None else model
         impacts = stage(
@@ -1246,6 +1318,10 @@ class CanonicalTestPlanRuntime:
             for row in admitted_clarifications
             if row.status.value == "ADMITTED"
         }
+        # R2: evidence-resolved questions (terminal research answer bound to
+        # establishing authority) release blocking exactly like admitted human
+        # clarifications - research first, ask only the residual decision.
+        clarified_resolved_ids |= research_resolved_ids
         candidate_resolution = stage(
             CanonicalRuntimeStage.ACCEPTANCE_CONTRACT_RESOLVER,
             [facts, dispositions, questions],
@@ -1349,6 +1425,7 @@ class CanonicalTestPlanRuntime:
                 question_research,
                 behavior_classifications,
                 clarifications=admitted_clarifications,
+                research_resolved_question_ids=research_resolved_ids,
             ),
         )
         structured_plan_for_trace = structured_plan
@@ -1388,6 +1465,8 @@ class CanonicalTestPlanRuntime:
             behavior_classifications=behavior_classifications,
             human_clarifications=admitted_clarifications,
             sufficiency=candidate_resolution.sufficiency,
+            research_worker_executions=research_worker_executions,
+            research_worker_results=research_worker_results,
         )
         _LAST_RUNTIME_TRACE.set(trace)
         blocked = any(
@@ -1425,6 +1504,14 @@ class CanonicalTestPlanRuntime:
             ],
             "question_research": [
                 row.model_dump(mode="json") for row in question_research
+            ],
+            "research_worker_executions": [
+                row.model_dump(mode="json", exclude={"started_at", "completed_at"})
+                for row in research_worker_executions
+            ],
+            "research_worker_results": [
+                row.model_dump(mode="json", exclude={"started_at", "completed_at"})
+                for row in research_worker_results
             ],
             "behavior_model": model.model_dump(mode="json"),
             "semantic_closure": [row.model_dump(mode="json") for row in closure],

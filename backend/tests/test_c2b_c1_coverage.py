@@ -432,7 +432,12 @@ def test_legacy_artifact_stays_not_evaluable_for_c1() -> None:
 
 
 def test_deliberate_c1_disagreement_is_reported() -> None:
-    result = _runtime_run("The export job must write a completion marker.")
+    # Reuse the proven promoting fixture shape from the C2A suite (accepted
+    # retention contract); tampering the projection's coverage class must
+    # flip replay to DISAGREEMENT.
+    import tests.test_c2a_replay as c2a
+
+    result = c2a._runtime_result()
     envelope = result.model_dump(mode="json")
     manifest, _meta = adapter.project_runtime_result(envelope)
     runtime = manifest["_runtime"]
@@ -444,8 +449,7 @@ def test_deliberate_c1_disagreement_is_reported() -> None:
         ),
         None,
     )
-    if promoted is None:
-        pytest.skip("fixture produced no promotion to tamper with")
+    assert promoted is not None, "fixture must produce a promoted candidate"
     candidate = next(
         row
         for row in runtime["acceptance_candidates"]
@@ -459,9 +463,13 @@ def test_deliberate_c1_disagreement_is_reported() -> None:
             row["priority"] = "P1"
     report = run_gates.replay_runtime_projection(manifest)
     assert report["runtime_promotion_status"] == "DISAGREES"
-    assert any(
-        row["gate"] == "coverage-reasoner"
-        and row["severity"] == "BLOCKING_POLICY_DIVERGENCE"
+    disagreement = next(
+        row
         for row in report["disagreements"]
+        if row["gate"] == "coverage-reasoner"
     )
+    assert disagreement["severity"] == "BLOCKING_POLICY_DIVERGENCE"
+    # The parity report identifies the exact tampered coverage_id.
+    assert disagreement["projected_artifact_ref"] == linked
+    # The canonical runtime artifact is byte-unchanged; no automatic repair.
     assert manifest["_runtime"] == before

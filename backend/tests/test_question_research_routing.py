@@ -850,7 +850,9 @@ def test_runtime_runs_classification_stage_and_publishes_research_trace() -> Non
     assert stages == list(CANONICAL_STAGE_ORDER)
     classifier_index = stages.index(CanonicalRuntimeStage.RESEARCH_REQUIREMENT_CLASSIFIER)
     assert stages[classifier_index - 1] == CanonicalRuntimeStage.MISSING_QUESTION_GENERATOR
-    assert stages[classifier_index + 1] == CanonicalRuntimeStage.REASONING_DIRECTED_RETRIEVER
+    # R2: the research orchestrator executes workers between classification
+    # and directed retrieval.
+    assert stages[classifier_index + 1] == CanonicalRuntimeStage.RESEARCH_ORCHESTRATOR
 
     requirements = result.output_payload["research_requirements"]
     research = result.output_payload["question_research"]
@@ -864,6 +866,10 @@ def test_runtime_runs_classification_stage_and_publishes_research_trace() -> Non
     research_by_question = {row["question_id"]: row for row in research}
     request_ids = {row["retrieval_id"] for row in retrievals} | {
         row["HANDOFF_ID"] for row in handoffs
+    } | {
+        # R2: worker envelopes are first-class research requests.
+        row["research_id"]
+        for row in result.output_payload.get("research_worker_results") or []
     }
     assert set(requirement_by_question) == {row["question_id"] for row in questions}
     assert set(research_by_question) == {row["question_id"] for row in questions}
