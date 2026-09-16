@@ -449,6 +449,10 @@ class CanonicalRuntimeStage(StrEnum):
     SEMANTIC_BEHAVIORAL_CLOSURE_EXPLORER = "SemanticBehavioralClosureExplorer"
     MISSING_QUESTION_GENERATOR = "MissingQuestionGenerator"
     RESEARCH_REQUIREMENT_CLASSIFIER = "ResearchRequirementClassifier"
+    # R2: bounded research workers execute here - after classification,
+    # before research-status resolution.  RESEARCH_REQUIRED now means a worker
+    # actually executes or the runtime records that it could not.
+    RESEARCH_ORCHESTRATOR = "ResearchOrchestrator"
     REASONING_DIRECTED_RETRIEVER = "ReasoningDirectedRetriever"
     HYPOTHESIS_VERIFIER = "HypothesisVerifier"
     DOMAIN_SPECIFIC_IMPACT_MODEL = "DomainSpecificImpactModel"
@@ -2670,6 +2674,121 @@ class ResearchRequirementRecord(BaseModel):
         return self
 
 
+class ResearchWorkerRole(StrEnum):
+    """R2: bounded research worker roles invoked by the canonical research
+    orchestrator.  These are honest, structured research adapters with
+    provenance - not chat-agent impersonations."""
+
+    DOC_RESEARCHER = "DOC_RESEARCHER"
+    CODE_RESEARCHER = "CODE_RESEARCHER"
+    ATTACHMENT_RESEARCHER = "ATTACHMENT_RESEARCHER"
+
+
+class ResearchWorkerStatus(StrEnum):
+    ANSWER_FOUND = "ANSWER_FOUND"
+    PARTIAL = "PARTIAL"
+    NOT_FOUND = "NOT_FOUND"
+    SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
+    CONFLICTED = "CONFLICTED"
+    FAILED = "FAILED"
+    WORKER_UNAVAILABLE = "WORKER_UNAVAILABLE"
+
+
+class ResearchFindingEvidenceRole(StrEnum):
+    """What a worker finding establishes (R2; mirrors the R1 doc-research
+    evidence-role vocabulary)."""
+
+    EXISTING_BEHAVIOR = "EXISTING_BEHAVIOR"
+    REQUIREMENT_CLARIFICATION = "REQUIREMENT_CLARIFICATION"
+    SUPPORTING_CONTEXT = "SUPPORTING_CONTEXT"
+    IMPLEMENTATION_EVIDENCE = "IMPLEMENTATION_EVIDENCE"
+    OBSERVED_BEHAVIOR = "OBSERVED_BEHAVIOR"
+    DESIRED_BEHAVIOR = "DESIRED_BEHAVIOR"
+
+
+class ResearchFinding(BaseModel):
+    """One bounded worker finding.  A finding cites first-class sources; raw
+    grep output is discovery input, never a finding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claim: str = Field(min_length=1, max_length=2000)
+    source_refs: list[str] = Field(default_factory=list)
+    evidence_role: ResearchFindingEvidenceRole
+    applicability: str = Field(default="", max_length=500)
+    currentness: str = Field(default="", max_length=200)
+    repository: str = Field(default="", max_length=500)
+    revision: str = Field(default="", max_length=200)
+    path: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "ResearchFinding":
+        self.source_refs = sorted(set(self.source_refs))
+        return self
+
+
+class ResearchWorkerResult(BaseModel):
+    """R2 worker output envelope: the only shape a research worker may return
+    to the canonical runtime.  Free-form prose is never canonical evidence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    research_id: str = ""
+    worker_role: ResearchWorkerRole
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    status: ResearchWorkerStatus
+    findings: list[ResearchFinding] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
+    applicability: str = Field(default="", max_length=500)
+    currentness: str = Field(default="", max_length=200)
+    limitations: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    started_at: str = ""
+    completed_at: str = ""
+
+    @model_validator(mode="after")
+    def normalize_and_identify(self) -> "ResearchWorkerResult":
+        self.source_refs = sorted(set(self.source_refs))
+        self.limitations = sorted(set(self.limitations))
+        self.conflicts = sorted(set(self.conflicts))
+        if self.status == ResearchWorkerStatus.ANSWER_FOUND and not self.findings:
+            raise ValueError("ANSWER_FOUND requires at least one finding")
+        if self.status in {
+            ResearchWorkerStatus.SOURCE_UNAVAILABLE,
+            ResearchWorkerStatus.WORKER_UNAVAILABLE,
+            ResearchWorkerStatus.FAILED,
+        } and self.findings:
+            raise ValueError(
+                "an unavailable/failed worker cannot report findings"
+            )
+        identity = self.model_dump(
+            mode="json",
+            # Timing is execution metadata, not identity: the same worker run
+            # over the same inputs must produce the same research_id.
+            exclude={"research_id", "started_at", "completed_at"},
+        )
+        expected = f"research-worker:{stable_sha256(identity)[:32]}"
+        if self.research_id and self.research_id != expected:
+            raise ValueError("research_id does not match deterministic identity")
+        self.research_id = expected
+        return self
+
+
+class ResearchWorkerExecution(BaseModel):
+    """R2 auditable worker-execution trace row: proves whether a research
+    worker actually ran, for which question, and what it returned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    worker_role: ResearchWorkerRole
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    trigger: str = Field(min_length=1, max_length=500)
+    started_at: str = ""
+    completed_at: str = ""
+    status: ResearchWorkerStatus
+    result_ref: str = ""
+
+
 class QuestionResearchRecord(BaseModel):
     """Research Requirement -> Research Request -> Research Evidence link.
 
@@ -4183,6 +4302,14 @@ class RuntimeTrace(BaseModel):
     human_clarifications: list[HumanClarification] = Field(default_factory=list)
     # C2B-S1: claim-level sufficiency decisions consumed by the promotion gate.
     sufficiency: list[ClaimSufficiencyRecord] = Field(default_factory=list)
+    # R2: auditable research-worker executions and their structured envelopes.
+    # Engineering trace only - never rendered into the human-facing plan.
+    research_worker_executions: list[ResearchWorkerExecution] = Field(
+        default_factory=list
+    )
+    research_worker_results: list[ResearchWorkerResult] = Field(
+        default_factory=list
+    )
     source_counts: dict[str, int] = Field(default_factory=dict)
     compatibility_projection: list[CompatibilityProjectionLink] = Field(
         default_factory=list

@@ -958,6 +958,7 @@ def _fetch_issue_direct(jira_key: str, *, tenant_id: str) -> dict[str, Any] | No
             JiraClient,
             extract_description_from_issue,
             extract_named_issue_field,
+            jira_field_value_to_text,
         )
         from app.services.tenant_service import build_jira_client
 
@@ -998,6 +999,71 @@ def _fetch_issue_direct(jira_key: str, *, tenant_id: str) -> dict[str, Any] | No
             for item in (fields.get("components") or [])
             if isinstance(item, dict) and item.get("name")
         ]
+        # R2: research-before-clarification needs the ticket's own linked
+        # evidence.  Carry bounded comment/attachment/issuelink context into
+        # the packet so the canonical intake can ingest it; without this the
+        # runtime cannot see Jira-authored fix summaries, customer visual
+        # evidence, or linked fix tickets at all.
+        comments = []
+        for comment in (fields.get("comment") or {}).get("comments") or []:
+            if not isinstance(comment, dict):
+                continue
+            comments.append(
+                {
+                    "id": str(comment.get("id") or ""),
+                    "author": str(
+                        (comment.get("author") or {}).get("displayName")
+                        or (comment.get("author") or {}).get("name")
+                        or ""
+                    ),
+                    "created": str(comment.get("created") or ""),
+                    "body": jira_field_value_to_text(comment.get("body")),
+                }
+            )
+        attachments = []
+        for attachment in fields.get("attachment") or []:
+            if not isinstance(attachment, dict):
+                continue
+            attachments.append(
+                {
+                    "id": str(attachment.get("id") or ""),
+                    "filename": str(attachment.get("filename") or ""),
+                    "url": str(attachment.get("content") or ""),
+                    "mime_type": str(attachment.get("mimeType") or ""),
+                    "size": attachment.get("size"),
+                    "author": str(
+                        (attachment.get("author") or {}).get("displayName") or ""
+                    ),
+                    "created": str(attachment.get("created") or ""),
+                }
+            )
+        issuelinks = []
+        for link in fields.get("issuelinks") or []:
+            if not isinstance(link, dict):
+                continue
+            link_type = link.get("type") or {}
+            target = link.get("outwardIssue") or link.get("inwardIssue") or {}
+            target_fields = target.get("fields") or {}
+            issuelinks.append(
+                {
+                    "id": str(link.get("id") or ""),
+                    "jira_key": str(target.get("key") or ""),
+                    "link_type": str(link_type.get("name") or ""),
+                    "direction": (
+                        "outward" if link.get("outwardIssue") else "inward"
+                    ),
+                    "description": str(
+                        link_type.get(
+                            "outward" if link.get("outwardIssue") else "inward"
+                        )
+                        or ""
+                    ),
+                    "target_summary": str(target_fields.get("summary") or ""),
+                    "target_status": str(
+                        (target_fields.get("status") or {}).get("name") or ""
+                    ),
+                }
+            )
         return {
             "issue_key": raw.get("key", jira_key),
             "summary": fields.get("summary", ""),
@@ -1026,6 +1092,9 @@ def _fetch_issue_direct(jira_key: str, *, tenant_id: str) -> dict[str, Any] | No
             else "missing",
             "expected_behavior": expected_behavior,
             "actual_behavior": actual_behavior,
+            "comments": comments[:50],
+            "attachments": attachments[:50],
+            "issuelinks": issuelinks[:50],
             "source": "jira_api",
             "lookup_source": "jira_api_direct",
             "lookup_message": f"Fetched `{raw.get('key', jira_key)}` directly from Jira API.",

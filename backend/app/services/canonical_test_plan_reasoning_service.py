@@ -484,8 +484,8 @@ _REQUIREMENT_SHAPE_RE = re.compile(
     r"writes?|reads?|shows?|displays?|returns?|creates?|generates?|updates?|"
     r"saves?|stores?|persists?|sends?|receives?|processes?|produces?|"
     r"requires?|supports?|allows?|enables?|disables?|hides?|exposes?|"
-    r"validates?|rejects?|fails?|retries|skips?|ignores?|maps?|links?|"
-    r"opens?|closes?|loads?|renders?|publishes?|exports?|imports?)\b",
+    r"validates?|rejects?|fails?|retries|skips?|ignores?|"
+    r"loads?|renders?|publishes?|exports?|imports?)\b",
     re.IGNORECASE,
 )
 
@@ -1436,6 +1436,17 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
         "created",
         "updated",
         "timestamp",
+        # R2: linked-issue linkage metadata is reference structure, never a
+        # behavior fact ("In Progress" from a linked ticket's status is not a
+        # status contract of the current ticket).
+        "link_type",
+        "direction",
+        "target_status",
+        "target_key",
+        "target_summary",
+        "mime_type",
+        "size",
+        "author",
     }:
         return True
     return any(
@@ -1515,6 +1526,11 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
             r"\b[a-z][a-z0-9 _-]{1,30}/[a-z][a-z0-9 _-]{1,30}\b", literal, re.IGNORECASE
         )
         and not re.search(r"(?:https?://|/content/|/libs/|\\)", literal, re.IGNORECASE)
+        # R2: MIME-type tokens (image/png, text/html) are metadata values,
+        # not human terminology requiring clarification.
+        and not re.fullmatch(
+            r"\s*[a-z]+/[a-z0-9][a-z0-9.+-]*\s*", literal, re.IGNORECASE
+        )
     )
     if slash_term:
         found.extend(
@@ -1543,14 +1559,16 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
         ]
         found.append(ContractFactType.PROBLEM_STATEMENT)
     if not found and any(token in key for token in ("summary", "description", "title")):
-        # UX1: the summary/description/title catch-all is shape-aware.  Only a
-        # requirement-shaped literal (imperative, modal, or declarative
+        # UX1/R2: the summary/description/title catch-all is shape-aware.
+        # Only a requirement-shaped literal (imperative, modal, or declarative
         # behavior verb) becomes a promotion-eligible expected-behavior fact.
-        # Current-state narrative with no imperative is context; anything
-        # else without a requirement shape is context too.  Neither context
-        # nor problem statements can populate a proposed acceptance contract.
+        # Current-state narrative without an imperative is context; fragments
+        # under four words ("is fixed by", "relates to") are structural noise
+        # and produce no fact at all.
         imperative = bool(_PRODUCT_IMPERATIVE_RE.search(literal))
-        if _CURRENT_STATE_MARKER_RE.search(literal) and not imperative:
+        if len(literal.split()) < 4:
+            pass
+        elif _CURRENT_STATE_MARKER_RE.search(literal) and not imperative:
             found.append(ContractFactType.CONTEXT_STATEMENT)
         elif imperative or _REQUIREMENT_SHAPE_RE.search(literal):
             found.append(ContractFactType.DIRECT_EXPECTED_BEHAVIOR)
@@ -3793,6 +3811,7 @@ class CanonicalTestPlanReasoningService:
         | None = None,
         unresolved_implementation_handoff_ids: list[str] | None = None,
         pattern_provider_status: PatternLookupRuntimeStatus | None = None,
+        worker_results: list | None = None,
     ) -> list[QuestionResearchRecord]:
         """Resolve the terminal research status of every planned question.
 
@@ -3821,6 +3840,7 @@ class CanonicalTestPlanReasoningService:
                         unresolved_implementation_handoff_ids or []
                     ),
                     pattern_provider_status=pattern_provider_status,
+                    worker_results=worker_results or [],
                 )
             )
         return records
@@ -5528,6 +5548,7 @@ class CanonicalTestPlanReasoningService:
         research_records: list[QuestionResearchRecord] | None = None,
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
         clarifications: list[HumanClarification] | None = None,
+        research_resolved_question_ids: set[str] | None = None,
     ) -> tuple[StructuredQEPlan, str]:
         if research_records is not None:
             incomplete_research_question_ids = {
@@ -5787,6 +5808,9 @@ class CanonicalTestPlanReasoningService:
             for row in clarifications or []
             if row.status == ClarificationStatus.ADMITTED
         }
+        # R2: research-resolved questions are released identically - they were
+        # answered by mandated research, never re-asked.
+        clarified_question_ids |= set(research_resolved_question_ids or ())
         for question in questions:
             if question.question_id in resolved_question_ids:
                 continue

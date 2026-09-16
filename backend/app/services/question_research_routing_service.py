@@ -46,6 +46,9 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ResearchRequirementRecord,
     ResearchRoutingRequest,
     ResearchStatus,
+    ResearchWorkerResult,
+    ResearchWorkerRole,
+    ResearchWorkerStatus,
 )
 
 
@@ -364,6 +367,7 @@ class QuestionResearchRouter:
         = (),
         unresolved_implementation_handoff_ids: Iterable[str] = (),
         pattern_provider_status: PatternLookupRuntimeStatus | None = None,
+        worker_results: Iterable[ResearchWorkerResult] = (),
     ) -> QuestionResearchRecord:
         """Resolve the terminal research status of one routed question.
 
@@ -382,6 +386,10 @@ class QuestionResearchRouter:
         ]
         question_handoffs = [
             row for row in implementation_handoffs if row.question_id == question_id
+        ]
+        # R2: structured worker envelopes bound to this question.
+        question_worker_results = [
+            row for row in worker_results if row.question_id == question_id
         ]
         unresolved_handoffs = set(unresolved_implementation_handoff_ids)
         source_type_by_evidence_id = {
@@ -415,7 +423,7 @@ class QuestionResearchRouter:
             )
         request_ids = [row.retrieval_id for row in question_retrievals] + [
             row.handoff_id for row in question_handoffs
-        ]
+        ] + [row.research_id for row in question_worker_results]
         if not request_ids:
             return build(
                 ResearchStatus.PENDING,
@@ -438,6 +446,12 @@ class QuestionResearchRouter:
                     + list(row.verification_evidence_ids)
                 )
             }
+            | {
+                source_ref
+                for row in question_worker_results
+                for finding in row.findings
+                for source_ref in finding.source_refs
+            }
         )
         required_categories = {
             research_source_category(source_type)
@@ -448,6 +462,33 @@ class QuestionResearchRouter:
             for evidence_id in evidence_ids
             if evidence_id in source_type_by_evidence_id
         }
+        # R2: an executed worker envelope covers its route's category even when
+        # its findings cite no bundle evidence (e.g. read-only repository
+        # research); a worker that could not execute never covers it.
+        _WORKER_ROLE_CATEGORY = {
+            ResearchWorkerRole.DOC_RESEARCHER: RESEARCH_CATEGORY_DOCUMENTATION,
+            ResearchWorkerRole.CODE_RESEARCHER: RESEARCH_CATEGORY_IMPLEMENTATION,
+            ResearchWorkerRole.ATTACHMENT_RESEARCHER: RESEARCH_CATEGORY_JIRA_AUTHORITY,
+        }
+        executed_worker_categories = set()
+        unavailable_worker_categories = set()
+        for result in question_worker_results:
+            category = _WORKER_ROLE_CATEGORY.get(result.worker_role)
+            if category is None:
+                continue
+            if result.status in {
+                ResearchWorkerStatus.ANSWER_FOUND,
+                ResearchWorkerStatus.PARTIAL,
+                ResearchWorkerStatus.NOT_FOUND,
+                ResearchWorkerStatus.CONFLICTED,
+            }:
+                executed_worker_categories.add(category)
+            else:
+                unavailable_worker_categories.add(category)
+        researched_categories |= executed_worker_categories
+        unresolved_worker_categories = (
+            unavailable_worker_categories - executed_worker_categories
+        )
         resolved_handoffs = [
             row
             for row in question_handoffs
@@ -460,6 +501,26 @@ class QuestionResearchRouter:
             researched_categories.add(RESEARCH_CATEGORY_IMPLEMENTATION)
         unresearched = required_categories - researched_categories
         states = {row.state for row in question_hypotheses}
+        # R2: workers executed and found nothing, with no other evidence or
+        # hypothesis: that is a true NOT_FOUND (executed, no answer), never a
+        # PARTIAL upgrade and never evidence of the opposite behavior.
+        if (
+            question_worker_results
+            and not evidence_ids
+            and not question_hypotheses
+            and not unresearched
+            and all(
+                row.status == ResearchWorkerStatus.NOT_FOUND
+                for row in question_worker_results
+            )
+        ):
+            return build(
+                ResearchStatus.NOT_FOUND,
+                "Mandatory research executed and found no answer; absence "
+                "of evidence is not treated as the opposite behavior.",
+                request_ids,
+                evidence_ids,
+            )
         has_contradiction = any(
             row.contradicting_evidence_ids for row in question_hypotheses
         )
@@ -472,6 +533,19 @@ class QuestionResearchRouter:
             return build(
                 ResearchStatus.CONFLICTED,
                 "Directed research produced conflicting evidence; a Human "
+                "must settle the conflict before coverage finalizes.",
+                request_ids,
+                evidence_ids,
+            )
+        # R2: a CONFLICTED worker envelope forces CONFLICTED research status;
+        # the runtime never silently picks a side.
+        if any(
+            row.status == ResearchWorkerStatus.CONFLICTED
+            for row in question_worker_results
+        ):
+            return build(
+                ResearchStatus.CONFLICTED,
+                "A research worker returned conflicting findings; a Human "
                 "must settle the conflict before coverage finalizes.",
                 request_ids,
                 evidence_ids,
@@ -525,6 +599,15 @@ class QuestionResearchRouter:
                 ResearchStatus.SOURCE_UNAVAILABLE,
                 "The mandated historical source could not be inspected; "
                 "the question remains open.",
+                request_ids,
+                evidence_ids,
+            )
+        # R2: infrastructure failure is never disguised as a clean NOT_FOUND.
+        if unresearched & unresolved_worker_categories:
+            return build(
+                ResearchStatus.SOURCE_UNAVAILABLE,
+                "A mandated research worker could not execute; the question "
+                "remains open and sufficiency stays bounded.",
                 request_ids,
                 evidence_ids,
             )
