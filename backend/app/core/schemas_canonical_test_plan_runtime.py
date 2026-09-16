@@ -544,6 +544,38 @@ class HumanQuestionClass(StrEnum):
     )
 
 
+class OpenQuestionClass(StrEnum):
+    """Materiality/applicability disposition of an open question (P1).
+
+    Only USER_ACCEPTANCE_DECISION may block promotion or be surfaced to the
+    user as an acceptance-changing clarification.  The other classes are
+    recorded for audit but never escalate to ASK_USER.
+    """
+
+    USER_ACCEPTANCE_DECISION = "USER_ACCEPTANCE_DECISION"
+    RESEARCH_REQUIRED = "RESEARCH_REQUIRED"
+    INVESTIGATION_ONLY = "INVESTIGATION_ONLY"
+    QE_SETUP_DETAIL = "QE_SETUP_DETAIL"
+    IMPLEMENTATION_DETAIL = "IMPLEMENTATION_DETAIL"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class ClarificationAnswerClass(StrEnum):
+    """What a human clarification is allowed to establish (P1)."""
+
+    APPLICABILITY_NOT_APPLICABLE = "APPLICABILITY_NOT_APPLICABLE"
+    SCOPE_VALUE = "SCOPE_VALUE"
+    EXPECTED_BEHAVIOR = "EXPECTED_BEHAVIOR"
+    PRODUCT_DECISION = "PRODUCT_DECISION"
+
+
+class ClarificationStatus(StrEnum):
+    RECORDED = "RECORDED"
+    ADMITTED = "ADMITTED"
+    REJECTED = "REJECTED"
+    STALE = "STALE"
+
+
 class QuestionEvidenceProvider(StrEnum):
     CURRENT_EVIDENCE = "CURRENT_EVIDENCE"
     PATTERN_MCP_DISCOVERY = "PATTERN_MCP_DISCOVERY"
@@ -1448,6 +1480,11 @@ class PipelineCompatibilityOptions(BaseModel):
     starling_repo_path: str | None = None
     publish_to_team_ui: bool = False
     human_review_threshold: int = Field(default=50, ge=0, le=100)
+    # P1: human clarifications bound to exact unresolved questions from a
+    # previous run; each entry validates as HumanClarification.
+    human_clarifications: list[dict[str, Any]] = Field(
+        default_factory=list, max_length=50
+    )
 
 
 class GenerationRequest(BaseModel):
@@ -1586,6 +1623,11 @@ class ScopeResolution(BaseModel):
     enable_dita_ot_processing: DitaOtProcessingState = (
         DitaOtProcessingState.NOT_APPLICABLE
     )
+    # How the DITA-OT dimension was resolved: "" (unresolved/legacy),
+    # "EVIDENCE", "CONFIGURATION_ONLY", "NO_MATERIAL_INTERACTION_EVIDENCE",
+    # or "HUMAN_CLARIFICATION" (P1 materiality + clarification resume).
+    dita_ot_resolution_basis: str = ""
+    applied_clarification_ids: list[str] = Field(default_factory=list)
     aem_sites_implementation: ApplicabilityState = ApplicabilityState.NOT_APPLICABLE
     in_scope: list[str] = Field(default_factory=list)
     out_of_scope: list[str] = Field(default_factory=list)
@@ -2205,6 +2247,11 @@ class MissingQuestion(BaseModel):
     authority_subject: AuthoritySubject
     target_source_types: list[EvidenceSourceType] = Field(default_factory=list)
     blocking: bool = False
+    open_question_class: OpenQuestionClass | None = None
+    # Revision bound by human clarifications: deterministic over the question
+    # text and dimension only, so a later re-run of the same question keeps the
+    # same revision while a materially changed question invalidates it.
+    question_revision: str = ""
     source_closure_ids: list[str] = Field(default_factory=list)
     source_fact_ids: list[str] = Field(default_factory=list)
 
@@ -2258,6 +2305,58 @@ class MissingQuestion(BaseModel):
         if self.question_id and self.question_id != expected:
             raise ValueError("question_id does not match deterministic identity")
         self.question_id = expected
+        revision = stable_sha256(
+            {
+                "question": self.question,
+                "dimension": self.dimension.value if self.dimension else None,
+            }
+        )[:12]
+        if self.question_revision and self.question_revision != revision:
+            raise ValueError("question_revision does not match deterministic contents")
+        self.question_revision = revision
+        return self
+
+
+class HumanClarification(BaseModel):
+    """A first-class human answer bound to one exact unresolved question (P1).
+
+    A clarification is new evidence for its bound question only - it never
+    becomes globally authoritative for unrelated questions.  ``status`` is
+    recomputed by the reasoning service at admission time; a caller-supplied
+    ADMITTED is not trusted.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    clarification_id: str = ""
+    # The bound question's deterministic id, or a scope-field alias the
+    # runtime can resolve to a deterministic scope question.
+    question_ref: str = Field(min_length=1, max_length=200)
+    question_revision: str = Field(default="", max_length=64)
+    answer: str = Field(min_length=1, max_length=2000)
+    answer_classification: ClarificationAnswerClass
+    provided_by: str = Field(min_length=1, max_length=200)
+    provided_at: str = ""
+    authority_role: AuthorityClass
+    applicability: str = Field(default="", max_length=500)
+    source_context: str = Field(default="", max_length=500)
+    decision_reason: str = Field(default="", max_length=2000)
+    status: ClarificationStatus = ClarificationStatus.RECORDED
+    admission_detail: str = ""
+
+    @model_validator(mode="after")
+    def identify(self) -> "HumanClarification":
+        identity = {
+            "question_ref": self.question_ref,
+            "question_revision": self.question_revision,
+            "answer": self.answer,
+            "answer_classification": self.answer_classification,
+            "provided_by": self.provided_by,
+        }
+        expected = f"clarification:{stable_sha256(identity)[:32]}"
+        if self.clarification_id and self.clarification_id != expected:
+            raise ValueError("clarification_id does not match deterministic contents")
+        self.clarification_id = expected
         return self
 
 
@@ -3904,6 +4003,7 @@ class RuntimeTrace(BaseModel):
     behavior_classifications: list[BehaviorClassificationRecord] = Field(
         default_factory=list
     )
+    human_clarifications: list[HumanClarification] = Field(default_factory=list)
     source_counts: dict[str, int] = Field(default_factory=dict)
     compatibility_projection: list[CompatibilityProjectionLink] = Field(
         default_factory=list

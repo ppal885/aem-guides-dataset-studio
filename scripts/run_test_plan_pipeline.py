@@ -51,6 +51,12 @@ def main() -> int:
     )
     parser.add_argument("--json", action="store_true", help="Print full JSON result")
     parser.add_argument(
+        "--clarifications",
+        default=None,
+        help="Path to a JSON file with human clarifications bound to questions "
+        "from a previous run (resume instead of re-asking)",
+    )
+    parser.add_argument(
         "--http",
         action="store_true",
         help="Call backend HTTP API instead of in-process",
@@ -73,6 +79,9 @@ def main() -> int:
         "publish_to_team_ui": args.publish_ui,
         "human_review_threshold": args.threshold,
     }
+    if args.clarifications:
+        with open(args.clarifications, encoding="utf-8-sig") as handle:
+            payload["human_clarifications"] = json.load(handle)
 
     if args.http:
         result = _run_http(args.base_url, payload)
@@ -82,16 +91,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
-        text = str(result.get("draft_test_plan_markdown") or "").strip()
-        if not text:
-            canonical = (result.get("qe_review_package") or {}).get(
-                "canonical_result"
-            ) or {}
-            text = str(canonical.get("rendered_output") or "").strip()
-        if not text:
-            raise SystemExit("Canonical runtime returned no rendered plan.")
-        sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
-        sys.stdout.buffer.write(b"\n")
+        print(_select_plan_text(result))
 
     score = (result.get("score") or {}).get("overall", 0)
     human = (result.get("score") or {}).get("human_review_required", True)
@@ -100,6 +100,26 @@ def main() -> int:
         file=sys.stderr,
     )
     return 0 if not human else 2
+
+
+def _select_plan_text(result: dict) -> str:
+    """P1: the canonical runtime result is the only plan authority.  The
+    LLM-composed draft is a legacy presentation layer and is never preferred
+    over the canonical rendered output (no parallel semantic pipeline)."""
+
+    canonical = (result.get("qe_review_package") or {}).get("canonical_result") or {}
+    for key in ("plan_markdown", "rendered_output"):
+        text = str(canonical.get(key) or "").strip()
+        if text:
+            sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+            sys.stdout.buffer.write(b"\n")
+            return text
+    text = str(result.get("draft_test_plan_markdown") or "").strip()
+    if not text:
+        raise SystemExit("Canonical runtime returned no rendered plan.")
+    sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+    sys.stdout.buffer.write(b"\n")
+    return text
 
 
 def _run_inprocess(payload: dict) -> dict:

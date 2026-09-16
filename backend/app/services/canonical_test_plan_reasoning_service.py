@@ -36,6 +36,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     CandidateTerminalDisposition,
     ChangeSurface,
     ChangeSurfaceKind,
+    ClarificationAnswerClass,
+    ClarificationStatus,
     ClosureDimensionResult,
     ClosureDisposition,
     ContractFact,
@@ -59,6 +61,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     GeneratedOutputOracle,
     GenerationRequest,
     GitHubImplementationVerificationHandoff,
+    HumanClarification,
     HypothesisState,
     IssueDomain,
     InvestigationFamilySatisfactionStatus,
@@ -66,6 +69,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     MandatoryInvestigationFamily,
     MissingQuestion,
     MissingQuestionQualityReport,
+    OpenQuestionClass,
     PatternLookupRuntimeStatus,
     PlanSection,
     PromotionStatus,
@@ -345,6 +349,131 @@ _PUBLISHING_CONFIGURATION_ONLY_SIGNALS = (
     "field label",
     "dropdown",
 )
+
+# P1: scope-field questions are the only user-facing clarification surfaces the
+# scope resolver may raise. Hoisted so the deterministic question id/revision is
+# computable before questions are generated (clarification resume binds to it).
+_SCOPE_FIELD_QUESTIONS: dict[str, tuple[str, bool]] = {
+    "ENABLE_DITA_OT_PROCESSING": (
+        "Is Enable DITA-OT Processing expected to be ON, OFF, both, or not applicable?",
+        True,
+    ),
+    "PRIMARY_PRESET_TYPE": (
+        "Which exact output preset owns this functionality?",
+        True,
+    ),
+    "OUT_OF_SCOPE": ("What should explicitly be out of scope?", False),
+    "SHARED_PATH_OUTPUTS": (
+        "Which other presets intentionally share this behavior?",
+        False,
+    ),
+}
+
+
+def scope_question_revision(field: str) -> str:
+    """Deterministic revision of a scope-field question (text + dimension)."""
+
+    text = _SCOPE_FIELD_QUESTIONS[field][0]
+    return stable_sha256({"question": text, "dimension": None})[:12]
+
+
+def scope_question_id(field: str) -> str:
+    """The deterministic MissingQuestion id a scope field would produce."""
+
+    text, blocking = _SCOPE_FIELD_QUESTIONS[field]
+    identity = {
+        "question": text,
+        "dimension": None,
+        "authority_subject": AuthoritySubject.PRODUCT_CONTRACT,
+        "target_source_types": _target_sources(AuthoritySubject.PRODUCT_CONTRACT),
+        "blocking": blocking,
+    }
+    return f"question:{stable_sha256(identity)[:32]}"
+
+
+# P1: authority classes whose human clarification may establish an
+# acceptance-changing answer. Developer hypotheses, QE proposals, inferred or
+# historical roles never admit a clarification.
+_CLARIFICATION_ESTABLISHING_AUTHORITIES = frozenset(
+    {
+        AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
+        AuthorityClass.CONFIRMED_PRODUCT_DECISION,
+        AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
+        AuthorityClass.SPECIFICATION_AUTHORITY,
+        AuthorityClass.CUSTOMER_REQUEST,
+    }
+)
+
+# P1 promotion-safety shapes (generic; no feature or ticket vocabulary).
+_COMBINATION_CLAIM_RE = re.compile(
+    r"\b(?:both|combined|combination|together|cross[- ]?product)\b", re.IGNORECASE
+)
+_RETENTION_STEM_RE = re.compile(r"\b(?:retain\w*|kept|keep(?:s|ing)?|preserv\w*|remain\w*)\b", re.IGNORECASE)
+_REMOVAL_STEM_RE = re.compile(r"\b(?:remov\w+|delet\w+|purg\w+|prun\w+)\b", re.IGNORECASE)
+_USABILITY_STEM_RE = re.compile(
+    r"\b(?:open\w*|accessible|visible|usable|available|viewable|download\w*|readable)\b",
+    re.IGNORECASE,
+)
+_BACKWARD_COMPAT_CLAIM_RE = re.compile(
+    r"\b(?:backward[- ]?compat\w*|unchanged after (?:the )?upgrade|"
+    r"existing (?:installations?|configurations?|behaviou?r)\b[^.]{0,60}"
+    r"\b(?:unchanged|preserved|retained|unaffected)\b|"
+    r"(?:remain|remains|stays?|stayed) (?:unchanged|compatible)|upgrade[- ]safe)\b",
+    re.IGNORECASE,
+)
+
+# P1 (no noisy clone-grep coverage): raw code/retrieval fragments - paths,
+# class/def dumps, call expressions, test-suite labels - are internal
+# evidence/debug data and never become human-facing coverage prose.
+_RAW_FRAGMENT_RE = re.compile(
+    r"(?:[A-Za-z]:\\"
+    r"|[\w.-]+/[\w./-]*\.(?:py|ts|tsx|jsx|java|json|xml|dita|ditamap|yml|yaml|toml)\b"
+    r"|\bclass\s+[A-Z]\w*|\bdef\s+\w+\(|\b[A-Z][\w$]*\.[a-z][\w$]*\s*\("
+    r"|\bFeature:\s)"
+)
+
+_DITA_OT_CLARIFICATION_ANSWERS = {
+    "on": DitaOtProcessingState.ON,
+    "off": DitaOtProcessingState.OFF,
+    "both": DitaOtProcessingState.BOTH,
+    "not applicable": DitaOtProcessingState.NOT_APPLICABLE,
+    "not_applicable": DitaOtProcessingState.NOT_APPLICABLE,
+    "n/a": DitaOtProcessingState.NOT_APPLICABLE,
+}
+
+
+def _normalize_clarification_answer(answer: str) -> str:
+    return re.sub(r"\s+", " ", str(answer or "").strip().casefold())
+
+
+def _admit_scope_clarification(
+    field: str, raw_clarifications: list[dict[str, Any]]
+) -> HumanClarification | None:
+    """Admission-lite for a scope-field clarification (runs before questions
+    exist).  Returns the single admitted clarification or None; the full
+    question-bound admission pass later re-derives the same verdict."""
+
+    expected_revision = scope_question_revision(field)
+    aliases = {field, scope_question_id(field)}
+    candidates: list[HumanClarification] = []
+    for raw in raw_clarifications:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            row = HumanClarification.model_validate(raw)
+        except Exception:
+            continue
+        if row.question_ref not in aliases:
+            continue
+        if row.question_revision != expected_revision:
+            continue  # STALE - never silently rebind to a changed question
+        if row.authority_role not in _CLARIFICATION_ESTABLISHING_AUTHORITIES:
+            continue  # insufficient authority
+        candidates.append(row)
+    answers = {_normalize_clarification_answer(row.answer) for row in candidates}
+    if len(candidates) != 1 or len(answers) != 1:
+        return None  # none, or contradictory clarifications
+    return candidates[0]
 
 _CONTENT_LIFECYCLE_RE = re.compile(
     r"(?:\b(?:move|rename|delete)(?:d|s|ing)?\b.{0,30}"
@@ -1875,7 +2004,10 @@ class CanonicalTestPlanReasoningService:
         return sorted(activations, key=lambda row: row.domain.value)
 
     def resolve_scope(
-        self, facts: ContractFactSet, domains: list[DomainActivation]
+        self,
+        facts: ContractFactSet,
+        domains: list[DomainActivation],
+        clarifications: list[dict[str, Any]] | None = None,
     ) -> ScopeResolution:
         by_type: dict[ContractFactType, list[ContractFact]] = defaultdict(list)
         for fact in facts.facts:
@@ -1928,6 +2060,46 @@ class CanonicalTestPlanReasoningService:
                 if off
                 else DitaOtProcessingState.UNRESOLVED
             )
+        dita_ot_basis = ""
+        applied_clarification_ids: list[str] = []
+        if publishing:
+            if configuration_only:
+                dita_ot_basis = "CONFIGURATION_ONLY"
+            elif dita_ot != DitaOtProcessingState.UNRESOLVED:
+                dita_ot_basis = "EVIDENCE"
+            if dita_ot == DitaOtProcessingState.UNRESOLVED:
+                # P1 resume: an admitted human clarification bound to this exact
+                # scope question resolves it without re-deriving from the ticket.
+                admitted = _admit_scope_clarification(
+                    "ENABLE_DITA_OT_PROCESSING", clarifications or []
+                )
+                if admitted is not None:
+                    mapped = _DITA_OT_CLARIFICATION_ANSWERS.get(
+                        _normalize_clarification_answer(admitted.answer)
+                    )
+                    if mapped is not None:
+                        dita_ot = mapped
+                        dita_ot_basis = "HUMAN_CLARIFICATION"
+                        applied_clarification_ids.append(admitted.clarification_id)
+            if dita_ot == DitaOtProcessingState.UNRESOLVED:
+                # P1 material-question suppression: with no evidence that the
+                # changed behavior involves output generation, transformation,
+                # or delivery, the adjacent processing toggle is not materially
+                # connected to this ticket - resolve NOT_APPLICABLE with a
+                # recorded basis instead of escalating a generic dimension to
+                # the user.
+                generation_evidence_present = (
+                    _units_contain_any(
+                        semantic_units, _GENERATED_ARTIFACT_DELIVERY_SIGNALS
+                    )
+                    or _units_match(
+                        semantic_units, _CONTEXTUAL_GENERATED_ARTIFACT_DELIVERY_RE
+                    )
+                    or bool(dita_scope_units)
+                )
+                if not generation_evidence_present:
+                    dita_ot = DitaOtProcessingState.NOT_APPLICABLE
+                    dita_ot_basis = "NO_MATERIAL_INTERACTION_EVIDENCE"
         out_literals = {
             fact.literal.casefold() for fact in by_type[ContractFactType.OUT_OF_SCOPE]
         }
@@ -2004,6 +2176,8 @@ class CanonicalTestPlanReasoningService:
             primary_preset_type=preset,
             primary_output_type=output_type,
             enable_dita_ot_processing=dita_ot,
+            dita_ot_resolution_basis=dita_ot_basis,
+            applied_clarification_ids=applied_clarification_ids,
             aem_sites_implementation=(
                 ApplicabilityState.NOT_APPLICABLE
                 if "aem sites" in normalized_out_scope
@@ -2632,26 +2806,18 @@ class CanonicalTestPlanReasoningService:
                         if family
                         else False
                     ),
+                    open_question_class=(
+                        OpenQuestionClass.USER_ACCEPTANCE_DECISION
+                        if family is not None
+                        and family.activation_decision
+                        == FamilyActivationDecision.ACTIVATE_BLOCKING
+                        else OpenQuestionClass.RESEARCH_REQUIRED
+                    ),
                     source_closure_ids=[row.closure_id for row in unresolved_rows],
                 )
             )
-        scope_questions = {
-            "ENABLE_DITA_OT_PROCESSING": (
-                "Is Enable DITA-OT Processing expected to be ON, OFF, both, or not applicable?",
-                True,
-            ),
-            "PRIMARY_PRESET_TYPE": (
-                "Which exact output preset owns this functionality?",
-                True,
-            ),
-            "OUT_OF_SCOPE": ("What should explicitly be out of scope?", False),
-            "SHARED_PATH_OUTPUTS": (
-                "Which other presets intentionally share this behavior?",
-                False,
-            ),
-        }
         for field in scope.unresolved_fields:
-            question, blocking = scope_questions.get(
+            question, blocking = _SCOPE_FIELD_QUESTIONS.get(
                 field, (f"What is the intended value for {field}?", True)
             )
             questions.append(
@@ -2662,6 +2828,7 @@ class CanonicalTestPlanReasoningService:
                         AuthoritySubject.PRODUCT_CONTRACT
                     ),
                     blocking=blocking,
+                    open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
                 )
             )
         for fact in facts.facts:
@@ -2675,6 +2842,7 @@ class CanonicalTestPlanReasoningService:
                         AuthoritySubject.PRODUCT_CONTRACT
                     ),
                     blocking=True,
+                    open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
                     source_fact_ids=[fact.fact_id],
                 )
             )
@@ -2682,6 +2850,105 @@ class CanonicalTestPlanReasoningService:
             {row.question_id: row for row in questions}.values(),
             key=lambda row: row.question_id,
         )
+
+    def admit_clarifications(
+        self,
+        raw_clarifications: list[dict[str, Any]],
+        questions: list[MissingQuestion],
+    ) -> tuple[list[HumanClarification], list[str]]:
+        """Admit human clarifications against this run's exact questions.
+
+        A clarification binds one question (by deterministic id or scope-field
+        alias) at one revision.  Rules: unknown binding -> REJECTED; revision
+        mismatch -> STALE (never silently rebound); authority outside the
+        establishing set -> REJECTED; two clarifications with different answers
+        for the same question -> both REJECTED (contradictory); otherwise
+        ADMITTED.  Malformed entries become errors, never silent drops.
+        """
+
+        by_id = {row.question_id: row for row in questions}
+        alias_fields: dict[str, str] = {}
+        for field in _SCOPE_FIELD_QUESTIONS:
+            alias_fields[field] = field
+            alias_fields[scope_question_id(field)] = field
+
+        parsed: list[HumanClarification] = []
+        errors: list[str] = []
+        for index, raw in enumerate(raw_clarifications):
+            try:
+                parsed.append(HumanClarification.model_validate(raw))
+            except Exception as exc:
+                errors.append(
+                    f"human_clarifications[{index}] is not a valid clarification: "
+                    f"{exc.__class__.__name__}"
+                )
+
+        results: list[HumanClarification] = []
+        groups: dict[str, list[HumanClarification]] = defaultdict(list)
+        for row in parsed:
+            if row.question_ref in by_id:
+                groups[by_id[row.question_ref].question_id].append(row)
+            elif row.question_ref in alias_fields:
+                groups[alias_fields[row.question_ref]].append(row)
+            else:
+                row.status = ClarificationStatus.REJECTED
+                row.admission_detail = (
+                    "the bound question does not exist in this run - a "
+                    "clarification is evidence for its exact question only"
+                )
+                results.append(row)
+
+        for key, rows in sorted(groups.items()):
+            question = by_id.get(key)
+            expected_revision = (
+                question.question_revision
+                if question is not None
+                else scope_question_revision(key)
+            )
+            admitted_candidates: list[HumanClarification] = []
+            for row in rows:
+                if row.question_revision != expected_revision:
+                    row.status = ClarificationStatus.STALE
+                    row.admission_detail = (
+                        "the question revision changed after the clarification "
+                        "was recorded - not rebound"
+                    )
+                    results.append(row)
+                    continue
+                if row.authority_role not in _CLARIFICATION_ESTABLISHING_AUTHORITIES:
+                    row.status = ClarificationStatus.REJECTED
+                    row.admission_detail = (
+                        f"authority {row.authority_role.value} cannot establish "
+                        f"a {row.answer_classification.value} answer"
+                    )
+                    results.append(row)
+                    continue
+                admitted_candidates.append(row)
+            answers = {
+                _normalize_clarification_answer(row.answer)
+                for row in admitted_candidates
+            }
+            if len(answers) > 1:
+                for row in admitted_candidates:
+                    row.status = ClarificationStatus.REJECTED
+                    row.admission_detail = (
+                        "contradictory clarifications for the same question - "
+                        "the disagreement is preserved, not chosen"
+                    )
+                    results.append(row)
+                continue
+            for row in admitted_candidates:
+                row.status = ClarificationStatus.ADMITTED
+                row.admission_detail = (
+                    f"admitted for question {key}"
+                    + (
+                        " (consumed during scope resolution)"
+                        if question is None
+                        else ""
+                    )
+                )
+                results.append(row)
+        return sorted(results, key=lambda row: row.clarification_id), errors
 
     def build_question_generation_trace(
         self,
@@ -3452,6 +3719,16 @@ class CanonicalTestPlanReasoningService:
                     rationale = research_override
             entities = ", ".join(dict.fromkeys(item.entity for item in items))
             candidate = f"{dimension.value}: {entities}"
+            if _RAW_FRAGMENT_RE.search(entities):
+                # P1: raw clone-grep/retrieval fragments stay in the trace and
+                # evidence ids; human-facing coverage gets an interpreted
+                # pointer, never the raw fragment dump.
+                evidence_count = len({item.closure_id for item in items})
+                candidate = (
+                    f"{dimension.value}: internal evidence recorded for "
+                    f"{evidence_count} closure "
+                    f"record{'s' if evidence_count != 1 else ''} (see trace)"
+                )
             if (
                 disposition == CoverageDisposition.OPEN_QUESTION
                 and len(related_questions) == 1
@@ -3653,6 +3930,7 @@ class CanonicalTestPlanReasoningService:
         facts: ContractFactSet,
         dispositions: list[CoverageDispositionRecord],
         questions: list[MissingQuestion],
+        resolved_question_ids: set[str] | None = None,
     ) -> AcceptanceResolutionBatch:
         facts_by_id = {row.fact_id: row for row in facts.facts}
         accepted_literals = [
@@ -3661,7 +3939,14 @@ class CanonicalTestPlanReasoningService:
             if row.authority_class in _ACCEPTED_AUTHORITIES
             and row.fact_type == ContractFactType.DIRECT_EXPECTED_BEHAVIOR
         ]
-        blocking_ids = [row.question_id for row in questions if row.blocking]
+        # P1 resume: a question resolved by an admitted human clarification no
+        # longer blocks; every other unresolved question keeps blocking.
+        resolved_question_ids = resolved_question_ids or set()
+        blocking_ids = [
+            row.question_id
+            for row in questions
+            if row.blocking and row.question_id not in resolved_question_ids
+        ]
         discovered_candidates: list[AcceptanceCandidate] = []
         for row in dispositions:
             if row.disposition not in {
@@ -4160,6 +4445,44 @@ class CanonicalTestPlanReasoningService:
                 )
             if not candidate.exact_values_supported:
                 reasons.append("An exact value is unsupported by authority.")
+            # P1 / S1-C1 parity: generic safety rules on the promoted statement.
+            statement_text = candidate.statement
+            if _COMBINATION_CLAIM_RE.search(statement_text) and not any(
+                _COMBINATION_CLAIM_RE.search(fact.literal) for fact in source_facts
+            ):
+                # Individually established dimensions never prove their
+                # cross-product: a combined-behavior claim needs a source that
+                # itself establishes the combination.
+                reasons.append(
+                    "Combined configuration behavior lacks combination evidence - "
+                    "individually established controls do not prove their "
+                    "cross-product."
+                )
+            if (
+                _RETENTION_STEM_RE.search(statement_text)
+                and _REMOVAL_STEM_RE.search(statement_text)
+                and _USABILITY_STEM_RE.search(statement_text)
+            ) and not any(
+                _RETENTION_STEM_RE.search(fact.literal)
+                and _USABILITY_STEM_RE.search(fact.literal)
+                for fact in source_facts
+            ):
+                # Retaining an object after removing a child/resource does not
+                # establish the object stays openable/usable/visible.
+                reasons.append(
+                    "Retained-object usability after removal requires separate "
+                    "evidence - structural retention alone does not establish it."
+                )
+            if _BACKWARD_COMPAT_CLAIM_RE.search(statement_text) and not any(
+                fact.fact_type == ContractFactType.COMPATIBILITY_REQUIREMENTS
+                or _BACKWARD_COMPAT_CLAIM_RE.search(fact.literal)
+                for fact in source_facts
+            ):
+                # A displayed default never proves upgrade/migration behavior.
+                reasons.append(
+                    "Backward-compatible/default behavior lacks compatibility "
+                    "evidence - a new default does not prove upgrade behavior."
+                )
             if unresolved:
                 reasons.append("A blocking product decision remains unresolved.")
             if unresolved_classification:
@@ -4337,6 +4660,7 @@ class CanonicalTestPlanReasoningService:
         candidate_lifecycle: list[CandidateLifecycleRecord] | None = None,
         research_records: list[QuestionResearchRecord] | None = None,
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
+        clarifications: list[HumanClarification] | None = None,
     ) -> tuple[StructuredQEPlan, str]:
         if research_records is not None:
             incomplete_research_question_ids = {
@@ -4585,11 +4909,33 @@ class CanonicalTestPlanReasoningService:
             for question_id in disposition.source_question_ids
         }
         resolved_question_ids = linked_question_ids - open_question_ids
+        clarified_question_ids = {
+            row.question_ref
+            for row in clarifications or []
+            if row.status == ClarificationStatus.ADMITTED
+        }
         for question in questions:
             if question.question_id in resolved_question_ids:
                 continue
+            if question.question_id in clarified_question_ids:
+                continue
             key = "product_decisions" if question.blocking else "evidence_gaps"
             section_items[key].append((question.question, question.question_id))
+        # P1: clarification audit - stale/rejected clarifications stay visible;
+        # admitted ones live in the trace (L1 lineage), never in AC source lines.
+        for clarification in clarifications or []:
+            if clarification.status in {
+                ClarificationStatus.STALE,
+                ClarificationStatus.REJECTED,
+            }:
+                section_items["evidence_gaps"].append(
+                    (
+                        f"Clarification for {clarification.question_ref} not "
+                        f"applied ({clarification.status.value}): "
+                        f"{clarification.admission_detail}",
+                        clarification.clarification_id,
+                    )
+                )
         for disposition in dispositions:
             if disposition.disposition in {
                 CoverageDisposition.ACCEPTANCE_CONTRACT,

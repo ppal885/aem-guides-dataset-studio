@@ -29,6 +29,11 @@ class TestPlanPipelineRequest(BaseModel):
     starling_repo_path: str | None = None
     publish_to_team_ui: bool = False
     human_review_threshold: int = Field(default=50, ge=0, le=100)
+    # P1: human clarifications bound to exact unresolved questions from a
+    # previous run; each entry validates as HumanClarification downstream.
+    human_clarifications: list[dict[str, Any]] = Field(
+        default_factory=list, max_length=50
+    )
     # Claude Desktop is the only runtime LLM.  The Python controller accepts
     # its hash-bound questions but never invokes a second model.
     claude_question_submission: ClaudeMissingQuestionSubmission | None = None
