@@ -22,6 +22,223 @@ RECEIPT_SCHEMA = "aem-guides-gate-receipt-v1"
 REQUIRED_ARTIFACTS = ("plan", "manifest", "combined", "compact", "extracted_acs")
 MAX_PATTERN_RESPONSE_BYTES = 2_000_000
 
+# ---------------------------------------------------------------------------
+# C2A: read-only canonical runtime artifact projection.
+#
+# The canonical Python runtime is the production semantic authority.  This
+# projection converts a canonical runtime result (a GenerationResult envelope
+# dict or a TestPlanPipelineResult dict) into the manifest shape the Skill
+# gates can replay - WITHOUT recomputing, inferring, or inventing any semantic
+# content.  Fields the runtime does not carry are never synthesized: the
+# block is omitted and recorded in the projection metadata as unavailable, so
+# replay reports NOT_EVALUABLE instead of a fabricated PASS.
+# ---------------------------------------------------------------------------
+
+PROJECTION_ADAPTER_VERSION = "aem-guides-runtime-projection-v1"
+UNAVAILABLE_FROM_RUNTIME = "UNAVAILABLE_FROM_RUNTIME"
+
+# Runtime coverage dispositions that map EXACTLY onto C1 coverage classes.
+# Everything else is left unmapped (recorded as lossy) - names that merely
+# sound similar are never translated.
+_COVERAGE_CLASS_MAP = {
+    "ACCEPTANCE_CONTRACT": "ACCEPTANCE",
+    "PROPOSED_ACCEPTANCE_CONTRACT": "ACCEPTANCE",
+    "SEMANTIC_REGRESSION": "QE_REGRESSION",
+    "STRUCTURAL_REGRESSION": "QE_REGRESSION",
+    "REFERENCE_REGRESSION": "QE_REGRESSION",
+    "CROSS_MODE_REGRESSION": "QE_REGRESSION",
+    "IMPLEMENTATION_ORACLE": "INVESTIGATION",
+    "TECHNICAL_NOTE": "INVESTIGATION",
+}
+
+
+def _runtime_payload(result: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Accept a pipeline-result dict or a canonical envelope dict and return
+    (output_payload, trace, canonical_result_meta)."""
+
+    if not isinstance(result, dict):
+        return {}, {}, {}
+    canonical = (result.get("qe_review_package") or {}).get("canonical_result") or {}
+    if canonical:
+        return (
+            dict(canonical.get("output_payload") or {}),
+            dict(canonical.get("trace") or {}),
+            {
+                "run_id": canonical.get("run_id", ""),
+                "status": canonical.get("status", ""),
+                "runtime_id": canonical.get("runtime_id", ""),
+                "runtime_version": canonical.get("runtime_version", ""),
+                "validation_status": canonical.get("validation_status", ""),
+            },
+        )
+    return (
+        dict(result.get("output_payload") or {}),
+        dict(result.get("trace") or {}),
+        {
+            "run_id": result.get("run_id", ""),
+            "status": result.get("status", ""),
+            "runtime_id": result.get("runtime_id", ""),
+            "runtime_version": result.get("runtime_version", ""),
+            "validation_status": result.get("validation_status", ""),
+        },
+    )
+
+
+def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Project a canonical runtime result into a gate-manifest projection.
+
+    Returns (manifest, projection_metadata).  Read-only: the input is never
+    mutated, and no missing semantic artifact is ever fabricated.
+    """
+
+    payload, trace, info = _runtime_payload(result)
+    manifest: dict[str, Any] = {}
+    projected: list[str] = []
+    unavailable: list[str] = []
+    lossy: list[str] = []
+    derived: list[str] = []
+    warnings: list[str] = []
+
+    # Research routing: runtime records carry the same contract fields.
+    # Materiality lives on the requirement record - join by requirement_id;
+    # never assume it.
+    research_records = payload.get("question_research") or []
+    requirement_by_id = {
+        row.get("requirement_id"): row
+        for row in (payload.get("research_requirements") or [])
+    }
+    if research_records:
+        items = []
+        for row in research_records:
+            requirement = requirement_by_id.get(row.get("requirement_id")) or {}
+            item = {
+                "question_ref": row.get("question_id"),
+                "research_requirement": row.get("research_requirement"),
+                "research_status": row.get("research_status"),
+                "research_requests": list(row.get("research_request_ids") or []),
+                "research_evidence_ids": list(row.get("evidence_ids") or []),
+                "reason": row.get("reason", ""),
+            }
+            if "material" in requirement:
+                item["material"] = bool(requirement["material"])
+            else:
+                lossy.append("question_research.material")
+            items.append(item)
+        manifest["question_research"] = {"items": items}
+        projected.append("question_research")
+    else:
+        unavailable.append("question_research")
+
+    # Missing questions: identity/state preserved for cross-reference checks.
+    questions = payload.get("missing_questions") or []
+    if questions:
+        manifest["missing_questions"] = [
+            {
+                "question_id": row.get("question_id"),
+                "question_ref": row.get("question_id"),
+                "question": row.get("question_text") or row.get("question"),
+                "blocking": bool(row.get("blocking")),
+                "open_question_class": row.get("open_question_class"),
+                "question_revision": row.get("question_revision"),
+            }
+            for row in questions
+        ]
+        projected.append("missing_questions")
+    # The runtime does not carry the Q1 planner contract (category,
+    # why_material, triggering evidence, acceptance impact, budget).
+    unavailable.append("question_plan")
+    unavailable.append("question_resolutions")
+
+    # Existing-vs-new behavior classification: same field names, rebound target.
+    classifications = payload.get("behavior_classifications") or []
+    if classifications:
+        manifest["behavior_classification"] = {
+            "items": [
+                {
+                    "target_ref": row.get("disposition_id"),
+                    "behavior_class": row.get("behavior_class"),
+                    "existing_evidence_ids": list(row.get("existing_evidence_ids") or []),
+                    "requested_evidence_ids": list(row.get("requested_evidence_ids") or []),
+                    "change_evidence_ids": list(row.get("change_evidence_ids") or []),
+                    "rationale": row.get("rationale", ""),
+                }
+                for row in classifications
+            ]
+        }
+        projected.append("behavior_classification")
+    else:
+        unavailable.append("behavior_classification")
+
+    # Coverage: exact class mapping only; priority is not carried by the
+    # runtime and is never reconstructed (C1 priority replay is NOT_EVALUABLE).
+    dispositions = payload.get("coverage_dispositions") or []
+    if dispositions:
+        items = []
+        for row in dispositions:
+            items.append(
+                {
+                    "coverage_id": row.get("disposition_id"),
+                    "behavior": row.get("candidate"),
+                    "question_ids": list(row.get("source_question_ids") or []),
+                    "evidence_ids": list(row.get("evidence_ids") or []),
+                    "research_ids": [],
+                    "coverage_class": _COVERAGE_CLASS_MAP.get(
+                        row.get("disposition"), UNAVAILABLE_FROM_RUNTIME
+                    ),
+                    "priority": UNAVAILABLE_FROM_RUNTIME,
+                }
+            )
+        manifest["coverage_decisions"] = {"items": items}
+        projected.append("coverage_decisions")
+        lossy.append("coverage_decisions.priority")
+    else:
+        unavailable.append("coverage_decisions")
+
+    # Human clarifications (P1) project losslessly from the trace.
+    clarifications = trace.get("human_clarifications") or []
+    if clarifications:
+        manifest["human_clarifications"] = clarifications
+        projected.append("human_clarifications")
+
+    # Gate verdicts + promotion state are replay inputs, not gate manifests.
+    manifest["_runtime"] = {
+        "gate_decisions": payload.get("gate_decisions") or [],
+        "promotion_decisions": payload.get("promotion_decisions") or [],
+        "acceptance_candidates": payload.get("acceptance_candidates") or [],
+        "candidate_lifecycle": payload.get("candidate_lifecycle") or [],
+        "stage_trace": [row.get("stage") for row in trace.get("stage_trace") or []],
+        "status": info.get("status", ""),
+        "validation_status": info.get("validation_status", ""),
+    }
+    projected.append("_runtime")
+
+    # Blocks the runtime does not produce at all - replay must report
+    # NOT_EVALUABLE, never a fabricated PASS.
+    unavailable.extend(
+        [
+            "doc_research",
+            "evidence_sufficiency",
+            "coverage_equivalence",
+            "requirement_lineage",
+            "historical_jira_assessment",
+            "retrieval_requests",
+            "retrieval_results",
+        ]
+    )
+
+    metadata = {
+        "runtime_schema_version": info.get("runtime_version", ""),
+        "adapter_version": PROJECTION_ADAPTER_VERSION,
+        "runtime_revision": info.get("run_id", ""),
+        "projected_fields": sorted(projected),
+        "unavailable_fields": sorted(set(unavailable)),
+        "lossy_fields": sorted(set(lossy)),
+        "derived_fields": sorted(set(derived)),
+        "warnings": warnings,
+    }
+    manifest["_projection"] = metadata
+    return manifest, metadata
+
 
 class _NoPatternRedirect(urllib.request.HTTPRedirectHandler):
     """Never forward a shared-learning Bearer token through a redirect."""
@@ -376,15 +593,59 @@ def verify_receipt(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--jira-key", required=True)
+    parser.add_argument("--jira-key", required=False)
     parser.add_argument("--tenant-id", default="kone")
-    parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--plan", type=Path, required=True)
-    parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--manifest", type=Path, required=False)
+    parser.add_argument("--plan", type=Path, required=False)
+    parser.add_argument("--receipt", type=Path, required=False)
     parser.add_argument("--claude-question-submission", type=Path)
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=False)
     parser.add_argument("--repo-root", default=None)
+    parser.add_argument(
+        "--project-result",
+        type=Path,
+        default=None,
+        help="C2A: project a saved canonical runtime result (GenerationResult or "
+        "pipeline result JSON) into a read-only gate-manifest projection and "
+        "write it to --out. No semantic content is recomputed or invented.",
+    )
     args = parser.parse_args()
+
+    if args.project_result is not None:
+        if args.out is None:
+            print("ERROR: --project-result requires --out", file=sys.stderr)
+            return 2
+        try:
+            result = json.loads(args.project_result.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"ERROR: cannot read runtime result: {exc}", file=sys.stderr)
+            return 2
+        manifest, metadata = project_runtime_result(result)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        print(args.out)
+        print(
+            "projection: "
+            f"{len(metadata['projected_fields'])} projected, "
+            f"{len(metadata['unavailable_fields'])} unavailable, "
+            f"{len(metadata['lossy_fields'])} lossy"
+        )
+        return 0
+
+    missing = [
+        name
+        for name in ("jira_key", "manifest", "plan", "receipt", "out")
+        if getattr(args, name) is None
+    ]
+    if missing:
+        print(
+            "ERROR: missing required arguments: " + ", ".join(f"--{m}" for m in missing),
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         verify_receipt(

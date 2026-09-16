@@ -130,6 +130,9 @@ historical_jira_safety_mod = _load("historical_jira_safety",
                                    "historical_jira_safety.py")
 retrieval_admission_mod = _load("retrieval_admission", "retrieval_admission.py")
 retrieval_benchmark_mod = _load("retrieval_benchmark", "retrieval_benchmark.py")
+runtime_adapter_mod = _load("canonical_runtime_adapter",
+                            "canonical_runtime_adapter.py")
+run_gates_mod = _load("run_gates", "run_gates.py")
 evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
 doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
@@ -9032,6 +9035,152 @@ def _lineage_fixture():
     }
 
 
+def _synthetic_runtime_result():
+    """Minimal canonical runtime result dict (envelope shape) for projection
+    tests - no backend import needed."""
+
+    return {
+        "run_id": "run:synthetic-1",
+        "status": "needs_human_review",
+        "runtime_id": "aem-guides-test-plan-runtime",
+        "runtime_version": "2.0.0",
+        "output_payload": {
+            "missing_questions": [
+                {"question_id": "question:aaa", "question_text": "Q one?",
+                 "blocking": False, "question_revision": "rev1"},
+                {"question_id": "question:bbb", "question_text": "Q two?",
+                 "blocking": True, "question_revision": "rev2"},
+            ],
+            "question_research": [
+                {"question_id": "question:aaa",
+                 "research_requirement": "DOCUMENTATION",
+                 "research_status": "ANSWER_FOUND",
+                 "research_request_ids": ["retrieval:1"],
+                 "evidence_ids": ["ev:1"], "reason": "r"},
+                {"question_id": "question:bbb",
+                 "research_requirement": "NONE",
+                 "research_status": "NOT_REQUIRED",
+                 "research_request_ids": [], "evidence_ids": [],
+                 "reason": "r"},
+            ],
+            "behavior_classifications": [
+                {"disposition_id": "disposition:1",
+                 "behavior_class": "NEW_REQUIREMENT",
+                 "existing_evidence_ids": [],
+                 "requested_evidence_ids": ["ev:1"],
+                 "change_evidence_ids": [], "rationale": "ticket only"},
+            ],
+            "coverage_dispositions": [
+                {"disposition_id": "disposition:1",
+                 "candidate": "The retained entry persists.",
+                 "disposition": "PROPOSED_ACCEPTANCE_CONTRACT",
+                 "source_question_ids": ["question:aaa"],
+                 "evidence_ids": ["ev:1"], "rationale": "r"},
+            ],
+            "promotion_decisions": [
+                {"candidate_id": "candidate:1", "status": "PROMOTED",
+                 "reasons": []},
+            ],
+            "acceptance_candidates": [
+                {"candidate_id": "candidate:1",
+                 "statement": "The retained entry persists.",
+                 "source_disposition_ids": ["disposition:1"]},
+            ],
+            "gate_decisions": [
+                {"gate": "AcceptancePromotionGate", "status": "PASSED"},
+            ],
+        },
+        "trace": {"stage_trace": [{"stage": "ContractFactExtractor"}],
+                  "human_clarifications": []},
+    }
+
+
+def test_canonical_runtime_projection() -> None:
+    adapter = runtime_adapter_mod
+
+    # Envelope-shaped input.
+    manifest, meta = adapter.project_runtime_result(_synthetic_runtime_result())
+    check("research records project losslessly",
+          manifest["question_research"]["items"][0]["question_ref"]
+          == "question:aaa"
+          and manifest["question_research"]["items"][0]["research_requests"]
+          == ["retrieval:1"])
+    check("classification target refs are rebound to disposition ids",
+          manifest["behavior_classification"]["items"][0]["target_ref"]
+          == "disposition:1")
+    check("coverage class maps only exact equivalents",
+          manifest["coverage_decisions"]["items"][0]["coverage_class"]
+          == "ACCEPTANCE")
+    check("coverage priority is never reconstructed",
+          manifest["coverage_decisions"]["items"][0]["priority"]
+          == adapter.UNAVAILABLE_FROM_RUNTIME
+          and "coverage_decisions.priority" in meta["lossy_fields"])
+    check("runtime metadata preserved",
+          meta["runtime_revision"] == "run:synthetic-1"
+          and meta["adapter_version"].startswith("aem-guides-runtime-projection"))
+    check("unavailable blocks are recorded, never fabricated",
+          "evidence_sufficiency" in meta["unavailable_fields"]
+          and "evidence_sufficiency" not in manifest
+          and "coverage_equivalence" not in manifest)
+
+    # Pipeline-result-shaped input (qe_review_package path).
+    wrapped = {"qe_review_package": {"canonical_result": {
+        "run_id": "run:synthetic-1", "status": "needs_human_review",
+        "output_payload": _synthetic_runtime_result()["output_payload"],
+        "trace": {"stage_trace": []},
+    }}}
+    manifest2, meta2 = adapter.project_runtime_result(wrapped)
+    check("pipeline-result shape projects identically",
+          manifest2["question_research"] == manifest["question_research"])
+
+    print("test_canonical_runtime_projection: OK")
+
+
+def test_runtime_replay_modes() -> None:
+    adapter = runtime_adapter_mod
+    manifest, _meta = adapter.project_runtime_result(_synthetic_runtime_result())
+    report = run_gates_mod.replay_runtime_projection(manifest)
+    statuses = {row["gate"]: row["status"] for row in report["gate_results"]}
+
+    check("evaluable gates run for real",
+          statuses["question-research"] in {"PASS", "FAIL"})
+    check("absent contracts are NOT_EVALUABLE, never fabricated PASS",
+          statuses["evidence-sufficiency"] == "NOT_EVALUABLE"
+          and statuses["coverage-equivalence"] == "NOT_EVALUABLE"
+          and statuses["historical-jira-safety"] == "NOT_EVALUABLE")
+    check("projection quality is honestly PARTIAL",
+          report["projection_quality"] == "PARTIAL")
+    check("promotion replay agrees on the clean fixture",
+          report["runtime_promotion_status"] == "AGREES")
+
+    # Deliberate disagreement: research-pending question bound to the promoted
+    # candidate -> DISAGREEMENT, artifact untouched.
+    tampered = json.loads(json.dumps(manifest))
+    tampered["question_research"]["items"][0]["research_status"] = "PENDING"
+    report2 = run_gates_mod.replay_runtime_projection(tampered)
+    check("research-pending promoted question yields DISAGREEMENT",
+          report2["runtime_promotion_status"] == "DISAGREES"
+          and report2["disagreements"][0]["severity"]
+          == "BLOCKING_POLICY_DIVERGENCE")
+    check("replay never repairs the artifact",
+          manifest["question_research"]["items"][0]["research_status"]
+          == "ANSWER_FOUND")
+
+    # Unavailable information: stripped research block -> NOT_EVALUABLE.
+    stripped = json.loads(json.dumps(manifest))
+    del stripped["question_research"]
+    stripped["_projection"]["unavailable_fields"] = sorted(
+        set(stripped["_projection"]["unavailable_fields"]) | {"question_research"}
+    )
+    report3 = run_gates_mod.replay_runtime_projection(stripped)
+    statuses3 = {row["gate"]: row["status"] for row in report3["gate_results"]}
+    check("stripped information is NOT_EVALUABLE, not PASS",
+          statuses3["question-research"] == "NOT_EVALUABLE"
+          and report3["runtime_promotion_status"] == "NOT_EVALUABLE")
+
+    print("test_runtime_replay_modes: OK")
+
+
 def test_requirement_lineage() -> None:
     rl = requirement_lineage_mod
 
@@ -15418,6 +15567,8 @@ def main() -> int:
     test_retrieval_admission()
     test_retrieval_admission_regressions()
     test_retrieval_benchmark()
+    test_canonical_runtime_projection()
+    test_runtime_replay_modes()
     test_evidence_sufficiency()
     test_evidence_sufficiency_output_history_regression()
     test_evidence_sufficiency_unfamiliar_ticket()
