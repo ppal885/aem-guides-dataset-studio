@@ -440,10 +440,12 @@ class CanonicalRuntimeStage(StrEnum):
     BEHAVIOR_MODEL_BUILDER = "BehaviorModelBuilder"
     SEMANTIC_BEHAVIORAL_CLOSURE_EXPLORER = "SemanticBehavioralClosureExplorer"
     MISSING_QUESTION_GENERATOR = "MissingQuestionGenerator"
+    RESEARCH_REQUIREMENT_CLASSIFIER = "ResearchRequirementClassifier"
     REASONING_DIRECTED_RETRIEVER = "ReasoningDirectedRetriever"
     HYPOTHESIS_VERIFIER = "HypothesisVerifier"
     DOMAIN_SPECIFIC_IMPACT_MODEL = "DomainSpecificImpactModel"
     COVERAGE_DISPOSITION_CLASSIFIER = "CoverageDispositionClassifier"
+    BEHAVIOR_CHANGE_CLASSIFIER = "BehaviorChangeClassifier"
     ACCEPTANCE_CONTRACT_RESOLVER = "AcceptanceContractResolver"
     BEHAVIORAL_COMPLETENESS_GATE = "BehavioralCompletenessGate"
     ACCEPTANCE_PROMOTION_GATE = "AcceptancePromotionGate"
@@ -553,6 +555,118 @@ class QuestionEvidenceProvider(StrEnum):
     CONFIGURATION_OR_TESTS = "CONFIGURATION_OR_TESTS"
     HUMAN_PRODUCT = "HUMAN_PRODUCT"
     UNSPECIFIED = "UNSPECIFIED"
+
+
+class ResearchRequirement(StrEnum):
+    """The mandatory research class a material question routes to.
+
+    Classification happens once, after question planning and before any
+    directed research runs.  ``NONE`` means the current Jira authority (for
+    example an explicit Human Accepted AC) is sufficient on its own; every
+    other value names research that must actually execute before coverage may
+    finalize the question.
+    """
+
+    NONE = "NONE"
+    DOCUMENTATION = "DOCUMENTATION"
+    IMPLEMENTATION = "IMPLEMENTATION"
+    HISTORICAL = "HISTORICAL"
+    DOCUMENTATION_AND_IMPLEMENTATION = "DOCUMENTATION_AND_IMPLEMENTATION"
+    MULTI_SOURCE = "MULTI_SOURCE"
+
+
+class ResearchStatus(StrEnum):
+    """Terminal routing state of a question's mandatory research."""
+
+    NOT_REQUIRED = "NOT_REQUIRED"
+    PENDING = "PENDING"
+    ANSWER_FOUND = "ANSWER_FOUND"
+    PARTIAL = "PARTIAL"
+    NOT_FOUND = "NOT_FOUND"
+    SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
+    CONFLICTED = "CONFLICTED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class BehaviorChangeClass(StrEnum):
+    """Existing-vs-New classification of a resolved behavior.
+
+    Documentation establishes current product behavior; the current ticket
+    proposes new behavior.  "Documented today" must never be confused with
+    "required after this fix".
+    """
+
+    EXISTING_CONFIRMED = "EXISTING_CONFIRMED"
+    NEW_REQUIREMENT = "NEW_REQUIREMENT"
+    MODIFIED_EXISTING_BEHAVIOR = "MODIFIED_EXISTING_BEHAVIOR"
+    PRESERVED_EXISTING_BEHAVIOR = "PRESERVED_EXISTING_BEHAVIOR"
+    UNKNOWN = "UNKNOWN"
+    CONFLICTED = "CONFLICTED"
+
+
+class ResearchRoutingProductContext(BaseModel):
+    """Product context a research-routing invocation applies to.
+
+    Carried through to the requirement record so a later Question Planner can
+    route the same question differently per product/version/deployment without
+    another architectural rewrite.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    product: str = Field(default="", max_length=200)
+    product_area: str = Field(default="", max_length=200)
+    product_versions: list[str] = Field(default_factory=list, max_length=20)
+    deployment_modes: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "ResearchRoutingProductContext":
+        self.product_versions = sorted(set(self.product_versions))
+        self.deployment_modes = sorted(set(self.deployment_modes))
+        return self
+
+
+class ResearchRoutingRequest(BaseModel):
+    """Reusable per-question research-routing contract.
+
+    The Question Planner (a later component) invokes this contract once per
+    material question: ``question_id`` binds it to the planned question,
+    ``research_need`` optionally declares the route explicitly,
+    ``required_source_type`` optionally declares the mandated sources,
+    ``product_context`` carries the product/version/deployment the route
+    applies to, and ``applicability`` lets the planner mark the question not
+    applicable in this context.  When the planner supplies only
+    ``question_id``, the router derives the route from the planned question's
+    evidence path exactly as the runtime classifier does today.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str = ""
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    research_need: ResearchRequirement | None = None
+    required_source_type: list[EvidenceSourceType] = Field(default_factory=list)
+    product_context: ResearchRoutingProductContext | None = None
+    applicability: ApplicabilityState = ApplicabilityState.APPLICABLE
+
+    @model_validator(mode="after")
+    def normalize_and_identify(self) -> "ResearchRoutingRequest":
+        self.required_source_type = sorted(
+            set(self.required_source_type), key=lambda row: row.value
+        )
+        if (
+            self.research_need == ResearchRequirement.NONE
+            and self.required_source_type
+        ):
+            raise ValueError(
+                "a NONE research need cannot mandate required source types"
+            )
+        identity = self.model_dump(mode="json", exclude={"request_id"})
+        expected = f"research-route:{stable_sha256(identity)[:32]}"
+        if self.request_id and self.request_id != expected:
+            raise ValueError("request_id does not match deterministic identity")
+        self.request_id = expected
+        return self
 
 
 class MissingQuestionQualityFailureReason(StrEnum):
@@ -2325,6 +2439,116 @@ class MissingQuestionResolutionRecord(BaseModel):
         return self
 
 
+class ResearchRequirementRecord(BaseModel):
+    """Question -> Research Requirement link.
+
+    Classified deterministically from the planned question before any directed
+    research runs, so the Coverage Reasoner can prove a documentation- or
+    implementation-dependent question was never answered from inference alone.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_id: str = ""
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    research_requirement: ResearchRequirement
+    material: bool
+    blocking: bool = False
+    required_source_types: list[EvidenceSourceType] = Field(default_factory=list)
+    rationale: str = Field(min_length=1, max_length=1000)
+    routing_request_id: str = Field(
+        default="", pattern=r"^(?:research-route:[a-f0-9]{32})?$"
+    )
+    product_context: ResearchRoutingProductContext | None = None
+    applicability: ApplicabilityState | None = None
+
+    @model_validator(mode="after")
+    def normalize_and_identify(self) -> "ResearchRequirementRecord":
+        self.required_source_types = sorted(
+            set(self.required_source_types), key=lambda row: row.value
+        )
+        if self.research_requirement == ResearchRequirement.NONE:
+            if self.required_source_types:
+                raise ValueError(
+                    "a NONE research requirement cannot mandate source types"
+                )
+        elif not self.required_source_types:
+            raise ValueError(
+                "a routed research requirement must name its required source types"
+            )
+        identity = self.model_dump(mode="json", exclude={"requirement_id"})
+        expected = f"research-requirement:{stable_sha256(identity)[:32]}"
+        if self.requirement_id and self.requirement_id != expected:
+            raise ValueError("requirement_id does not match deterministic identity")
+        self.requirement_id = expected
+        return self
+
+
+class QuestionResearchRecord(BaseModel):
+    """Research Requirement -> Research Request -> Research Evidence link.
+
+    Carries the terminal research status of one question.  ``research_request_ids``
+    references the directed retrievals and implementation-verification handoffs
+    that executed the mandated research; ``evidence_ids`` references the evidence
+    that research produced.  ``NOT_FOUND`` means the mandated research executed
+    and found no answer; it never means the opposite behavior is true.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    research_id: str = ""
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    requirement_id: str = Field(
+        pattern=r"^research-requirement:[a-f0-9]{32}$"
+    )
+    research_requirement: ResearchRequirement
+    research_status: ResearchStatus
+    research_request_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def normalize_and_identify(self) -> "QuestionResearchRecord":
+        self.research_request_ids = sorted(set(self.research_request_ids))
+        self.evidence_ids = sorted(set(self.evidence_ids))
+        if self.research_requirement == ResearchRequirement.NONE:
+            if self.research_status != ResearchStatus.NOT_REQUIRED:
+                raise ValueError(
+                    "a NONE research requirement must terminate as NOT_REQUIRED"
+                )
+            if self.research_request_ids or self.evidence_ids:
+                raise ValueError(
+                    "a NONE research requirement cannot issue research requests"
+                )
+        if self.research_status == ResearchStatus.NOT_REQUIRED:
+            if self.research_requirement != ResearchRequirement.NONE:
+                raise ValueError(
+                    "NOT_REQUIRED research status requires a NONE research requirement"
+                )
+        if self.research_status == ResearchStatus.PENDING:
+            if self.research_request_ids or self.evidence_ids:
+                raise ValueError(
+                    "PENDING research has not executed and cannot cite requests "
+                    "or evidence"
+                )
+        if self.research_status == ResearchStatus.ANSWER_FOUND:
+            if not self.research_request_ids:
+                raise ValueError(
+                    "ANSWER_FOUND requires the research request that found the answer"
+                )
+        if self.research_status == ResearchStatus.NOT_APPLICABLE:
+            if self.research_request_ids or self.evidence_ids:
+                raise ValueError(
+                    "NOT_APPLICABLE research cannot cite requests or evidence"
+                )
+        identity = self.model_dump(mode="json", exclude={"research_id"})
+        expected = f"research:{stable_sha256(identity)[:32]}"
+        if self.research_id and self.research_id != expected:
+            raise ValueError("research_id does not match deterministic identity")
+        self.research_id = expected
+        return self
+
+
 class DirectedRetrievalRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -3243,6 +3467,73 @@ class CoverageDispositionRecord(BaseModel):
         return self
 
 
+class BehaviorClassificationRecord(BaseModel):
+    """Existing-vs-New classification of one resolved coverage decision.
+
+    Keeps "documented today" separate from "required after this fix":
+    ``existing_evidence_ids`` establish the current/documented baseline,
+    ``requested_evidence_ids`` carry the current ticket's requested behavior,
+    and ``change_evidence_ids`` carry the change set being implemented.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    classification_id: str = ""
+    disposition_id: str = Field(pattern=r"^disposition:[a-f0-9]{32}$")
+    behavior_class: BehaviorChangeClass
+    existing_evidence_ids: list[str] = Field(default_factory=list)
+    requested_evidence_ids: list[str] = Field(default_factory=list)
+    change_evidence_ids: list[str] = Field(default_factory=list)
+    rationale: str = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def normalize_and_identify(self) -> "BehaviorClassificationRecord":
+        self.existing_evidence_ids = sorted(set(self.existing_evidence_ids))
+        self.requested_evidence_ids = sorted(set(self.requested_evidence_ids))
+        self.change_evidence_ids = sorted(set(self.change_evidence_ids))
+        if self.behavior_class == BehaviorChangeClass.NEW_REQUIREMENT:
+            if self.existing_evidence_ids:
+                raise ValueError(
+                    "NEW_REQUIREMENT cannot cite existing-behavior evidence: "
+                    "existing documentation must not claim a new feature is "
+                    "already documented"
+                )
+            if not self.requested_evidence_ids and not self.change_evidence_ids:
+                raise ValueError(
+                    "NEW_REQUIREMENT requires current-ticket or change-set evidence"
+                )
+        if self.behavior_class in {
+            BehaviorChangeClass.EXISTING_CONFIRMED,
+            BehaviorChangeClass.MODIFIED_EXISTING_BEHAVIOR,
+            BehaviorChangeClass.PRESERVED_EXISTING_BEHAVIOR,
+        } and not self.existing_evidence_ids:
+            raise ValueError(
+                f"{self.behavior_class.value} requires existing-behavior evidence"
+            )
+        if (
+            self.behavior_class == BehaviorChangeClass.EXISTING_CONFIRMED
+            and self.change_evidence_ids
+        ):
+            raise ValueError(
+                "change-set evidence makes a behavior new, not existing: "
+                "EXISTING_CONFIRMED cannot cite change evidence"
+            )
+        if self.behavior_class == BehaviorChangeClass.MODIFIED_EXISTING_BEHAVIOR:
+            if not self.requested_evidence_ids and not self.change_evidence_ids:
+                raise ValueError(
+                    "MODIFIED_EXISTING_BEHAVIOR requires the current-ticket or "
+                    "change-set evidence that changes the documented behavior"
+                )
+        identity = self.model_dump(mode="json", exclude={"classification_id"})
+        expected = f"behavior-class:{stable_sha256(identity)[:32]}"
+        if self.classification_id and self.classification_id != expected:
+            raise ValueError(
+                "classification_id does not match deterministic identity"
+            )
+        self.classification_id = expected
+        return self
+
+
 class AcceptanceCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -3482,6 +3773,7 @@ class StructuredQEPlan(BaseModel):
     contract_fact_ids: list[str] = Field(default_factory=list)
     closure_ids: list[str] = Field(default_factory=list)
     coverage_disposition_ids: list[str] = Field(default_factory=list)
+    behavior_classification_ids: list[str] = Field(default_factory=list)
     promoted_candidate_ids: list[str] = Field(default_factory=list)
     open_question_ids: list[str] = Field(default_factory=list)
     candidate_lifecycle: list[CandidateLifecycleRecord] = Field(default_factory=list)
@@ -3605,6 +3897,13 @@ class RuntimeTrace(BaseModel):
     missing_question_resolutions: list[MissingQuestionResolutionRecord] = Field(
         default_factory=list
     )
+    research_requirements: list[ResearchRequirementRecord] = Field(
+        default_factory=list
+    )
+    question_research: list[QuestionResearchRecord] = Field(default_factory=list)
+    behavior_classifications: list[BehaviorClassificationRecord] = Field(
+        default_factory=list
+    )
     source_counts: dict[str, int] = Field(default_factory=dict)
     compatibility_projection: list[CompatibilityProjectionLink] = Field(
         default_factory=list
@@ -3720,6 +4019,8 @@ __all__ = [
     "BehaviorGraph",
     "BehaviorGraphEdge",
     "BehaviorGraphNode",
+    "BehaviorChangeClass",
+    "BehaviorClassificationRecord",
     "BehaviorHypothesis",
     "BehaviorRelationType",
     "CANONICAL_RUNTIME_ID",
@@ -3802,6 +4103,12 @@ __all__ = [
     "QUESTION_GENERATION_TRACE_ORDER",
     "ReasoningPatternActivation",
     "ReasoningQuestionFamily",
+    "ResearchRequirement",
+    "ResearchRequirementRecord",
+    "ResearchRoutingProductContext",
+    "ResearchRoutingRequest",
+    "ResearchStatus",
+    "QuestionResearchRecord",
     "ResolutionState",
     "RuntimeEntryPoint",
     "RuntimePrincipal",

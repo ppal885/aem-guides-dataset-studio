@@ -112,6 +112,18 @@ skill_fingerprint_mod = _load("skill_bundle_fingerprint", "skill_bundle_fingerpr
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
+question_research_mod = _load("question_research", "question_research.py")
+question_planner_mod = _load("question_planner", "question_planner.py")
+question_resolver_mod = _load("question_resolver", "question_resolver.py")
+coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
+coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
+requirement_lineage_mod = _load("requirement_lineage", "requirement_lineage.py")
+historical_jira_safety_mod = _load("historical_jira_safety",
+                                   "historical_jira_safety.py")
+retrieval_admission_mod = _load("retrieval_admission", "retrieval_admission.py")
+evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
+doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
+behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
@@ -1508,6 +1520,119 @@ def check_relationship_traversal(
         for problem in evidence_conflict_resolver_mod.validate(data)
     )
 
+    # Mandatory research routing for question-based coverage (optional,
+    # backward-compatible). Absent -> clean pass. When present, enforce that
+    # every material question carries a research requirement + status, that
+    # PENDING mandatory research fails review, and that NOT_FOUND never grounds
+    # an opposite-behavior disposition.
+    failures.extend(
+        f"[question-research] {problem}"
+        for problem in question_research_mod.validate(data)
+    )
+
+    # Question-Based UAC reasoning stages (optional, backward-compatible).
+    # Absent -> clean pass. The Question Planner block enforces the material-
+    # question record contract, the closed category vocabulary, and the bounded
+    # question budget with explicit overflow/escalation. The Question Resolver
+    # block enforces the terminal statuses, the retained-answer contract, and
+    # the hard rules (a question is not an AC, an answer is not automatically
+    # an AC, non-establishing authorities, NOT_FOUND is not negative proof,
+    # required research cannot be skipped).
+    failures.extend(
+        f"[question-planner] {problem}"
+        for problem in question_planner_mod.validate(data)
+    )
+    failures.extend(
+        f"[question-resolver] {problem}"
+        for problem in question_resolver_mod.validate(data)
+    )
+
+    # Dedicated UAC Coverage Reasoner (optional, backward-compatible). Absent ->
+    # clean pass. Coverage is decided on resolved question evidence, never by
+    # the Writer: P0/ACCEPTANCE proves the primary ticket contract, P1/
+    # QE_REGRESSION covers materially related regression behavior, generic
+    # untraced test ideas are rejected, EXCLUDED never reaches the writer
+    # handoff, and unresolved/TBD/conflicted questions or skipped/NOT_FOUND
+    # required research cannot ground ACCEPTANCE decisions.
+    failures.extend(
+        f"[coverage-reasoner] {problem}"
+        for problem in coverage_reasoner_mod.validate(data)
+    )
+
+    # Semantic Coverage/AC Equivalence (optional, backward-compatible). Absent
+    # -> clean pass. Equivalence compares coverage decisions on structured
+    # dimensions (expected outcome, state transition, scope, configuration,
+    # applicability, IDs) - never Writer prose alone - and only
+    # SAME_OUTCOME_VARIANT decisions may merge, preserving all question IDs,
+    # evidence IDs, variants, and source lineage.
+    failures.extend(
+        f"[coverage-equivalence] {problem}"
+        for problem in coverage_equivalence_mod.validate(data)
+    )
+
+    # Requirement Lineage (optional, backward-compatible). Absent -> clean
+    # pass. End-to-end AC traceability: every final AC binds to admitted
+    # coverage/questions/evidence/research/sources; TBD questions stay
+    # visible; reviews bind to the exact Writer revision; lineage proves
+    # provenance and structural integrity, not semantic correctness.
+    failures.extend(
+        f"[requirement-lineage] {problem}"
+        for problem in requirement_lineage_mod.validate(data)
+    )
+
+    # Historical Jira Evidence Safety (optional, backward-compatible).
+    # Absent -> clean pass. Question-bound historical assessment: similarity
+    # is discovery metadata, never acceptance authority; NOT_APPLICABLE is
+    # forced by material applicability differences; DISCOVERY_ONLY never
+    # establishes answers or enters Source lines; CONFLICTING_HISTORY never
+    # silently resolves; S1/C1/L1 bindings enforced.
+    failures.extend(
+        f"[historical-jira-safety] {problem}"
+        for problem in historical_jira_safety_mod.validate(data)
+    )
+
+    # Question-level retrieval admission (optional, backward-compatible).
+    # Absent -> clean pass. Retrieval is question-bound; a candidate's
+    # relationship never exceeds the structural admission ceiling (fetch
+    # before material use, applicability before admission, exact subject
+    # identity, H1 for historical Jira); retrieval score is never authority;
+    # topic matches never reach S1 sufficiency or L1 lineage.
+    failures.extend(
+        f"[retrieval-admission] {problem}"
+        for problem in retrieval_admission_mod.validate(data)
+    )
+
+    # Evidence Sufficiency (optional, backward-compatible). Absent -> clean
+    # pass. Per-question and per-coverage-decision sufficiency computed from
+    # the underlying questions/evidence; P0 ACCEPTANCE requires SUFFICIENT
+    # unless explicitly ACCEPTANCE_TBD; the writer handoff never receives
+    # unsupported coverage as confirmed behavior.
+    failures.extend(
+        f"[evidence-sufficiency] {problem}"
+        for problem in evidence_sufficiency_mod.validate(data)
+    )
+
+    # Doc Research routing (optional, backward-compatible). Absent -> clean
+    # pass. Enforces invocation of the EXISTING UAC Doc Researcher after
+    # Evidence: DOC_RESEARCH_REQUIRED without a terminal Doc Researcher result
+    # hard-fails (Coverage/Writer MUST NOT proceed); the coordinator must not
+    # impersonate the Researcher; results follow the finding contract; the
+    # Writer receives only admitted research.
+    failures.extend(
+        f"[doc-research-routing] {problem}"
+        for problem in doc_research_mod.validate(data)
+    )
+
+    # Existing-vs-New behavior classification (optional, backward-compatible).
+    # Absent -> clean pass. When present, keep "documented today" separate from
+    # "required after this fix": documentation establishes baselines, the ticket
+    # establishes new requirements, and a source line never credits a source for
+    # behavior it does not establish.
+    failures.extend(
+        f"[behavior-classification] {problem}"
+        for problem in behavior_classification_mod.validate(data)
+    )
+
     # Scope-applicability (UACFIX-03, optional, backward-compatible). Absent -> pass.
     # Prevents name-only scope expansion; unresolved shared-path scope -> Open Question.
     failures.extend(
@@ -2204,6 +2329,52 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_fluffyjaws_evidence()
             self_tests.test_temporal_evidence()
             self_tests.test_evidence_conflict_resolver()
+            if hasattr(self_tests, "test_question_research"):
+                self_tests.test_question_research()
+            if hasattr(self_tests, "test_behavior_classification"):
+                self_tests.test_behavior_classification()
+            if hasattr(self_tests, "test_question_planner"):
+                self_tests.test_question_planner()
+            if hasattr(self_tests, "test_question_resolver"):
+                self_tests.test_question_resolver()
+            if hasattr(self_tests, "test_coverage_reasoner"):
+                self_tests.test_coverage_reasoner()
+            if hasattr(self_tests, "test_coverage_equivalence"):
+                self_tests.test_coverage_equivalence()
+            if hasattr(self_tests, "test_coverage_equivalence_e1"):
+                self_tests.test_coverage_equivalence_e1()
+            if hasattr(self_tests, "test_requirement_lineage"):
+                self_tests.test_requirement_lineage()
+            if hasattr(self_tests, "test_requirement_lineage_regressions"):
+                self_tests.test_requirement_lineage_regressions()
+            if hasattr(self_tests, "test_historical_jira_safety"):
+                self_tests.test_historical_jira_safety()
+            if hasattr(self_tests, "test_historical_jira_safety_regressions"):
+                self_tests.test_historical_jira_safety_regressions()
+            if hasattr(self_tests, "test_retrieval_admission"):
+                self_tests.test_retrieval_admission()
+            if hasattr(self_tests, "test_retrieval_admission_regressions"):
+                self_tests.test_retrieval_admission_regressions()
+            if hasattr(self_tests, "test_retrieval_benchmark"):
+                self_tests.test_retrieval_benchmark()
+            if hasattr(self_tests, "test_evidence_sufficiency"):
+                self_tests.test_evidence_sufficiency()
+            if hasattr(self_tests, "test_evidence_sufficiency_output_history_regression"):
+                self_tests.test_evidence_sufficiency_output_history_regression()
+            if hasattr(self_tests, "test_evidence_sufficiency_unfamiliar_ticket"):
+                self_tests.test_evidence_sufficiency_unfamiliar_ticket()
+            if hasattr(self_tests, "test_evidence_sufficiency_hard_negatives"):
+                self_tests.test_evidence_sufficiency_hard_negatives()
+            if hasattr(self_tests, "test_evidence_sufficiency_claim_level_unfamiliar"):
+                self_tests.test_evidence_sufficiency_claim_level_unfamiliar()
+            if hasattr(self_tests, "test_doc_research_routing"):
+                self_tests.test_doc_research_routing()
+            if hasattr(self_tests, "test_doc_research_routing_regressions"):
+                self_tests.test_doc_research_routing_regressions()
+            if hasattr(self_tests, "test_question_reasoning_chain_regressions"):
+                self_tests.test_question_reasoning_chain_regressions()
+            if hasattr(self_tests, "test_question_reasoning_unseen_fixture"):
+                self_tests.test_question_reasoning_unseen_fixture()
             self_tests.test_scope_applicability()
             self_tests.test_ac_language_policy()
             self_tests.test_publishing_scope_coverage()

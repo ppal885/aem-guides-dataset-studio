@@ -247,6 +247,8 @@ clones, or retrieve unrelated RAG before saving the selected Human correction.
 - Build `behavior_graph` schema `aem-guides-behavior-graph-v1`. Each node and typed edge cites an ID in the canonical source/evidence registry. Each edge records a subject and an authority allowed by that subject's policy, plus currentness, applicability, confidence, verification state, and materiality. Inferred edges are investigation candidates only. Traverse a bounded code/semantic neighborhood and record readers, writers, callers, consumers, configuration, generated artifacts, shared processors, error paths, persisted state, and downstream decision consumers.
 - Complete `semantic_closure` schema `aem-guides-semantic-closure-v1` for every material graph entity. Every canonical dimension must be explicitly `APPLICABLE`, `NOT_APPLICABLE`, or `UNRESOLVED`, then end as `COVERED`, `INVESTIGATED_AND_REJECTED`, or `UNRESOLVED_AND_EXPOSED`. Do not use wildcard entity references: every closure decision must name the evidence-bound material entity it covers. Omission is not equivalent to not applicable.
 - Every material unresolved fact, edge, or closure record automatically requires a linked `missing_questions` record with subject-specific preferred sources, an `OQ-##` destination, and a genuinely new linked second-pass query in `evidence_lifecycle`. Every USED/REJECTED evidence record links to a declared question or hypothesis. A verification may cite only USED evidence bound to that same hypothesis and subject; every claimed authority must be carried by that cited evidence. No retrieval result remains unresolved; it is never treated as `REJECTED` by absence.
+- Route every accepted material question through mandatory research routing before coverage finalizes it (Question Planner -> Research Requirement Classification -> Doc/Code/Historical research -> Question Resolver -> Coverage Reasoner -> Writer -> Reviewer). Classify `research_requirement` (`NONE`, `DOCUMENTATION`, `IMPLEMENTATION`, `HISTORICAL`, `DOCUMENTATION_AND_IMPLEMENTATION`, `MULTI_SOURCE`) from the question's declared evidence path immediately after question planning, execute the mandated research, and record `research_status` (`NOT_REQUIRED`, `PENDING`, `ANSWER_FOUND`, `PARTIAL`, `NOT_FOUND`, `SOURCE_UNAVAILABLE`, `CONFLICTED`, `NOT_APPLICABLE`) with the request/evidence links in the `question_research` manifest block, enforced by `scripts/question_research.py` (see `references/question-research-routing.md`). Hard gate: a material question whose requirement is not `NONE` and whose status is still `PENDING` fails review, and Coverage must not finalize it from the current Jira/configuration evidence alone; the Writer never compensates for missing research. `NOT_FOUND` means the mandated research executed and found no answer - it never asserts the opposite behavior. An explicit Human Accepted AC classifies `NONE`/`NOT_REQUIRED` and proceeds on Jira authority without unnecessary documentation research. The canonical runtime enforces the same contract in its `ResearchRequirementClassifier` stage.
+- Keep "documented today" separate from "required after this fix" (enforced by `scripts/behavior_classification.py`; see `references/behavior-classification.md`). Existing documentation establishes baseline/current behavior; the current ticket establishes desired new behavior. Classify every resolved behavior as `EXISTING_CONFIRMED`, `NEW_REQUIREMENT`, `MODIFIED_EXISTING_BEHAVIOR`, `PRESERVED_EXISTING_BEHAVIOR`, `UNKNOWN`, or `CONFLICTED` in the `behavior_classification` manifest block. Never use existing documentation to claim a new feature is already documented, never describe new implementation/configuration as historical documented behavior, name the existing behavior that must remain compatible (`PRESERVED_EXISTING_BEHAVIOR`), and combine sources in an AC's `Evidence:` line only when each source genuinely supports part of that AC - a source line never credits a documentation source for behavior that documentation does not establish. `UNKNOWN`/`CONFLICTED` behaviors stay open questions until resolved.
 - Disposition every material contract fact, graph item, closure record, generated-output oracle, and content-identity lifecycle state exactly once. Run `acceptance_promotion.py` separately from hypothesis verification: code, PR, runtime, tests, history, or inference may establish actual implementation but cannot alone authorize intended product behavior. A candidate and visible AC may each be promoted at most once; candidate, subject, authority, disposition, mapped AC, and visible Confirmed/Proposed status must all agree. Every visible AC must have a subject-authorized promotion record; regression, implementation mechanics, unsupported exact values, and unresolved decisions cannot promote.
 - Convert Jira text into current behaviour, expected behaviour, affected workflow, data shape, error contract, version boundary, configuration boundary, roles/permissions, user impact, and open questions.
 - Build an integration impact map: direct workflow, upstream callers, downstream outputs, shared components/APIs, configs, roles/permissions, environment matrix, test-data fixtures, and automation suites likely affected.
@@ -405,6 +407,46 @@ FluffyJaws broadens *discovery* of relevant behaviour, but it is a synthesis eng
 - Never label files as changed without a real diff. Never infer current implementation from generic Jira keywords; require exact repo matches or label the area inferred.
 - If an implementation-stage diff is unavailable, add `Draft blocker: implementation diff not inspected`. Do not emit this blocker in pre-development.
 
+### Phase 5.5 — Doc Research Routing (MANDATORY contract after Evidence)
+
+After evidence collection and before any coverage/writing work, record the doc-research
+routing decision in the manifest `doc_research` block, validated by
+`scripts/doc_research_routing.py` (see `references/doc-research-routing.md`). This
+enforces invocation of the existing UAC Doc Researcher role
+(`agents/uac-doc-researcher.md`); it introduces no new agent and changes no source
+authority.
+
+- **Route to `DOC_RESEARCH_REQUIRED` when materially relevant**: the ticket changes
+  existing documented functionality; existing behavior must be understood or preserved;
+  configuration semantics are not sufficiently established by the ticket;
+  product/version/surface applicability needs confirmation; backward compatibility
+  materially affects acceptance; terminology materially affects behavior; the ticket's
+  evidence is insufficient but authorized product documentation may answer the missing
+  behavior; or the Evidence Agent explicitly requests documentation research. Declare
+  the fired triggers in `doc_research.routing.triggers`. Never invoke the Doc Researcher
+  merely because related documentation exists.
+- **An explicit authoritative Human Accepted AC may be sufficient without research**
+  when documentation would not materially change acceptance reasoning: record
+  `RESEARCH_NOT_REQUIRED` with `not_required_reason`.
+- **HARD GATE:** when the routing state is `DOC_RESEARCH_REQUIRED` and no terminal Doc
+  Researcher result exists (`DOC_RESEARCH_COMPLETED` / `DOC_RESEARCH_PARTIAL` /
+  `DOC_RESEARCH_UNAVAILABLE` / `DOC_RESEARCH_CONFLICTED`), Coverage/Writer MUST NOT
+  proceed, and the gate fails the plan. The coordinator/main agent must not impersonate
+  the missing Researcher — every result names `produced_by: uac-doc-researcher`.
+- **Doc Researcher output contract:** `research_id`, `status`, `topics[]`, `findings[]`,
+  `source_ids[]`, `applicability`, `limitations[]`, `conflicts[]`; every finding carries
+  `claim`, `source_id`, `source_type`, `authority`, `applicability`, currentness/version
+  when available, and `evidence_role` (`EXISTING_BEHAVIOR`, `REQUIREMENT_CLARIFICATION`,
+  `SUPPORTING_CONTEXT`).
+- **The Researcher must NOT** write ACs, decide final acceptance scope, override a Human
+  Accepted AC, infer new behavior from old documentation, promote nearby functionality,
+  or treat NOT_FOUND as evidence of the opposite behavior.
+- **The Writer receives only admitted research** (`admitted_research_ids`) through the
+  existing reasoning path — never arbitrary raw search results. The Reviewer fails the
+  plan when required research was skipped, an AC cites documentation that was never
+  retrieved, PARTIAL research is represented as complete, or documentation is used to
+  support behavior it does not establish.
+
 ### Phase 6 — Inspect Figma Design Evidence
 
 - Use Figma MCP when a design/prototype/frame is linked or when the Jira is UI-flow heavy and the user says Figma should be used.
@@ -461,7 +503,272 @@ Only when every dimension above is dispositioned may you proceed to Phase 7. If 
 surfaces a blocking unknown, resolve it from evidence or raise it as an Open Question FIRST
 — do not author around it.
 
-### Phase 7 — Design Test Scenarios
+### Phase 6.6 — Question-Based Reasoning (Planner → Research Router → Resolver)
+
+Structured reasoning stages between discovery and authoring. The Question Planner and
+Question Resolver are coordinator/reasoning stages, NOT new autonomous agents — the
+existing Evidence Agent, Doc Researcher, Writer, and Reviewer roles are unchanged.
+Flow: evidence → Question Planner → material questions → Research Router → Doc
+Researcher / other authorized evidence routes → Question Resolver → coverage reasoning
+input → Writer → Reviewer → final UAC. Record the stages in the manifest `question_plan`
+and `question_resolutions` blocks, validated by `scripts/question_planner.py` and
+`scripts/question_resolver.py` (see `references/question-based-reasoning.md`).
+
+- **Plan only material questions.** Emit a question only when its answer could materially
+  improve acceptance understanding or coverage — never carpet every category. The closed
+  category vocabulary: EXPECTED_OUTCOME, STATE_TRANSITION, PERSISTENCE, NEGATIVE_CONTRACT,
+  SCOPE, VARIANT, ENTRY_PATH, CONFIGURATION, APPLICABILITY, PRESERVATION, ERROR_RECOVERY,
+  SCALE, COMPATIBILITY. Every question carries `question_id`, `category`, `question`,
+  `why_material`, `triggering_evidence_ids`, `acceptance_impact`, `applicability`,
+  `  research_requirement`, and `status` (plus `research_topics[]` when research is routed).
+- **The question budget is bounded** (`question_plan.budget`, default 12). If the
+  material-question budget is exceeded, do not silently discard questions: move the excess
+  into `question_plan.overflow` with `state: QUESTION_BUDGET_EXCEEDED` and an explicit
+  escalation note.
+- **Route every question through the Research Router** (`question_research` block) before
+  resolving it, reusing the R1 Doc Researcher routing contract (Phase 5.5): a
+  documentation-requiring material question requires a terminal `doc_research` routing
+  state — R1-required research cannot be skipped, and a `RESEARCH_NOT_REQUIRED` doc
+  routing contradicts documentation-requiring questions. Required research cannot be
+  skipped; NOT_FOUND is not negative proof.
+- **Resolve every planned question exactly once** with a terminal disposition: ANSWERED,
+  PARTIALLY_ANSWERED, ACCEPTANCE_TBD, INVESTIGATION_ONLY, NOT_APPLICABLE, DUPLICATE, or
+  CONFLICTED. The resolution carries `question_id`, `disposition`, `answer`,
+  `source_ids`, `source_authority`, `applicability`, `limitations`, `contradictions`,
+  `decision_reason`, and `research_ids` binding the admitted research that produced a
+  documentation answer - stale or wrong-bound research cannot answer another question,
+  and documentation is never cited without admitted research. Semantic decisions are
+  externalized in these artifacts; downstream stages consume them rather than
+  reconstructing answers from raw ticket text.
+- **Hard rules:** a question is not an AC; an answer is not automatically an AC; Actual
+  Result cannot establish Expected Result; never reverse a reported failure to invent
+  desired behavior; a suspected root cause does not become acceptance behavior; an
+  attachment observation does not establish desired behavior; historical Jira does not
+  automatically establish current behavior; PARTIAL research cannot produce a fully
+  confirmed answer; an equal-authority conflict remains unresolved (stay CONFLICTED, or
+  record the higher-authority basis in `conflict_resolution`); a DUPLICATE preserves all
+  triggering evidence IDs on the surviving question; root-cause/diagnostic/mechanics
+  uncertainty never becomes ACCEPTANCE_TBD merely because it matters to engineering;
+  ACCEPTANCE_TBD is allowed only when different plausible answers materially change
+  acceptance behavior/scope/configuration/applicability/compatibility/preservation; root
+  cause, diagnostics, and implementation mechanics are normally INVESTIGATION_ONLY. The
+  Writer never receives raw unresolved questions, and a question is never rendered
+  directly as an AC - ACCEPTANCE_TBD questions reach the final Open Questions contract
+  only through the existing approved downstream path.
+- **Preserved invariants:** source authority, observation-vs-requirement separation, exact
+  Jira intake, attachment evidence handling, Doc Researcher routing, the Writer language
+  contract, Reviewer independence, and draft-only behavior all remain exactly as defined
+  elsewhere in this skill — these stages only add traceable structure between discovery
+  and authoring.
+
+### Phase 6.6.5 — Evidence Sufficiency (before coverage decisions)
+
+"Evidence exists" is not "evidence is sufficient to support this answer or coverage."
+Evaluate sufficiency at BOTH the resolved-question level and the coverage-decision
+level in the manifest `evidence_sufficiency` block, enforced by
+`scripts/evidence_sufficiency.py` (see `references/evidence-sufficiency.md`).
+
+- Every material resolved question carries `sufficiency_status` (SUFFICIENT / PARTIAL /
+  INSUFFICIENT / CONFLICTED) with the structured sub-states `authority_status`,
+  `research_completion`, `applicability_status`, `currentness_status`,
+  `contradiction_status`, plus claim-level `supported_claims[]` /
+  `unsupported_claims[]`, `limitations[]`, bound `evidence_ids[]` / `research_ids[]`,
+  and `decision_reason`. No numeric confidence as authority.
+- One applicable authoritative source may be SUFFICIENT; many related passages are not
+  automatically sufficient. Do not require documentation when Jira authority itself is
+  sufficient. PARTIAL research caps the answer at the established portion unless the
+  remaining limitation is demonstrably immaterial to that specific answer; NOT_FOUND is
+  never proof of the opposite behavior; CONFLICTED stays CONFLICTED until an existing
+  authority rule settles it.
+- Wrong-applicability evidence (wrong version / engine / surface) stays insufficient
+  without explicit compatibility evidence; UNCLEAR applicability is never confirmed
+  applicability. Sufficiency for one claim never bleeds into a neighboring claim.
+- Coverage sufficiency is computed from the underlying questions and evidence; P0/P1
+  ACCEPTANCE coverage requires SUFFICIENT unless explicitly represented as
+  ACCEPTANCE_TBD; the Writer handoff never carries INSUFFICIENT/CONFLICTED coverage or
+  an unnamed PARTIAL portion, and the Writer cannot reinterpret evidence to upgrade
+  sufficiency.
+
+### Phase 6.7 — Coverage Reasoning (dedicated Coverage Reasoner)
+
+A dedicated Coverage Reasoner — never the Writer — decides coverage on top of resolved
+question evidence, recorded in the manifest `coverage_decisions` block and validated by
+`scripts/coverage_reasoner.py` (see `references/coverage-reasoner.md`). Inputs:
+authoritative requirements, resolved questions, research findings, applicability,
+conflicts, attachment observations, existing behavior, new behavior, and preservation
+requirements.
+
+- Emit one decision per candidate behavior with `coverage_id`, `behavior`,
+  `question_ids`, `evidence_ids`, `research_ids` (the admitted research behind the
+  underlying questions), `priority`, `coverage_class`, `contract_type`
+  (`POSITIVE`/`NEGATIVE`/`PRESERVATION`), `surface`, `state_or_transition`,
+  `configuration`, `applicability`, `variants` (same-outcome variants each bound by
+  their own evidence), `reason`, `acceptance_impact`, and the
+  `dimensions_considered` axes reasoned about when applicable (single/bulk,
+  refresh/revisit, state transitions, negative contracts, alternate UI paths,
+  configuration branches, New/Old Editor, Author/Source, Collections/Explorer/Map
+  Console, Cloud/6.5, Native PDF/DITA-OT, preprocessing ON/OFF, scale, preservation).
+- **priority**: `P0` = behavior required to prove the primary ticket contract and prevent
+  the direct customer regression (class `ACCEPTANCE`); `P1` = materially related
+  regression behavior (class `QE_REGRESSION`); `SUPPORTING` = supporting regression or
+  investigation coverage; `EXCLUDED` = explicitly excluded with a reason, never reaching
+  the Writer. Do not promote generic test ideas: every decision traces to resolved
+  questions and/or evidence.
+- A decision may stand only on questions whose resolution and research permit it:
+  ANSWERED is eligible; PARTIALLY_ANSWERED grounds only the established portion
+  (regression/investigation); ACCEPTANCE_TBD is never converted into confirmed
+  behavior; INVESTIGATION_ONLY never becomes acceptance coverage; NOT_APPLICABLE
+  produces no coverage; a DUPLICATE contributes linkage through its surviving
+  question and never creates duplicate coverage; CONFLICTED never silently produces
+  confirmed acceptance coverage. An acceptance decision never rests on actual-result,
+  observation, suspected-root-cause, or historical-ticket authority. NOT_FOUND or
+  otherwise incomplete required research cannot ground an ACCEPTANCE decision.
+  Documented-today (EXISTING_CONFIRMED) behavior must not be repackaged as new
+  acceptance coverage, and a NEW_REQUIREMENT is not a preservation contract.
+- **The Writer receives an explicit admitted coverage package** (`writer_handoff` is
+  mandatory once decisions exist) containing only accepted (non-EXCLUDED) decisions and
+  every P0 decision. The Writer must not invent additional acceptance behavior, promote
+  QE_REGRESSION to ACCEPTANCE, convert INVESTIGATION into an AC, resolve
+  ACCEPTANCE_TBD, add unapproved variants, or independently decide P0/P1 — it may
+  simplify wording, combine approved same-outcome variants, and preserve required
+  product terminology.
+- **The Reviewer verifies** (via the `writer_package` block) that every AC maps to
+  admitted ACCEPTANCE coverage ids, all P0 accepted behavior is represented, P1 did not
+  expand acceptance scope, QE_REGRESSION/INVESTIGATION never leak into ACs,
+  ACCEPTANCE_TBD was not silently resolved, no unapproved variants were introduced, and
+  source mapping stays consistent with the evidence/question/research bindings.
+  Semantic failures route upstream to the Coverage Reasoner; the Reviewer never
+  silently repairs acceptance semantics.
+
+### Phase 6.8 — Semantic Coverage / AC Equivalence
+
+After coverage reasoning, classify pairs of coverage decisions for semantic equivalence
+BEFORE the Writer authors ACs, recorded in the manifest `coverage_equivalence` block and
+validated by `scripts/coverage_equivalence.py` (see
+`references/coverage-equivalence.md`). The primary comparison happens on coverage
+decisions, not merely Writer prose: compare `coverage_id`s structurally across coverage
+IDs, question IDs, expected outcome, state transition, scope, configuration, and
+applicability — never textual similarity alone. Same nouns do not mean the same outcome;
+different wording does not mean different outcomes.
+
+- **Classifications:** `SAME_OUTCOME_VARIANT` (same expected outcome through variant
+  phrasing/polarity — the Writer should normally create one AC), `DISTINCT_OUTCOME`
+  (different expected outcomes), `DEPENDENT_OUTCOME` (one outcome depends on the other;
+  record the dependency; never auto-merged), `CONFLICT` (the same outcome asserted
+  contradictorily; kept visible, never merged, routed upstream).
+- **Decision record:** `decision_id`, the two coverage ids, `classification`, declared
+  `shared_dimensions`/`differing_dimensions`, `reason`, and `merge_allowed` (true only
+  for SAME_OUTCOME_VARIANT).
+- **Merge groups** carry `equivalence_id`, `coverage_refs`, `canonical_outcome` (an
+  internal grouping label — never evidence), `question_refs`, `evidence_refs`,
+  `research_refs`, `variant_refs`, `source_lineage`, `priority`, `applicability`, and
+  `partial_members`. A merge requires a SAME_OUTCOME_VARIANT basis decision with
+  `merge_allowed`, preserves all question/evidence/research IDs, all approved variants,
+  and all lineage, keeps the highest member priority, and never crosses applicability,
+  surface, configuration, or state (parity is never inferred). INSUFFICIENT or
+  CONFLICTED coverage never merges; PARTIAL coverage participates only through its
+  bounded established portion; an ACCEPTANCE_TBD question is never absorbed into a
+  confirmed merge; EXCLUDED coverage never merges; one decision survives into exactly
+  one AC. Do not merge distinct behavior simply to reduce AC count.
+- **Writer/Reviewer binding:** the Writer receives equivalence-resolved groups; an AC
+  may reference a merge via `equivalence_refs` and must then carry every merged variant;
+  two ACs may never cover different members of the same merge. The Reviewer detects
+  duplicate ACs for a merged group, collapsed distinct outcomes, lost TBD dimensions,
+  omitted or invented variants, and lost source lineage — and routes semantic failures
+  upstream instead of repairing them.
+
+### Phase 6.9 — Requirement Lineage (end-to-end AC traceability)
+
+Trace every final AC back to the evidence that justified it, recorded in the manifest
+`requirement_lineage` block and validated by `scripts/requirement_lineage.py` (see
+`references/requirement-lineage.md`): Original Source -> Evidence -> Question ->
+Research (when required) -> Question Resolution -> Sufficiency -> Coverage Decision ->
+Equivalence Group (when applicable) -> Written AC -> Reviewer Decision. Existing
+production IDs are preserved; `SRC-` (original source) and `REV-` (review decision)
+are recorded conceptually and reference the existing IDs without rewriting them.
+
+- `sources[]` records each original admitted source with `source_type`, locator,
+  optional version/applicability, status, and `evidence_ids`; `ac_lineage[]` binds each
+  final AC to its `coverage_refs`, `equivalence_refs`, `question_refs`,
+  `evidence_refs`, `research_refs`, `source_refs`, `writer_revision`,
+  `source_versions`, and the human-facing `human_source_line`; `tbd_lineage[]` keeps
+  every unresolved ACCEPTANCE_TBD question visible with its research attempt, partial
+  or insufficient result, and reason — a TBD row never references a confirmed AC;
+  `reviews[]` binds each Reviewer decision to the exact Writer revision.
+- **Integrity rules:** every referenced ID exists in the producing block; the Writer
+  cannot fabricate lineage; unrelated or unused retrieved evidence never contaminates
+  an AC; a QE_REGRESSION member of an equivalence group never becomes acceptance
+  authority through the group; `human_source_line` derives only from admitted
+  supporting sources and never exposes internal IDs (`Q-`, `COV-`, `SUF-`, `EQ-`,
+  `DR-`, `EV-`, `SRC-`, `REV-`, `MERGE-`, `canonical_outcome`); a Writer revision
+  change makes the review stale and a source-version change invalidates the dependent
+  lineage; unsuccessful research stays visible in `tbd_lineage` instead of being
+  erased.
+- Lineage proves provenance and structural integrity, not semantic correctness; it
+  adds traceability only and introduces no new acceptance semantics.
+
+### Phase 6.9.5 — Historical Jira Evidence Safety
+
+Historical Jira similarity is discovery evidence, not acceptance authority: an old
+ticket never automatically becomes an authority for the current ticket. Record every
+historical item considered for a material Question in the manifest
+`historical_jira_assessment` block, validated by
+`scripts/historical_jira_safety.py` (see `references/historical-jira-safety.md`). This
+extends the existing temporal/authority/resolver path; it creates no competing
+framework and no new authority hierarchy.
+
+- Assess per Question (never globally per ticket): `history_id`, `question_id`,
+  `jira_key_or_source_id`, `relationship`, the six match dimensions, `currentness`,
+  `superseded_status`, `human_accepted_ac_available`, `applicability`,
+  `authority_role`, `allowed_use`, `reason`, `limitations[]`. Never classify from
+  vector similarity or lexical overlap alone.
+- **Relationships:** `AUTHORITATIVE_HISTORY` (only with an `authority_basis` naming
+  the existing permitting rule plus exact applicability — a historical Human Accepted
+  AC is not automatically authoritative for a different ticket),
+  `SUPPORTING_PRECEDENT` (may contribute; S1 still decides; never overrides current
+  Jira), `DISCOVERY_ONLY` (locates terminology/sources/paths; never establishes an
+  answer or enters Source lines), `NOT_APPLICABLE` (forced by any material
+  surface/version/configuration difference — similarity never overrides it),
+  `CONFLICTING_HISTORY` (preserve the disagreement; route through existing Q1/S1
+  conflict/TBD behavior).
+- Historical Actual Results, reproduction steps, and suspected root causes remain
+  observation/investigation evidence — never converted into current acceptance
+  requirements; historical Human UAC is never copied into the current UAC without
+  current-question reasoning and Coverage admission.
+- S1 never reaches SUFFICIENT on non-establishing history; C1 never lets historical
+  evidence create coverage directly (only through its bound Question); E1 never merges
+  current and historical outcomes for similar wording; L1 keeps every historical
+  contribution visible and keeps unused history out of final Source lines.
+
+### Phase 6.9.6 — Question-Level Retrieval Quality and Evidence Admission
+
+Retrieval is not evidence: evaluate and control retrieval against explicit material
+Questions via the manifest `retrieval_requests` / `retrieval_results` blocks,
+validated by `scripts/retrieval_admission.py` (see
+`references/retrieval-admission.md`). This extends the existing read-only retrieval
+path — it builds no new RAG system, replaces no vector store, and never reindexes.
+
+- Every retrieval request binds a `question_id`, `research_id`, the actual `query`,
+  `required_source_type`, `product_context`, `applicability`, `requested_claim`, a
+  bounded `top_k`, and a `retrieval_mode`; query rewrites never change the Question
+  binding; retrieval budgets are tracked and no answer is a valid result.
+- Every candidate records rank, score (discovery metadata — never authority), source
+  identity/version, applicability (`CONFIRMED`/`UNCLEAR`/`WRONG`/`NOT_ASSESSED`), and
+  a `relationship`: `TOPIC_MATCH` (discovery only), `RELEVANT`, `SUPPORTS_CLAIM`
+  (S1 decides sufficiency), `DECISIVE` (subject to source authority — never
+  automatically authoritative or sufficient).
+- A declared relationship never exceeds the structural admission ceiling: fetch exact
+  evidence before material use; wrong or unassessed applicability stays TOPIC_MATCH;
+  unclear applicability is never DECISIVE; exact configuration/property identity is
+  required (a same-looking numeric value on a nearby property is not the same
+  property); stale retrieval is rejected; retrieved historical Jira routes through H1.
+- TOPIC_MATCH/RELEVANT never make a Question SUFFICIENT; only fetched
+  SUPPORTS_CLAIM/DECISIVE evidence reaches AC lineage and final Source lines; unused
+  chunks stay auditable outside them.
+- Retrieval quality is evaluated offline by `scripts/retrieval_benchmark.py` over
+  question-level fixtures (retrieval and admission metrics reported separately; the
+  headline metric is DECISIVE_EVIDENCE_MISADMISSION_RATE). A live smoke check reports
+  read-only gateway connectivity only — never semantic-quality proof.
 
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
 - Each P0/P1/P2 scenario must use the literal fields `Action:` and `Expected:` in one plain-English bullet. When an operational manifest references a scenario, add a stable `[TS-##]` token before the AC mapping, for example `- P0 [TS-01] [AC-01]: Action: ... Expected: ...`.

@@ -24,6 +24,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     BehaviorGraph,
     BehaviorGraphEdge,
     BehaviorGraphNode,
+    BehaviorChangeClass,
+    BehaviorClassificationRecord,
     BehaviorHypothesis,
     BehaviorRelationType,
     CanonicalBehaviorModel,
@@ -56,6 +58,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     GateStatus,
     GeneratedOutputOracle,
     GenerationRequest,
+    GitHubImplementationVerificationHandoff,
     HypothesisState,
     IssueDomain,
     InvestigationFamilySatisfactionStatus,
@@ -63,6 +66,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     MandatoryInvestigationFamily,
     MissingQuestion,
     MissingQuestionQualityReport,
+    PatternLookupRuntimeStatus,
     PlanSection,
     PromotionStatus,
     PublishingTransformationStage,
@@ -72,9 +76,13 @@ from app.core.schemas_canonical_test_plan_runtime import (
     QuestionGenerationStepOutcome,
     QuestionGenerationTraceStep,
     QuestionGenerationTraceStage,
+    QuestionResearchRecord,
     ReasoningPatternActivation,
     ReasoningQuestionFamily,
     RendererProjectionDecision,
+    ResearchRequirement,
+    ResearchRequirementRecord,
+    ResearchStatus,
     RetrievalStatus,
     ScopeResolution,
     SemanticDimension,
@@ -83,6 +91,11 @@ from app.core.schemas_canonical_test_plan_runtime import (
     stable_sha256,
 )
 from app.services.canonical_evidence_service import record_visible_to
+from app.services.question_research_routing_service import (
+    DOCUMENTATION_RESEARCH_SOURCES,
+    JIRA_AUTHORITY_RESEARCH_SOURCES,
+    QUESTION_RESEARCH_ROUTER,
+)
 from app.services.reasoning_evidence_provider import (
     AuthorizedSemanticEvidence,
     QuestionEvidenceStance,
@@ -130,6 +143,104 @@ _SEMANTIC_HANDOFF_AUTHORITIES = {
     AuthorityClass.SPECIFICATION_AUTHORITY,
     AuthorityClass.IMPLEMENTATION_CONFIRMED,
 }
+
+# Mandatory research routing lives in the reusable per-question contract
+# (``app.services.question_research_routing_service``); the ticket-level batch
+# methods below delegate to it one question at a time.
+
+# Research states that leave the question without a terminal answer; coverage
+# must keep such a question open instead of finalizing it.
+_INCOMPLETE_RESEARCH_STATUSES = {
+    ResearchStatus.PENDING,
+    ResearchStatus.PARTIAL,
+    ResearchStatus.NOT_FOUND,
+    ResearchStatus.SOURCE_UNAVAILABLE,
+    ResearchStatus.CONFLICTED,
+}
+
+# Existing-vs-New behavior classification.  Existing-behavior evidence
+# (official documentation, current UI observation, current code and automation)
+# establishes the documented baseline; the current Jira authority carries the
+# requested behavior; the change set (PR/diff) carries what is being
+# implemented now and is never historical documented behavior.
+_EXISTING_BEHAVIOR_SOURCES = DOCUMENTATION_RESEARCH_SOURCES | {
+    EvidenceSourceType.CURRENT_CODE,
+    EvidenceSourceType.EXISTING_AUTOMATION,
+}
+_CHANGE_SET_SOURCES = {
+    EvidenceSourceType.CURRENT_PR,
+    EvidenceSourceType.IMPLEMENTATION_DIFF,
+    EvidenceSourceType.CODE_DIFF,
+}
+
+# Dispositions that do not assert a resolved behavior and are not classified.
+_UNRESOLVED_BEHAVIOR_DISPOSITIONS = {
+    CoverageDisposition.OPEN_QUESTION,
+    CoverageDisposition.PRODUCT_SCOPE_QUESTION,
+    CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+    CoverageDisposition.OUT_OF_SCOPE,
+    CoverageDisposition.UNSUPPORTED_INFERENCE,
+}
+
+_PRESERVATION_RE = re.compile(
+    r"\bbackward[- ]?compatib\w*\b|"
+    r"\b(?:must|shall|should|will)\b[^.]{0,80}?\b(?:remain|remains|remaining|"
+    r"stay|stays|continue|continues|continuing)\b[^.]{0,60}?"
+    r"(?:compatible|unchanged|intact|available|valid|preserved|"
+    r"compatible|the same)\b|"
+    r"\b(?:remain|remains|stay|stays|continue|continues)\b[^.]{0,60}?"
+    r"(?:compatible|unchanged|intact|preserved)\b",
+    re.IGNORECASE,
+)
+
+
+def _mandatory_research_open_rationale(
+    related_questions: list[MissingQuestion],
+    research_by_question: dict[str, QuestionResearchRecord],
+) -> str | None:
+    """Hard gate: why coverage must keep a material question open.
+
+    Returns ``None`` when every related question's mandatory research is
+    complete (or not required).  Otherwise returns the reason the Coverage
+    Reasoner rejects finalizing the question.
+    """
+
+    for question in sorted(related_questions, key=lambda row: row.question_id):
+        record = research_by_question.get(question.question_id)
+        if record is None:
+            continue
+        if record.research_requirement == ResearchRequirement.NONE:
+            continue
+        if record.research_status not in _INCOMPLETE_RESEARCH_STATUSES:
+            continue
+        requirement = record.research_requirement.value.lower().replace("_", " ")
+        if record.research_status == ResearchStatus.PENDING:
+            return (
+                f"Mandatory {requirement} research was classified but never "
+                "executed; coverage cannot finalize this material question from "
+                "the current Jira/configuration evidence alone."
+            )
+        if record.research_status == ResearchStatus.NOT_FOUND:
+            return (
+                f"Mandatory {requirement} research executed and found no answer; "
+                "absence of evidence is not treated as the opposite behavior, so "
+                "the question remains open."
+            )
+        if record.research_status == ResearchStatus.SOURCE_UNAVAILABLE:
+            return (
+                f"Mandatory {requirement} research could not run because the "
+                "required source was unavailable; the question remains open."
+            )
+        if record.research_status == ResearchStatus.CONFLICTED:
+            return (
+                f"Mandatory {requirement} research produced conflicting evidence; "
+                "the question remains open for a Human decision."
+            )
+        return (
+            f"Mandatory {requirement} research only partially answered the "
+            "question; the mandated source has not fully resolved it."
+        )
+    return None
 
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
     IssueDomain.PUBLISHING: (
@@ -2776,6 +2887,77 @@ class CanonicalTestPlanReasoningService:
             ),
         )
 
+    def classify_research_requirements(
+        self,
+        questions: list[MissingQuestion],
+        facts: ContractFactSet,
+    ) -> list[ResearchRequirementRecord]:
+        """Classify the mandatory research route of every planned question.
+
+        Runs immediately after question planning and before any directed
+        research, so the Coverage Reasoner can prove a documentation- or
+        implementation-dependent question was never answered from inference
+        alone.  This ticket-level batch is a thin loop over the reusable
+        per-question routing contract in ``QUESTION_RESEARCH_ROUTER``; a later
+        Question Planner invokes the same contract one question at a time.
+        Source authority is not changed: classification only names the research
+        the question's own evidence path already requires.
+        """
+
+        router = QUESTION_RESEARCH_ROUTER
+        return [
+            router.classify(
+                router.build_request(question),
+                question=question,
+                contract_mode=facts.contract_mode,
+            )
+            for question in sorted(questions, key=lambda row: row.question_id)
+        ]
+
+    def resolve_question_research(
+        self,
+        questions: list[MissingQuestion],
+        requirements: list[ResearchRequirementRecord],
+        retrievals: list[DirectedRetrievalRecord],
+        hypotheses: list[BehaviorHypothesis],
+        *,
+        evidence: CanonicalEvidenceBundle | None = None,
+        implementation_handoffs: list[GitHubImplementationVerificationHandoff]
+        | None = None,
+        unresolved_implementation_handoff_ids: list[str] | None = None,
+        pattern_provider_status: PatternLookupRuntimeStatus | None = None,
+    ) -> list[QuestionResearchRecord]:
+        """Resolve the terminal research status of every planned question.
+
+        Batch loop over the per-question ``QuestionResearchRouter.resolve``
+        contract.  ``NOT_FOUND`` means the mandated research executed and found
+        no answer; it never asserts that the opposite behavior is true.
+        """
+
+        requirements_by_question = {row.question_id: row for row in requirements}
+        records: list[QuestionResearchRecord] = []
+        for question in sorted(questions, key=lambda row: row.question_id):
+            requirement = requirements_by_question.get(question.question_id)
+            if requirement is None:
+                raise RuntimeError(
+                    "Research requirement classification is mandatory before "
+                    f"research status resolution: {question.question_id}"
+                )
+            records.append(
+                QUESTION_RESEARCH_ROUTER.resolve(
+                    requirement,
+                    retrievals=retrievals,
+                    hypotheses=hypotheses,
+                    evidence=evidence,
+                    implementation_handoffs=implementation_handoffs or [],
+                    unresolved_implementation_handoff_ids=(
+                        unresolved_implementation_handoff_ids or []
+                    ),
+                    pattern_provider_status=pattern_provider_status,
+                )
+            )
+        return records
+
     def retrieve_for_questions(
         self, bundle: CanonicalEvidenceBundle, questions: list[MissingQuestion]
     ) -> list[DirectedRetrievalRecord]:
@@ -3125,7 +3307,11 @@ class CanonicalTestPlanReasoningService:
         hypotheses: list[BehaviorHypothesis],
         scope: ScopeResolution,
         questions: list[MissingQuestion],
+        research_records: list[QuestionResearchRecord] | None = None,
     ) -> list[CoverageDispositionRecord]:
+        research_by_question = {
+            row.question_id: row for row in research_records or []
+        }
         rows: list[CoverageDispositionRecord] = []
         out_scope_values = [_scope_clause_value(value) for value in scope.out_of_scope]
         for fact in facts.facts:
@@ -3256,6 +3442,14 @@ class CanonicalTestPlanReasoningService:
                     dimension, CoverageDisposition.SEMANTIC_REGRESSION
                 )
                 rationale = items[0].rationale
+            if disposition != CoverageDisposition.OPEN_QUESTION:
+                research_override = _mandatory_research_open_rationale(
+                    related_questions,
+                    research_by_question,
+                )
+                if research_override is not None:
+                    disposition = CoverageDisposition.OPEN_QUESTION
+                    rationale = research_override
             entities = ", ".join(dict.fromkeys(item.entity for item in items))
             candidate = f"{dimension.value}: {entities}"
             if (
@@ -3326,6 +3520,14 @@ class CanonicalTestPlanReasoningService:
                     "Evidence was found, but no canonical answer value was extracted; "
                     "the material product decision remains visible."
                 )
+            if disposition != CoverageDisposition.OPEN_QUESTION and question is not None:
+                research_override = _mandatory_research_open_rationale(
+                    [question],
+                    research_by_question,
+                )
+                if research_override is not None:
+                    disposition = CoverageDisposition.OPEN_QUESTION
+                    rationale = research_override
             rows.append(
                 CoverageDispositionRecord(
                     candidate=hypothesis.statement,
@@ -3348,6 +3550,103 @@ class CanonicalTestPlanReasoningService:
             {row.disposition_id: row for row in rows}.values(),
             key=lambda row: row.disposition_id,
         )
+
+    def classify_behavior_changes(
+        self,
+        facts: ContractFactSet,
+        dispositions: list[CoverageDispositionRecord],
+        evidence: CanonicalEvidenceBundle,
+    ) -> list[BehaviorClassificationRecord]:
+        """Classify every resolved behavior as existing vs new.
+
+        Documentation establishes current product behavior; the current ticket
+        proposes new behavior.  "Documented today" is never confused with
+        "required after this fix": a behavior matched only by existing
+        documentation is a confirmed baseline, and a behavior only the ticket
+        requests stays a new requirement no matter how much documentation the
+        retrieval matched on adjacent topics.
+        """
+
+        records_by_id = {row.evidence_id: row for row in evidence.records}
+        conflict_ids = {
+            evidence_id
+            for conflict in evidence.authority_conflicts
+            for evidence_id in (
+                list(conflict.selected_evidence_ids)
+                + list(conflict.competing_evidence_ids)
+            )
+        }
+        rows: list[BehaviorClassificationRecord] = []
+        for disposition in sorted(dispositions, key=lambda row: row.disposition_id):
+            if disposition.disposition in _UNRESOLVED_BEHAVIOR_DISPOSITIONS:
+                continue
+            linked = [
+                records_by_id[evidence_id]
+                for evidence_id in disposition.evidence_ids
+                if evidence_id in records_by_id
+            ]
+            existing_ids = sorted(
+                row.evidence_id
+                for row in linked
+                if row.source_type in _EXISTING_BEHAVIOR_SOURCES
+            )
+            requested_ids = sorted(
+                row.evidence_id
+                for row in linked
+                if row.source_type in JIRA_AUTHORITY_RESEARCH_SOURCES
+            )
+            change_ids = sorted(
+                row.evidence_id
+                for row in linked
+                if row.source_type in _CHANGE_SET_SOURCES
+            )
+            if set(disposition.evidence_ids) & conflict_ids:
+                behavior_class = BehaviorChangeClass.CONFLICTED
+                rationale = (
+                    "Existing and requested sources disagree on this behavior; "
+                    "a Human must settle the conflict."
+                )
+            elif existing_ids and (requested_ids or change_ids):
+                if _PRESERVATION_RE.search(disposition.candidate):
+                    behavior_class = BehaviorChangeClass.PRESERVED_EXISTING_BEHAVIOR
+                    rationale = (
+                        "Documented current behavior the ticket requires to remain "
+                        "compatible after the change."
+                    )
+                else:
+                    behavior_class = BehaviorChangeClass.MODIFIED_EXISTING_BEHAVIOR
+                    rationale = (
+                        "Documented current behavior the ticket explicitly changes."
+                    )
+            elif existing_ids:
+                behavior_class = BehaviorChangeClass.EXISTING_CONFIRMED
+                rationale = (
+                    "Existing documentation or current implementation establishes "
+                    "this baseline behavior; the ticket does not change it."
+                )
+            elif requested_ids or change_ids:
+                behavior_class = BehaviorChangeClass.NEW_REQUIREMENT
+                rationale = (
+                    "Only the current ticket or its change set establishes this "
+                    "behavior; no existing documentation claims it."
+                )
+            else:
+                behavior_class = BehaviorChangeClass.UNKNOWN
+                rationale = (
+                    "No existing-behavior or current-ticket evidence classifies "
+                    "this behavior; it remains unresolved until researched."
+                )
+            rows.append(
+                BehaviorClassificationRecord(
+                    disposition_id=disposition.disposition_id,
+                    behavior_class=behavior_class,
+                    existing_evidence_ids=existing_ids,
+                    requested_evidence_ids=requested_ids,
+                    change_evidence_ids=change_ids,
+                    rationale=rationale,
+                )
+            )
+        return rows
 
     def resolve_acceptance_contract_with_trace(
         self,
@@ -3531,6 +3830,9 @@ class CanonicalTestPlanReasoningService:
         hypotheses: list[BehaviorHypothesis],
         dispositions: list[CoverageDispositionRecord],
         question_quality: MissingQuestionQualityReport | None = None,
+        research_requirements: list[ResearchRequirementRecord] | None = None,
+        research_records: list[QuestionResearchRecord] | None = None,
+        behavior_classifications: list[BehaviorClassificationRecord] | None = None,
     ) -> GateDecision:
         questions_by_id = {row.question_id: row for row in questions}
         question_closure_ids = {
@@ -3550,6 +3852,87 @@ class CanonicalTestPlanReasoningService:
             for hypothesis_id in disposition.source_hypothesis_ids:
                 dispositions_by_hypothesis_id[hypothesis_id].append(disposition)
         failures: list[str] = []
+        if research_requirements is not None:
+            research_by_question = {
+                row.question_id: row for row in research_records or []
+            }
+            for requirement in research_requirements:
+                if (
+                    not requirement.material
+                    or requirement.research_requirement == ResearchRequirement.NONE
+                ):
+                    continue
+                record = research_by_question.get(requirement.question_id)
+                if record is None:
+                    failures.append(
+                        "Mandatory research routing was skipped for a material "
+                        f"question: {requirement.question_id}"
+                    )
+                    continue
+                if record.requirement_id != requirement.requirement_id:
+                    failures.append(
+                        "Research traceability is broken for a material question: "
+                        f"{requirement.question_id}"
+                    )
+                if record.research_status == ResearchStatus.PENDING:
+                    failures.append(
+                        f"Mandatory {requirement.research_requirement.value} research "
+                        "is still PENDING for a material question: "
+                        f"{requirement.question_id}"
+                    )
+                elif not record.research_request_ids and (
+                    record.research_status
+                    not in {
+                        ResearchStatus.NOT_REQUIRED,
+                        ResearchStatus.NOT_APPLICABLE,
+                    }
+                ):
+                    failures.append(
+                        "Mandatory research for a material question has no research "
+                        f"request: {requirement.question_id}"
+                    )
+        if behavior_classifications is not None:
+            finalizing_ids = {
+                row.disposition_id
+                for row in dispositions
+                if row.disposition not in _UNRESOLVED_BEHAVIOR_DISPOSITIONS
+            }
+            class_by_disposition: dict[str, BehaviorClassificationRecord] = {}
+            for classification in behavior_classifications:
+                if classification.disposition_id in class_by_disposition:
+                    failures.append(
+                        "Duplicate behavior classification for a coverage decision: "
+                        f"{classification.disposition_id}"
+                    )
+                class_by_disposition[classification.disposition_id] = (
+                    classification
+                )
+            for disposition_id in sorted(set(class_by_disposition) - finalizing_ids):
+                failures.append(
+                    "Behavior classification targets an unknown or unresolved "
+                    f"coverage decision: {disposition_id}"
+                )
+            for disposition_id in sorted(finalizing_ids - set(class_by_disposition)):
+                failures.append(
+                    "Resolved behavior is missing its existing-vs-new "
+                    f"classification: {disposition_id}"
+                )
+            for row in dispositions:
+                classification = class_by_disposition.get(row.disposition_id)
+                if classification is None:
+                    continue
+                if classification.behavior_class in {
+                    BehaviorChangeClass.UNKNOWN,
+                    BehaviorChangeClass.CONFLICTED,
+                } and row.disposition in {
+                    CoverageDisposition.ACCEPTANCE_CONTRACT,
+                    CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                }:
+                    failures.append(
+                        f"{classification.behavior_class.value} behavior cannot "
+                        "ground an acceptance contract until it is resolved: "
+                        f"{row.disposition_id}"
+                    )
         nonblocking_unsatisfied_families: set[SemanticDimension] = set()
         if question_quality is not None:
             for family in question_quality.family_satisfaction:
@@ -3656,6 +4039,14 @@ class CanonicalTestPlanReasoningService:
             checked_ids=sorted(
                 {row.closure_id for row in closure}
                 | {row.question_id for row in questions}
+                | {
+                    row.requirement_id for row in research_requirements or []
+                }
+                | {row.research_id for row in research_records or []}
+                | {
+                    row.classification_id
+                    for row in behavior_classifications or []
+                }
                 | (
                     {
                         f"family:{row.family_id.value}"
@@ -3673,9 +4064,13 @@ class CanonicalTestPlanReasoningService:
         facts: ContractFactSet,
         scope: ScopeResolution,
         dispositions: list[CoverageDispositionRecord],
+        behavior_classifications: list[BehaviorClassificationRecord] | None = None,
     ) -> tuple[GateDecision, list[AcceptancePromotionDecision]]:
         facts_by_id = {row.fact_id: row for row in facts.facts}
         dispositions_by_id = {row.disposition_id: row for row in dispositions}
+        classification_by_disposition = {
+            row.disposition_id: row for row in behavior_classifications or []
+        }
         decisions: list[AcceptancePromotionDecision] = []
         integrity_failures: list[str] = []
         for candidate in candidates:
@@ -3721,6 +4116,13 @@ class CanonicalTestPlanReasoningService:
                 )
             )
             unresolved = bool(candidate.unresolved_decision_ids)
+            unresolved_classification = any(
+                row.behavior_class
+                in {BehaviorChangeClass.UNKNOWN, BehaviorChangeClass.CONFLICTED}
+                for disposition_id in candidate.source_disposition_ids
+                for row in [classification_by_disposition.get(disposition_id)]
+                if row is not None
+            )
             reasons: list[str] = []
             if missing_disposition_ids:
                 reasons.append(
@@ -3760,6 +4162,11 @@ class CanonicalTestPlanReasoningService:
                 reasons.append("An exact value is unsupported by authority.")
             if unresolved:
                 reasons.append("A blocking product decision remains unresolved.")
+            if unresolved_classification:
+                reasons.append(
+                    "The existing-vs-new behavior classification is unresolved."
+                )
+                unresolved = True
             if candidate.contradicts_human_contract:
                 reasons.append("The candidate contradicts Human Accepted AC.")
             promotable = not reasons
@@ -3928,7 +4335,38 @@ class CanonicalTestPlanReasoningService:
         gates: list[GateDecision],
         acceptance_resolution: AcceptanceResolutionBatch | None = None,
         candidate_lifecycle: list[CandidateLifecycleRecord] | None = None,
+        research_records: list[QuestionResearchRecord] | None = None,
+        behavior_classifications: list[BehaviorClassificationRecord] | None = None,
     ) -> tuple[StructuredQEPlan, str]:
+        if research_records is not None:
+            incomplete_research_question_ids = {
+                row.question_id
+                for row in research_records
+                if row.research_requirement != ResearchRequirement.NONE
+                and row.research_status in _INCOMPLETE_RESEARCH_STATUSES
+            }
+            if incomplete_research_question_ids:
+                open_states = {
+                    CoverageDisposition.OPEN_QUESTION,
+                    CoverageDisposition.PRODUCT_SCOPE_QUESTION,
+                    CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+                }
+                for disposition in dispositions:
+                    if disposition.disposition in open_states:
+                        continue
+                    offending = sorted(
+                        set(disposition.source_question_ids)
+                        & incomplete_research_question_ids
+                    )
+                    if offending:
+                        raise RuntimeError(
+                            "FinalQEPlanRenderer must not compensate for missing "
+                            f"mandatory research: {disposition.disposition_id} "
+                            f"finalizes {disposition.disposition.value} for "
+                            "question(s) "
+                            + ", ".join(offending)
+                            + " whose mandatory research is incomplete."
+                        )
         acceptance_resolution = acceptance_resolution or AcceptanceResolutionBatch(
             discovered_candidates=candidates,
             candidates=candidates,
@@ -3937,6 +4375,48 @@ class CanonicalTestPlanReasoningService:
             acceptance_resolution, promotions
         )
         candidate_by_id = {row.candidate_id: row for row in candidates}
+        classification_by_disposition: dict[str, BehaviorClassificationRecord] = {
+            row.disposition_id: row for row in behavior_classifications or []
+        }
+        if behavior_classifications is not None:
+            documented_anywhere = {
+                evidence_id
+                for row in behavior_classifications
+                for evidence_id in row.existing_evidence_ids
+            }
+            for decision in promotions:
+                if decision.status != PromotionStatus.PROMOTED:
+                    continue
+                promoted_candidate = candidate_by_id[decision.candidate_id]
+                linked_classifications = [
+                    classification_by_disposition[disposition_id]
+                    for disposition_id in promoted_candidate.source_disposition_ids
+                    if disposition_id in classification_by_disposition
+                ]
+                if any(
+                    row.behavior_class
+                    in {BehaviorChangeClass.UNKNOWN, BehaviorChangeClass.CONFLICTED}
+                    for row in linked_classifications
+                ):
+                    raise RuntimeError(
+                        "FinalQEPlanRenderer must not write an acceptance "
+                        "criterion whose existing-vs-new classification is "
+                        f"unresolved: {promoted_candidate.candidate_id}"
+                    )
+                if linked_classifications and all(
+                    row.behavior_class == BehaviorChangeClass.NEW_REQUIREMENT
+                    for row in linked_classifications
+                ):
+                    documented = sorted(
+                        set(promoted_candidate.evidence_ids) & documented_anywhere
+                    )
+                    if documented:
+                        raise RuntimeError(
+                            "FinalQEPlanRenderer must not attribute existing "
+                            "documentation to a new requirement: "
+                            f"{promoted_candidate.candidate_id} cites "
+                            + ", ".join(documented)
+                        )
         lifecycle_by_canonical: dict[str, list[CandidateLifecycleRecord]] = (
             defaultdict(list)
         )
@@ -4039,6 +4519,14 @@ class CanonicalTestPlanReasoningService:
                     for disposition_id in candidate.source_disposition_ids
                 )
                 section_items["acceptance_contract"].extend(
+                    (
+                        statement,
+                        classification_by_disposition[disposition_id].classification_id,
+                    )
+                    for disposition_id in candidate.source_disposition_ids
+                    if disposition_id in classification_by_disposition
+                )
+                section_items["acceptance_contract"].extend(
                     (statement, fact_id) for fact_id in candidate.source_fact_ids
                 )
                 for lifecycle_row in lifecycle_by_canonical[candidate.candidate_id]:
@@ -4116,6 +4604,13 @@ class CanonicalTestPlanReasoningService:
                 )
             disposition_text = _plain_candidate(disposition.candidate)
             section_items[key].append((disposition_text, disposition.disposition_id))
+            classification = classification_by_disposition.get(
+                disposition.disposition_id
+            )
+            if classification is not None:
+                section_items[key].append(
+                    (disposition_text, classification.classification_id)
+                )
             section_items[key].extend(
                 (disposition_text, fact_id) for fact_id in disposition.source_fact_ids
             )
@@ -4250,6 +4745,9 @@ class CanonicalTestPlanReasoningService:
             contract_fact_ids=[row.fact_id for row in facts.facts],
             closure_ids=[row.closure_id for row in closure],
             coverage_disposition_ids=[row.disposition_id for row in dispositions],
+            behavior_classification_ids=[
+                row.classification_id for row in behavior_classifications or []
+            ],
             promoted_candidate_ids=promoted_ids,
             open_question_ids=sorted(
                 open_question_ids
