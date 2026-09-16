@@ -91,7 +91,12 @@ def main() -> int:
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
-        print(_select_plan_text(result))
+        # Write once, as UTF-8 bytes: print() through the Windows console
+        # encoding mangles non-ASCII plan text and a return-plus-print would
+        # duplicate the document.
+        text = _select_plan_text(result)
+        sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+        sys.stdout.buffer.write(b"\n")
 
     score = (result.get("score") or {}).get("overall", 0)
     human = (result.get("score") or {}).get("human_review_required", True)
@@ -103,23 +108,17 @@ def main() -> int:
 
 
 def _select_plan_text(result: dict) -> str:
-    """P1: the canonical runtime result is the only plan authority.  The
+    """P1/UX1: the canonical runtime result is the only plan authority.  The
     LLM-composed draft is a legacy presentation layer and is never preferred
-    over the canonical rendered output (no parallel semantic pipeline)."""
+    over the canonical rendered output (no parallel semantic pipeline); no
+    presentation path may fall back to draft_test_plan_markdown."""
 
     canonical = (result.get("qe_review_package") or {}).get("canonical_result") or {}
     for key in ("plan_markdown", "rendered_output"):
         text = str(canonical.get(key) or "").strip()
         if text:
-            sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
-            sys.stdout.buffer.write(b"\n")
             return text
-    text = str(result.get("draft_test_plan_markdown") or "").strip()
-    if not text:
-        raise SystemExit("Canonical runtime returned no rendered plan.")
-    sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
-    sys.stdout.buffer.write(b"\n")
-    return text
+    raise SystemExit("Canonical runtime returned no rendered plan.")
 
 
 def _run_inprocess(payload: dict) -> dict:

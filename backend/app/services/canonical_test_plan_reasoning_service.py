@@ -434,6 +434,80 @@ _RAW_FRAGMENT_RE = re.compile(
     r"|\bFeature:\s)"
 )
 
+# UX1: human-question quality contract - a user-facing question must be a
+# product behavior decision readable without repository context.  Raw
+# evidence (paths, code symbols, env/constant dumps, arbitrary token lists)
+# may trigger investigation but is never interpolated into question text.
+_QUESTION_CONSTANT_RE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b")
+
+
+# UX1: person-centric obligation/burden language ("you should check the
+# log", "authors would need to ...", "I need to go to ...") describes a
+# human workaround forced by CURRENT behavior - an observation/problem
+# statement, never a product requirement.  The generic modal veto below
+# ("should"/"must") must not rescue these: the modal attaches to the person,
+# not to the product.
+_HUMAN_BURDEN_RE = re.compile(
+    r"\b(?:i|we|you|authors?|users?|administrators?|one)\s+"
+    r"(?:would\s+)?(?:need|needs|have|has)\s+to\b"
+    r"|\b(?:i|we|you|authors?|users?|administrators?)\s+(?:should|must)\b",
+    re.IGNORECASE,
+)
+
+# UX1: product-directed imperative - a sentence that commands product
+# behavior ("Provide an option ...", "The system shall ...").
+_PRODUCT_IMPERATIVE_RE = re.compile(
+    r"^\s*(?:provide|support|add|show|display|allow|enable|disable|remove|"
+    r"delete|create|generate|retain|keep|preserve|exclude|include|hide|"
+    r"expose|rename|move|copy|sync|validate|log|record|return|fail|retry)\b"
+    r"|\b(?:the\s+)?(?:system|product|editor|output|preset|dialog|panel|"
+    r"job|service|api|user\s+interface)\s+(?:shall|must|should|will)\b",
+    re.IGNORECASE,
+)
+
+# UX1: current-state narrative markers ("the old UI ...", "currently ...")
+# describe what the product already does; without an imperative they are
+# context, never requirement candidates.
+_CURRENT_STATE_MARKER_RE = re.compile(
+    r"\b(?:old|existing|current(?:ly)?|today|as of now|previous(?:ly)?|"
+    r"already)\b",
+    re.IGNORECASE,
+)
+
+# UX1: declarative requirement shape - a behavior verb or modal directive.
+# Distinguishes a stated contract ("Generated PDF output includes metadata")
+# from a narrative fragment ("Outputs in the editor") in free-text
+# description/summary fields.
+_REQUIREMENT_SHAPE_RE = re.compile(
+    r"\b(?:shall|must|should|will|would)\b"
+    r"|\b(?:includes?|excludes?|contains?|removes?|deletes?|keeps?|retains?|"
+    r"writes?|reads?|shows?|displays?|returns?|creates?|generates?|updates?|"
+    r"saves?|stores?|persists?|sends?|receives?|processes?|produces?|"
+    r"requires?|supports?|allows?|enables?|disables?|hides?|exposes?|"
+    r"validates?|rejects?|fails?|retries|skips?|ignores?|maps?|links?|"
+    r"opens?|closes?|loads?|renders?|publishes?|exports?|imports?)\b",
+    re.IGNORECASE,
+)
+
+
+def _human_question_safe(text: str) -> bool:
+    """True when text is readable product language for a human question."""
+
+    value = text.strip()
+    if not value:
+        return False
+    if _RAW_FRAGMENT_RE.search(value):
+        return False
+    if _QUESTION_CONSTANT_RE.search(value):
+        return False
+    # Arbitrary numeric/token lists (grep result joins) are not question
+    # language: more than two comma-separated fragments is a dump, not an
+    # enumeration.
+    if len([part for part in value.split(",") if part.strip()]) > 2:
+        return False
+    return True
+
+
 # P2: statement-shape signals for extractor classification (a statement of
 # absence, difficulty, or manual burden describes the CURRENT problem).  The
 # promotion guard itself never uses keywords - it uses the evidence role
@@ -1452,9 +1526,12 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
     # P2: a statement-shaped problem/gap (absence, difficulty, manual burden)
     # without imperative requirement language is evidence role
     # PROBLEM_STATEMENT - it establishes the problem, never a solution.
-    if _PROBLEM_SHAPE_RE.search(literal) and not _IMPERATIVE_REQUIREMENT_RE.search(
-        literal
-    ):
+    # UX1: person-centric burden language forces the problem role even when a
+    # generic modal is present, because the modal attaches to the person.
+    if (
+        _PROBLEM_SHAPE_RE.search(literal)
+        and not _IMPERATIVE_REQUIREMENT_RE.search(literal)
+    ) or _HUMAN_BURDEN_RE.search(literal):
         found = [
             row
             for row in found
@@ -1466,7 +1543,19 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
         ]
         found.append(ContractFactType.PROBLEM_STATEMENT)
     if not found and any(token in key for token in ("summary", "description", "title")):
-        found.append(ContractFactType.DIRECT_EXPECTED_BEHAVIOR)
+        # UX1: the summary/description/title catch-all is shape-aware.  Only a
+        # requirement-shaped literal (imperative, modal, or declarative
+        # behavior verb) becomes a promotion-eligible expected-behavior fact.
+        # Current-state narrative with no imperative is context; anything
+        # else without a requirement shape is context too.  Neither context
+        # nor problem statements can populate a proposed acceptance contract.
+        imperative = bool(_PRODUCT_IMPERATIVE_RE.search(literal))
+        if _CURRENT_STATE_MARKER_RE.search(literal) and not imperative:
+            found.append(ContractFactType.CONTEXT_STATEMENT)
+        elif imperative or _REQUIREMENT_SHAPE_RE.search(literal):
+            found.append(ContractFactType.DIRECT_EXPECTED_BEHAVIOR)
+        else:
+            found.append(ContractFactType.CONTEXT_STATEMENT)
     return list(dict.fromkeys(found))
 
 
@@ -3204,8 +3293,20 @@ class CanonicalTestPlanReasoningService:
             unresolved_by_dimension.items(), key=lambda item: item[0].value
         ):
             subject = _subject_for_dimension(dimension)
-            entity_text = ", ".join(
+            raw_entities = list(
                 dict.fromkeys(row.entity for row in unresolved_rows)
+            )
+            clean_entities = [
+                entity for entity in raw_entities if _human_question_safe(entity)
+            ]
+            # UX1: raw evidence entities (grep fragments, paths, token dumps)
+            # never reach human question text.  When every entity is raw, the
+            # question is projected to its typed behavior dimension; the raw
+            # evidence stays in the trace via source_closure_ids.
+            entity_text = (
+                ", ".join(clean_entities)
+                if clean_entities
+                else "the affected behavior"
             )
             family = families.get(dimension)
             target_sources = list(_target_sources(subject))
@@ -3233,6 +3334,7 @@ class CanonicalTestPlanReasoningService:
                         else OpenQuestionClass.RESEARCH_REQUIRED
                     ),
                     source_closure_ids=[row.closure_id for row in unresolved_rows],
+                    investigation_terms=raw_entities,
                 )
             )
         for field in scope.unresolved_fields:
@@ -3294,12 +3396,21 @@ class CanonicalTestPlanReasoningService:
                 for fact in facts.facts
             )
             if not solution_established:
-                anchor = problem_facts[0].literal.strip().rstrip(".")
+                anchor = re.sub(
+                    r"^(?:description|summary|title)\s*:\s*",
+                    "",
+                    problem_facts[0].literal.strip(),
+                    flags=re.IGNORECASE,
+                ).rstrip(".")
+                # Truncate at a word boundary so the question never ends
+                # mid-word.
+                if len(anchor) > 160:
+                    anchor = anchor[:160].rsplit(" ", 1)[0].rstrip()
                 questions.append(
                     MissingQuestion(
                         question=(
                             "Which established product behavior or product "
-                            f"decision addresses this gap: {anchor[:160]}?"
+                            f"decision addresses this gap: {anchor}?"
                         ),
                         authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
                         target_source_types=_target_sources(
@@ -3312,10 +3423,33 @@ class CanonicalTestPlanReasoningService:
                         source_fact_ids=[problem_facts[0].fact_id],
                     )
                 )
-        return sorted(
-            {row.question_id: row for row in questions}.values(),
-            key=lambda row: row.question_id,
-        )
+        # UX1: equivalent questions (identical canonical text, e.g. several
+        # raw-fragment entities projected to the same typed dimension)
+        # collapse to one question; their internal lineage and investigation
+        # terms merge so no evidence binding is silently discarded.
+        deduped: dict[str, MissingQuestion] = {}
+        for row in questions:
+            existing = deduped.get(row.question_id)
+            if existing is None:
+                deduped[row.question_id] = row
+                continue
+            merged = existing.model_copy(
+                update={
+                    "source_closure_ids": sorted(
+                        set(existing.source_closure_ids)
+                        | set(row.source_closure_ids)
+                    ),
+                    "source_fact_ids": sorted(
+                        set(existing.source_fact_ids) | set(row.source_fact_ids)
+                    ),
+                    "investigation_terms": sorted(
+                        set(existing.investigation_terms)
+                        | set(row.investigation_terms)
+                    ),
+                }
+            )
+            deduped[row.question_id] = merged
+        return sorted(deduped.values(), key=lambda row: row.question_id)
 
     def admit_clarifications(
         self,
@@ -3696,7 +3830,12 @@ class CanonicalTestPlanReasoningService:
     ) -> list[DirectedRetrievalRecord]:
         retrievals: list[DirectedRetrievalRecord] = []
         for question in questions:
+            # UX1: investigation probes use the raw evidence terms that
+            # triggered the question (paths/fragments stay internal); the
+            # human-facing question text is never the only probe.
             query_terms = _words(question.question)
+            for term in question.investigation_terms:
+                query_terms |= _words(term)
             candidates: list[EvidenceRecord] = []
             for record in bundle.records:
                 if is_github_implementation_result_record(record):
@@ -3993,44 +4132,72 @@ class CanonicalTestPlanReasoningService:
         domains: list[DomainActivation],
         model: CanonicalBehaviorModel,
     ) -> list[DomainImpact]:
-        text = " ".join(
-            _positive_scope_clauses([_record_text(record) for record in bundle.records])
-        ).casefold()
-        scale_text = _scale_detection_text(text)
-        nfr_signals = [
-            signal
-            for signal in (
-                "bulk",
-                "thousand",
-                "large query",
-                "deep hierarchy",
-                "many references",
-                "concurrency",
-                "repeated processing",
-            )
-            if signal in scale_text
-        ]
-        if re.search(
+        # UX1: NFR activation is domain-bound.  A scale/performance signal
+        # activates a domain only when the signal co-occurs in that domain's
+        # own evidence records (trigger + domain applicability + material
+        # change impact).  A ticket-wide generic signal never fans out across
+        # every domain.
+        nfr_signal_terms = (
+            "bulk",
+            "thousand",
+            "large query",
+            "deep hierarchy",
+            "many references",
+            "concurrency",
+            "repeated processing",
+        )
+        cardinality_re = re.compile(
             r"\b(?:\d{1,3}(?:,\d{3})+|\d{4,}|\d+(?:\.\d+)?\s*k)\b"
-            r".{0,40}\b(?:documents?|pages?|items?|maps?|topics?)\b",
-            scale_text,
-        ):
-            nfr_signals.append("explicit high cardinality")
-        return [
-            DomainImpact(
-                domain=activation.domain,
-                materially_affected_entities=model.primary_entities,
-                observable_outcomes=(
-                    model.generated_output_oracles
-                    if activation.domain == IssueDomain.PUBLISHING
-                    else ["VISIBLE_BEHAVIOR_MATCHES_CONTRACT"]
-                ),
-                nfr_applicable=bool(nfr_signals),
-                nfr_triggers=nfr_signals,
-                evidence_ids=activation.evidence_ids,
+            r".{0,40}\b(?:documents?|pages?|items?|maps?|topics?)\b"
+        )
+        record_signals: dict[str, list[str]] = {}
+        for record in bundle.records:
+            scale_text = _scale_detection_text(
+                " ".join(_positive_scope_clauses([_record_text(record)])).casefold()
             )
-            for activation in domains
-        ]
+            signals = [
+                signal for signal in nfr_signal_terms if signal in scale_text
+            ]
+            if cardinality_re.search(scale_text):
+                signals.append("explicit high cardinality")
+            if signals:
+                record_signals[record.evidence_id] = signals
+        impacts: list[DomainImpact] = []
+        for activation in domains:
+            domain_nfr_evidence = sorted(
+                evidence_id
+                for evidence_id in activation.evidence_ids
+                if evidence_id in record_signals
+            )
+            domain_signals = sorted(
+                {
+                    signal
+                    for evidence_id in domain_nfr_evidence
+                    for signal in record_signals[evidence_id]
+                }
+            )
+            impacts.append(
+                DomainImpact(
+                    domain=activation.domain,
+                    materially_affected_entities=model.primary_entities,
+                    observable_outcomes=(
+                        model.generated_output_oracles
+                        if activation.domain == IssueDomain.PUBLISHING
+                        else ["VISIBLE_BEHAVIOR_MATCHES_CONTRACT"]
+                    ),
+                    nfr_applicable=bool(domain_signals),
+                    nfr_triggers=domain_signals,
+                    nfr_evidence_ids=domain_nfr_evidence,
+                    nfr_materiality_basis=(
+                        "Scale/performance signal co-occurs with this domain's "
+                        "own evidence: " + ", ".join(domain_signals)
+                        if domain_signals
+                        else ""
+                    ),
+                    evidence_ids=activation.evidence_ids,
+                )
+            )
+        return impacts
 
     def classify_coverage(
         self,
@@ -4048,6 +4215,11 @@ class CanonicalTestPlanReasoningService:
         rows: list[CoverageDispositionRecord] = []
         out_scope_values = [_scope_clause_value(value) for value in scope.out_of_scope]
         for fact in facts.facts:
+            if fact.fact_type == ContractFactType.CONTEXT_STATEMENT:
+                # UX1: narrative context informs issue understanding only; it
+                # is not a behavior and receives no coverage disposition, so
+                # it can never become an acceptance candidate.
+                continue
             if fact.fact_type == ContractFactType.OUT_OF_SCOPE:
                 disposition = CoverageDisposition.OUT_OF_SCOPE
             elif any(
@@ -4260,8 +4432,15 @@ class CanonicalTestPlanReasoningService:
                     CoverageDispositionRecord(
                         candidate=f"Validate {impact.domain.value} under: {', '.join(impact.nfr_triggers)}",
                         disposition=CoverageDisposition.NFR_COVERAGE,
-                        evidence_ids=impact.evidence_ids,
-                        rationale="NFR coverage is activated by explicit change-impact signals; no SLA is invented.",
+                        # UX1: the row cites the domain-bound evidence that
+                        # established the material scale/performance
+                        # relationship; no carpet coverage, no invented SLA.
+                        evidence_ids=impact.nfr_evidence_ids or impact.evidence_ids,
+                        rationale=(
+                            "NFR coverage is activated by domain-bound "
+                            "change-impact evidence; no SLA is invented. "
+                            + impact.nfr_materiality_basis
+                        ),
                         coverage_class="QE_REGRESSION",
                         priority="P1",
                         acceptance_impact=_C1_IMPACT_TEXT["P1"],
@@ -5490,7 +5669,13 @@ class CanonicalTestPlanReasoningService:
         understanding = [
             row
             for row in facts.facts
-            if row.fact_type == ContractFactType.DIRECT_EXPECTED_BEHAVIOR
+            if row.fact_type
+            in {
+                ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                # UX1: narrative context is the legitimate issue-understanding
+                # source for thin tickets (no requirement signal, no promotion).
+                ContractFactType.CONTEXT_STATEMENT,
+            }
         ]
         for fact in understanding:
             section_items["issue_understanding"].append((fact.literal, fact.fact_id))
@@ -5797,10 +5982,55 @@ class CanonicalTestPlanReasoningService:
             gate_decisions=gates,
         )
         lines = [f"# {request.jira_key} — QE plan", ""]
-        for section in sections:
-            lines.extend([f"## {section.title}", ""])
-            lines.extend(f"- {item}" for item in section.items)
+        if any(
+            gate.status in {GateStatus.BLOCKED, GateStatus.FAILED}
+            for gate in gates
+        ):
+            # UX1: blocked is a first-class output state.  The structured plan
+            # above keeps every intermediate artifact for trace/debug; the
+            # human-facing markdown is a compact clarification document and
+            # never mimics a successful plan (no coverage matrices, no gate
+            # internals, no acceptance-looking content).
+            understanding_items = [
+                text.strip()
+                for text, _record_id in section_items.get("issue_understanding", [])
+                if text.strip()
+            ]
+            if understanding_items:
+                lines.extend(["## Issue understanding", ""])
+                lines.extend(
+                    f"- {text}"
+                    for text in dict.fromkeys(understanding_items)
+                )
+                lines.append("")
+            lines.extend(["## Generation status", ""])
+            lines.append("- UAC needs product clarification.")
+            lines.append(
+                "- No Acceptance Criteria were generated because required "
+                "product decisions remain unresolved."
+            )
             lines.append("")
+            decision_texts: list[str] = []
+            for text, _record_id in section_items.get("product_decisions", []):
+                normalized = " ".join(text.split())
+                if normalized and normalized.casefold() not in {
+                    seen.casefold() for seen in decision_texts
+                }:
+                    decision_texts.append(normalized)
+            if decision_texts:
+                lines.extend(["## Open product decisions", ""])
+                lines.extend(f"- (TBD) {text}" for text in decision_texts)
+                lines.append("")
+            lines.extend(["## Acceptance criteria", ""])
+            lines.append(
+                "- None generated until the blocking decisions are resolved."
+            )
+            lines.append("")
+        else:
+            for section in sections:
+                lines.extend([f"## {section.title}", ""])
+                lines.extend(f"- {item}" for item in section.items)
+                lines.append("")
         rendered = "\n".join(lines).rstrip() + "\n"
         rendered_source_ids = {
             record_id for section in sections for record_id in section.source_record_ids

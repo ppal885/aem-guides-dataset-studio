@@ -314,6 +314,10 @@ class ContractMode(StrEnum):
 
 class ContractFactType(StrEnum):
     DIRECT_EXPECTED_BEHAVIOR = "DIRECT_EXPECTED_BEHAVIOR"
+    # UX1: narrative/current-state context from summary/description/title
+    # fields with no requirement signal.  Context informs issue
+    # understanding; it is never acceptance behavior and never promotes.
+    CONTEXT_STATEMENT = "CONTEXT_STATEMENT"
     IN_SCOPE = "IN_SCOPE"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     PRIMARY_PRODUCT_AREA = "PRIMARY_PRODUCT_AREA"
@@ -2333,6 +2337,10 @@ class MissingQuestion(BaseModel):
     question_revision: str = ""
     source_closure_ids: list[str] = Field(default_factory=list)
     source_fact_ids: list[str] = Field(default_factory=list)
+    # UX1: raw evidence entities that triggered investigation (paths, code
+    # fragments).  Internal-only input for directed retrieval and research;
+    # never rendered into human-facing question text.
+    investigation_terms: list[str] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def identify(self) -> "MissingQuestion":
@@ -3614,6 +3622,12 @@ class DomainImpact(BaseModel):
     observable_outcomes: list[str] = Field(default_factory=list)
     nfr_applicable: bool = False
     nfr_triggers: list[str] = Field(default_factory=list)
+    # UX1: NFR activation is domain-bound - the evidence records where the
+    # scale/performance signal co-occurs with this domain's evidence, plus a
+    # human-readable materiality basis.  Empty means the domain is not
+    # NFR-activated, regardless of ticket-wide generic signals.
+    nfr_evidence_ids: list[str] = Field(default_factory=list)
+    nfr_materiality_basis: str = ""
     evidence_ids: list[str] = Field(default_factory=list)
 
 

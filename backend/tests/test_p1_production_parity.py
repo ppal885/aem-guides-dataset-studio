@@ -598,10 +598,12 @@ def test_cli_prefers_the_canonical_rendered_output() -> None:
     )
     assert canonical_first == "canonical plan text"
 
-    fallback = module._select_plan_text(
-        {"draft_test_plan_markdown": "draft only", "qe_review_package": {}}
-    )
-    assert fallback == "draft only"
+    # UX1: no presentation path may fall back to the legacy draft field; a
+    # missing canonical render is a hard stop, never a draft substitution.
+    with pytest.raises(SystemExit):
+        module._select_plan_text(
+            {"draft_test_plan_markdown": "draft only", "qe_review_package": {}}
+        )
 
     with pytest.raises(SystemExit):
         module._select_plan_text({"qe_review_package": {}})
