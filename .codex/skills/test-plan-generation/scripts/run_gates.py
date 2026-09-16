@@ -118,6 +118,8 @@ question_resolver_mod = _load("question_resolver", "question_resolver.py")
 coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
 coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
 requirement_lineage_mod = _load("requirement_lineage", "requirement_lineage.py")
+historical_jira_safety_mod = _load("historical_jira_safety",
+                                   "historical_jira_safety.py")
 evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
 doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
@@ -1577,6 +1579,17 @@ def check_relationship_traversal(
         for problem in requirement_lineage_mod.validate(data)
     )
 
+    # Historical Jira Evidence Safety (optional, backward-compatible).
+    # Absent -> clean pass. Question-bound historical assessment: similarity
+    # is discovery metadata, never acceptance authority; NOT_APPLICABLE is
+    # forced by material applicability differences; DISCOVERY_ONLY never
+    # establishes answers or enters Source lines; CONFLICTING_HISTORY never
+    # silently resolves; S1/C1/L1 bindings enforced.
+    failures.extend(
+        f"[historical-jira-safety] {problem}"
+        for problem in historical_jira_safety_mod.validate(data)
+    )
+
     # Evidence Sufficiency (optional, backward-compatible). Absent -> clean
     # pass. Per-question and per-coverage-decision sufficiency computed from
     # the underlying questions/evidence; P0 ACCEPTANCE requires SUFFICIENT
@@ -2322,6 +2335,10 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_requirement_lineage()
             if hasattr(self_tests, "test_requirement_lineage_regressions"):
                 self_tests.test_requirement_lineage_regressions()
+            if hasattr(self_tests, "test_historical_jira_safety"):
+                self_tests.test_historical_jira_safety()
+            if hasattr(self_tests, "test_historical_jira_safety_regressions"):
+                self_tests.test_historical_jira_safety_regressions()
             if hasattr(self_tests, "test_evidence_sufficiency"):
                 self_tests.test_evidence_sufficiency()
             if hasattr(self_tests, "test_evidence_sufficiency_output_history_regression"):

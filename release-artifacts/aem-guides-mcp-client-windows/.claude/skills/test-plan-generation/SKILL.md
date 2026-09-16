@@ -707,6 +707,39 @@ are recorded conceptually and reference the existing IDs without rewriting them.
 - Lineage proves provenance and structural integrity, not semantic correctness; it
   adds traceability only and introduces no new acceptance semantics.
 
+### Phase 6.9.5 — Historical Jira Evidence Safety
+
+Historical Jira similarity is discovery evidence, not acceptance authority: an old
+ticket never automatically becomes an authority for the current ticket. Record every
+historical item considered for a material Question in the manifest
+`historical_jira_assessment` block, validated by
+`scripts/historical_jira_safety.py` (see `references/historical-jira-safety.md`). This
+extends the existing temporal/authority/resolver path; it creates no competing
+framework and no new authority hierarchy.
+
+- Assess per Question (never globally per ticket): `history_id`, `question_id`,
+  `jira_key_or_source_id`, `relationship`, the six match dimensions, `currentness`,
+  `superseded_status`, `human_accepted_ac_available`, `applicability`,
+  `authority_role`, `allowed_use`, `reason`, `limitations[]`. Never classify from
+  vector similarity or lexical overlap alone.
+- **Relationships:** `AUTHORITATIVE_HISTORY` (only with an `authority_basis` naming
+  the existing permitting rule plus exact applicability — a historical Human Accepted
+  AC is not automatically authoritative for a different ticket),
+  `SUPPORTING_PRECEDENT` (may contribute; S1 still decides; never overrides current
+  Jira), `DISCOVERY_ONLY` (locates terminology/sources/paths; never establishes an
+  answer or enters Source lines), `NOT_APPLICABLE` (forced by any material
+  surface/version/configuration difference — similarity never overrides it),
+  `CONFLICTING_HISTORY` (preserve the disagreement; route through existing Q1/S1
+  conflict/TBD behavior).
+- Historical Actual Results, reproduction steps, and suspected root causes remain
+  observation/investigation evidence — never converted into current acceptance
+  requirements; historical Human UAC is never copied into the current UAC without
+  current-question reasoning and Coverage admission.
+- S1 never reaches SUFFICIENT on non-establishing history; C1 never lets historical
+  evidence create coverage directly (only through its bound Question); E1 never merges
+  current and historical outcomes for similar wording; L1 keeps every historical
+  contribution visible and keeps unused history out of final Source lines.
+
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
 - Each P0/P1/P2 scenario must use the literal fields `Action:` and `Expected:` in one plain-English bullet. When an operational manifest references a scenario, add a stable `[TS-##]` token before the AC mapping, for example `- P0 [TS-01] [AC-01]: Action: ... Expected: ...`.
 - Prefix every scenario with the acceptance IDs it covers, for example `P0 [AC-01, AC-04]`. No confirmed or proposed AC may remain without at least one scenario, and no expected result may introduce behavior absent from an AC or accepted evidence.

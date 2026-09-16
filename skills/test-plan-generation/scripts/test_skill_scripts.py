@@ -126,6 +126,8 @@ question_resolver_mod = _load("question_resolver", "question_resolver.py")
 coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
 coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
 requirement_lineage_mod = _load("requirement_lineage", "requirement_lineage.py")
+historical_jira_safety_mod = _load("historical_jira_safety",
+                                   "historical_jira_safety.py")
 evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
 doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
@@ -8350,6 +8352,336 @@ def test_coverage_equivalence_e1() -> None:
     print("test_coverage_equivalence_e1: OK")
 
 
+def _hist_item(**over):
+    item = {
+        "history_id": "HIST-1",
+        "question_id": "Q-1",
+        "jira_key_or_source_id": "EV-H1",
+        "relationship": "DISCOVERY_ONLY",
+        "feature_match": "SIMILAR",
+        "surface_match": "SAME",
+        "version_match": "SAME",
+        "configuration_match": "SAME",
+        "failure_mode_match": "SIMILAR",
+        "expected_behavior_match": "UNKNOWN",
+        "currentness": "STALE",
+        "superseded_status": "NOT_SUPERSEDED",
+        "human_accepted_ac_available": False,
+        "applicability": "same surface, older release",
+        "authority_role": "HISTORICAL_JIRA",
+        "allowed_use": "DISCOVERY",
+        "reason": "Terminology and configuration discovery only.",
+        "limitations": ["Does not establish current behavior."],
+    }
+    item.update(over)
+    return item
+
+
+def _hist_manifest(items, with_resolution=True, question_id="Q-1"):
+    manifest = {
+        "question_plan": {"items": [{
+            "question_id": question_id, "category": "EXPECTED_OUTCOME",
+            "question": "What is the current expected behavior?",
+            "why_material": "m", "triggering_evidence_ids": ["EV-C1"],
+            "acceptance_impact": "a", "applicability": "APPLICABLE",
+            "research_requirement": "NONE", "status": "RESOLVED"}]},
+        "historical_jira_assessment": {"items": items},
+    }
+    if with_resolution:
+        manifest["question_resolutions"] = {"items": [{
+            "question_ref": question_id, "status": "ANSWERED",
+            "decision_reason": "Established by the current ticket.",
+            "answer": {"claim": "The current behavior holds.",
+                       "source_ids": ["EV-C1"],
+                       "source_authority": "CURRENT_TICKET_REQUIREMENT",
+                       "applicability": "current",
+                       "limitations": [], "contradictions": []}}]}
+    return manifest
+
+
+def test_historical_jira_safety() -> None:
+    hj = historical_jira_safety_mod
+
+    check("absent historical_jira_assessment passes", hj.validate({}) == [])
+
+    good = _hist_manifest([_hist_item()])
+    check("a clean discovery-only assessment passes", hj.validate(good) == [])
+
+    supporting = _hist_manifest([_hist_item(
+        relationship="SUPPORTING_PRECEDENT", allowed_use="SUPPORT_ANSWER",
+        feature_match="SAME", failure_mode_match="SAME",
+        expected_behavior_match="SAME", currentness="CURRENT")])
+    check("a materially same supporting precedent passes",
+          hj.validate(supporting) == [])
+
+    authoritative = _hist_manifest([_hist_item(
+        relationship="AUTHORITATIVE_HISTORY", allowed_use="ESTABLISH_ANSWER",
+        feature_match="SAME", failure_mode_match="SAME",
+        expected_behavior_match="SAME", currentness="CURRENT",
+        human_accepted_ac_available=True,
+        authority_basis="existing policy rule allows this historical contract "
+        "for the unchanged surface",
+        applicability="identical surface, version, and configuration")])
+    check("authoritative history with an existing authority basis passes",
+          hj.validate(authoritative) == [])
+
+    no_basis = _hist_manifest([_hist_item(
+        relationship="AUTHORITATIVE_HISTORY", allowed_use="ESTABLISH_ANSWER",
+        feature_match="SAME", failure_mode_match="SAME",
+        expected_behavior_match="SAME", currentness="CURRENT")])
+    check("AUTHORITATIVE_HISTORY without an existing authority basis fails",
+          any("authority_basis" in p for p in hj.validate(no_basis)))
+
+    loose_applicability = _hist_manifest([_hist_item(
+        relationship="AUTHORITATIVE_HISTORY", allowed_use="ESTABLISH_ANSWER",
+        feature_match="SAME", failure_mode_match="SAME",
+        expected_behavior_match="SAME", currentness="CURRENT",
+        version_match="SIMILAR",
+        authority_basis="existing policy rule")])
+    check("AUTHORITATIVE_HISTORY requires exact applicability",
+          any("exact" in p and "applicability" in p
+              for p in hj.validate(loose_applicability)))
+
+    duplicate = _hist_manifest([_hist_item(), _hist_item()])
+    check("duplicate history_id fails",
+          any("duplicate history_id" in p for p in hj.validate(duplicate)))
+
+    unbound = _hist_manifest([_hist_item(question_id="Q-404")])
+    check("unbound historical use fails (never admitted globally)",
+          any("never admitted globally" in p for p in hj.validate(unbound)))
+
+    bad_use = _hist_manifest([_hist_item(allowed_use="ESTABLISH_ANSWER")])
+    check("allowed_use incompatible with relationship fails",
+          any("incompatible" in p for p in hj.validate(bad_use)))
+
+    observation = _hist_manifest([_hist_item(
+        evidence_kind="ACTUAL_RESULT", relationship="SUPPORTING_PRECEDENT",
+        allowed_use="SUPPORT_ANSWER", feature_match="SAME",
+        failure_mode_match="SAME", expected_behavior_match="SAME",
+        currentness="CURRENT")])
+    problems = hj.validate(observation)
+    check("historical Actual Result stays an observation",
+          any("remains" in p and "observation" in p for p in problems))
+
+    # DISCOVERY_ONLY cited as establishing evidence in the resolution.
+    cited = _hist_manifest([_hist_item()])
+    cited["question_resolutions"]["items"][0]["answer"]["source_ids"] = [
+        "EV-C1", "EV-H1"
+    ]
+    check("DISCOVERY_ONLY cannot directly establish an answer",
+          any("cannot directly" in p for p in hj.validate(cited)))
+
+    # CONFLICTING_HISTORY silently resolved.
+    conflict = _hist_manifest([_hist_item(
+        relationship="CONFLICTING_HISTORY", allowed_use="CONFLICT_SIGNAL",
+        expected_behavior_match="DIFFERENT")])
+    check("CONFLICTING_HISTORY cannot silently resolve a question",
+          any("silently" in p for p in hj.validate(conflict)))
+    conflict_kept = _hist_manifest([_hist_item(
+        relationship="CONFLICTING_HISTORY", allowed_use="CONFLICT_SIGNAL",
+        expected_behavior_match="DIFFERENT")], with_resolution=False)
+    conflict_kept["question_resolutions"] = {"items": [{
+        "question_ref": "Q-1", "status": "CONFLICTED",
+        "decision_reason": "The disagreement is preserved."}]}
+    check("CONFLICTING_HISTORY preserved as CONFLICTED passes",
+          hj.validate(conflict_kept) == [])
+
+    # S1: discovery evidence cannot make a question SUFFICIENT.
+    s1 = _hist_manifest([_hist_item()])
+    s1["evidence_sufficiency"] = {"question_assessments": [{
+        "question_ref": "Q-1", "sufficiency_status": "SUFFICIENT",
+        "decision_reason": "d", "authority_status": "AUTHORITATIVE",
+        "research_completion": "NOT_REQUIRED",
+        "applicability_status": "APPLICABLE",
+        "currentness_status": "CURRENT",
+        "contradiction_status": "NONE",
+        "supported_claims": ["c"], "unsupported_claims": [],
+        "limitations": [], "evidence_ids": ["EV-H1"], "research_ids": []}]}
+    check("DISCOVERY_ONLY evidence cannot make a question SUFFICIENT",
+          any("cannot make" in p for p in hj.validate(s1)))
+
+    # C1: historical evidence cannot directly create a coverage decision.
+    c1 = _hist_manifest([_hist_item(
+        relationship="SUPPORTING_PRECEDENT", allowed_use="SUPPORT_ANSWER",
+        feature_match="SAME", failure_mode_match="SAME",
+        expected_behavior_match="SAME", currentness="CURRENT")])
+    c1["coverage_decisions"] = {"items": [{
+        "coverage_id": "COV-1", "behavior": "b",
+        "question_ids": ["Q-9"], "evidence_ids": ["EV-H1"],
+        "priority": "P1", "coverage_class": "QE_REGRESSION"}]}
+    check("historical evidence reaches coverage only through its question",
+          any("bound Question" in p for p in hj.validate(c1)))
+
+    # L1: discovery history never reaches AC lineage / Source lines.
+    l1 = _hist_manifest([_hist_item()])
+    l1["requirement_lineage"] = {
+        "sources": [], "tbd_lineage": [], "reviews": [],
+        "ac_lineage": [{"ac_id": "AC-1", "coverage_refs": [],
+                        "equivalence_refs": [], "question_refs": ["Q-1"],
+                        "evidence_refs": ["EV-C1", "EV-H1"],
+                        "research_refs": [], "source_refs": [],
+                        "writer_revision": "w1", "source_versions": {},
+                        "human_source_line": "Source: the ticket"}]}
+    check("DISCOVERY_ONLY evidence never reaches final Source lines",
+          any("never reaches AC lineage" in p for p in hj.validate(l1)))
+
+    print("test_historical_jira_safety: OK")
+
+
+def test_historical_jira_safety_regressions() -> None:
+    """Ten hard negatives, the named AEM Guides fixtures, and an unfamiliar
+    structurally different scenario."""
+
+    hj = historical_jira_safety_mod
+
+    def manifest_with(item):
+        return _hist_manifest([item])
+
+    # 1. Highly similar historical ticket, different Expected Result.
+    case = manifest_with(_hist_item(
+        relationship="SUPPORTING_PRECEDENT", allowed_use="SUPPORT_ANSWER",
+        feature_match="SAME", failure_mode_match="SAME",
+        expected_behavior_match="DIFFERENT"))
+    check("HN1 similar ticket with different Expected Result cannot support",
+          any("expected behavior differs" in p for p in hj.validate(case)))
+
+    # 2. Same feature, wrong product version.
+    case = manifest_with(_hist_item(version_match="DIFFERENT"))
+    check("HN2 wrong version forces NOT_APPLICABLE despite similarity",
+          any("NOT_APPLICABLE" in p for p in hj.validate(case)))
+
+    # 3. Same terminology, different product surface.
+    case = manifest_with(_hist_item(surface_match="DIFFERENT"))
+    check("HN3 wrong surface forces NOT_APPLICABLE",
+          any("NOT_APPLICABLE" in p for p in hj.validate(case)))
+
+    # 4. Same failure, different configuration.
+    case = manifest_with(_hist_item(configuration_match="DIFFERENT"))
+    check("HN4 different configuration forces NOT_APPLICABLE",
+          any("NOT_APPLICABLE" in p for p in hj.validate(case)))
+
+    # 5. Historical Actual Result resembling current desired behavior.
+    case = manifest_with(_hist_item(
+        evidence_kind="ACTUAL_RESULT", relationship="AUTHORITATIVE_HISTORY",
+        allowed_use="ESTABLISH_ANSWER", feature_match="SAME",
+        failure_mode_match="SAME", expected_behavior_match="SAME",
+        currentness="CURRENT", authority_basis="existing policy rule"))
+    problems = hj.validate(case)
+    check("HN5 historical Actual Result never becomes authoritative",
+          any("remains an" in p and "observation" in p for p in problems))
+
+    # 6. Historical Human AC with no current applicability proof.
+    case = manifest_with(_hist_item(
+        relationship="AUTHORITATIVE_HISTORY", allowed_use="ESTABLISH_ANSWER",
+        evidence_kind="ACCEPTED_AC", feature_match="SAME",
+        failure_mode_match="SAME", expected_behavior_match="SAME",
+        currentness="CURRENT", human_accepted_ac_available=True,
+        applicability="same surface, version unknown"))
+    problems = hj.validate(case)
+    check("HN6 historical Human AC without an authority rule is not "
+          "automatically authoritative",
+          any("authority_basis" in p for p in problems))
+
+    # 7. Historical ticket superseded by newer behavior.
+    case = manifest_with(_hist_item(
+        relationship="SUPPORTING_PRECEDENT", allowed_use="SUPPORT_ANSWER",
+        feature_match="SAME", failure_mode_match="SAME",
+        expected_behavior_match="SAME", superseded_status="SUPERSEDED"))
+    check("HN7 superseded history never supports current behavior",
+          any("superseded" in p for p in hj.validate(case)))
+
+    # 8. Historical ticket conflicts with the current Human Accepted AC.
+    case = manifest_with(_hist_item(
+        relationship="CONFLICTING_HISTORY", allowed_use="CONFLICT_SIGNAL",
+        expected_behavior_match="DIFFERENT"))
+    case["question_resolutions"]["items"][0]["answer"]["source_authority"] = (
+        "ACCEPTED_UAC"
+    )
+    check("HN8 conflict with current Human AC stays unresolved",
+          any("silently" in p for p in hj.validate(case)))
+
+    # 9. Historical ticket useful only for finding documentation.
+    case = manifest_with(_hist_item(allowed_use="DISCOVERY"))
+    case["question_resolutions"]["items"][0]["answer"]["source_ids"] = [
+        "EV-H1"
+    ]
+    problems = hj.validate(case)
+    check("HN9 documentation-finding history cannot establish the answer",
+          any("cannot directly" in p for p in problems))
+
+    # 10. Multiple similar historical tickets with inconsistent outcomes.
+    case = _hist_manifest([
+        _hist_item(history_id="HIST-A", relationship="SUPPORTING_PRECEDENT",
+                   allowed_use="SUPPORT_ANSWER", feature_match="SAME",
+                   failure_mode_match="SAME",
+                   expected_behavior_match="SAME", currentness="CURRENT"),
+        _hist_item(history_id="HIST-B", relationship="CONFLICTING_HISTORY",
+                   allowed_use="CONFLICT_SIGNAL",
+                   expected_behavior_match="DIFFERENT"),
+    ])
+    problems = hj.validate(case)
+    check("HN10 inconsistent historical outcomes preserve the conflict",
+          any("silently" in p for p in problems))
+
+    # Named regression fixtures (feature names appear only in tests).
+    # Translation: historical ticket reveals persistence patterns but cannot
+    # override the current approval requirement.
+    translation = _hist_manifest([_hist_item(
+        relationship="SUPPORTING_PRECEDENT", allowed_use="SUPPORT_ANSWER",
+        feature_match="SAME", failure_mode_match="SAME",
+        expected_behavior_match="SAME", currentness="CURRENT",
+        reason="Historical review-state persistence pattern.")])
+    check("Translation: supporting precedent may contribute",
+          hj.validate(translation) == [])
+
+    # Native PDF: historical DITA-OT behavior must not establish it.
+    native_pdf = _hist_manifest([_hist_item(surface_match="DIFFERENT")])
+    check("Native PDF fixture: cross-engine history is NOT_APPLICABLE",
+          any("NOT_APPLICABLE" in p for p in hj.validate(native_pdf)))
+
+    # Editor: Old Editor history must not establish New Editor acceptance.
+    editor = _hist_manifest([_hist_item(surface_match="DIFFERENT",
+                                        relationship="SUPPORTING_PRECEDENT",
+                                        allowed_use="SUPPORT_ANSWER")])
+    check("Editor fixture: old-surface history is NOT_APPLICABLE",
+          any("NOT_APPLICABLE" in p for p in hj.validate(editor)))
+
+    # Assets: 6.5 history must not establish Cloud behavior.
+    assets = _hist_manifest([_hist_item(version_match="DIFFERENT")])
+    check("Assets fixture: wrong-deployment history is NOT_APPLICABLE",
+          any("NOT_APPLICABLE" in p for p in hj.validate(assets)))
+
+    # Unfamiliar fixture: lexically near-identical historical ticket, one
+    # material applicability difference; the current question stays
+    # unresolved on current evidence.
+    unfamiliar = _hist_manifest(
+        [_hist_item(configuration_match="DIFFERENT")],
+        with_resolution=False)
+    unfamiliar["question_resolutions"] = {"items": [{
+        "question_ref": "Q-1", "status": "ACCEPTANCE_TBD",
+        "decision_reason": "Current evidence does not establish the answer.",
+        "material_impact": ["CONFIGURATION"],
+        "plausible_answers": ["enabled", "disabled"]}]}
+    problems = hj.validate(unfamiliar)
+    check("unfamiliar fixture: near-identical history with one material "
+          "difference is NOT_APPLICABLE and the question stays TBD",
+          any("NOT_APPLICABLE" in p for p in problems)
+          and not any("silently" in p for p in problems))
+    unfamiliar_fixed = _hist_manifest(
+        [_hist_item(configuration_match="DIFFERENT",
+                    relationship="NOT_APPLICABLE", allowed_use="NONE")],
+        with_resolution=False)
+    unfamiliar_fixed["question_resolutions"] = {"items": [{
+        "question_ref": "Q-1", "status": "ACCEPTANCE_TBD",
+        "decision_reason": "Current evidence does not establish the answer.",
+        "material_impact": ["CONFIGURATION"],
+        "plausible_answers": ["enabled", "disabled"]}]}
+    check("unfamiliar fixture: NOT_APPLICABLE + TBD passes cleanly",
+          hj.validate(unfamiliar_fixed) == [])
+
+    print("test_historical_jira_safety_regressions: OK")
+
+
 def _lineage_fixture():
     """Compact complete chain for the lineage tests: one accepted behavior
     traced from the ticket source to the reviewed AC, plus one TBD question."""
@@ -14838,6 +15170,8 @@ def main() -> int:
     test_coverage_equivalence_e1()
     test_requirement_lineage()
     test_requirement_lineage_regressions()
+    test_historical_jira_safety()
+    test_historical_jira_safety_regressions()
     test_evidence_sufficiency()
     test_evidence_sufficiency_output_history_regression()
     test_evidence_sufficiency_unfamiliar_ticket()
