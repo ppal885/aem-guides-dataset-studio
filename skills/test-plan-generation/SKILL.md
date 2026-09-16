@@ -740,6 +740,36 @@ framework and no new authority hierarchy.
   current and historical outcomes for similar wording; L1 keeps every historical
   contribution visible and keeps unused history out of final Source lines.
 
+### Phase 6.9.6 — Question-Level Retrieval Quality and Evidence Admission
+
+Retrieval is not evidence: evaluate and control retrieval against explicit material
+Questions via the manifest `retrieval_requests` / `retrieval_results` blocks,
+validated by `scripts/retrieval_admission.py` (see
+`references/retrieval-admission.md`). This extends the existing read-only retrieval
+path — it builds no new RAG system, replaces no vector store, and never reindexes.
+
+- Every retrieval request binds a `question_id`, `research_id`, the actual `query`,
+  `required_source_type`, `product_context`, `applicability`, `requested_claim`, a
+  bounded `top_k`, and a `retrieval_mode`; query rewrites never change the Question
+  binding; retrieval budgets are tracked and no answer is a valid result.
+- Every candidate records rank, score (discovery metadata — never authority), source
+  identity/version, applicability (`CONFIRMED`/`UNCLEAR`/`WRONG`/`NOT_ASSESSED`), and
+  a `relationship`: `TOPIC_MATCH` (discovery only), `RELEVANT`, `SUPPORTS_CLAIM`
+  (S1 decides sufficiency), `DECISIVE` (subject to source authority — never
+  automatically authoritative or sufficient).
+- A declared relationship never exceeds the structural admission ceiling: fetch exact
+  evidence before material use; wrong or unassessed applicability stays TOPIC_MATCH;
+  unclear applicability is never DECISIVE; exact configuration/property identity is
+  required (a same-looking numeric value on a nearby property is not the same
+  property); stale retrieval is rejected; retrieved historical Jira routes through H1.
+- TOPIC_MATCH/RELEVANT never make a Question SUFFICIENT; only fetched
+  SUPPORTS_CLAIM/DECISIVE evidence reaches AC lineage and final Source lines; unused
+  chunks stay auditable outside them.
+- Retrieval quality is evaluated offline by `scripts/retrieval_benchmark.py` over
+  question-level fixtures (retrieval and admission metrics reported separately; the
+  headline metric is DECISIVE_EVIDENCE_MISADMISSION_RATE). A live smoke check reports
+  read-only gateway connectivity only — never semantic-quality proof.
+
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
 - Each P0/P1/P2 scenario must use the literal fields `Action:` and `Expected:` in one plain-English bullet. When an operational manifest references a scenario, add a stable `[TS-##]` token before the AC mapping, for example `- P0 [TS-01] [AC-01]: Action: ... Expected: ...`.
 - Prefix every scenario with the acceptance IDs it covers, for example `P0 [AC-01, AC-04]`. No confirmed or proposed AC may remain without at least one scenario, and no expected result may introduce behavior absent from an AC or accepted evidence.

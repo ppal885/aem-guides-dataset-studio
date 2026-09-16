@@ -128,6 +128,8 @@ coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.p
 requirement_lineage_mod = _load("requirement_lineage", "requirement_lineage.py")
 historical_jira_safety_mod = _load("historical_jira_safety",
                                    "historical_jira_safety.py")
+retrieval_admission_mod = _load("retrieval_admission", "retrieval_admission.py")
+retrieval_benchmark_mod = _load("retrieval_benchmark", "retrieval_benchmark.py")
 evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
 doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
@@ -8682,6 +8684,247 @@ def test_historical_jira_safety_regressions() -> None:
     print("test_historical_jira_safety_regressions: OK")
 
 
+def _retrieval_manifest(results, request_over=None, question_id="Q-1"):
+    request = {
+        "request_id": "REQ-1",
+        "question_id": question_id,
+        "research_id": "RSH-1",
+        "query": "actual query text used",
+        "required_source_type": "OFFICIAL_PRODUCT_DOC",
+        "product_context": "current release",
+        "applicability": "current release",
+        "requested_claim": "the claim the question seeks",
+        "top_k": 5,
+        "retrieval_mode": "PRODUCTION",
+        "budget": {"queries_per_question": 1, "chunks_retrieved": 5,
+                   "chunks_fetched": 1, "research_rounds": 1},
+    }
+    request.update(request_over or {})
+    rows = []
+    for i, over in enumerate(results):
+        row = {
+            "retrieval_result_id": f"RR-{i}",
+            "request_id": "REQ-1",
+            "question_id": question_id,
+            "source_id": f"SRC-{i}",
+            "chunk_id": f"SRC-{i}#c1",
+            "rank": i + 1,
+            "retrieval_score": 0.9 - 0.1 * i,
+            "source_type": "OFFICIAL_PRODUCT_DOC",
+            "applicability": "CONFIRMED",
+            "relationship": "TOPIC_MATCH",
+            "fetched": False,
+            "limitations": [],
+        }
+        row.update(over)
+        rows.append(row)
+    return {
+        "question_plan": {"items": [{
+            "question_id": question_id, "category": "CONFIGURATION",
+            "question": "Which property controls the behavior?",
+            "why_material": "m", "triggering_evidence_ids": [],
+            "acceptance_impact": "a", "applicability": "APPLICABLE",
+            "research_requirement": "NONE", "status": "RESOLVED"}]},
+        "retrieval_requests": {"items": [request]},
+        "retrieval_results": {"items": rows},
+    }
+
+
+def test_retrieval_admission() -> None:
+    ra = retrieval_admission_mod
+
+    check("absent retrieval blocks pass", ra.validate({}) == [])
+
+    clean = _retrieval_manifest([{
+        "relationship": "DECISIVE", "fetched": True,
+        "supported_claim": "the property controls the retention period",
+        "decisiveness": "directly establishes the requested claim"}])
+    check("a fetched confirmed decisive candidate passes",
+          ra.validate(clean) == [])
+
+    discovery = _retrieval_manifest([{"relationship": "TOPIC_MATCH"}])
+    check("an honest topic-match candidate passes",
+          ra.validate(discovery) == [])
+
+    unbound_q = _retrieval_manifest([], request_over={"question_id": "Q-404"})
+    check("retrieval bound to a nonexistent question fails",
+          any("does not exist" in p for p in ra.validate(unbound_q)))
+
+    no_query = _retrieval_manifest([], request_over={"query": ""})
+    check("the actual query used must be recorded",
+          any("actual query" in p for p in ra.validate(no_query)))
+
+    over_budget = _retrieval_manifest([], request_over={"top_k": 50})
+    check("top_k is bounded - no answer is a valid result",
+          any("retrieval budget" in p for p in ra.validate(over_budget)))
+
+    snippet = _retrieval_manifest([{
+        "relationship": "SUPPORTS_CLAIM", "fetched": False}])
+    problems = ra.validate(snippet)
+    check("a search snippet cannot materially support a claim (fetch first)",
+          any("fetch" in p.lower() or "ceiling" in p for p in problems))
+
+    wrong_app = _retrieval_manifest([{
+        "relationship": "DECISIVE", "fetched": True,
+        "applicability": "WRONG",
+        "supported_claim": "c", "decisiveness": "d"}])
+    check("wrong applicability can never be decisive",
+          any("ceiling" in p for p in ra.validate(wrong_app)))
+
+    unclear_app = _retrieval_manifest([{
+        "relationship": "DECISIVE", "fetched": True,
+        "applicability": "UNCLEAR",
+        "supported_claim": "c", "decisiveness": "d"}])
+    check("unclear applicability is not confirmed applicability",
+          any("ceiling" in p or "CONFIRMED" in p
+              for p in ra.validate(unclear_app)))
+
+    unassessed = _retrieval_manifest([{
+        "relationship": "SUPPORTS_CLAIM", "fetched": True,
+        "applicability": "NOT_ASSESSED"}])
+    check("unassessed applicability stays topic match",
+          any("ceiling" in p for p in ra.validate(unassessed)))
+
+    stale = _retrieval_manifest([{
+        "relationship": "DECISIVE", "fetched": True, "stale": True,
+        "supported_claim": "c", "decisiveness": "d"}])
+    check("stale retrieval is rejected",
+          any("ceiling" in p for p in ra.validate(stale)))
+
+    no_claim = _retrieval_manifest([{
+        "relationship": "DECISIVE", "fetched": True}])
+    check("decisive requires the exact supported claim",
+          any("supported_claim" in p for p in ra.validate(no_claim)))
+
+    mismatched_q = _retrieval_manifest([{
+        "relationship": "TOPIC_MATCH", "question_id": "Q-9"}])
+    check("candidate question must match the bound request",
+          any("does not match" in p for p in ra.validate(mismatched_q)))
+
+    # Historical Jira via RAG routes through H1 before establishing use.
+    historical = _retrieval_manifest([{
+        "relationship": "SUPPORTS_CLAIM", "fetched": True,
+        "is_historical": True, "source_type": "HISTORICAL_JIRA"}])
+    check("retrieved historical Jira without an H1 assessment fails",
+          any("never bypasses H1" in p for p in ra.validate(historical)))
+    historical["historical_jira_assessment"] = {"items": [{
+        "history_id": "HIST-1", "question_id": "Q-1",
+        "jira_key_or_source_id": "SRC-0", "relationship": "SUPPORTING_PRECEDENT",
+        "feature_match": "SAME", "surface_match": "SAME", "version_match": "SAME",
+        "configuration_match": "SAME", "failure_mode_match": "SAME",
+        "expected_behavior_match": "SAME", "currentness": "CURRENT",
+        "superseded_status": "NOT_SUPERSEDED", "human_accepted_ac_available": False,
+        "applicability": "current release", "authority_role": "HISTORICAL_JIRA",
+        "allowed_use": "SUPPORT_ANSWER", "reason": "r", "limitations": []}]}
+    check("retrieved historical Jira with an H1 assessment passes",
+          ra.validate(historical) == [])
+
+    # S1: topic-match evidence never makes a question SUFFICIENT.
+    s1 = _retrieval_manifest([{"relationship": "TOPIC_MATCH"}])
+    s1["evidence_sufficiency"] = {"question_assessments": [{
+        "question_ref": "Q-1", "sufficiency_status": "SUFFICIENT",
+        "evidence_ids": ["SRC-0#c1"]}]}
+    check("TOPIC_MATCH cannot make a question SUFFICIENT",
+          any("not an answer" in p for p in ra.validate(s1)))
+
+    # L1: unused/unfetched retrieval never enters AC lineage.
+    l1 = _retrieval_manifest([{"relationship": "RELEVANT"}])
+    l1["requirement_lineage"] = {
+        "sources": [], "tbd_lineage": [], "reviews": [],
+        "ac_lineage": [{"ac_id": "AC-1", "evidence_refs": ["SRC-0#c1"]}]}
+    check("unused retrieval never contaminates final Source lines",
+          any("never enters AC lineage" in p for p in ra.validate(l1)))
+
+    print("test_retrieval_admission: OK")
+
+
+def test_retrieval_admission_regressions() -> None:
+    """Nearby-property, engine/surface/deployment hard negatives."""
+
+    ra = retrieval_admission_mod
+
+    # Nearby configuration hard negative: same numeric value, different
+    # property identity -> never admitted as property-specific evidence.
+    nearby = _retrieval_manifest([{
+        "relationship": "SUPPORTS_CLAIM", "fetched": True,
+        "subject_key": "display-limit-property",
+        "supported_claim": "the display limit defaults to 25"}],
+        request_over={"subject_key": "retention-count-property"})
+    problems = ra.validate(nearby)
+    check("nearby property with a same-looking value is not evidence",
+          any("subject" in p and "ceiling" in p for p in problems))
+    exact = _retrieval_manifest([{
+        "relationship": "SUPPORTS_CLAIM", "fetched": True,
+        "subject_key": "retention-count-property",
+        "supported_claim": "the retention count bounds retained entries"}],
+        request_over={"subject_key": "retention-count-property"})
+    check("exact configuration identity admits supporting evidence",
+          ra.validate(exact) == [])
+
+    # Engine/path hard negatives: same terminology, wrong surface.
+    for surface in ("native-vs-legacy engine", "new-vs-old editor",
+                    "cloud-vs-classic deployment"):
+        case = _retrieval_manifest([{
+            "relationship": "DECISIVE", "fetched": True,
+            "applicability": "WRONG", "supported_claim": "c",
+            "decisiveness": "d"}])
+        check(f"wrong-surface evidence is never decisive ({surface})",
+              any("ceiling" in p for p in ra.validate(case)))
+
+    # Unanswerable-style: unclear overview evidence supports at most, never
+    # decides.
+    unclear = _retrieval_manifest([{
+        "relationship": "SUPPORTS_CLAIM", "fetched": True,
+        "applicability": "UNCLEAR"}])
+    check("unclear evidence may support but never decides",
+          ra.validate(unclear) == [])
+
+    print("test_retrieval_admission_regressions: OK")
+
+
+def test_retrieval_benchmark() -> None:
+    """Offline question-level retrieval benchmark and metrics."""
+
+    rb = retrieval_benchmark_mod
+    metrics, problems = rb.evaluate()
+    check("benchmark fixture manifest satisfies the admission gate",
+          problems == [])
+
+    retrieval = metrics["retrieval"]
+    admission = metrics["admission"]
+    counts = metrics["counts"]
+
+    check("benchmark covers ten domains plus unanswerable questions",
+          counts["questions"] == 12 and counts["answerable"] == 10
+          and counts["unanswerable"] == 2)
+    check("fixture retrieval recall is complete", retrieval["recall_at_k"] == 1.0)
+    check("fixture MRR is computed", retrieval["mrr"] == 0.9)
+    check("decisive evidence recall is complete",
+          retrieval["decisive_evidence_recall_at_k"] == 1.0)
+    check("hard negatives ARE retrieved (retrieval is not admission)",
+          retrieval["hard_negative_retrieval_rate"] == 1.0)
+    check("no hard negative is ever ADMITTED as establishing",
+          admission["wrong_version_admission_rate"] == 0.0
+          and admission["wrong_surface_admission_rate"] == 0.0
+          and admission["topic_match_as_proof_rate"] == 0.0)
+    check("fetch-before-use compliance is total",
+          admission["fetch_before_use_compliance"] == 1.0)
+    check("the headline metric is zero: no decisive misadmission",
+          admission["decisive_evidence_misadmission_rate"] == 0.0)
+    check("unanswerable questions produce no hallucinated answers",
+          admission["unanswerable_false_answer_rate"] == 0.0)
+    check("retrieval and admission are reported separately",
+          set(retrieval) & set(admission) == set())
+
+    smoke = rb.live_smoke()
+    check("live smoke reports gateway status honestly without writing",
+          isinstance(smoke, dict) and "status" in smoke)
+
+    print("test_retrieval_benchmark: OK")
+    print(f"  retrieval metrics: {json.dumps(retrieval, sort_keys=True)}")
+    print(f"  admission metrics: {json.dumps(admission, sort_keys=True)}")
+
+
 def _lineage_fixture():
     """Compact complete chain for the lineage tests: one accepted behavior
     traced from the ticket source to the reviewed AC, plus one TBD question."""
@@ -15172,6 +15415,9 @@ def main() -> int:
     test_requirement_lineage_regressions()
     test_historical_jira_safety()
     test_historical_jira_safety_regressions()
+    test_retrieval_admission()
+    test_retrieval_admission_regressions()
+    test_retrieval_benchmark()
     test_evidence_sufficiency()
     test_evidence_sufficiency_output_history_regression()
     test_evidence_sufficiency_unfamiliar_ticket()

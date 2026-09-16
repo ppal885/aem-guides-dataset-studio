@@ -120,6 +120,7 @@ coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.p
 requirement_lineage_mod = _load("requirement_lineage", "requirement_lineage.py")
 historical_jira_safety_mod = _load("historical_jira_safety",
                                    "historical_jira_safety.py")
+retrieval_admission_mod = _load("retrieval_admission", "retrieval_admission.py")
 evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
 doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
@@ -1590,6 +1591,17 @@ def check_relationship_traversal(
         for problem in historical_jira_safety_mod.validate(data)
     )
 
+    # Question-level retrieval admission (optional, backward-compatible).
+    # Absent -> clean pass. Retrieval is question-bound; a candidate's
+    # relationship never exceeds the structural admission ceiling (fetch
+    # before material use, applicability before admission, exact subject
+    # identity, H1 for historical Jira); retrieval score is never authority;
+    # topic matches never reach S1 sufficiency or L1 lineage.
+    failures.extend(
+        f"[retrieval-admission] {problem}"
+        for problem in retrieval_admission_mod.validate(data)
+    )
+
     # Evidence Sufficiency (optional, backward-compatible). Absent -> clean
     # pass. Per-question and per-coverage-decision sufficiency computed from
     # the underlying questions/evidence; P0 ACCEPTANCE requires SUFFICIENT
@@ -2339,6 +2351,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 self_tests.test_historical_jira_safety()
             if hasattr(self_tests, "test_historical_jira_safety_regressions"):
                 self_tests.test_historical_jira_safety_regressions()
+            if hasattr(self_tests, "test_retrieval_admission"):
+                self_tests.test_retrieval_admission()
+            if hasattr(self_tests, "test_retrieval_admission_regressions"):
+                self_tests.test_retrieval_admission_regressions()
+            if hasattr(self_tests, "test_retrieval_benchmark"):
+                self_tests.test_retrieval_benchmark()
             if hasattr(self_tests, "test_evidence_sufficiency"):
                 self_tests.test_evidence_sufficiency()
             if hasattr(self_tests, "test_evidence_sufficiency_output_history_regression"):
