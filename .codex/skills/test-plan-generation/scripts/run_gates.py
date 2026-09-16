@@ -153,23 +153,26 @@ acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthes
 # never mutates the runtime artifact.
 # ---------------------------------------------------------------------------
 
-REPLAY_GATE_SPECS: list[tuple[str, str, object]] = []
+REPLAY_GATE_SPECS: list[tuple[str, str, object, frozenset]] = []
 
 
 def _register_replay_gates() -> None:
     REPLAY_GATE_SPECS.extend(
         [
-            ("question_research", "question-research", question_research_mod),
-            ("behavior_classification", "behavior-classification", behavior_classification_mod),
-            ("doc_research", "doc-research-routing", doc_research_mod),
-            ("question_plan", "question-planner", question_planner_mod),
-            ("question_resolutions", "question-resolver", question_resolver_mod),
-            ("evidence_sufficiency", "evidence-sufficiency", evidence_sufficiency_mod),
-            ("coverage_decisions", "coverage-reasoner", coverage_reasoner_mod),
-            ("coverage_equivalence", "coverage-equivalence", coverage_equivalence_mod),
-            ("requirement_lineage", "requirement-lineage", requirement_lineage_mod),
-            ("historical_jira_assessment", "historical-jira-safety", historical_jira_safety_mod),
-            ("retrieval_requests", "retrieval-admission", retrieval_admission_mod),
+            ("question_research", "question-research", question_research_mod, frozenset()),
+            ("behavior_classification", "behavior-classification", behavior_classification_mod, frozenset()),
+            ("doc_research", "doc-research-routing", doc_research_mod, frozenset()),
+            ("question_plan", "question-planner", question_planner_mod, frozenset()),
+            ("question_resolutions", "question-resolver", question_resolver_mod, frozenset()),
+            # S1 derives research-completion sub-states from the
+            # question_research block; without it a FAIL cannot be
+            # distinguished from missing dependency data.
+            ("evidence_sufficiency", "evidence-sufficiency", evidence_sufficiency_mod, frozenset({"question_research"})),
+            ("coverage_decisions", "coverage-reasoner", coverage_reasoner_mod, frozenset()),
+            ("coverage_equivalence", "coverage-equivalence", coverage_equivalence_mod, frozenset()),
+            ("requirement_lineage", "requirement-lineage", requirement_lineage_mod, frozenset()),
+            ("historical_jira_assessment", "historical-jira-safety", historical_jira_safety_mod, frozenset()),
+            ("retrieval_requests", "retrieval-admission", retrieval_admission_mod, frozenset()),
         ]
     )
 
@@ -195,7 +198,7 @@ def replay_runtime_projection(manifest: dict) -> dict:
 
     gate_results: list[dict] = []
     not_evaluable: list[str] = []
-    for block, label, mod in REPLAY_GATE_SPECS:
+    for block, label, mod, depends_on in REPLAY_GATE_SPECS:
         if block in unavailable or not mod.is_present(manifest):
             gate_results.append({
                 "gate": label,
@@ -207,11 +210,15 @@ def replay_runtime_projection(manifest: dict) -> dict:
             not_evaluable.append(label)
             continue
         problems = mod.validate(manifest)
-        if problems and block in lossy:
+        if problems and (block in lossy or depends_on & unavailable):
             gate_results.append({
                 "gate": label,
                 "status": "NOT_EVALUABLE",
-                "reason": "projection is lossy for this contract",
+                "reason": "projection is lossy for this contract"
+                if block in lossy
+                else "a block this gate cross-checks is unavailable - a "
+                "failure cannot be distinguished from missing dependency "
+                "data",
                 "failures": problems,
             })
             not_evaluable.append(label)
@@ -242,6 +249,7 @@ def replay_runtime_projection(manifest: dict) -> dict:
         row.get("coverage_id"): list(row.get("question_ids") or [])
         for row in coverage_items
     }
+    coverage_by_id = {row.get("coverage_id"): row for row in coverage_items}
     sufficiency_by_question = {
         row.get("question_ref"): row
         for row in (manifest.get("evidence_sufficiency") or {}).get(
@@ -269,6 +277,29 @@ def replay_runtime_projection(manifest: dict) -> dict:
                 for disposition_id in (candidate.get("source_disposition_ids") or [])
                 for question_id in questions_by_coverage.get(disposition_id, [])
             }
+            # C2B-C1: a promoted candidate whose projected canonical coverage
+            # carries no ACCEPTANCE class diverges from the C1 contract.
+            linked_coverage = [
+                coverage_by_id[disposition_id]
+                for disposition_id in (candidate.get("source_disposition_ids") or [])
+                if disposition_id in coverage_by_id
+            ]
+            if linked_coverage and not any(
+                row.get("coverage_class") == "ACCEPTANCE" for row in linked_coverage
+            ):
+                promotion_verdict = "DISAGREES"
+                disagreements.append({
+                    "gate": "coverage-reasoner",
+                    "runtime_artifact_ref": candidate.get("candidate_id"),
+                    "projected_artifact_ref": sorted(
+                        row.get("coverage_id") for row in linked_coverage
+                    )[0],
+                    "runtime_decision": "PROMOTED",
+                    "skill_replay_decision": "REJECT (no ACCEPTANCE-class coverage)",
+                    "reason": "promotion without ACCEPTANCE-class canonical "
+                    "coverage - QE_REGRESSION/INVESTIGATION never becomes an AC",
+                    "severity": "BLOCKING_POLICY_DIVERGENCE",
+                })
             # Claim-level sufficiency binding does not need question linkage.
             claim_row = sufficiency_by_claim.get(candidate.get("candidate_id"))
             if claim_row and claim_row.get("sufficiency_status") in {

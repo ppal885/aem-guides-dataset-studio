@@ -361,7 +361,14 @@ class CanonicalMissingQuestionService:
         preparation: QeInvestigationPreparation,
     ) -> list[MissingQuestionQualityFailureReason]:
         failures: set[MissingQuestionQualityFailureReason] = set()
+        # UX1: a sanitized human question intentionally does not echo raw
+        # evidence fragments; its semantic content is the human text plus the
+        # internal investigation terms it was projected from.  Quality checks
+        # evaluate that full content, so a clean projection cannot fail the
+        # bound-behavior overlap merely for being readable.
         question_tokens = _tokens(question.question)
+        if question.investigation_terms:
+            question_tokens |= _tokens(" ".join(question.investigation_terms))
         behavior_tokens = _tokens(question.linked_behavior_or_state)
         if not behavior_tokens or not (question_tokens & behavior_tokens):
             failures.add(

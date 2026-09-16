@@ -314,6 +314,10 @@ class ContractMode(StrEnum):
 
 class ContractFactType(StrEnum):
     DIRECT_EXPECTED_BEHAVIOR = "DIRECT_EXPECTED_BEHAVIOR"
+    # UX1: narrative/current-state context from summary/description/title
+    # fields with no requirement signal.  Context informs issue
+    # understanding; it is never acceptance behavior and never promotes.
+    CONTEXT_STATEMENT = "CONTEXT_STATEMENT"
     IN_SCOPE = "IN_SCOPE"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     PRIMARY_PRODUCT_AREA = "PRIMARY_PRODUCT_AREA"
@@ -2333,6 +2337,10 @@ class MissingQuestion(BaseModel):
     question_revision: str = ""
     source_closure_ids: list[str] = Field(default_factory=list)
     source_fact_ids: list[str] = Field(default_factory=list)
+    # UX1: raw evidence entities that triggered investigation (paths, code
+    # fragments).  Internal-only input for directed retrieval and research;
+    # never rendered into human-facing question text.
+    investigation_terms: list[str] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def identify(self) -> "MissingQuestion":
@@ -3614,6 +3622,12 @@ class DomainImpact(BaseModel):
     observable_outcomes: list[str] = Field(default_factory=list)
     nfr_applicable: bool = False
     nfr_triggers: list[str] = Field(default_factory=list)
+    # UX1: NFR activation is domain-bound - the evidence records where the
+    # scale/performance signal co-occurs with this domain's evidence, plus a
+    # human-readable materiality basis.  Empty means the domain is not
+    # NFR-activated, regardless of ticket-wide generic signals.
+    nfr_evidence_ids: list[str] = Field(default_factory=list)
+    nfr_materiality_basis: str = ""
     evidence_ids: list[str] = Field(default_factory=list)
 
 
@@ -3629,6 +3643,20 @@ class CoverageDispositionRecord(BaseModel):
     source_hypothesis_ids: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
     rationale: str
+    # C2B-C1: canonical coverage-decision fields.  Empty values mark legacy
+    # artifacts that predate them (replay reports NOT_EVALUABLE, never a
+    # fabricated value).
+    priority: Literal["", "P0", "P1", "SUPPORTING", "EXCLUDED"] = ""
+    coverage_class: Literal["", "ACCEPTANCE", "QE_REGRESSION", "INVESTIGATION"] = ""
+    contract_type: Literal["", "POSITIVE", "NEGATIVE", "PRESERVATION"] = ""
+    sufficiency_ref: str = ""
+    applicability: str = ""
+    acceptance_impact: str = ""
+    surface: str = ""
+    state_or_transition: str = ""
+    configuration: str = ""
+    variants: list[str] = Field(default_factory=list)
+    revision: str = ""
 
     @model_validator(mode="after")
     def identify(self) -> "CoverageDispositionRecord":
@@ -3637,11 +3665,63 @@ class CoverageDispositionRecord(BaseModel):
         self.source_question_ids = sorted(set(self.source_question_ids))
         self.source_hypothesis_ids = sorted(set(self.source_hypothesis_ids))
         self.evidence_ids = sorted(set(self.evidence_ids))
-        identity = self.model_dump(mode="json", exclude={"disposition_id"})
+        self.variants = sorted({row for row in self.variants if str(row).strip()})
+        # C2B-C1 structural validation: class/priority/disposition consistency.
+        # This proves shape, never semantic priority correctness.
+        if self.coverage_class == "ACCEPTANCE" and self.disposition not in {
+            CoverageDisposition.ACCEPTANCE_CONTRACT,
+            CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+        }:
+            raise ValueError(
+                "ACCEPTANCE coverage class requires an acceptance-contract "
+                "disposition"
+            )
+        if self.coverage_class == "QE_REGRESSION" and self.disposition in {
+            CoverageDisposition.ACCEPTANCE_CONTRACT,
+            CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+        }:
+            raise ValueError(
+                "QE_REGRESSION coverage class cannot carry an acceptance "
+                "disposition"
+            )
+        if self.coverage_class == "INVESTIGATION" and self.disposition not in {
+            CoverageDisposition.IMPLEMENTATION_ORACLE,
+            CoverageDisposition.TECHNICAL_NOTE,
+            CoverageDisposition.OPEN_QUESTION,
+            CoverageDisposition.PRODUCT_SCOPE_QUESTION,
+            CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+            CoverageDisposition.KNOWN_LIMITATION,
+        }:
+            raise ValueError(
+                "INVESTIGATION coverage class requires an "
+                "implementation-oracle/technical-note disposition"
+            )
+        if self.priority == "P0" and self.coverage_class != "ACCEPTANCE":
+            raise ValueError("P0 coverage proves the primary contract: class "
+                             "must be ACCEPTANCE")
+        if self.priority == "P1" and self.coverage_class != "QE_REGRESSION":
+            raise ValueError("P1 coverage is materially related regression: "
+                             "class must be QE_REGRESSION")
+        if self.priority == "SUPPORTING" and self.coverage_class not in {
+            "QE_REGRESSION",
+            "INVESTIGATION",
+        }:
+            raise ValueError(
+                "SUPPORTING priority covers regression/investigation support"
+            )
+        if self.priority == "EXCLUDED" and self.coverage_class:
+            raise ValueError("EXCLUDED coverage carries no coverage class")
+        if self.coverage_class and not self.priority:
+            raise ValueError("classed coverage requires a priority")
+        identity = self.model_dump(
+            mode="json",
+            exclude={"disposition_id", "revision", "sufficiency_ref", "applicability"},
+        )
         expected = f"disposition:{stable_sha256(identity)[:32]}"
         if self.disposition_id and self.disposition_id != expected:
             raise ValueError("disposition_id does not match deterministic identity")
         self.disposition_id = expected
+        self.revision = stable_sha256(identity)[:12]
         return self
 
 
