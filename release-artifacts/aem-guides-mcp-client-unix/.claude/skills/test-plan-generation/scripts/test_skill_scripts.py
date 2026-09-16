@@ -125,6 +125,7 @@ question_planner_mod = _load("question_planner", "question_planner.py")
 question_resolver_mod = _load("question_resolver", "question_resolver.py")
 coverage_reasoner_mod = _load("coverage_reasoner", "coverage_reasoner.py")
 coverage_equivalence_mod = _load("coverage_equivalence", "coverage_equivalence.py")
+requirement_lineage_mod = _load("requirement_lineage", "requirement_lineage.py")
 evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
 doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
@@ -8349,6 +8350,582 @@ def test_coverage_equivalence_e1() -> None:
     print("test_coverage_equivalence_e1: OK")
 
 
+def _lineage_fixture():
+    """Compact complete chain for the lineage tests: one accepted behavior
+    traced from the ticket source to the reviewed AC, plus one TBD question."""
+
+    return {
+        "question_plan": {"items": [
+            {"question_id": "Q-1", "category": "EXPECTED_OUTCOME",
+             "question": "What must the panel show after the fix?",
+             "why_material": "m", "triggering_evidence_ids": ["EV-1"],
+             "acceptance_impact": "a", "applicability": "APPLICABLE",
+             "research_requirement": "NONE", "status": "RESOLVED"},
+            {"question_id": "Q-2", "category": "SCOPE",
+             "question": "Which entries does the control apply to?",
+             "why_material": "m", "triggering_evidence_ids": ["EV-1"],
+             "acceptance_impact": "a", "applicability": "APPLICABLE",
+             "research_requirement": "DOCUMENTATION", "status": "RESOLVED"},
+        ]},
+        "question_research": {"items": [
+            {"question_ref": "Q-1", "material": True,
+             "research_requirement": "NONE", "research_status": "NOT_REQUIRED"},
+            {"question_ref": "Q-2", "material": True,
+             "research_requirement": "DOCUMENTATION",
+             "research_status": "PARTIAL", "research_requests": ["RQ-2"],
+             "research_evidence_ids": ["EV-1"]},
+        ]},
+        "question_resolutions": {"items": [
+            {"question_ref": "Q-1", "status": "ANSWERED",
+             "decision_reason": "The ticket establishes it.",
+             "answer": {"claim": "The panel shows the saved state.",
+                        "source_ids": ["EV-1"],
+                        "source_authority": "CURRENT_TICKET_REQUIREMENT",
+                        "applicability": "current", "limitations": [],
+                        "contradictions": []}},
+            {"question_ref": "Q-2", "status": "ACCEPTANCE_TBD",
+             "decision_reason": "The scope is not documented.",
+             "material_impact": ["SCOPE"],
+             "plausible_answers": ["all entries", "only outputs"]},
+        ]},
+        "doc_research": {
+            "routing": {"state": "DOC_RESEARCH_PARTIAL",
+                        "triggers": ["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                        "research_id": "DR-1"},
+            "results": [{
+                "research_id": "DR-1", "status": "DOC_RESEARCH_PARTIAL",
+                "produced_by": "uac-doc-researcher", "topics": ["scope"],
+                "findings": [{"claim": "The documented baseline covers the "
+                              "default mode only.",
+                              "source_id": "EV-1",
+                              "source_type": "OFFICIAL_DOCUMENTATION",
+                              "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                              "applicability": "current",
+                              "currentness": "CURRENT",
+                              "evidence_role": "EXISTING_BEHAVIOR"}],
+                "source_ids": ["EV-1"], "applicability": "current",
+                "limitations": ["Scope undocumented."], "conflicts": [],
+                "question_refs": ["Q-2"]}],
+            "admitted_research_ids": ["DR-1"],
+        },
+        "coverage_decisions": {
+            "items": [{
+                "coverage_id": "COV-1", "behavior": "The panel shows the "
+                "saved state.", "question_ids": ["Q-1"],
+                "evidence_ids": ["EV-1"], "research_ids": [],
+                "priority": "P0", "coverage_class": "ACCEPTANCE",
+                "contract_type": "POSITIVE", "surface": "the panel",
+                "state_or_transition": "", "configuration": "",
+                "applicability": "current release", "reason": "r",
+                "acceptance_impact": "a", "dimensions_considered": [],
+            }],
+            "writer_handoff": ["COV-1"],
+        },
+        "writer_package": {"acs": [{
+            "ac_id": "AC-1", "text": "The panel shows the saved state.",
+            "coverage_ids": ["COV-1"]}]},
+        "requirement_lineage": {
+            "sources": [{
+                "source_id": "SRC-1", "source_type": "JIRA_EXPECTED_RESULT",
+                "source_locator": "jira:current", "source_version": "r1",
+                "authority_role": "CURRENT_TICKET_REQUIREMENT",
+                "applicability": "current release", "status": "ADMITTED",
+                "evidence_ids": ["EV-1"],
+            }],
+            "ac_lineage": [{
+                "ac_id": "AC-1", "coverage_refs": ["COV-1"],
+                "equivalence_refs": [], "question_refs": ["Q-1"],
+                "evidence_refs": ["EV-1"], "research_refs": [],
+                "source_refs": ["SRC-1"], "writer_revision": "w1",
+                "source_versions": {"SRC-1": "r1"},
+                "human_source_line": "Source: the ticket's accepted "
+                "requirement",
+            }],
+            "tbd_lineage": [{
+                "question_ref": "Q-2", "research_refs": ["DR-1"],
+                "research_status": "PARTIAL", "sufficiency": "INSUFFICIENT",
+                "disposition": "ACCEPTANCE_TBD",
+                "reason_unresolved": "The retention scope is not documented.",
+                "evidence_refs": ["EV-1"], "source_refs": ["SRC-1"],
+            }],
+            "reviews": [{
+                "review_id": "REV-1", "reviewed_writer_revision": "w1",
+                "ac_ids": ["AC-1"], "decision": "APPROVED",
+                "failures": [], "upstream_refs": [],
+            }],
+        },
+    }
+
+
+def test_requirement_lineage() -> None:
+    rl = requirement_lineage_mod
+
+    check("absent requirement_lineage passes", rl.validate({}) == [])
+    fixture = _lineage_fixture()
+    check("complete lineage fixture passes", rl.validate(fixture) == [])
+    for line in rl.trace_ac(fixture, "AC-1"):
+        print(f"  lineage trace: {line}")
+
+    # 1. Every final AC has complete lineage.
+    missing = _lineage_fixture()
+    missing["requirement_lineage"]["ac_lineage"] = []
+    check("a Writer AC without lineage fails",
+          any("no lineage" in p for p in rl.validate(missing)))
+
+    # 2. The Writer cannot fabricate lineage.
+    fabricated = _lineage_fixture()
+    fabricated["requirement_lineage"]["ac_lineage"][0]["coverage_refs"] = [
+        "COV-99"
+    ]
+    check("fabricated coverage lineage fails",
+          any("does not exist" in p for p in rl.validate(fabricated)))
+    fabricated = _lineage_fixture()
+    fabricated["requirement_lineage"]["ac_lineage"][0]["research_refs"] = [
+        "DR-99"
+    ]
+    check("invented research IDs fail",
+          any("not a Doc Researcher result" in p for p in rl.validate(fabricated)))
+    fabricated = _lineage_fixture()
+    fabricated["requirement_lineage"]["ac_lineage"][0]["question_refs"] = [
+        "Q-1", "Q-99"
+    ]
+    check("fabricated question lineage fails",
+          any("does not exist" in p or "fabricated or dropped" in p
+              for p in rl.validate(fabricated)))
+
+    # 3. An unused retrieved source never appears in a Source line.
+    contaminated = _lineage_fixture()
+    contaminated["requirement_lineage"]["sources"].append({
+        "source_id": "SRC-UNUSED", "source_type": "OTHER_APPROVED_SOURCE",
+        "source_locator": "doc:nearby", "status": "RETRIEVED",
+        "evidence_ids": ["EV-UNUSED"],
+    })
+    contaminated["requirement_lineage"]["ac_lineage"][0]["source_refs"] = [
+        "SRC-1", "SRC-UNUSED"
+    ]
+    check("unused retrieved source contaminating lineage fails",
+          any("unused" in p or "exactly the admitted" in p
+              for p in rl.validate(contaminated)))
+
+    # 9. Unrelated evidence never contaminates AC lineage.
+    contaminated = _lineage_fixture()
+    contaminated["requirement_lineage"]["ac_lineage"][0]["evidence_refs"] = [
+        "EV-1", "EV-UNRELATED"
+    ]
+    check("unrelated evidence in AC lineage fails",
+          any("never contaminates" in p or "traces to no original source" in p
+              for p in rl.validate(contaminated)))
+
+    # 7. A Writer change makes the review stale.
+    stale_review = _lineage_fixture()
+    stale_review["requirement_lineage"]["ac_lineage"][0]["writer_revision"] = "w2"
+    check("Writer change after review is stale",
+          any("never reused across changed drafts" in p
+              for p in rl.validate(stale_review)))
+
+    # 8. A source revision invalidates dependent lineage.
+    stale_source = _lineage_fixture()
+    stale_source["requirement_lineage"]["sources"][0]["source_version"] = "r2"
+    check("source revision invalidates dependent lineage",
+          any("invalidates the dependent lineage" in p
+              for p in rl.validate(stale_source)))
+
+    # 10. Human UAC output never exposes internal lineage jargon.
+    jargon = _lineage_fixture()
+    jargon["requirement_lineage"]["ac_lineage"][0]["human_source_line"] = (
+        "Source: COV-1 via canonical_outcome"
+    )
+    check("internal jargon in the human Source line fails",
+          any("internal" in p for p in rl.validate(jargon)))
+
+    # 5. Unsuccessful research stays visible for TBD.
+    missing_tbd = _lineage_fixture()
+    missing_tbd["requirement_lineage"]["tbd_lineage"] = []
+    check("TBD without lineage disappears -> fails",
+          any("never disappear" in p for p in rl.validate(missing_tbd)))
+    bad_tbd = _lineage_fixture()
+    bad_tbd["requirement_lineage"]["tbd_lineage"][0]["ac_refs"] = ["AC-1"]
+    check("a TBD path never references a confirmed AC",
+          any("never references a confirmed AC" in p
+              for p in rl.validate(bad_tbd)))
+
+    # A question never cites nonexistent evidence.
+    broken = _lineage_fixture()
+    broken["question_plan"]["items"][0]["triggering_evidence_ids"] = ["EV-404"]
+    check("question citing nonexistent evidence fails",
+          any("nonexistent evidence" in p for p in rl.validate(broken)))
+
+    print("test_requirement_lineage: OK")
+
+
+def _deepcopy(value):
+    import copy
+    return copy.deepcopy(value)
+
+
+def test_requirement_lineage_regressions() -> None:
+    """Lineage traces: the named Output History and Translation fixtures plus
+    an unfamiliar structurally different fixture."""
+
+    rl = requirement_lineage_mod
+
+    def question(qid, category, requirement, evidence):
+        return {"question_id": qid, "category": category,
+                "question": f"What does {qid} establish?",
+                "why_material": "m", "triggering_evidence_ids": evidence,
+                "acceptance_impact": "a", "applicability": "APPLICABLE",
+                "research_requirement": requirement, "status": "RESOLVED"}
+
+    def resolution(ref, status, authority="CURRENT_TICKET_REQUIREMENT",
+                   **over):
+        item = {"question_ref": ref, "status": status,
+                "decision_reason": "Recorded from the cited evidence."}
+        if status == "ANSWERED":
+            item["answer"] = {
+                "claim": f"Answer for {ref}.",
+                "source_ids": [f"EV-{ref[1:].lstrip('-')}"],
+                "source_authority": authority, "applicability": "current",
+                "limitations": [], "contradictions": []}
+        item.update(over)
+        return item
+
+    def research(ref, requirement, status):
+        item = {"question_ref": ref, "material": True,
+                "research_requirement": requirement,
+                "research_status": status}
+        if status not in {"NOT_REQUIRED", "PENDING"}:
+            item["research_requests"] = [f"RQ-{ref}"]
+        return item
+
+    def coverage(cid, qid, priority, klass, research_ids=None,
+                 contract="POSITIVE"):
+        return {
+            "coverage_id": cid, "behavior": f"Coverage from {qid}.",
+            "question_ids": [qid], "evidence_ids": [f"EV-{qid[1:].lstrip('-')}"],
+            "research_ids": research_ids or [], "priority": priority,
+            "coverage_class": klass, "contract_type": contract,
+            "surface": "the affected surface", "state_or_transition": "",
+            "configuration": "", "applicability": "current release",
+            "reason": "r", "acceptance_impact": "a",
+            "dimensions_considered": [],
+        }
+
+    # --- Output History lineage fixture -----------------------------------
+    output_history = {
+        "question_plan": {"items": [
+            question("Q-O1", "EXPECTED_OUTCOME", "DOCUMENTATION", ["EV-O1"]),
+            question("Q-O2", "VARIANT", "NONE", ["EV-O2"]),
+            question("Q-O3", "VARIANT", "NONE", ["EV-O3"]),
+            question("Q-O5", "SCOPE", "DOCUMENTATION", ["EV-O5"]),
+        ]},
+        "question_research": {"items": [
+            research("Q-O1", "DOCUMENTATION", "ANSWER_FOUND"),
+            research("Q-O2", "NONE", "NOT_REQUIRED"),
+            research("Q-O3", "NONE", "NOT_REQUIRED"),
+            research("Q-O5", "DOCUMENTATION", "PARTIAL"),
+        ]},
+        "question_resolutions": {"items": [
+            resolution("Q-O1", "ANSWERED", "OFFICIAL_DOCUMENTATION",
+                       research_ids=["DR-O"]),
+            resolution("Q-O2", "ANSWERED"),
+            resolution("Q-O3", "ANSWERED"),
+            resolution("Q-O5", "ACCEPTANCE_TBD", material_impact=["SCOPE"],
+                       plausible_answers=["all entries", "outputs only"]),
+        ]},
+        "doc_research": {
+            "routing": {"state": "DOC_RESEARCH_PARTIAL",
+                        "triggers": ["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                        "research_id": "DR-O"},
+            "results": [{
+                "research_id": "DR-O", "status": "DOC_RESEARCH_PARTIAL",
+                "produced_by": "uac-doc-researcher",
+                "topics": ["baseline purge"],
+                "findings": [{"claim": "The documented baseline purges aged "
+                              "entries.",
+                              "source_id": "EV-O1",
+                              "source_type": "OFFICIAL_DOCUMENTATION",
+                              "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                              "applicability": "current",
+                              "currentness": "CURRENT",
+                              "evidence_role": "EXISTING_BEHAVIOR"}],
+                "source_ids": ["EV-O1"], "applicability": "current",
+                "limitations": ["The count scope is not documented."],
+                "conflicts": [], "question_refs": ["Q-O1", "Q-O5"]}],
+            "admitted_research_ids": ["DR-O"],
+        },
+        "coverage_decisions": {
+            "items": [
+                coverage("COV-O2", "Q-O2", "P0", "ACCEPTANCE"),
+                coverage("COV-O3", "Q-O3", "P0", "ACCEPTANCE"),
+                coverage("COV-O1", "Q-O1", "P1", "QE_REGRESSION",
+                         ["DR-O"], contract="PRESERVATION"),
+            ],
+            "writer_handoff": ["COV-O2", "COV-O3", "COV-O1"],
+        },
+        "writer_package": {"acs": [
+            {"ac_id": "AC-O1", "text": "The new count retention holds.",
+             "coverage_ids": ["COV-O2"]},
+            {"ac_id": "AC-O2", "text": "The log-only action retains logs.",
+             "coverage_ids": ["COV-O3"]},
+        ]},
+        "requirement_lineage": {
+            "sources": [
+                {"source_id": "SRC-TICKET",
+                 "source_type": "JIRA_EXPECTED_RESULT",
+                 "source_locator": "jira:current", "source_version": "r1",
+                 "authority_role": "CURRENT_TICKET_REQUIREMENT",
+                 "applicability": "current release", "status": "ADMITTED",
+                 "evidence_ids": ["EV-O2", "EV-O3", "EV-O5"]},
+                {"source_id": "SRC-DOC", "source_type": "OFFICIAL_PRODUCT_DOC",
+                 "source_locator": "doc:baseline", "source_version": "r1",
+                 "authority_role": "OFFICIAL_DOCUMENTATION",
+                 "applicability": "current release", "status": "ADMITTED",
+                 "evidence_ids": ["EV-O1"]},
+            ],
+            "ac_lineage": [
+                {"ac_id": "AC-O1", "coverage_refs": ["COV-O2"],
+                 "equivalence_refs": [], "question_refs": ["Q-O2"],
+                 "evidence_refs": ["EV-O2"], "research_refs": [],
+                 "source_refs": ["SRC-TICKET"], "writer_revision": "w1",
+                 "source_versions": {"SRC-TICKET": "r1"},
+                 "human_source_line": "Source: the ticket's accepted "
+                 "requirement"},
+                {"ac_id": "AC-O2", "coverage_refs": ["COV-O3"],
+                 "equivalence_refs": [], "question_refs": ["Q-O3"],
+                 "evidence_refs": ["EV-O3"], "research_refs": [],
+                 "source_refs": ["SRC-TICKET"], "writer_revision": "w1",
+                 "source_versions": {"SRC-TICKET": "r1"},
+                 "human_source_line": "Source: the ticket's accepted "
+                 "requirement"},
+            ],
+            "tbd_lineage": [{
+                "question_ref": "Q-O5", "research_refs": ["DR-O"],
+                "research_status": "PARTIAL", "sufficiency": "INSUFFICIENT",
+                "disposition": "ACCEPTANCE_TBD",
+                "reason_unresolved": "The count retention scope is not "
+                "documented.",
+                "evidence_refs": [], "source_refs": [],
+            }],
+            "reviews": [{
+                "review_id": "REV-O1", "reviewed_writer_revision": "w1",
+                "ac_ids": ["AC-O1", "AC-O2"], "decision": "APPROVED",
+                "failures": [], "upstream_refs": [],
+            }],
+        },
+    }
+    problems = rl.validate(output_history)
+    check("Output History lineage fixture is clean", problems == [])
+    print("  lineage trace [Output History]:")
+    for line in rl.trace_ac(output_history, "AC-O1"):
+        print(f"    {line}")
+    print("    TBD: Q-O5 -> DR-O PARTIAL -> INSUFFICIENT -> ACCEPTANCE_TBD "
+          "(visible, never an AC)")
+
+    # The baseline documentation never appears in the new-behavior lineage.
+    contaminated = _deepcopy(output_history)
+    contaminated["requirement_lineage"]["ac_lineage"][0]["source_refs"] = [
+        "SRC-TICKET", "SRC-DOC"
+    ]
+    check("baseline documentation never appears in the new-behavior lineage",
+          any("exactly the admitted sources" in p
+              for p in rl.validate(contaminated)))
+
+    # --- Translation lineage fixture: the merge keeps member classes; the
+    # QE_REGRESSION member is supporting lineage, never acceptance authority.
+    translation = {
+        "question_plan": {"items": [
+            question("Q-T1", "PRESERVATION", "NONE", ["EV-T1"]),
+            question("Q-T2", "NEGATIVE_CONTRACT", "NONE", ["EV-T2"]),
+            question("Q-T4", "PERSISTENCE", "NONE", ["EV-T4"]),
+        ]},
+        "question_research": {"items": [
+            research("Q-T1", "NONE", "NOT_REQUIRED"),
+            research("Q-T2", "NONE", "NOT_REQUIRED"),
+            research("Q-T4", "NONE", "NOT_REQUIRED"),
+        ]},
+        "question_resolutions": {"items": [
+            resolution("Q-T1", "ANSWERED"),
+            resolution("Q-T2", "ANSWERED"),
+            resolution("Q-T4", "INVESTIGATION_ONLY",
+                       investigation_topic="ROOT_CAUSE",
+                       decision_reason="Root cause is investigation, not "
+                       "acceptance."),
+        ]},
+        "coverage_decisions": {
+            "items": [
+                coverage("COV-T1", "Q-T1", "P0", "ACCEPTANCE"),
+                coverage("COV-T2", "Q-T2", "P1", "QE_REGRESSION",
+                         contract="NEGATIVE"),
+            ],
+            "writer_handoff": ["COV-T1", "COV-T2"],
+        },
+        "coverage_equivalence": {
+            "decisions": [{
+                "decision_id": "EQ-T1", "left_coverage_id": "COV-T1",
+                "right_coverage_id": "COV-T2",
+                "classification": "SAME_OUTCOME_VARIANT",
+                "shared_dimensions": ["EXPECTED_OUTCOME", "APPLICABILITY"],
+                "differing_dimensions": ["QUESTION_IDS"],
+                "reason": "Same persistence outcome, positive and negative "
+                "form.",
+                "merge_allowed": True,
+            }],
+            "merges": [{
+                "equivalence_id": "EQG-T1",
+                "coverage_refs": ["COV-T1", "COV-T2"],
+                "classification": "SAME_OUTCOME_VARIANT",
+                "canonical_outcome": "The approved state persists across a "
+                "refresh.",
+                "priority": "P0",
+                "question_refs": ["Q-T1", "Q-T2"],
+                "evidence_refs": ["EV-T1", "EV-T2"],
+                "variant_refs": ["positive assertion", "negative assertion"],
+                "source_lineage": ["COV-T1", "COV-T2"],
+            }],
+        },
+        "writer_package": {"acs": [{
+            "ac_id": "AC-T1", "text": "The approved state persists.",
+            "coverage_ids": ["COV-T1"], "equivalence_refs": ["EQG-T1"],
+            "variants": ["positive assertion", "negative assertion"]}]},
+        "requirement_lineage": {
+            "sources": [{
+                "source_id": "SRC-T", "source_type": "JIRA_EXPECTED_RESULT",
+                "source_locator": "jira:current", "source_version": "r1",
+                "authority_role": "CURRENT_TICKET_REQUIREMENT",
+                "applicability": "current release", "status": "ADMITTED",
+                "evidence_ids": ["EV-T1", "EV-T2", "EV-T4"],
+            }],
+            "ac_lineage": [{
+                "ac_id": "AC-T1", "coverage_refs": ["COV-T1"],
+                "equivalence_refs": ["EQG-T1"],
+                "question_refs": ["Q-T1", "Q-T2"],
+                "evidence_refs": ["EV-T1", "EV-T2"], "research_refs": [],
+                "source_refs": ["SRC-T"], "writer_revision": "w1",
+                "source_versions": {"SRC-T": "r1"},
+                "human_source_line": "Source: the ticket's accepted "
+                "requirement",
+            }],
+            "tbd_lineage": [],
+            "reviews": [{
+                "review_id": "REV-T1", "reviewed_writer_revision": "w1",
+                "ac_ids": ["AC-T1"], "decision": "APPROVED",
+                "failures": [], "upstream_refs": [],
+            }],
+        },
+    }
+    problems = rl.validate(translation)
+    check("Translation lineage fixture is clean (merge member classes kept)",
+          problems == [])
+    print("  lineage trace [Translation]:")
+    for line in rl.trace_ac(translation, "AC-T1"):
+        print(f"    {line}")
+    print("    EQG-T1 members: COV-T1 P0/ACCEPTANCE (acceptance authority), "
+          "COV-T2 P1/QE_REGRESSION (supporting/regression lineage only)")
+
+    # 6. A QE_REGRESSION member never becomes acceptance authority through E1.
+    no_authority = _deepcopy(translation)
+    no_authority["requirement_lineage"]["ac_lineage"][0]["coverage_refs"] = [
+        "COV-T2"
+    ]
+    no_authority["requirement_lineage"]["ac_lineage"][0]["question_refs"] = [
+        "Q-T1", "Q-T2"
+    ]
+    no_authority["requirement_lineage"]["ac_lineage"][0]["evidence_refs"] = [
+        "EV-T1", "EV-T2"
+    ]
+    check("QE_REGRESSION member cannot be the acceptance authority",
+          any("never becomes acceptance authority" in p
+              for p in rl.validate(no_authority)))
+
+    # The root-cause question never appears in the final AC's lineage.
+    contaminated = _deepcopy(translation)
+    contaminated["requirement_lineage"]["ac_lineage"][0]["question_refs"] = [
+        "Q-T1", "Q-T2", "Q-T4"
+    ]
+    check("investigation-only question never enters AC lineage",
+          any("fabricated or dropped" in p or "does not exist" in p
+              for p in rl.validate(contaminated)))
+
+    # --- Unfamiliar fixture: doc-research-backed lineage --------------------
+    unfamiliar = {
+        "question_plan": {"items": [
+            question("Q-U1", "PERSISTENCE", "DOCUMENTATION", ["EV-U1"]),
+        ]},
+        "question_research": {"items": [
+            research("Q-U1", "DOCUMENTATION", "ANSWER_FOUND"),
+        ]},
+        "question_resolutions": {"items": [
+            resolution("Q-U1", "ANSWERED", "OFFICIAL_DOCUMENTATION",
+                       research_ids=["DR-U"]),
+        ]},
+        "doc_research": {
+            "routing": {"state": "DOC_RESEARCH_COMPLETED",
+                        "triggers": ["CHANGES_DOCUMENTED_FUNCTIONALITY"],
+                        "research_id": "DR-U"},
+            "results": [{
+                "research_id": "DR-U", "status": "DOC_RESEARCH_COMPLETED",
+                "produced_by": "uac-doc-researcher", "topics": ["persistence"],
+                "findings": [{"claim": "The dialog persists the last used "
+                              "folder per user.",
+                              "source_id": "EV-U1",
+                              "source_type": "OFFICIAL_DOCUMENTATION",
+                              "authority": "OFFICIAL_PRODUCT_CONTRACT",
+                              "applicability": "current",
+                              "currentness": "CURRENT",
+                              "evidence_role": "EXISTING_BEHAVIOR"}],
+                "source_ids": ["EV-U1"], "applicability": "current",
+                "limitations": [], "conflicts": [], "question_refs": ["Q-U1"]}],
+            "admitted_research_ids": ["DR-U"],
+        },
+        "coverage_decisions": {
+            "items": [coverage("COV-U1", "Q-U1", "P0", "ACCEPTANCE",
+                               ["DR-U"])],
+            "writer_handoff": ["COV-U1"],
+        },
+        "writer_package": {"acs": [{
+            "ac_id": "AC-U1", "text": "The dialog restores the last folder.",
+            "coverage_ids": ["COV-U1"]}]},
+        "requirement_lineage": {
+            "sources": [{
+                "source_id": "SRC-U", "source_type": "OFFICIAL_PRODUCT_DOC",
+                "source_locator": "doc:dialog", "source_version": "r1",
+                "authority_role": "OFFICIAL_DOCUMENTATION",
+                "applicability": "current release", "status": "ADMITTED",
+                "evidence_ids": ["EV-U1"],
+            }],
+            "ac_lineage": [{
+                "ac_id": "AC-U1", "coverage_refs": ["COV-U1"],
+                "equivalence_refs": [], "question_refs": ["Q-U1"],
+                "evidence_refs": ["EV-U1"], "research_refs": ["DR-U"],
+                "source_refs": ["SRC-U"], "writer_revision": "w1",
+                "source_versions": {"SRC-U": "r1"},
+                "human_source_line": "Source: the documented product "
+                "behavior",
+            }],
+            "tbd_lineage": [],
+            "reviews": [{
+                "review_id": "REV-U1", "reviewed_writer_revision": "w1",
+                "ac_ids": ["AC-U1"], "decision": "APPROVED",
+                "failures": [], "upstream_refs": [],
+            }],
+        },
+    }
+    check("unfamiliar doc-research lineage is clean",
+          rl.validate(unfamiliar) == [])
+    print("  lineage trace [unfamiliar fixture]:")
+    for line in rl.trace_ac(unfamiliar, "AC-U1"):
+        print(f"    {line}")
+
+    # 4. Doc Research contribution stays visible when actually used.
+    dropped = _deepcopy(unfamiliar)
+    dropped["requirement_lineage"]["ac_lineage"][0]["research_refs"] = []
+    check("dropping the contributing research from lineage fails",
+          any("stays visible" in p or "must cover" in p
+              for p in rl.validate(dropped)))
+
+    print("test_requirement_lineage_regressions: OK")
+
+
 def test_evidence_sufficiency() -> None:
     es = evidence_sufficiency_mod
 
@@ -14259,6 +14836,8 @@ def main() -> int:
     test_coverage_reasoner()
     test_coverage_equivalence()
     test_coverage_equivalence_e1()
+    test_requirement_lineage()
+    test_requirement_lineage_regressions()
     test_evidence_sufficiency()
     test_evidence_sufficiency_output_history_regression()
     test_evidence_sufficiency_unfamiliar_ticket()

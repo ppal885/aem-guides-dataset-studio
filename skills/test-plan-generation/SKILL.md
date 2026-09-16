@@ -677,6 +677,36 @@ different wording does not mean different outcomes.
   omitted or invented variants, and lost source lineage — and routes semantic failures
   upstream instead of repairing them.
 
+### Phase 6.9 — Requirement Lineage (end-to-end AC traceability)
+
+Trace every final AC back to the evidence that justified it, recorded in the manifest
+`requirement_lineage` block and validated by `scripts/requirement_lineage.py` (see
+`references/requirement-lineage.md`): Original Source -> Evidence -> Question ->
+Research (when required) -> Question Resolution -> Sufficiency -> Coverage Decision ->
+Equivalence Group (when applicable) -> Written AC -> Reviewer Decision. Existing
+production IDs are preserved; `SRC-` (original source) and `REV-` (review decision)
+are recorded conceptually and reference the existing IDs without rewriting them.
+
+- `sources[]` records each original admitted source with `source_type`, locator,
+  optional version/applicability, status, and `evidence_ids`; `ac_lineage[]` binds each
+  final AC to its `coverage_refs`, `equivalence_refs`, `question_refs`,
+  `evidence_refs`, `research_refs`, `source_refs`, `writer_revision`,
+  `source_versions`, and the human-facing `human_source_line`; `tbd_lineage[]` keeps
+  every unresolved ACCEPTANCE_TBD question visible with its research attempt, partial
+  or insufficient result, and reason — a TBD row never references a confirmed AC;
+  `reviews[]` binds each Reviewer decision to the exact Writer revision.
+- **Integrity rules:** every referenced ID exists in the producing block; the Writer
+  cannot fabricate lineage; unrelated or unused retrieved evidence never contaminates
+  an AC; a QE_REGRESSION member of an equivalence group never becomes acceptance
+  authority through the group; `human_source_line` derives only from admitted
+  supporting sources and never exposes internal IDs (`Q-`, `COV-`, `SUF-`, `EQ-`,
+  `DR-`, `EV-`, `SRC-`, `REV-`, `MERGE-`, `canonical_outcome`); a Writer revision
+  change makes the review stale and a source-version change invalidates the dependent
+  lineage; unsuccessful research stays visible in `tbd_lineage` instead of being
+  erased.
+- Lineage proves provenance and structural integrity, not semantic correctness; it
+  adds traceability only and introduces no new acceptance semantics.
+
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
 - Each P0/P1/P2 scenario must use the literal fields `Action:` and `Expected:` in one plain-English bullet. When an operational manifest references a scenario, add a stable `[TS-##]` token before the AC mapping, for example `- P0 [TS-01] [AC-01]: Action: ... Expected: ...`.
 - Prefix every scenario with the acceptance IDs it covers, for example `P0 [AC-01, AC-04]`. No confirmed or proposed AC may remain without at least one scenario, and no expected result may introduce behavior absent from an AC or accepted evidence.
