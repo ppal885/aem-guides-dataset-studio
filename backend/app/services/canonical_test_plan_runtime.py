@@ -1299,6 +1299,7 @@ class CanonicalTestPlanRuntime:
                 dispositions,
                 behavior_classifications,
                 sufficiency=candidate_resolution.sufficiency,
+                clarifications=admitted_clarifications,
             )
             lifecycle = self._reasoning.build_candidate_lifecycle(
                 candidate_resolution, decisions

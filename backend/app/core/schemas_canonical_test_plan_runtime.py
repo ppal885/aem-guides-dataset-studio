@@ -336,6 +336,10 @@ class ContractFactType(StrEnum):
     HUMAN_OPEN_QUESTIONS = "HUMAN_OPEN_QUESTIONS"
     ENGINEERING_DESIGN_QUESTIONS = "ENGINEERING_DESIGN_QUESTIONS"
     TERMINOLOGY_CLARIFICATION_REQUIRED = "TERMINOLOGY_CLARIFICATION_REQUIRED"
+    # P2: a statement of the current problem / pain / gap. It establishes the
+    # problem - never a particular solution - so it is context, never an
+    # acceptance contract on its own.
+    PROBLEM_STATEMENT = "PROBLEM_STATEMENT"
 
 
 class ContractPreservationState(StrEnum):
