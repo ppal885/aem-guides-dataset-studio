@@ -223,7 +223,9 @@ def replay_runtime_projection(manifest: dict) -> dict:
         })
 
     # Promotion replay: the runtime stays the only promotion authority; the
-    # replayable invariant here is the mandatory-research hard gate.
+    # replayable invariants are the mandatory-research hard gate and (C2B-S1)
+    # the claim-sufficiency rule - a promoted candidate whose projected claim
+    # is INSUFFICIENT/CONFLICTED diverges from the replayable S1 contract.
     disagreements: list[dict] = []
     promotions = runtime.get("promotion_decisions") or []
     promoted_ids = {
@@ -240,6 +242,20 @@ def replay_runtime_projection(manifest: dict) -> dict:
         row.get("coverage_id"): list(row.get("question_ids") or [])
         for row in coverage_items
     }
+    sufficiency_by_question = {
+        row.get("question_ref"): row
+        for row in (manifest.get("evidence_sufficiency") or {}).get(
+            "question_assessments"
+        )
+        or []
+    }
+    sufficiency_by_claim = {
+        row.get("claim_ref"): row
+        for row in (manifest.get("evidence_sufficiency") or {}).get(
+            "claim_assessments"
+        )
+        or []
+    }
     candidates = runtime.get("acceptance_candidates") or []
     if not research_items:
         promotion_verdict = "NOT_EVALUABLE"
@@ -253,6 +269,27 @@ def replay_runtime_projection(manifest: dict) -> dict:
                 for disposition_id in (candidate.get("source_disposition_ids") or [])
                 for question_id in questions_by_coverage.get(disposition_id, [])
             }
+            # Claim-level sufficiency binding does not need question linkage.
+            claim_row = sufficiency_by_claim.get(candidate.get("candidate_id"))
+            if claim_row and claim_row.get("sufficiency_status") in {
+                "INSUFFICIENT",
+                "CONFLICTED",
+            }:
+                promotion_verdict = "DISAGREES"
+                disagreements.append({
+                    "gate": "evidence-sufficiency",
+                    "runtime_artifact_ref": candidate.get("candidate_id"),
+                    "projected_artifact_ref": claim_row.get("sufficiency_id"),
+                    "runtime_decision": "PROMOTED",
+                    "skill_replay_decision": (
+                        "REJECT (sufficiency "
+                        f"{claim_row['sufficiency_status']})"
+                    ),
+                    "reason": "runtime promoted a candidate whose claim "
+                    "sufficiency is INSUFFICIENT/CONFLICTED in the "
+                    "projected canonical artifact",
+                    "severity": "BLOCKING_POLICY_DIVERGENCE",
+                })
             for question_id in sorted(linked_questions):
                 record = research_by_question.get(question_id)
                 if (
@@ -269,6 +306,26 @@ def replay_runtime_projection(manifest: dict) -> dict:
                         "skill_replay_decision": "REJECT (mandatory research PENDING)",
                         "reason": "runtime promoted a candidate whose bound "
                         "question has incomplete mandatory research",
+                        "severity": "BLOCKING_POLICY_DIVERGENCE",
+                    })
+                question_row = sufficiency_by_question.get(question_id)
+                if question_row and question_row.get("sufficiency_status") in {
+                    "INSUFFICIENT",
+                    "CONFLICTED",
+                }:
+                    promotion_verdict = "DISAGREES"
+                    disagreements.append({
+                        "gate": "evidence-sufficiency",
+                        "runtime_artifact_ref": candidate.get("candidate_id"),
+                        "projected_artifact_ref": question_id,
+                        "runtime_decision": "PROMOTED",
+                        "skill_replay_decision": (
+                            "REJECT (sufficiency "
+                            f"{question_row['sufficiency_status']})"
+                        ),
+                        "reason": "runtime promoted a candidate whose linked "
+                        "question's sufficiency is INSUFFICIENT/CONFLICTED in "
+                        "the projected canonical artifact",
                         "severity": "BLOCKING_POLICY_DIVERGENCE",
                     })
 

@@ -124,7 +124,6 @@ def test_projection_never_fabricates_missing_semantics() -> None:
         "question_plan",
         "question_resolutions",
         "doc_research",
-        "evidence_sufficiency",
         "coverage_equivalence",
         "requirement_lineage",
         "historical_jira_assessment",
@@ -132,6 +131,11 @@ def test_projection_never_fabricates_missing_semantics() -> None:
     ):
         assert block not in manifest, block
         assert block in meta["unavailable_fields"], block
+    # C2B-S1: the canonical artifact now carries real claim-level sufficiency;
+    # it is projected, not fabricated.
+    assert "evidence_sufficiency" in manifest
+    assert manifest["evidence_sufficiency"]["claim_assessments"]
+    assert "evidence_sufficiency" not in meta["unavailable_fields"]
     # Coverage priority is not carried by the runtime - recorded lossy, never
     # reconstructed.
     assert "coverage_decisions.priority" in meta["lossy_fields"]
@@ -159,12 +163,13 @@ def test_replay_reports_evaluable_and_not_evaluable_honestly() -> None:
     # Losslessly projectable contracts are genuinely evaluated.
     assert statuses["question-research"] in {"PASS", "FAIL"}
     assert statuses["behavior-classification"] in {"PASS", "FAIL"}
+    # C2B-S1: the canonical sufficiency artifact makes S1 genuinely evaluable.
+    assert statuses["evidence-sufficiency"] in {"PASS", "FAIL"}
     # Runtime does not carry these contracts - honest NOT_EVALUABLE, not PASS.
     for gate in (
         "question-planner",
         "question-resolver",
         "doc-research-routing",
-        "evidence-sufficiency",
         "coverage-equivalence",
         "requirement-lineage",
         "historical-jira-safety",
@@ -172,7 +177,6 @@ def test_replay_reports_evaluable_and_not_evaluable_honestly() -> None:
     ):
         assert statuses[gate] == "NOT_EVALUABLE", gate
     assert set(report["not_evaluable"]) >= {
-        "evidence-sufficiency",
         "coverage-equivalence",
         "historical-jira-safety",
     }

@@ -172,9 +172,21 @@ def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict
     # Coverage: exact class mapping only; priority is not carried by the
     # runtime and is never reconstructed (C1 priority replay is NOT_EVALUABLE).
     dispositions = payload.get("coverage_dispositions") or []
+    sufficiency_present = bool(payload.get("sufficiency"))
     if dispositions:
+        claim_coverage_refs = {
+            ref
+            for record in (payload.get("sufficiency") or [])
+            for ref in (record.get("coverage_refs") or [])
+        }
         items = []
         for row in dispositions:
+            if sufficiency_present and row.get("disposition_id") not in claim_coverage_refs:
+                # C2B-S1: when the canonical sufficiency artifact exists, the
+                # projected coverage surface is exactly the acceptance-relevant
+                # claims the artifact speaks for; other dispositions remain in
+                # _runtime for audit and are never given invented assessments.
+                continue
             items.append(
                 {
                     "coverage_id": row.get("disposition_id"),
@@ -191,6 +203,8 @@ def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict
         manifest["coverage_decisions"] = {"items": items}
         projected.append("coverage_decisions")
         lossy.append("coverage_decisions.priority")
+        if sufficiency_present:
+            lossy.append("coverage_decisions.non_claim_dispositions")
     else:
         unavailable.append("coverage_decisions")
 
@@ -200,12 +214,135 @@ def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict
         manifest["human_clarifications"] = clarifications
         projected.append("human_clarifications")
 
+    # C2B-S1: the canonical claim-sufficiency artifact projects losslessly.
+    # Legacy artifacts without it stay NOT_EVALUABLE - never reinterpreted.
+    sufficiency = payload.get("sufficiency") or []
+    if sufficiency:
+        _establishing = {
+            "ACCEPTED_PRODUCT_REQUIREMENT",
+            "CONFIRMED_PRODUCT_DECISION",
+            "OFFICIAL_PRODUCT_CONTRACT",
+            "SPECIFICATION_AUTHORITY",
+            "CUSTOMER_REQUEST",
+            "IMPLEMENTATION_CONFIRMED",
+            "HUMAN_CLARIFICATION",
+        }
+
+        def _q_status(record: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "question_ref": None,  # set by caller
+                "sufficiency_status": record.get("status"),
+                "decision_reason": record.get("decision_reason", ""),
+                "authority_status": (
+                    "ESTABLISHING"
+                    if record.get("authority_basis") in _establishing
+                    else "NON_ESTABLISHING"
+                ),
+                "research_completion": record.get("research_completion")
+                or "NOT_REQUIRED",
+                "applicability_status": record.get("applicability", "UNCLEAR"),
+                "currentness_status": record.get("currentness", "UNKNOWN"),
+                "contradiction_status": (
+                    "CONFLICTING" if record.get("contradictions") else "NONE"
+                ),
+                "supported_claims": (
+                    [record["claim_text"]]
+                    if record.get("status") == "SUFFICIENT" and record.get("claim_text")
+                    else [record["established_portion"]]
+                    if record.get("status") == "PARTIAL"
+                    and record.get("established_portion")
+                    else []
+                ),
+                "unsupported_claims": list(record.get("limitations") or []),
+                "limitations": list(record.get("limitations") or []),
+                "evidence_ids": list(record.get("evidence_refs") or []),
+                "research_ids": list(record.get("research_refs") or []),
+            }
+
+        _rank = {"CONFLICTED": 3, "INSUFFICIENT": 2, "PARTIAL": 1, "SUFFICIENT": 0}
+
+        # One question assessment per question (worst status across claims).
+        by_question: dict[str, list[dict[str, Any]]] = {}
+        for record in sufficiency:
+            for question_ref in record.get("question_refs") or []:
+                by_question.setdefault(question_ref, []).append(record)
+        question_assessments = []
+        for question_ref in sorted(by_question):
+            rows = by_question[question_ref]
+            worst = max(rows, key=lambda row: _rank.get(row.get("status"), 0))
+            merged = _q_status(worst)
+            merged["question_ref"] = question_ref
+            merged["evidence_ids"] = sorted(
+                {ev for row in rows for ev in (row.get("evidence_refs") or [])}
+            )
+            merged["research_ids"] = sorted(
+                {r for row in rows for r in (row.get("research_refs") or [])}
+            )
+            portions = [
+                row["established_portion"]
+                for row in rows
+                if row.get("status") == "PARTIAL" and row.get("established_portion")
+            ]
+            if worst.get("status") == "PARTIAL" and portions:
+                merged["supported_claims"] = sorted(set(portions))
+            question_assessments.append(merged)
+
+        # One coverage assessment per coverage ref (worst status across claims).
+        by_coverage: dict[str, list[dict[str, Any]]] = {}
+        for record in sufficiency:
+            for coverage_ref in record.get("coverage_refs") or []:
+                by_coverage.setdefault(coverage_ref, []).append(record)
+        coverage_assessments = []
+        coverage_by_id = {
+            row.get("coverage_id"): row
+            for row in (manifest.get("coverage_decisions") or {}).get("items", [])
+        }
+        for coverage_ref in sorted(by_coverage):
+            rows = by_coverage[coverage_ref]
+            worst = max(rows, key=lambda row: _rank.get(row.get("status"), 0))
+            coverage = coverage_by_id.get(coverage_ref) or {}
+            coverage_assessments.append(
+                {
+                    "coverage_ref": coverage_ref,
+                    "sufficiency_status": worst.get("status"),
+                    "sufficiency_reason": worst.get("decision_reason", ""),
+                    "established_portion": worst.get("established_portion", ""),
+                    "question_refs": sorted(coverage.get("question_ids") or []),
+                    "evidence_ids": sorted(coverage.get("evidence_ids") or []),
+                    "research_ids": sorted(coverage.get("research_ids") or []),
+                }
+            )
+
+        manifest["evidence_sufficiency"] = {
+            "question_assessments": question_assessments,
+            "coverage_assessments": coverage_assessments,
+            # Claim-level rows carry the exact canonical decision per promoted
+            # candidate; the Skill gate validates the assessment lists above,
+            # and replay promotion checks bind here.
+            "claim_assessments": [
+                {
+                    "claim_ref": record.get("claim_ref"),
+                    "sufficiency_status": record.get("status"),
+                    "sufficiency_id": record.get("sufficiency_id"),
+                    "decision_reason": record.get("decision_reason", ""),
+                    "established_portion": record.get("established_portion", ""),
+                    "evidence_ids": list(record.get("evidence_refs") or []),
+                    "research_ids": list(record.get("research_refs") or []),
+                }
+                for record in sufficiency
+            ],
+        }
+        projected.append("evidence_sufficiency")
+    else:
+        unavailable.append("evidence_sufficiency")
+
     # Gate verdicts + promotion state are replay inputs, not gate manifests.
     manifest["_runtime"] = {
         "gate_decisions": payload.get("gate_decisions") or [],
         "promotion_decisions": payload.get("promotion_decisions") or [],
         "acceptance_candidates": payload.get("acceptance_candidates") or [],
         "candidate_lifecycle": payload.get("candidate_lifecycle") or [],
+        "coverage_dispositions_all": payload.get("coverage_dispositions") or [],
         "stage_trace": [row.get("stage") for row in trace.get("stage_trace") or []],
         "status": info.get("status", ""),
         "validation_status": info.get("validation_status", ""),
@@ -217,7 +354,6 @@ def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict
     unavailable.extend(
         [
             "doc_research",
-            "evidence_sufficiency",
             "coverage_equivalence",
             "requirement_lineage",
             "historical_jira_assessment",

@@ -412,6 +412,7 @@ class CanonicalTestPlanRuntime:
         question_research: list[QuestionResearchRecord] | None = None,
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
         human_clarifications: list[Any] | None = None,
+        sufficiency: list[Any] | None = None,
     ) -> RuntimeTrace:
         closure = closure or []
         retrievals = retrievals or []
@@ -458,6 +459,7 @@ class CanonicalTestPlanRuntime:
             question_research=question_research or [],
             behavior_classifications=behavior_classifications or [],
             human_clarifications=human_clarifications or [],
+            sufficiency=sufficiency or [],
             source_counts=evidence.source_counts,
             compatibility_projection=compatibility_projection,
             compatibility_adapter=compatibility_adapter,
@@ -1252,6 +1254,10 @@ class CanonicalTestPlanRuntime:
                 dispositions,
                 questions,
                 resolved_question_ids=clarified_resolved_ids,
+                research_records=question_research,
+                behavior_classifications=behavior_classifications,
+                evidence_records=list(runtime_evidence.records),
+                clarifications=admitted_clarifications,
             ),
         )
         candidates = candidate_resolution.candidates
@@ -1287,7 +1293,12 @@ class CanonicalTestPlanRuntime:
             list[CandidateLifecycleRecord],
         ]:
             gate, decisions = self._reasoning.acceptance_promotion_gate(
-                candidates, facts, scope, dispositions, behavior_classifications
+                candidates,
+                facts,
+                scope,
+                dispositions,
+                behavior_classifications,
+                sufficiency=candidate_resolution.sufficiency,
             )
             lifecycle = self._reasoning.build_candidate_lifecycle(
                 candidate_resolution, decisions
@@ -1375,6 +1386,7 @@ class CanonicalTestPlanRuntime:
             question_research=question_research,
             behavior_classifications=behavior_classifications,
             human_clarifications=admitted_clarifications,
+            sufficiency=candidate_resolution.sufficiency,
         )
         _LAST_RUNTIME_TRACE.set(trace)
         blocked = any(
@@ -1424,6 +1436,10 @@ class CanonicalTestPlanRuntime:
             ],
             "behavior_classifications": [
                 row.model_dump(mode="json") for row in behavior_classifications
+            ],
+            "sufficiency": [
+                row.model_dump(mode="json")
+                for row in candidate_resolution.sufficiency
             ],
             "acceptance_candidates": [
                 row.model_dump(mode="json") for row in candidates
