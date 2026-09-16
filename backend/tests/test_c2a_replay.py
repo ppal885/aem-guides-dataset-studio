@@ -136,11 +136,12 @@ def test_projection_never_fabricates_missing_semantics() -> None:
     assert "evidence_sufficiency" in manifest
     assert manifest["evidence_sufficiency"]["claim_assessments"]
     assert "evidence_sufficiency" not in meta["unavailable_fields"]
-    # Coverage priority is not carried by the runtime - recorded lossy, never
-    # reconstructed.
-    assert "coverage_decisions.priority" in meta["lossy_fields"]
+    # C2B-C1: coverage priority/class/contract_type are canonical runtime
+    # fields - projected losslessly, never reconstructed by the adapter.
+    assert "coverage_decisions.priority" not in meta["lossy_fields"]
     for item in manifest["coverage_decisions"]["items"]:
-        assert item["priority"] == adapter.UNAVAILABLE_FROM_RUNTIME
+        assert item["priority"] != adapter.UNAVAILABLE_FROM_RUNTIME
+        assert item["coverage_class"] != adapter.UNAVAILABLE_FROM_RUNTIME
 
 
 def test_projection_is_read_only() -> None:

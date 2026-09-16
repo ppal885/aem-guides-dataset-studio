@@ -169,8 +169,8 @@ def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict
     else:
         unavailable.append("behavior_classification")
 
-    # Coverage: exact class mapping only; priority is not carried by the
-    # runtime and is never reconstructed (C1 priority replay is NOT_EVALUABLE).
+    # Coverage: C2B-C1 canonical coverage decisions project losslessly when
+    # the new fields exist; legacy artifacts keep honest UNAVAILABLE markers.
     dispositions = payload.get("coverage_dispositions") or []
     sufficiency_present = bool(payload.get("sufficiency"))
     if dispositions:
@@ -179,6 +179,11 @@ def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict
             for record in (payload.get("sufficiency") or [])
             for ref in (record.get("coverage_refs") or [])
         }
+        research_by_question = {
+            row.get("question_id"): row
+            for row in (payload.get("question_research") or [])
+        }
+        any_priority = any(row.get("priority") for row in dispositions)
         items = []
         for row in dispositions:
             if sufficiency_present and row.get("disposition_id") not in claim_coverage_refs:
@@ -187,22 +192,48 @@ def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict
                 # claims the artifact speaks for; other dispositions remain in
                 # _runtime for audit and are never given invented assessments.
                 continue
+            question_ids = list(row.get("source_question_ids") or [])
             items.append(
                 {
                     "coverage_id": row.get("disposition_id"),
                     "behavior": row.get("candidate"),
-                    "question_ids": list(row.get("source_question_ids") or []),
+                    "question_ids": question_ids,
                     "evidence_ids": list(row.get("evidence_ids") or []),
-                    "research_ids": [],
-                    "coverage_class": _COVERAGE_CLASS_MAP.get(
-                        row.get("disposition"), UNAVAILABLE_FROM_RUNTIME
+                    "research_ids": sorted(
+                        {
+                            research_by_question[q]["research_id"]
+                            for q in question_ids
+                            if q in research_by_question
+                            and research_by_question[q].get("research_id")
+                        }
                     ),
-                    "priority": UNAVAILABLE_FROM_RUNTIME,
+                    "coverage_class": (
+                        row.get("coverage_class")
+                        or _COVERAGE_CLASS_MAP.get(
+                            row.get("disposition"), UNAVAILABLE_FROM_RUNTIME
+                        )
+                    ),
+                    "priority": row.get("priority") or UNAVAILABLE_FROM_RUNTIME,
+                    "contract_type": row.get("contract_type")
+                    or UNAVAILABLE_FROM_RUNTIME,
+                    "surface": row.get("surface", ""),
+                    "state_or_transition": row.get("state_or_transition", ""),
+                    "configuration": row.get("configuration", ""),
+                    "applicability": row.get("applicability", ""),
+                    "variants": [
+                        {"label": str(v), "evidence_ids": []}
+                        for v in (row.get("variants") or [])
+                    ],
+                    "reason": row.get("rationale", ""),
+                    "acceptance_impact": row.get("acceptance_impact", ""),
+                    "sufficiency_ref": row.get("sufficiency_ref", ""),
+                    "dimensions_considered": [],
                 }
             )
         manifest["coverage_decisions"] = {"items": items}
         projected.append("coverage_decisions")
-        lossy.append("coverage_decisions.priority")
+        if not any_priority:
+            lossy.append("coverage_decisions.priority")
         if sufficiency_present:
             lossy.append("coverage_decisions.non_claim_dispositions")
     else:
@@ -348,6 +379,20 @@ def project_runtime_result(result: dict[str, Any]) -> tuple[dict[str, Any], dict
         "validation_status": info.get("validation_status", ""),
     }
     projected.append("_runtime")
+
+    # Writer handoff (derived from canonical coverage state - never
+    # fabricated): exactly the accepted (non-EXCLUDED) coverage decisions,
+    # which includes every P0 decision by construction.  The canonical
+    # promotion gate remains the authority on which ACCEPTANCE-class rows
+    # become ACs; the handoff is the coverage package, not the AC set.
+    if manifest.get("coverage_decisions"):
+        handoff = sorted(
+            row["coverage_id"]
+            for row in manifest["coverage_decisions"]["items"]
+            if row.get("priority") != "EXCLUDED"
+        )
+        manifest["coverage_decisions"]["writer_handoff"] = handoff
+        derived.append("coverage_decisions.writer_handoff")
 
     # Blocks the runtime does not produce at all - replay must report
     # NOT_EVALUABLE, never a fabricated PASS.

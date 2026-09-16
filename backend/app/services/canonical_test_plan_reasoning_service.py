@@ -509,6 +509,94 @@ _CLARIFICATION_ESTABLISHING_CLASSES = frozenset(
     }
 )
 
+# C2B-C1: canonical coverage derivation - the single decision point mapping a
+# runtime disposition to coverage class/priority/contract type.  Generic typed
+# inputs only; no feature heuristics.
+_C1_ACCEPTANCE_DISPOSITIONS = frozenset(
+    {
+        CoverageDisposition.ACCEPTANCE_CONTRACT,
+        CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+    }
+)
+_C1_REGRESSION_DISPOSITIONS = frozenset(
+    {
+        CoverageDisposition.SEMANTIC_REGRESSION,
+        CoverageDisposition.STRUCTURAL_REGRESSION,
+        CoverageDisposition.REFERENCE_REGRESSION,
+        CoverageDisposition.CROSS_MODE_REGRESSION,
+        CoverageDisposition.CONFIGURATION_VARIANT,
+        CoverageDisposition.NEGATIVE_BOUNDARY,
+        CoverageDisposition.NFR_COVERAGE,
+        CoverageDisposition.GENERATED_OUTPUT_VALIDATION,
+        CoverageDisposition.LIFECYCLE_COVERAGE,
+        CoverageDisposition.FAILURE_RECOVERY,
+    }
+)
+_C1_INVESTIGATION_DISPOSITIONS = frozenset(
+    {
+        CoverageDisposition.IMPLEMENTATION_ORACLE,
+        CoverageDisposition.TECHNICAL_NOTE,
+        # Pending product/scope/design decisions and documented limitations
+        # are investigation context: never acceptance coverage.
+        CoverageDisposition.OPEN_QUESTION,
+        CoverageDisposition.PRODUCT_SCOPE_QUESTION,
+        CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+        CoverageDisposition.KNOWN_LIMITATION,
+    }
+)
+# Dispositions intentionally outside the accepted coverage set: they stay
+# visible in the trace with an exclusion reason and never reach the Writer.
+_C1_EXCLUDED_DISPOSITIONS = frozenset(
+    {
+        CoverageDisposition.OUT_OF_SCOPE,
+        CoverageDisposition.INVESTIGATED_AND_REJECTED,
+        CoverageDisposition.UNSUPPORTED_INFERENCE,
+    }
+)
+
+_C1_IMPACT_TEXT = {
+    "P0": "Required to prove the primary accepted contract and prevent the "
+    "reported regression.",
+    "P1": "Materially related regression behavior for the accepted contract.",
+    "SUPPORTING": "Supporting regression or investigation context.",
+}
+
+
+def _derive_c1(
+    disposition: CoverageDisposition,
+    *,
+    has_direct_evidence: bool,
+) -> tuple[str, str, str]:
+    """Return (coverage_class, priority, acceptance_impact)."""
+
+    if disposition in _C1_ACCEPTANCE_DISPOSITIONS:
+        return "ACCEPTANCE", "P0", _C1_IMPACT_TEXT["P0"]
+    if disposition in _C1_REGRESSION_DISPOSITIONS:
+        priority = "P1" if has_direct_evidence else "SUPPORTING"
+        return "QE_REGRESSION", priority, _C1_IMPACT_TEXT[priority]
+    if disposition in _C1_INVESTIGATION_DISPOSITIONS:
+        return "INVESTIGATION", "SUPPORTING", _C1_IMPACT_TEXT["SUPPORTING"]
+    if disposition in _C1_EXCLUDED_DISPOSITIONS:
+        return (
+            "",
+            "EXCLUDED",
+            "Explicitly outside the accepted coverage set; never promoted.",
+        )
+    return "", "", ""
+
+
+def _derive_contract_type(
+    disposition: CoverageDisposition, fact_types: set[ContractFactType]
+) -> str:
+    if (
+        disposition == CoverageDisposition.NEGATIVE_BOUNDARY
+        or ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS in fact_types
+    ):
+        return "NEGATIVE"
+    if ContractFactType.COMPATIBILITY_REQUIREMENTS in fact_types:
+        return "PRESERVATION"
+    return "POSITIVE"
+
 
 def _content_tokens(text: str) -> set[str]:
     return {token for token in re.findall(r"[a-z0-9]+", text.casefold()) if len(token) > 2}
@@ -3997,6 +4085,15 @@ class CanonicalTestPlanReasoningService:
                     source_fact_ids=[fact.fact_id],
                     evidence_ids=fact.source_evidence_ids,
                     rationale="Classified from an explicitly preserved contract fact.",
+                    coverage_class=_derive_c1(disposition, has_direct_evidence=True)[0],
+                    priority=_derive_c1(disposition, has_direct_evidence=True)[1],
+                    acceptance_impact=_derive_c1(
+                        disposition, has_direct_evidence=True
+                    )[2],
+                    contract_type=_derive_contract_type(
+                        disposition, {fact.fact_type}
+                    ),
+                    applicability="APPLICABLE",
                 )
             )
         dimension_disposition = {
@@ -4117,6 +4214,13 @@ class CanonicalTestPlanReasoningService:
                 and len(related_questions) == 1
             ):
                 candidate = related_questions[0].question
+            c1_class, c1_priority, c1_impact = _derive_c1(
+                disposition,
+                has_direct_evidence=bool(
+                    HypothesisState.CONFIRMED in hypothesis_states
+                    or [item for item in items if item.evidence_ids]
+                ),
+            )
             rows.append(
                 CoverageDispositionRecord(
                     candidate=candidate,
@@ -4143,6 +4247,11 @@ class CanonicalTestPlanReasoningService:
                         )
                     ],
                     rationale=rationale,
+                    coverage_class=c1_class,
+                    priority=c1_priority,
+                    acceptance_impact=c1_impact,
+                    contract_type=_derive_contract_type(disposition, set()),
+                    applicability="APPLICABLE",
                 )
             )
         for impact in impacts:
@@ -4153,6 +4262,11 @@ class CanonicalTestPlanReasoningService:
                         disposition=CoverageDisposition.NFR_COVERAGE,
                         evidence_ids=impact.evidence_ids,
                         rationale="NFR coverage is activated by explicit change-impact signals; no SLA is invented.",
+                        coverage_class="QE_REGRESSION",
+                        priority="P1",
+                        acceptance_impact=_C1_IMPACT_TEXT["P1"],
+                        contract_type="POSITIVE",
+                        applicability="APPLICABLE",
                     )
                 )
         questions_by_id = {row.question_id: row for row in questions}
@@ -4188,6 +4302,10 @@ class CanonicalTestPlanReasoningService:
                 if research_override is not None:
                     disposition = CoverageDisposition.OPEN_QUESTION
                     rationale = research_override
+            c1_class, c1_priority, c1_impact = _derive_c1(
+                disposition,
+                has_direct_evidence=hypothesis.state == HypothesisState.CONFIRMED,
+            )
             rows.append(
                 CoverageDispositionRecord(
                     candidate=hypothesis.statement,
@@ -4204,6 +4322,11 @@ class CanonicalTestPlanReasoningService:
                         + hypothesis.verification_evidence_ids
                     ),
                     rationale=rationale,
+                    coverage_class=c1_class,
+                    priority=c1_priority,
+                    acceptance_impact=c1_impact,
+                    contract_type=_derive_contract_type(disposition, set()),
+                    applicability="APPLICABLE",
                 )
             )
         return sorted(
@@ -4549,6 +4672,17 @@ class CanonicalTestPlanReasoningService:
                         admitted_clarifications=admitted,
                     )
                 )
+            # C2B-C1: stamp the sufficiency link onto each covered disposition
+            # (a link, excluded from the disposition identity hash).
+            record_by_coverage = {}
+            for record in sufficiency_records:
+                for ref in record.coverage_refs:
+                    record_by_coverage[ref] = record
+            for row in dispositions:
+                link = record_by_coverage.get(row.disposition_id)
+                if link is not None:
+                    row.sufficiency_ref = link.sufficiency_id
+                    row.applicability = link.applicability
         return AcceptanceResolutionBatch(
             discovered_candidates=discovered_candidates,
             candidates=final_candidates,
@@ -4874,6 +5008,9 @@ class CanonicalTestPlanReasoningService:
                     for row in source_facts
                 )
             )
+            # C2B-C1: only ACCEPTANCE-class canonical coverage may promote.
+            # QE_REGRESSION never becomes an AC merely because its evidence is
+            # sufficient; INVESTIGATION never becomes an AC.
             candidate_text = candidate.statement.casefold()
             scope_established = (
                 candidate.in_scope
@@ -4892,6 +5029,29 @@ class CanonicalTestPlanReasoningService:
                 if row is not None
             )
             reasons: list[str] = []
+            # C2B-C1: only ACCEPTANCE-class canonical coverage may promote.
+            # QE_REGRESSION never becomes an AC merely because its evidence is
+            # sufficient; INVESTIGATION never becomes an AC.
+            classed = [row for row in source_dispositions if row.coverage_class]
+            if (
+                classed
+                and not clarification_supported
+                and not any(
+                    row.coverage_class == "ACCEPTANCE" for row in classed
+                )
+            ):
+                reasons.append(
+                    "Only ACCEPTANCE-class canonical coverage may promote; "
+                    "QE_REGRESSION/INVESTIGATION coverage never becomes an AC."
+                )
+            if (
+                any(row.priority == "EXCLUDED" for row in classed)
+                and not clarification_supported
+            ):
+                reasons.append(
+                    "EXCLUDED coverage is intentionally outside current "
+                    "coverage and never promotes."
+                )
             if missing_disposition_ids:
                 reasons.append(
                     "Acceptance candidate references an unavailable coverage disposition."
