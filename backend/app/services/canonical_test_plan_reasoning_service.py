@@ -36,6 +36,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     CandidateTerminalDisposition,
     ChangeSurface,
     ChangeSurfaceKind,
+    ClaimSufficiencyRecord,
     ClarificationAnswerClass,
     ClarificationStatus,
     ClosureDimensionResult,
@@ -91,6 +92,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ScopeResolution,
     SemanticDimension,
     StructuredQEPlan,
+    SufficiencyStatus,
     VerificationState,
     stable_sha256,
 )
@@ -431,6 +433,318 @@ _RAW_FRAGMENT_RE = re.compile(
     r"|\bclass\s+[A-Z]\w*|\bdef\s+\w+\(|\b[A-Z][\w$]*\.[a-z][\w$]*\s*\("
     r"|\bFeature:\s)"
 )
+
+# P2: statement-shape signals for extractor classification (a statement of
+# absence, difficulty, or manual burden describes the CURRENT problem).  The
+# promotion guard itself never uses keywords - it uses the evidence role
+# assigned here plus claim/evidence token coverage and authority.
+_PROBLEM_SHAPE_RE = re.compile(
+    r"\b(?:there is no|no easy way|not easy to|difficult to|hard to|cumbersome|"
+    r"painful|fragile|error[- ]prone|time[- ]consuming|"
+    r"does not (?:have|provide|offer|support|allow|include)|"
+    r"do not (?:have|provide|offer|support|allow)|"
+    r"lacks?|lack of|missing|cannot|can't|unable to|no way to|no option to|"
+    r"not driven by|not supported|not available|no visibility|"
+    r"manual(?:ly)?(?:\s+(?:process|step|workflow|approach|way))?)\b",
+    re.IGNORECASE,
+)
+# Imperative language marks a requirement, not a problem statement, even when
+# the sentence also describes a lack.
+_IMPERATIVE_REQUIREMENT_RE = re.compile(
+    r"\b(?:must|shall|should|required|needs? to|has to|have to|is expected to|"
+    r"are expected to|provide|support|allow)\b",
+    re.IGNORECASE,
+)
+
+# C2B-S1: claim-level sufficiency computation (deterministic, bounded rules
+# over typed inputs - the single production sufficiency decision).
+
+# Authority classes that can establish an expectation for a claim.  Anything
+# else (historical, inferred, proposed, pending-review, unknown) may be
+# evidence, but is not establishing for THIS claim on its own.
+_ESTABLISHING_FACT_AUTHORITIES = frozenset(
+    {
+        AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
+        AuthorityClass.CONFIRMED_PRODUCT_DECISION,
+        AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
+        AuthorityClass.SPECIFICATION_AUTHORITY,
+        AuthorityClass.CUSTOMER_REQUEST,
+        AuthorityClass.IMPLEMENTATION_CONFIRMED,
+    }
+)
+
+# Implementation evidence establishes what the code does, not automatically
+# what the product should do: a claim resting only on implementation evidence
+# is capped at PARTIAL.
+_IMPLEMENTATION_ONLY = frozenset({AuthorityClass.IMPLEMENTATION_CONFIRMED})
+
+# Research status -> research completion sub-state (same vocabulary as the
+# Skill S1 contract).
+_RESEARCH_COMPLETION_MAP = {
+    ResearchStatus.NOT_REQUIRED: "NOT_REQUIRED",
+    ResearchStatus.NOT_APPLICABLE: "NOT_REQUIRED",
+    ResearchStatus.PENDING: "PENDING",
+    ResearchStatus.ANSWER_FOUND: "COMPLETED",
+    ResearchStatus.PARTIAL: "PARTIAL",
+    ResearchStatus.NOT_FOUND: "NOT_FOUND",
+    ResearchStatus.SOURCE_UNAVAILABLE: "SOURCE_UNAVAILABLE",
+    ResearchStatus.CONFLICTED: "CONFLICTED",
+}
+
+_RESEARCH_COMPLETION_RANK = {
+    "PENDING": 6,
+    "CONFLICTED": 5,
+    "NOT_FOUND": 4,
+    "SOURCE_UNAVAILABLE": 4,
+    "PARTIAL": 3,
+    "COMPLETED": 1,
+    "NOT_REQUIRED": 0,
+}
+
+_CLARIFICATION_ESTABLISHING_CLASSES = frozenset(
+    {
+        ClarificationAnswerClass.EXPECTED_BEHAVIOR,
+        ClarificationAnswerClass.PRODUCT_DECISION,
+        ClarificationAnswerClass.SCOPE_VALUE,
+    }
+)
+
+
+def _content_tokens(text: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9]+", text.casefold()) if len(token) > 2}
+
+
+def assess_claim_sufficiency(
+    candidate: AcceptanceCandidate,
+    *,
+    facts_by_id: dict[str, ContractFact],
+    dispositions_by_id: dict[str, CoverageDispositionRecord],
+    research_by_question: dict[str, QuestionResearchRecord],
+    classifications_by_disposition: dict[str, BehaviorClassificationRecord],
+    evidence_currentness: dict[str, CurrentnessState],
+    admitted_clarifications: list[HumanClarification],
+) -> ClaimSufficiencyRecord:
+    """Compute the single production sufficiency decision for one candidate.
+
+    Bounded deterministic rules (spec C2B-S1 sections 4-8); no numeric
+    confidence, no inference beyond the typed inputs.  Only ADMITTED
+    clarifications participate - anything else is discarded defensively.
+    """
+
+    admitted_clarifications = [
+        row
+        for row in admitted_clarifications
+        if row.status == ClarificationStatus.ADMITTED
+    ]
+
+    source_facts = [
+        facts_by_id[fact_id]
+        for fact_id in candidate.source_fact_ids
+        if fact_id in facts_by_id
+    ]
+    linked_questions = sorted(
+        {
+            question_id
+            for disposition_id in candidate.source_disposition_ids
+            if disposition_id in dispositions_by_id
+            for question_id in (
+                dispositions_by_id[disposition_id].source_question_ids
+            )
+        }
+    )
+    research = [
+        research_by_question[question_id]
+        for question_id in linked_questions
+        if question_id in research_by_question
+    ]
+    classifications = [
+        classifications_by_disposition[disposition_id]
+        for disposition_id in candidate.source_disposition_ids
+        if disposition_id in classifications_by_disposition
+    ]
+
+    # Research completion: worst linked state wins.
+    research_completion = "NOT_REQUIRED"
+    for record in research:
+        mapped = _RESEARCH_COMPLETION_MAP.get(record.research_status, "PENDING")
+        if _RESEARCH_COMPLETION_RANK[mapped] > _RESEARCH_COMPLETION_RANK[
+            research_completion
+        ]:
+            research_completion = mapped
+
+    # Authority: an establishing clarification bound to a linked question
+    # participates with its admitted authority; STALE/REJECTED never reach
+    # this list (admission is upstream).
+    clarification_lift = any(
+        row.answer_classification in _CLARIFICATION_ESTABLISHING_CLASSES
+        and (
+            row.question_ref in linked_questions
+            or f"clarification:{row.clarification_id}" in candidate.evidence_ids
+        )
+        for row in admitted_clarifications
+    )
+    problem_facts = [
+        fact
+        for fact in source_facts
+        if fact.fact_type == ContractFactType.PROBLEM_STATEMENT
+    ]
+
+    def _establishes(fact: ContractFact) -> bool:
+        if not fact.authoritative:
+            return False
+        if fact.authority_class not in _ESTABLISHING_FACT_AUTHORITIES:
+            return False
+        if fact.fact_type == ContractFactType.PROBLEM_STATEMENT:
+            # A problem statement is establishing for the problem claim itself
+            # (claim covered by the problem text), never for a claim extending
+            # beyond it.
+            return _content_tokens(candidate.statement) <= _content_tokens(
+                fact.literal
+            )
+        return True
+
+    establishing_facts = [fact for fact in source_facts if _establishes(fact)]
+    authority_basis = ""
+    if establishing_facts:
+        authority_basis = max(
+            (fact.authority_class.value for fact in establishing_facts),
+        )
+    elif clarification_lift:
+        authority_basis = "HUMAN_CLARIFICATION"
+
+    # Currentness: only evidence that resolves into the bundle counts.
+    currentness_values = {
+        evidence_currentness[evidence_id]
+        for fact in source_facts
+        for evidence_id in fact.source_evidence_ids
+        if evidence_id in evidence_currentness
+    }
+    if not currentness_values:
+        currentness = "UNKNOWN"
+    elif currentness_values <= {CurrentnessState.CURRENT}:
+        currentness = "CURRENT"
+    else:
+        currentness = "STALE"
+
+    contradictions: list[str] = []
+    limitations: list[str] = []
+    applicability = "APPLICABLE" if candidate.in_scope else "WRONG_APPLICABILITY"
+
+    hard_insufficient: list[str] = []
+    caps: list[str] = []
+    conflicted = False
+
+    if not candidate.in_scope:
+        hard_insufficient.append("the claim is out of the established scope")
+    if not source_facts and not clarification_lift:
+        hard_insufficient.append("no evidence is bound to the claim")
+    elif not establishing_facts and not clarification_lift:
+        if problem_facts:
+            hard_insufficient.append(
+                "bound evidence establishes the problem, not a particular "
+                "solution - the chosen solution needs its own establishing "
+                "authority"
+            )
+        else:
+            hard_insufficient.append(
+                "bound evidence exists but none of it is establishing for this "
+                "claim (observation/inference/historical authority only)"
+            )
+    elif problem_facts and not clarification_lift:
+        # P2 guard: problem evidence plus unrelated establishing evidence must
+        # not bleed into a claim whose behavior content nothing establishes.
+        covered: set[str] = set()
+        for fact in establishing_facts:
+            covered |= _content_tokens(fact.literal)
+        uncovered = _content_tokens(candidate.statement) - covered
+        if uncovered:
+            hard_insufficient.append(
+                "the claim introduces behavior no establishing evidence covers "
+                "- an established problem does not establish a particular "
+                "solution"
+            )
+    if research_completion == "PENDING":
+        hard_insufficient.append("mandatory research is still PENDING")
+    if research_completion == "CONFLICTED":
+        conflicted = True
+        contradictions.append("research for a linked question is CONFLICTED")
+    if research_completion in {"NOT_FOUND", "SOURCE_UNAVAILABLE"}:
+        caps.append(
+            "required research found no answer - NOT_FOUND is not proof of "
+            "the opposite behavior"
+        )
+    if research_completion == "PARTIAL":
+        caps.append("research is PARTIAL; only the established portion stands")
+    if any(row.behavior_class == BehaviorChangeClass.CONFLICTED for row in classifications):
+        conflicted = True
+        contradictions.append("existing-vs-new classification is CONFLICTED")
+    if any(row.behavior_class == BehaviorChangeClass.UNKNOWN for row in classifications):
+        caps.append("existing-vs-new classification is UNKNOWN")
+    if (
+        establishing_facts
+        and all(
+            fact.authority_class in _IMPLEMENTATION_ONLY
+            for fact in establishing_facts
+        )
+        and not clarification_lift
+    ):
+        caps.append(
+            "implementation evidence establishes what code does, not "
+            "automatically desired acceptance behavior"
+        )
+    if currentness == "STALE":
+        caps.append(
+            "stale evidence cannot establish a current-version-specific claim "
+            "without compatibility evidence"
+        )
+
+    if conflicted:
+        status = SufficiencyStatus.CONFLICTED
+    elif hard_insufficient:
+        status = SufficiencyStatus.INSUFFICIENT
+    elif caps:
+        status = SufficiencyStatus.PARTIAL
+    else:
+        status = SufficiencyStatus.SUFFICIENT
+
+    # The established portion is exactly what the establishing evidence says -
+    # never more than the claim, never invented.
+    portion_literals = sorted({fact.literal for fact in establishing_facts})
+    established_portion = ""
+    if status == SufficiencyStatus.PARTIAL:
+        established_portion = " / ".join(portion_literals)[:2000]
+
+    reason_bits = []
+    if status == SufficiencyStatus.SUFFICIENT:
+        reason_bits.append(
+            f"establishing evidence from {authority_basis or 'bound sources'}; "
+            f"research {research_completion.lower()}; applicability "
+            f"{applicability.lower()}; currentness {currentness.lower()}"
+        )
+    else:
+        reason_bits.extend(hard_insufficient)
+        reason_bits.extend(caps)
+        reason_bits.extend(contradictions)
+
+    return ClaimSufficiencyRecord(
+        claim_ref=candidate.candidate_id,
+        claim_text=candidate.statement[:2000],
+        question_refs=linked_questions,
+        coverage_refs=sorted(set(candidate.source_disposition_ids)),
+        status=status,
+        established_portion=established_portion,
+        evidence_refs=sorted(set(candidate.evidence_ids)),
+        research_refs=sorted({row.research_id for row in research}),
+        authority_basis=authority_basis,
+        applicability=applicability,
+        currentness=currentness,
+        research_completion=research_completion,
+        contradictions=contradictions,
+        limitations=limitations + caps,
+        decision_reason="; ".join(reason_bits) or "no establishing evidence",
+        claim_revision=stable_sha256({"claim": candidate.statement})[:12],
+    )
+
 
 _DITA_OT_CLARIFICATION_ANSWERS = {
     "on": DitaOtProcessingState.ON,
@@ -1047,6 +1361,22 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
                 ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
             ]
         )
+    # P2: a statement-shaped problem/gap (absence, difficulty, manual burden)
+    # without imperative requirement language is evidence role
+    # PROBLEM_STATEMENT - it establishes the problem, never a solution.
+    if _PROBLEM_SHAPE_RE.search(literal) and not _IMPERATIVE_REQUIREMENT_RE.search(
+        literal
+    ):
+        found = [
+            row
+            for row in found
+            if row
+            not in {
+                ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS,
+            }
+        ]
+        found.append(ContractFactType.PROBLEM_STATEMENT)
     if not found and any(token in key for token in ("summary", "description", "title")):
         found.append(ContractFactType.DIRECT_EXPECTED_BEHAVIOR)
     return list(dict.fromkeys(found))
@@ -1866,6 +2196,7 @@ class CanonicalTestPlanReasoningService:
                             )
                         )
                         and ContractFactType.DIRECT_EXPECTED_BEHAVIOR not in fact_types
+                        and ContractFactType.PROBLEM_STATEMENT not in fact_types
                     ):
                         fact_types.insert(0, ContractFactType.DIRECT_EXPECTED_BEHAVIOR)
                     for fact_type in fact_types:
@@ -2846,6 +3177,53 @@ class CanonicalTestPlanReasoningService:
                     source_fact_ids=[fact.fact_id],
                 )
             )
+        # P2: an established problem with no established solution earns exactly
+        # one neutral product-decision question - it names the gap and never
+        # embeds a proposed solution.
+        problem_facts = [
+            fact
+            for fact in facts.facts
+            if fact.fact_type == ContractFactType.PROBLEM_STATEMENT
+            and fact.authoritative
+        ]
+        if (
+            problem_facts
+            and facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT
+        ):
+            problem_tokens: set[str] = set()
+            for fact in problem_facts:
+                problem_tokens |= _content_tokens(fact.literal)
+            solution_authorities = {
+                AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
+                AuthorityClass.CONFIRMED_PRODUCT_DECISION,
+                AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
+                AuthorityClass.SPECIFICATION_AUTHORITY,
+            }
+            solution_established = any(
+                fact.authority_class in solution_authorities
+                and fact.fact_type != ContractFactType.PROBLEM_STATEMENT
+                and not _content_tokens(fact.literal) <= problem_tokens
+                for fact in facts.facts
+            )
+            if not solution_established:
+                anchor = problem_facts[0].literal.strip().rstrip(".")
+                questions.append(
+                    MissingQuestion(
+                        question=(
+                            "Which established product behavior or product "
+                            f"decision addresses this gap: {anchor[:160]}?"
+                        ),
+                        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+                        target_source_types=_target_sources(
+                            AuthoritySubject.PRODUCT_CONTRACT
+                        ),
+                        blocking=True,
+                        open_question_class=(
+                            OpenQuestionClass.USER_ACCEPTANCE_DECISION
+                        ),
+                        source_fact_ids=[problem_facts[0].fact_id],
+                    )
+                )
         return sorted(
             {row.question_id: row for row in questions}.values(),
             key=lambda row: row.question_id,
@@ -3588,6 +3966,11 @@ class CanonicalTestPlanReasoningService:
                 value and value in fact.literal.casefold() for value in out_scope_values
             ):
                 disposition = CoverageDisposition.OUT_OF_SCOPE
+            elif fact.fact_type == ContractFactType.PROBLEM_STATEMENT:
+                # P2: a problem/gap statement is context (Known limitations),
+                # never an acceptance candidate - it establishes the problem,
+                # not a particular solution.
+                disposition = CoverageDisposition.KNOWN_LIMITATION
             elif fact.fact_type in {
                 ContractFactType.HUMAN_OPEN_QUESTIONS,
                 ContractFactType.ENGINEERING_DESIGN_QUESTIONS,
@@ -3931,6 +4314,10 @@ class CanonicalTestPlanReasoningService:
         dispositions: list[CoverageDispositionRecord],
         questions: list[MissingQuestion],
         resolved_question_ids: set[str] | None = None,
+        research_records: list[QuestionResearchRecord] | None = None,
+        behavior_classifications: list[BehaviorClassificationRecord] | None = None,
+        evidence_records: list[Any] | None = None,
+        clarifications: list[HumanClarification] | None = None,
     ) -> AcceptanceResolutionBatch:
         facts_by_id = {row.fact_id: row for row in facts.facts}
         accepted_literals = [
@@ -4089,10 +4476,84 @@ class CanonicalTestPlanReasoningService:
                     semantic_equivalence_basis=" | ".join(semantic_key),
                 )
             )
+        # P2/P1 resume: an admitted, sufficiently-authoritative clarification
+        # that answers a blocking question with new behavior content becomes a
+        # candidate bound to that clarification - the human decision is the
+        # evidence; nothing is invented by the Writer.
+        admitted_clarifications = [
+            row
+            for row in clarifications or []
+            if row.status == ClarificationStatus.ADMITTED
+        ]
+        blocking_question_ids = {row.question_id for row in questions if row.blocking}
+        covered_tokens: set[str] = set()
+        for row in final_candidates:
+            covered_tokens |= _content_tokens(row.statement)
+        for row in admitted_clarifications:
+            if row.answer_classification not in _CLARIFICATION_ESTABLISHING_CLASSES:
+                continue
+            if row.question_ref not in blocking_question_ids:
+                continue
+            if row.authority_role not in _CLARIFICATION_ESTABLISHING_AUTHORITIES:
+                continue
+            if _content_tokens(row.answer) <= covered_tokens:
+                continue
+            synthesized = AcceptanceCandidate(
+                statement=row.answer,
+                contract_mode=facts.contract_mode,
+                accepted_human_contract=False,
+                source_fact_ids=[],
+                source_disposition_ids=[],
+                evidence_ids=[f"clarification:{row.clarification_id}"],
+                in_scope=True,
+                observable=bool(row.answer.strip()),
+                exact_values_supported=True,
+                contradicts_human_contract=False,
+                unresolved_decision_ids=[],
+            )
+            discovered_candidates.append(synthesized)
+            final_candidates.append(synthesized)
+            covered_tokens |= _content_tokens(row.answer)
+
+        # C2B-S1: one validated sufficiency decision per surviving candidate,
+        # computed once here and consumed by the promotion gate and the C2A
+        # replay projection - no second sufficiency representation anywhere.
+        sufficiency_records: list[ClaimSufficiencyRecord] = []
+        if research_records is not None:
+            research_by_question = {
+                row.question_id: row for row in research_records
+            }
+            classifications_by_disposition = {
+                row.disposition_id: row for row in behavior_classifications or []
+            }
+            dispositions_by_id = {row.disposition_id: row for row in dispositions}
+            evidence_currentness = {
+                row.evidence_id: row.currentness
+                for row in evidence_records or []
+                if getattr(row, "evidence_id", None) is not None
+            }
+            admitted = [
+                row
+                for row in clarifications or []
+                if row.status == ClarificationStatus.ADMITTED
+            ]
+            for candidate in final_candidates:
+                sufficiency_records.append(
+                    assess_claim_sufficiency(
+                        candidate,
+                        facts_by_id=facts_by_id,
+                        dispositions_by_id=dispositions_by_id,
+                        research_by_question=research_by_question,
+                        classifications_by_disposition=classifications_by_disposition,
+                        evidence_currentness=evidence_currentness,
+                        admitted_clarifications=admitted,
+                    )
+                )
         return AcceptanceResolutionBatch(
             discovered_candidates=discovered_candidates,
             candidates=final_candidates,
             dedup_decisions=dedup_decisions,
+            sufficiency=sufficiency_records,
         )
 
     def resolve_acceptance_contract(
@@ -4350,11 +4811,16 @@ class CanonicalTestPlanReasoningService:
         scope: ScopeResolution,
         dispositions: list[CoverageDispositionRecord],
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
+        sufficiency: list[ClaimSufficiencyRecord] | None = None,
+        clarifications: list[HumanClarification] | None = None,
     ) -> tuple[GateDecision, list[AcceptancePromotionDecision]]:
         facts_by_id = {row.fact_id: row for row in facts.facts}
         dispositions_by_id = {row.disposition_id: row for row in dispositions}
         classification_by_disposition = {
             row.disposition_id: row for row in behavior_classifications or []
+        }
+        sufficiency_by_claim = {
+            row.claim_ref: row for row in sufficiency or []
         }
         decisions: list[AcceptancePromotionDecision] = []
         integrity_failures: list[str] = []
@@ -4364,9 +4830,20 @@ class CanonicalTestPlanReasoningService:
                 for fact_id in candidate.source_fact_ids
                 if fact_id in facts_by_id
             ]
-            authority_supported = bool(source_facts) and all(
-                row.authoritative for row in source_facts
+            # P2: an admitted, authority-sufficient human clarification that a
+            # candidate is bound to is establishing ticket-scope evidence.
+            clarification_supported = any(
+                f"clarification:{row.clarification_id}" in candidate.evidence_ids
+                and row.status == ClarificationStatus.ADMITTED
+                and row.answer_classification in _CLARIFICATION_ESTABLISHING_CLASSES
+                and row.authority_role in _CLARIFICATION_ESTABLISHING_AUTHORITIES
+                for row in (clarifications or [])
             )
+            authority_supported = (
+                bool(source_facts) and all(
+                    row.authoritative for row in source_facts
+                )
+            ) or clarification_supported
             source_dispositions = [
                 dispositions_by_id[disposition_id]
                 for disposition_id in candidate.source_disposition_ids
@@ -4375,21 +4852,27 @@ class CanonicalTestPlanReasoningService:
             missing_disposition_ids = sorted(
                 set(candidate.source_disposition_ids) - set(dispositions_by_id)
             )
-            acceptance_disposition_supported = bool(source_dispositions) and all(
-                row.disposition
-                in {
-                    CoverageDisposition.ACCEPTANCE_CONTRACT,
-                    CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
-                }
-                for row in source_dispositions
+            acceptance_disposition_supported = clarification_supported or (
+                bool(source_dispositions) and all(
+                    row.disposition
+                    in {
+                        CoverageDisposition.ACCEPTANCE_CONTRACT,
+                        CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                    }
+                    for row in source_dispositions
+                )
             )
             belongs_to_human_contract = (
                 facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT
                 or candidate.accepted_human_contract
             )
-            ticket_scope_supported = candidate.accepted_human_contract or any(
-                row.authority_class == AuthorityClass.CUSTOMER_REQUEST
-                for row in source_facts
+            ticket_scope_supported = (
+                candidate.accepted_human_contract
+                or clarification_supported
+                or any(
+                    row.authority_class == AuthorityClass.CUSTOMER_REQUEST
+                    for row in source_facts
+                )
             )
             candidate_text = candidate.statement.casefold()
             scope_established = (
@@ -4483,6 +4966,34 @@ class CanonicalTestPlanReasoningService:
                     "Backward-compatible/default behavior lacks compatibility "
                     "evidence - a new default does not prove upgrade behavior."
                 )
+            # C2B-S1: the validated sufficiency artifact gates promotion.
+            # INSUFFICIENT/CONFLICTED never promote; PARTIAL promotes only the
+            # explicitly bounded established portion (candidate evidence must
+            # stay within the portion's evidence bindings).
+            sufficiency_record = sufficiency_by_claim.get(candidate.candidate_id)
+            if sufficiency_record is not None:
+                if sufficiency_record.status == SufficiencyStatus.INSUFFICIENT:
+                    reasons.append(
+                        "Claim evidence is INSUFFICIENT (sufficiency artifact "
+                        f"{sufficiency_record.sufficiency_id})."
+                    )
+                elif sufficiency_record.status == SufficiencyStatus.CONFLICTED:
+                    reasons.append(
+                        "Claim evidence is CONFLICTED (sufficiency artifact "
+                        f"{sufficiency_record.sufficiency_id})."
+                    )
+                elif sufficiency_record.status == SufficiencyStatus.PARTIAL:
+                    if not sufficiency_record.established_portion:
+                        reasons.append(
+                            "PARTIAL claim lacks an explicit established portion."
+                        )
+                    elif not set(candidate.evidence_ids) <= set(
+                        sufficiency_record.evidence_refs
+                    ):
+                        reasons.append(
+                            "Candidate exceeds the bounded established portion - "
+                            "evidence outside the portion's bindings."
+                        )
             if unresolved:
                 reasons.append("A blocking product decision remains unresolved.")
             if unresolved_classification:
@@ -4490,6 +5001,18 @@ class CanonicalTestPlanReasoningService:
                     "The existing-vs-new behavior classification is unresolved."
                 )
                 unresolved = True
+            # P2 defense in depth: a candidate resting only on problem/gap
+            # statements can never promote (Reviewer failure class
+            # PROBLEM_TO_SOLUTION_PROMOTION).
+            if source_facts and all(
+                fact.fact_type == ContractFactType.PROBLEM_STATEMENT
+                for fact in source_facts
+            ):
+                reasons.append(
+                    "PROBLEM_TO_SOLUTION_PROMOTION: an established problem does "
+                    "not establish a particular solution - the solution needs "
+                    "its own establishing authority."
+                )
             if candidate.contradicts_human_contract:
                 reasons.append("The candidate contradicts Human Accepted AC.")
             promotable = not reasons
@@ -4519,6 +5042,11 @@ class CanonicalTestPlanReasoningService:
                     observable=candidate.observable,
                     exact_values_supported=candidate.exact_values_supported,
                     contradicts_human_contract=candidate.contradicts_human_contract,
+                    sufficiency_ref=(
+                        sufficiency_record.sufficiency_id
+                        if sufficiency_record is not None
+                        else ""
+                    ),
                     reasons=reasons,
                 )
             )

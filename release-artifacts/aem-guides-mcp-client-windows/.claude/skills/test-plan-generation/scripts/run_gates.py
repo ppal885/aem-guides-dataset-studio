@@ -143,6 +143,207 @@ upgrade_migration_coverage_mod = _load(
 )
 repro_dimension_matrix_mod = _load("repro_dimension_matrix", "repro_dimension_matrix.py")
 acceptance_synthesizer_mod = _load("acceptance_synthesizer", "acceptance_synthesizer.py")
+
+
+# ---------------------------------------------------------------------------
+# C2A: CANONICAL_RUNTIME_REPLAY - replay Skill gates over a read-only
+# projection of the canonical runtime result instead of a hand-authored
+# manifest.  The canonical runtime is the only production promotion
+# authority; replay reports PASS / FAIL / NOT_EVALUABLE / DISAGREEMENT and
+# never mutates the runtime artifact.
+# ---------------------------------------------------------------------------
+
+REPLAY_GATE_SPECS: list[tuple[str, str, object]] = []
+
+
+def _register_replay_gates() -> None:
+    REPLAY_GATE_SPECS.extend(
+        [
+            ("question_research", "question-research", question_research_mod),
+            ("behavior_classification", "behavior-classification", behavior_classification_mod),
+            ("doc_research", "doc-research-routing", doc_research_mod),
+            ("question_plan", "question-planner", question_planner_mod),
+            ("question_resolutions", "question-resolver", question_resolver_mod),
+            ("evidence_sufficiency", "evidence-sufficiency", evidence_sufficiency_mod),
+            ("coverage_decisions", "coverage-reasoner", coverage_reasoner_mod),
+            ("coverage_equivalence", "coverage-equivalence", coverage_equivalence_mod),
+            ("requirement_lineage", "requirement-lineage", requirement_lineage_mod),
+            ("historical_jira_assessment", "historical-jira-safety", historical_jira_safety_mod),
+            ("retrieval_requests", "retrieval-admission", retrieval_admission_mod),
+        ]
+    )
+
+
+def replay_runtime_projection(manifest: dict) -> dict:
+    """Replay Skill gates over a canonical runtime projection.
+
+    Absent blocks (runtime does not carry the contract) are NOT_EVALUABLE -
+    never a fabricated PASS.  A gate failure inside a lossy projection is
+    NOT_EVALUABLE with the reasons attached, because missing fields cannot be
+    distinguished from real violations.  Promotion replay compares the
+    runtime's promotion state against replayable invariants (the mandatory
+    research hard gate) and reports AGREES / DISAGREES / NOT_EVALUABLE.
+    """
+
+    if not REPLAY_GATE_SPECS:
+        _register_replay_gates()
+
+    meta = manifest.get("_projection") or {}
+    runtime = manifest.get("_runtime") or {}
+    unavailable = set(meta.get("unavailable_fields") or [])
+    lossy = {str(f).split(".")[0] for f in (meta.get("lossy_fields") or [])}
+
+    gate_results: list[dict] = []
+    not_evaluable: list[str] = []
+    for block, label, mod in REPLAY_GATE_SPECS:
+        if block in unavailable or not mod.is_present(manifest):
+            gate_results.append({
+                "gate": label,
+                "status": "NOT_EVALUABLE",
+                "reason": "the canonical runtime does not currently expose "
+                "enough information to evaluate this contract",
+                "failures": [],
+            })
+            not_evaluable.append(label)
+            continue
+        problems = mod.validate(manifest)
+        if problems and block in lossy:
+            gate_results.append({
+                "gate": label,
+                "status": "NOT_EVALUABLE",
+                "reason": "projection is lossy for this contract",
+                "failures": problems,
+            })
+            not_evaluable.append(label)
+            continue
+        gate_results.append({
+            "gate": label,
+            "status": "PASS" if not problems else "FAIL",
+            "failures": problems,
+        })
+
+    # Promotion replay: the runtime stays the only promotion authority; the
+    # replayable invariants are the mandatory-research hard gate and (C2B-S1)
+    # the claim-sufficiency rule - a promoted candidate whose projected claim
+    # is INSUFFICIENT/CONFLICTED diverges from the replayable S1 contract.
+    disagreements: list[dict] = []
+    promotions = runtime.get("promotion_decisions") or []
+    promoted_ids = {
+        row.get("candidate_id")
+        for row in promotions
+        if row.get("status") == "PROMOTED"
+    }
+    research_items = (manifest.get("question_research") or {}).get("items") or []
+    research_by_question = {
+        row.get("question_ref"): row for row in research_items
+    }
+    coverage_items = (manifest.get("coverage_decisions") or {}).get("items") or []
+    questions_by_coverage = {
+        row.get("coverage_id"): list(row.get("question_ids") or [])
+        for row in coverage_items
+    }
+    sufficiency_by_question = {
+        row.get("question_ref"): row
+        for row in (manifest.get("evidence_sufficiency") or {}).get(
+            "question_assessments"
+        )
+        or []
+    }
+    sufficiency_by_claim = {
+        row.get("claim_ref"): row
+        for row in (manifest.get("evidence_sufficiency") or {}).get(
+            "claim_assessments"
+        )
+        or []
+    }
+    candidates = runtime.get("acceptance_candidates") or []
+    if not research_items:
+        promotion_verdict = "NOT_EVALUABLE"
+    else:
+        promotion_verdict = "AGREES"
+        for candidate in candidates:
+            if candidate.get("candidate_id") not in promoted_ids:
+                continue
+            linked_questions = {
+                question_id
+                for disposition_id in (candidate.get("source_disposition_ids") or [])
+                for question_id in questions_by_coverage.get(disposition_id, [])
+            }
+            # Claim-level sufficiency binding does not need question linkage.
+            claim_row = sufficiency_by_claim.get(candidate.get("candidate_id"))
+            if claim_row and claim_row.get("sufficiency_status") in {
+                "INSUFFICIENT",
+                "CONFLICTED",
+            }:
+                promotion_verdict = "DISAGREES"
+                disagreements.append({
+                    "gate": "evidence-sufficiency",
+                    "runtime_artifact_ref": candidate.get("candidate_id"),
+                    "projected_artifact_ref": claim_row.get("sufficiency_id"),
+                    "runtime_decision": "PROMOTED",
+                    "skill_replay_decision": (
+                        "REJECT (sufficiency "
+                        f"{claim_row['sufficiency_status']})"
+                    ),
+                    "reason": "runtime promoted a candidate whose claim "
+                    "sufficiency is INSUFFICIENT/CONFLICTED in the "
+                    "projected canonical artifact",
+                    "severity": "BLOCKING_POLICY_DIVERGENCE",
+                })
+            for question_id in sorted(linked_questions):
+                record = research_by_question.get(question_id)
+                if (
+                    record
+                    and record.get("research_requirement") != "NONE"
+                    and record.get("research_status") == "PENDING"
+                ):
+                    promotion_verdict = "DISAGREES"
+                    disagreements.append({
+                        "gate": "question-research",
+                        "runtime_artifact_ref": candidate.get("candidate_id"),
+                        "projected_artifact_ref": question_id,
+                        "runtime_decision": "PROMOTED",
+                        "skill_replay_decision": "REJECT (mandatory research PENDING)",
+                        "reason": "runtime promoted a candidate whose bound "
+                        "question has incomplete mandatory research",
+                        "severity": "BLOCKING_POLICY_DIVERGENCE",
+                    })
+                question_row = sufficiency_by_question.get(question_id)
+                if question_row and question_row.get("sufficiency_status") in {
+                    "INSUFFICIENT",
+                    "CONFLICTED",
+                }:
+                    promotion_verdict = "DISAGREES"
+                    disagreements.append({
+                        "gate": "evidence-sufficiency",
+                        "runtime_artifact_ref": candidate.get("candidate_id"),
+                        "projected_artifact_ref": question_id,
+                        "runtime_decision": "PROMOTED",
+                        "skill_replay_decision": (
+                            "REJECT (sufficiency "
+                            f"{question_row['sufficiency_status']})"
+                        ),
+                        "reason": "runtime promoted a candidate whose linked "
+                        "question's sufficiency is INSUFFICIENT/CONFLICTED in "
+                        "the projected canonical artifact",
+                        "severity": "BLOCKING_POLICY_DIVERGENCE",
+                    })
+
+    report = {
+        "run_id": meta.get("runtime_revision", ""),
+        "runtime_status": runtime.get("status", ""),
+        "runtime_promotion_status": promotion_verdict,
+        "projection_quality": (
+            "FULL"
+            if not unavailable and not lossy
+            else "PARTIAL"
+        ),
+        "gate_results": gate_results,
+        "disagreements": disagreements,
+        "not_evaluable": sorted(set(not_evaluable)),
+        "warnings": list(meta.get("warnings") or []),
+    }
+    return report
 uac_linter_mod = _load("uac_linter", "uac_linter.py")
 human_feedback_delta_mod = _load("human_feedback_delta", "human_feedback_delta.py")
 execution_outcome_mod = _load("execution_outcome", "execution_outcome.py")
@@ -2536,8 +2737,8 @@ def write_gate_receipt(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Single mandatory gate for an AEM Guides test plan.")
-    parser.add_argument("--plan", required=True, help="the eleven-section bullet-only plan body")
-    parser.add_argument("--combined", required=True, help="plan body + Appendix A (the delivered file)")
+    parser.add_argument("--plan", required=False, help="the eleven-section bullet-only plan body")
+    parser.add_argument("--combined", required=False, help="plan body + Appendix A (the delivered file)")
     parser.add_argument("--manifest", required=True, help="evidence manifest JSON")
     parser.add_argument("--jira-keys", dest="jira_keys", default=None)
     parser.add_argument("--skip-self-tests", action="store_true")
@@ -2545,7 +2746,63 @@ def main() -> int:
         "--receipt",
         help="atomic gate receipt path (default: <combined>.gate-receipt.json)",
     )
+    parser.add_argument(
+        "--runtime-replay",
+        action="store_true",
+        help="C2A: treat --manifest as a canonical runtime projection and "
+        "replay the Skill gates over it (PASS/FAIL/NOT_EVALUABLE/"
+        "DISAGREEMENT); never mutates the runtime artifact",
+    )
+    parser.add_argument(
+        "--parity-report",
+        default=None,
+        help="write the machine-readable replay parity report JSON here",
+    )
     args = parser.parse_args()
+
+    if args.runtime_replay:
+        try:
+            manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"ERROR: cannot read projection manifest: {exc}")
+            return 2
+        report = replay_runtime_projection(manifest)
+        for row in report["gate_results"]:
+            line = f"[replay] {row['gate']}: {row['status']}"
+            if row.get("reason"):
+                line += f" ({row['reason']})"
+            print(line)
+            for failure in row.get("failures") or []:
+                print(f"  FAIL: {failure}")
+        for row in report["disagreements"]:
+            print(
+                f"[replay] DISAGREEMENT ({row['severity']}): {row['gate']} "
+                f"{row['runtime_artifact_ref']} - {row['reason']}"
+            )
+        print(f"[replay] promotion authority: runtime (replay: {report['runtime_promotion_status']})")
+        print(f"[replay] projection quality: {report['projection_quality']}")
+        if args.parity_report:
+            Path(args.parity_report).write_text(
+                json.dumps(report, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            print(f"[replay] parity report: {args.parity_report}")
+        blocking = any(
+            row["severity"] == "BLOCKING_POLICY_DIVERGENCE"
+            for row in report["disagreements"]
+        )
+        failed = any(row["status"] == "FAIL" for row in report["gate_results"])
+        if blocking or failed:
+            print("\nREPLAY DIVERGENCE - review the parity report; do not edit "
+                  "the canonical runtime artifact to force agreement.")
+            return 1
+        print("\nREPLAY COMPLETE - no failures; NOT_EVALUABLE gates are listed "
+              "above and are not passes.")
+        return 0
+
+    if not args.plan or not args.combined:
+        print("ERROR: --plan and --combined are required unless --runtime-replay is used")
+        return 2
 
     failures, notes = run(args.plan, args.combined, args.manifest, args.jira_keys, args.skip_self_tests)
 

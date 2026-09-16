@@ -770,6 +770,18 @@ path — it builds no new RAG system, replaces no vector store, and never reinde
   headline metric is DECISIVE_EVIDENCE_MISADMISSION_RATE). A live smoke check reports
   read-only gateway connectivity only — never semantic-quality proof.
 
+### Phase 6.9.7 — Canonical Replay (read-only parity after runtime generation)
+
+The canonical Python runtime is the only production semantic and promotion authority.
+After a canonical run (CLI, HTTP, or adapter delegation), Skill gates may replay the
+SAME runtime result instead of a hand-authored manifest:
+
+1. Preserve the canonical result unchanged.
+2. Project it read-only: `python scripts/canonical_runtime_adapter.py --project-result <runtime-result.json> --out <projection.json>`. The projection preserves runtime IDs, evidence refs, research state, promotions, clarifications, and applicability; fields the runtime does not carry are recorded as `UNAVAILABLE_FROM_RUNTIME` in the projection metadata, never fabricated.
+3. Replay gates over the projection: `python scripts/run_gates.py --manifest <projection.json> --runtime-replay --parity-report <parity.json>`. Gate outcomes are PASS / FAIL / NOT_EVALUABLE / DISAGREEMENT; a missing runtime contract is NOT_EVALUABLE, never a pass.
+4. Surface every disagreement (gate, runtime artifact ref, replay decision, reason, severity) for human review or the convergence backlog.
+5. NEVER edit or regenerate the canonical runtime output to force a gate PASS: runtime output -> replay disagreement -> review/convergence backlog. The canonical AcceptancePromotionGate remains the only production promotion authority; Skill replay reports AGREES / DISAGREES / NOT_EVALUABLE and cannot modify promotion decisions, candidates, the canonical render, or runtime status.
+
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
 - Each P0/P1/P2 scenario must use the literal fields `Action:` and `Expected:` in one plain-English bullet. When an operational manifest references a scenario, add a stable `[TS-##]` token before the AC mapping, for example `- P0 [TS-01] [AC-01]: Action: ... Expected: ...`.
 - Prefix every scenario with the acceptance IDs it covers, for example `P0 [AC-01, AC-04]`. No confirmed or proposed AC may remain without at least one scenario, and no expected result may introduce behavior absent from an AC or accepted evidence.

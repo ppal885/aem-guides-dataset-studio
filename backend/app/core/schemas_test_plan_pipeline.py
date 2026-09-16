@@ -231,7 +231,18 @@ class TestPlanPipelineResult(BaseModel):
     confidence_dimensions: list[ConfidenceDimension] = Field(default_factory=list)
     uac_intelligence: dict[str, Any] | None = None
     rag_packet_summary: dict[str, Any] = Field(default_factory=dict)
-    draft_test_plan_markdown: str | None = None
+    draft_test_plan_markdown: str | None = Field(
+        default=None,
+        description=(
+            "NON_CANONICAL, NOT_FOR_ACCEPTANCE, DEPRECATED presentation mirror "
+            "of the runtime render kept for existing clients. Canonical output "
+            "is qe_review_package.canonical_result.plan_markdown; see "
+            "output_provenance."
+        ),
+    )
+    # C2A: explicit presentation provenance so no consumer accidentally
+    # prefers an ungated semantic draft. The canonical field is named here.
+    output_provenance: dict[str, str] = Field(default_factory=dict)
     validation: dict[str, Any] | None = None
     qe_handoff: QeHandoff
     qe_review_package: dict[str, Any] = Field(default_factory=dict)

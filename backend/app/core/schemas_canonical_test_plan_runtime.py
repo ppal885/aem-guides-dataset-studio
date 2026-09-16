@@ -336,6 +336,10 @@ class ContractFactType(StrEnum):
     HUMAN_OPEN_QUESTIONS = "HUMAN_OPEN_QUESTIONS"
     ENGINEERING_DESIGN_QUESTIONS = "ENGINEERING_DESIGN_QUESTIONS"
     TERMINOLOGY_CLARIFICATION_REQUIRED = "TERMINOLOGY_CLARIFICATION_REQUIRED"
+    # P2: a statement of the current problem / pain / gap. It establishes the
+    # problem - never a particular solution - so it is context, never an
+    # acceptance contract on its own.
+    PROBLEM_STATEMENT = "PROBLEM_STATEMENT"
 
 
 class ContractPreservationState(StrEnum):
@@ -574,6 +578,81 @@ class ClarificationStatus(StrEnum):
     ADMITTED = "ADMITTED"
     REJECTED = "REJECTED"
     STALE = "STALE"
+
+
+class SufficiencyStatus(StrEnum):
+    """Claim-level evidence sufficiency (C2B-S1).  Same four states as the
+    Skill S1 contract; one production decision, computed and stored by the
+    canonical runtime, replayed by the Skill."""
+
+    SUFFICIENT = "SUFFICIENT"
+    PARTIAL = "PARTIAL"
+    INSUFFICIENT = "INSUFFICIENT"
+    CONFLICTED = "CONFLICTED"
+
+
+class ClaimSufficiencyRecord(BaseModel):
+    """One acceptance-relevant claim's validated sufficiency decision.
+
+    Computed once by the canonical runtime from typed inputs (facts, research
+    records, behavior classifications, evidence currentness, admitted
+    clarifications) and consumed by the AcceptancePromotionGate; the Skill S1
+    gate replays the same artifact.  No numeric confidence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    sufficiency_id: str = ""
+    claim_ref: str = Field(min_length=1)  # the acceptance candidate id
+    claim_text: str = Field(default="", max_length=2000)
+    question_refs: list[str] = Field(default_factory=list)
+    coverage_refs: list[str] = Field(default_factory=list)  # disposition ids
+    status: SufficiencyStatus
+    established_portion: str = Field(default="", max_length=2000)
+    evidence_refs: list[str] = Field(default_factory=list)
+    research_refs: list[str] = Field(default_factory=list)
+    authority_basis: str = ""  # AuthorityClass value of the establishing basis
+    applicability: Literal["APPLICABLE", "WRONG_APPLICABILITY", "UNCLEAR"] = (
+        "APPLICABLE"
+    )
+    currentness: Literal["CURRENT", "STALE", "UNKNOWN"] = "UNKNOWN"
+    research_completion: Literal[
+        "NOT_REQUIRED",
+        "PENDING",
+        "COMPLETED",
+        "PARTIAL",
+        "NOT_FOUND",
+        "SOURCE_UNAVAILABLE",
+        "CONFLICTED",
+    ] = "NOT_REQUIRED"
+    contradictions: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    decision_reason: str = Field(min_length=1)
+    claim_revision: str = ""
+
+    @model_validator(mode="after")
+    def normalize_and_identify(self) -> "ClaimSufficiencyRecord":
+        self.question_refs = sorted(set(self.question_refs))
+        self.coverage_refs = sorted(set(self.coverage_refs))
+        self.evidence_refs = sorted(set(self.evidence_refs))
+        self.research_refs = sorted(set(self.research_refs))
+        identity = {
+            "claim_ref": self.claim_ref,
+            "status": self.status,
+            "established_portion": self.established_portion,
+            "evidence_refs": self.evidence_refs,
+            "research_refs": self.research_refs,
+            "claim_revision": self.claim_revision,
+        }
+        expected = f"sufficiency:{stable_sha256(identity)[:32]}"
+        if self.sufficiency_id and self.sufficiency_id != expected:
+            raise ValueError("sufficiency_id does not match deterministic contents")
+        self.sufficiency_id = expected
+        if self.status == SufficiencyStatus.PARTIAL and not self.established_portion:
+            raise ValueError(
+                "PARTIAL sufficiency requires an explicit established_portion"
+            )
+        return self
 
 
 class QuestionEvidenceProvider(StrEnum):
@@ -3702,6 +3781,8 @@ class AcceptanceResolutionBatch(BaseModel):
     discovered_candidates: list[AcceptanceCandidate] = Field(default_factory=list)
     candidates: list[AcceptanceCandidate] = Field(default_factory=list)
     dedup_decisions: list[CandidateDedupDecision] = Field(default_factory=list)
+    # C2B-S1: one validated sufficiency decision per acceptance candidate.
+    sufficiency: list[ClaimSufficiencyRecord] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_lineage(self) -> "AcceptanceResolutionBatch":
@@ -3745,6 +3826,19 @@ class AcceptanceResolutionBatch(BaseModel):
                 "final acceptance candidates lack discovery or merge lineage: "
                 + ", ".join(unexpected_survivors)
             )
+        seen_claims: set[str] = set()
+        for record in self.sufficiency:
+            if record.claim_ref not in surviving_ids:
+                raise ValueError(
+                    "sufficiency record references an unknown candidate: "
+                    f"{record.claim_ref}"
+                )
+            if record.claim_ref in seen_claims:
+                raise ValueError(
+                    "duplicate sufficiency record for candidate: "
+                    f"{record.claim_ref}"
+                )
+            seen_claims.add(record.claim_ref)
         return self
 
 
@@ -3759,6 +3853,9 @@ class AcceptancePromotionDecision(BaseModel):
     observable: bool
     exact_values_supported: bool
     contradicts_human_contract: bool = False
+    # C2B-S1: the sufficiency artifact this decision consumed ("" for legacy
+    # artifacts that predate sufficiency).
+    sufficiency_ref: str = ""
     reasons: list[str] = Field(default_factory=list)
 
 
@@ -4004,6 +4101,8 @@ class RuntimeTrace(BaseModel):
         default_factory=list
     )
     human_clarifications: list[HumanClarification] = Field(default_factory=list)
+    # C2B-S1: claim-level sufficiency decisions consumed by the promotion gate.
+    sufficiency: list[ClaimSufficiencyRecord] = Field(default_factory=list)
     source_counts: dict[str, int] = Field(default_factory=dict)
     compatibility_projection: list[CompatibilityProjectionLink] = Field(
         default_factory=list

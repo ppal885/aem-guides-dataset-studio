@@ -268,6 +268,12 @@ class LegacyCompatibilityProjector:
             draft_test_plan_markdown=(
                 result.rendered_output if request.compose_draft_plan else None
             ),
+            output_provenance={
+                "canonical": "qe_review_package.canonical_result.plan_markdown",
+                "draft_test_plan_markdown": (
+                    "NON_CANONICAL:NOT_FOR_ACCEPTANCE:DEPRECATED"
+                ),
+            },
             validation=result.validation_result,
             qe_handoff=qe_handoff,
             qe_review_package={
