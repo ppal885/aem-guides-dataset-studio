@@ -61,6 +61,7 @@ def test_convergence_views_split_by_evidence_role_and_converge() -> None:
             _finding("The product intends a visible warning indicator.", "REQUIREMENT_CLARIFICATION"),
             _finding("Code computes a visible warning indicator per run.", "IMPLEMENTATION_EVIDENCE"),
             _finding("The slide shows a visible warning indicator dot.", "OBSERVED_BEHAVIOR"),
+            _finding("Documentation establishes a visible warning indicator.", "EXISTING_BEHAVIOR"),
         ),
     )
     records = CONVERGENCE_SERVICE.evaluate([question], [], [result])
@@ -68,6 +69,8 @@ def test_convergence_views_split_by_evidence_role_and_converge() -> None:
     row = records[0]
     assert row.status == ConvergenceStatus.CONVERGED
     assert row.pm_view and row.dev_view and row.qe_view
+    # Documented existing behavior sits with the product/PM view.
+    assert any("Documentation establishes" in claim for claim in row.pm_view)
     assert row.agreements  # overlapping claims across views
     assert row.convergence_id.startswith("convergence:")
 

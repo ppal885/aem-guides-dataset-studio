@@ -31,6 +31,9 @@ from app.core.schemas_canonical_test_plan_runtime import (
 _PM_ROLES = {
     ResearchFindingEvidenceRole.REQUIREMENT_CLARIFICATION,
     ResearchFindingEvidenceRole.DESIRED_BEHAVIOR,
+    # Documented current behavior is the product's existing contract; it sits
+    # with the PM/product view of what the product intends.
+    ResearchFindingEvidenceRole.EXISTING_BEHAVIOR,
 }
 _DEV_ROLES = {ResearchFindingEvidenceRole.IMPLEMENTATION_EVIDENCE}
 _QE_ROLES = {ResearchFindingEvidenceRole.OBSERVED_BEHAVIOR}
@@ -84,13 +87,22 @@ class ConvergenceService:
             unknowns: list[str] = []
             saw_partial = False
             saw_conflict = False
+            # PM view priority: documented existing behavior first, then
+            # requirement clarifications, then customer-stated desires.
+            pm_bucketed: dict[ResearchFindingEvidenceRole, list[str]] = {
+                role: [] for role in _PM_ROLES
+            }
             for result in results:
                 for finding in result.findings:
-                    claim = str(finding.claim).strip()[:400]
+                    claim = str(finding.claim).strip()
+                    if len(claim) > 400:
+                        claim = claim[:400].rsplit(" ", 1)[0].rstrip() + "…"
                     if not claim:
                         continue
-                    if finding.evidence_role in _PM_ROLES and len(pm_view) < _MAX_VIEW_ITEMS:
-                        pm_view.append(claim)
+                    if finding.evidence_role in _PM_ROLES:
+                        bucket = pm_bucketed[finding.evidence_role]
+                        if len(bucket) < _MAX_VIEW_ITEMS:
+                            bucket.append(claim)
                     elif finding.evidence_role in _DEV_ROLES and len(dev_view) < _MAX_VIEW_ITEMS:
                         dev_view.append(claim)
                     elif finding.evidence_role in _QE_ROLES and len(qe_view) < _MAX_VIEW_ITEMS:
@@ -116,6 +128,18 @@ class ConvergenceService:
                 and not unknowns
             ):
                 unknowns.append(f"{research.research_status.value}: {research.reason[:300]}")
+
+            # PM view priority: documented existing behavior first, then
+            # requirement clarifications, then customer-stated desires.
+            pm_view = [
+                claim
+                for role in (
+                    ResearchFindingEvidenceRole.EXISTING_BEHAVIOR,
+                    ResearchFindingEvidenceRole.REQUIREMENT_CLARIFICATION,
+                    ResearchFindingEvidenceRole.DESIRED_BEHAVIOR,
+                )
+                for claim in pm_bucketed[role]
+            ][:_MAX_VIEW_ITEMS]
 
             agreements: list[str] = []
             for pm_claim in pm_view:
