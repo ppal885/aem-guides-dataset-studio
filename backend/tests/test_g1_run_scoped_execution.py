@@ -277,6 +277,110 @@ def test_one_run_cannot_consume_another_runs_state(tmp_path) -> None:
     assert not fulfilled_a.with_suffix(".consumed").exists()
 
 
+def test_consumed_episode_never_shadows_in_flight_episode(tmp_path) -> None:
+    """Regression for the live multi-run failure: with a completed episode
+    AND a newer fulfilled-but-unconsumed episode for the same logical
+    question, a resume invocation must consume the newer episode - the
+    consumed one must not shadow it into a fresh emission."""
+
+    record = _record()
+    bundle = _bundle(record)
+    question = _question()
+    requirement = _requirement(question)
+    provider = HostMediatedResearchProvider(store=tmp_path)
+
+    # Episode 1 (run A): emitted, fulfilled, consumed - completed.
+    req_a = _request(question, record, "run:AAAA")
+    provider.execute(req_a, bundle=bundle, question=question, requirement=requirement)
+    _fulfill(tmp_path, req_a.execution_id, question, "run A result")
+    assert (
+        provider.execute(req_a, bundle=bundle, question=question, requirement=requirement).status
+        == ResearchWorkerStatus.NOT_FOUND
+    )
+
+    # Episode 2 (run B): fresh emission, fulfilled, not yet consumed.
+    req_b = _request(question, record, "run:BBBB")
+    waiting = provider.execute(
+        req_b, bundle=bundle, question=question, requirement=requirement
+    )
+    assert waiting.status == ResearchWorkerStatus.AWAITING_HOST
+    assert provider._resolve_run_scope(req_b).execution_id != req_a.execution_id
+    _fulfill(
+        tmp_path,
+        provider._resolve_run_scope(req_b).execution_id,
+        question,
+        "run B result",
+    )
+
+    # Resume pass (run C): consumes episode B, never re-emits, never touches
+    # episode A again.
+    req_c = _request(question, record, "run:CCCC")
+    resumed = provider.execute(
+        req_c, bundle=bundle, question=question, requirement=requirement
+    )
+    assert resumed.status == ResearchWorkerStatus.NOT_FOUND
+    assert resumed.limitations == ["run B result"]
+    assert len(_pending_ids(tmp_path)) == 2
+
+
+def test_pending_only_orphan_never_blocks_after_completion(tmp_path) -> None:
+    """A pending-only episode whose sibling episode already completed is a
+    superseded duplicate: a later run mints fresh executions instead of
+    waiting on the orphan forever (the live fbbe-poisoning failure)."""
+
+    record = _record()
+    bundle = _bundle(record)
+    question = _question()
+    requirement = _requirement(question)
+    provider = HostMediatedResearchProvider(store=tmp_path)
+
+    # Episode A completes.
+    req_a = _request(question, record, "run:AAAA")
+    provider.execute(req_a, bundle=bundle, question=question, requirement=requirement)
+    _fulfill(tmp_path, req_a.execution_id, question, "run A result")
+    assert (
+        provider.execute(
+            req_a, bundle=bundle, question=question, requirement=requirement
+        ).status
+        == ResearchWorkerStatus.NOT_FOUND
+    )
+
+    # An abandoned intermediate pass leaves a pending-only orphan (run B).
+    req_b = _request(question, record, "run:BBBB")
+    provider.execute(req_b, bundle=bundle, question=question, requirement=requirement)
+    assert len(_pending_ids(tmp_path)) == 2
+
+    # A later run (run C) must not wait on the orphan: it delegates fresh.
+    req_c = _request(question, record, "run:CCCC")
+    fresh = provider.execute(
+        req_c, bundle=bundle, question=question, requirement=requirement
+    )
+    assert fresh.status == ResearchWorkerStatus.AWAITING_HOST
+    resolved = provider._resolve_run_scope(req_c)
+    assert resolved.run_scope == "run:CCCC"
+    assert len(_pending_ids(tmp_path)) == 3
+
+    # A genuinely in-flight episode with NO completed sibling still waits.
+    other = MissingQuestion(
+        question="What does a different claim establish?",
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+        target_source_types=[],
+        blocking=True,
+        open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
+    )
+    req_x = _request(other, record, "run:XXXX")
+    provider.execute(
+        req_x, bundle=bundle, question=other, requirement=requirement
+    )
+    req_y = _request(other, record, "run:YYYY")
+    waiting = provider.execute(
+        req_y, bundle=bundle, question=other, requirement=requirement
+    )
+    assert waiting.status == ResearchWorkerStatus.AWAITING_HOST
+    # No duplicate emission for the in-flight question.
+    assert len(_pending_ids(tmp_path)) == 4
+
+
 def test_no_timestamp_cleanup_and_legacy_state_left_intact(tmp_path) -> None:
     """Old pendings are never deleted or refreshed by a new run; legacy
     pre-G1 pendings (no run_scope) simply never match a scoped episode."""

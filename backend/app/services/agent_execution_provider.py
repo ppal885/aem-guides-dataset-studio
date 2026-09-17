@@ -1121,7 +1121,11 @@ class HostMediatedResearchProvider:
 
         logical_key = self._logical_execution_key(request)
         pending_dir = self._store / "pending"
-        episode_scope: str | None = None
+        # Every pending episode for this logical key.  A completed (consumed)
+        # episode must never shadow an in-flight episode for the same
+        # logical question - with several runs in the store, the oldest
+        # matching pending is usually the consumed one.
+        episodes: list[str] = []
         if pending_dir.is_dir():
             for candidate in sorted(pending_dir.glob("agent-request_*.json")):
                 try:
@@ -1131,25 +1135,53 @@ class HostMediatedResearchProvider:
                 except Exception:
                     continue
                 if payload.get("logical_execution_key") == logical_key:
-                    episode_scope = str(payload.get("run_scope") or "")
-                    break
-        if episode_scope is None:
+                    episodes.append(str(payload.get("run_scope") or ""))
+        if not episodes:
             return request
-        episode_request = AgentResearchRequest.model_validate(
-            {
-                **request.model_dump(
-                    mode="json", exclude={"execution_id"}
-                ),
-                "run_scope": episode_scope,
-            }
-        )
-        fulfilled = self._fulfilled_path(
-            self._store, episode_request.execution_id
-        )
-        if fulfilled.exists() and fulfilled.with_suffix(".consumed").exists():
-            # The episode completed; this top-level invocation is a new run.
+
+        def _episode_request(scope: str) -> AgentResearchRequest:
+            return AgentResearchRequest.model_validate(
+                {
+                    **request.model_dump(mode="json", exclude={"execution_id"}),
+                    "run_scope": scope,
+                }
+            )
+
+        # Prefer a resumable episode (fulfilled, not yet consumed), then an
+        # in-flight one (pending, unfulfilled); only when every matching
+        # episode completed does this invocation become a fresh run.  The
+        # deterministic tiebreak (last scope string) matters only if several
+        # episodes race; normally exactly one qualifies.
+        resumable: list[str] = []
+        in_flight: list[str] = []
+        completed = False
+        for scope in episodes:
+            episode_request = _episode_request(scope)
+            fulfilled = self._fulfilled_path(
+                self._store, episode_request.execution_id
+            )
+            if fulfilled.exists():
+                if fulfilled.with_suffix(".consumed").exists():
+                    completed = True
+                else:
+                    resumable.append(scope)
+            else:
+                in_flight.append(scope)
+        if resumable:
+            return _episode_request(sorted(resumable)[-1])
+        if completed:
+            # A sibling episode already completed this logical question's
+            # research: this invocation is a new run and mints fresh
+            # executions.  A pending-only episode alongside a completed one
+            # is a superseded duplicate (never delegated, or its pass's
+            # research terminated elsewhere) - waiting on it would block
+            # every later run forever.
             return request
-        return episode_request
+        if in_flight:
+            return _episode_request(sorted(in_flight)[-1])
+        # Every matching episode completed; this top-level invocation is a
+        # new run with fresh executions.
+        return request
 
     def execute(
         self,
