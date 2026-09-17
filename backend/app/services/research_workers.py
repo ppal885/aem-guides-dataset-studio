@@ -457,14 +457,35 @@ class CodeResearchWorker:
 class ResearchOrchestrator:
     """R2: dispatch bounded research workers for material questions before any
     human-facing clarification.  Returns structured envelopes plus an
-    auditable execution trace."""
+    auditable execution trace.
 
-    def __init__(self, workers: list | None = None) -> None:
+    A5: execution goes through the provider boundary.  The default
+    deterministic mode is the existing R2 behavior; agent mode executes real
+    model workers via the backend LLM substrate; shadow mode runs both
+    read-only with the deterministic result authoritative.  Every execution
+    row records provider + model_execution so a deterministic service is
+    never called an agent."""
+
+    def __init__(self, workers: list | None = None, provider=None) -> None:
         self._workers = workers or [
             DocResearchWorker(),
             CodeResearchWorker(),
             AttachmentResearchWorker(),
         ]
+        if provider is None:
+            from app.services.agent_execution_provider import (
+                DeterministicResearchProvider,
+                ModelAgentExecutionProvider,
+                RoutedResearchProvider,
+            )
+
+            provider = RoutedResearchProvider(
+                DeterministicResearchProvider(
+                    {worker.role: worker for worker in self._workers}
+                ),
+                ModelAgentExecutionProvider(),
+            )
+        self._provider = provider
 
     def execute(
         self,
@@ -475,6 +496,7 @@ class ResearchOrchestrator:
         repository_roots: list[str] | None = None,
     ) -> tuple[list[ResearchWorkerResult], list]:
         from app.core.schemas_canonical_test_plan_runtime import (
+            AgentResearchRequest,
             EvidenceSourceType,
             ResearchWorkerExecution,
         )
@@ -494,46 +516,82 @@ class ResearchOrchestrator:
                 or requirement.research_requirement == ResearchRequirement.NONE
             ):
                 continue
-            workers = self._workers_for(requirement, has_attachments)
-            for worker in workers:
-                started = _now()
+            roles = self._roles_for(requirement, has_attachments)
+            for role in roles:
+                request = AgentResearchRequest(
+                    worker_role=role,
+                    question_id=question.question_id,
+                    question_revision=question.question_revision,
+                    requested_claim=question.question,
+                    research_requirement=requirement.research_requirement,
+                    authorized_source_refs=[
+                        record.evidence_id for record in bundle.records
+                    ],
+                    applicability=str(
+                        getattr(requirement, "applicability", "") or ""
+                    ),
+                )
                 try:
-                    if isinstance(worker, CodeResearchWorker):
-                        result = worker.research(
-                            question,
-                            requirement,
-                            bundle,
-                            repository_roots=repository_roots,
-                        )
-                    else:
-                        result = worker.research(question, requirement, bundle)
+                    result, provider_executions = self._provider.execute(
+                        request,
+                        bundle=bundle,
+                        question=question,
+                        requirement=requirement,
+                        repository_roots=repository_roots,
+                    )
                 except Exception as exc:  # fail closed, honestly recorded
                     result = ResearchWorkerResult(
-                        worker_role=worker.role,
+                        worker_role=role,
                         question_id=question.question_id,
                         status=ResearchWorkerStatus.FAILED,
                         limitations=[f"worker error: {exc.__class__.__name__}"],
-                        started_at=started,
-                        completed_at=_now(),
                     )
+                    provider_executions = [("DETERMINISTIC", False, result)]
+                # The authoritative result is the primary execution; shadow
+                # executions are recorded for comparison only and are never
+                # consumed by the resolver.
                 results.append(result)
-                executions.append(
-                    ResearchWorkerExecution(
-                        worker_role=worker.role,
-                        question_id=question.question_id,
-                        trigger=(
-                            f"research_requirement="
-                            f"{requirement.research_requirement.value}"
-                        ),
-                        started_at=result.started_at,
-                        completed_at=result.completed_at,
-                        status=result.status,
-                        result_ref=result.research_id,
+                role_contract = ""
+                if any(model for _provider, model, _r in provider_executions):
+                    try:
+                        from app.services.agent_execution_provider import (
+                            load_role_contract,
+                        )
+
+                        name, version, _text = load_role_contract(role)
+                        role_contract = f"{name}@{version}"
+                    except Exception:
+                        role_contract = ""
+                for provider_id, model_execution, executed_result in (
+                    provider_executions
+                ):
+                    executions.append(
+                        ResearchWorkerExecution(
+                            worker_role=role,
+                            question_id=question.question_id,
+                            trigger=(
+                                f"research_requirement="
+                                f"{requirement.research_requirement.value}"
+                            ),
+                            started_at=executed_result.started_at,
+                            completed_at=executed_result.completed_at,
+                            status=executed_result.status,
+                            result_ref=executed_result.research_id,
+                            provider=provider_id,
+                            model_execution=model_execution,
+                            role_contract=role_contract,
+                        )
                     )
-                )
         return results, executions
 
-    def _workers_for(self, requirement, has_attachments: bool):
+    def _roles_for(self, requirement, has_attachments: bool):
+        from app.services.question_research_routing_service import (
+            RESEARCH_CATEGORY_DOCUMENTATION,
+            RESEARCH_CATEGORY_IMPLEMENTATION,
+            research_source_category,
+        )
+
+    def _roles_for(self, requirement, has_attachments: bool):
         from app.services.question_research_routing_service import (
             RESEARCH_CATEGORY_DOCUMENTATION,
             RESEARCH_CATEGORY_IMPLEMENTATION,
@@ -544,26 +602,26 @@ class ResearchOrchestrator:
             research_source_category(source_type)
             for source_type in requirement.required_source_types
         }
-        workers = []
+        roles = []
         for worker in self._workers:
             if (
                 worker.role == ResearchWorkerRole.DOC_RESEARCHER
                 and RESEARCH_CATEGORY_DOCUMENTATION in categories
             ):
-                workers.append(worker)
+                roles.append(worker.role)
             elif (
                 worker.role == ResearchWorkerRole.CODE_RESEARCHER
                 and RESEARCH_CATEGORY_IMPLEMENTATION in categories
             ):
-                workers.append(worker)
+                roles.append(worker.role)
             elif (
                 worker.role == ResearchWorkerRole.ATTACHMENT_RESEARCHER
                 and has_attachments
             ):
                 # Attachment evidence may answer any material question when
                 # present; it never replaces the mandated doc/code routes.
-                workers.append(worker)
-        return workers
+                roles.append(worker.role)
+        return roles
 
 
 RESEARCH_ORCHESTRATOR = ResearchOrchestrator()

@@ -2783,9 +2783,43 @@ class ResearchWorkerResult(BaseModel):
         return self
 
 
+class AgentResearchRequest(BaseModel):
+    """A5: the bounded request handed to an agent execution provider.  Never
+    dumps the entire ticket/repository - only the bound context."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: str = ""
+    worker_role: ResearchWorkerRole
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    question_revision: str = ""
+    requested_claim: str = Field(min_length=1, max_length=2000)
+    research_requirement: ResearchRequirement
+    authorized_source_refs: list[str] = Field(default_factory=list)
+    repository_aliases: list[str] = Field(default_factory=list)
+    applicability: str = Field(default="", max_length=500)
+    currentness: str = Field(default="", max_length=200)
+    budget: int = Field(default=1, ge=1, le=10)
+    context_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def identify(self) -> "AgentResearchRequest":
+        self.authorized_source_refs = sorted(set(self.authorized_source_refs))
+        self.repository_aliases = sorted(set(self.repository_aliases))
+        self.context_refs = sorted(set(self.context_refs))
+        identity = self.model_dump(mode="json", exclude={"execution_id"})
+        expected = f"agent-request:{stable_sha256(identity)[:32]}"
+        if self.execution_id and self.execution_id != expected:
+            raise ValueError("execution_id does not match deterministic identity")
+        self.execution_id = expected
+        return self
+
+
 class ResearchWorkerExecution(BaseModel):
     """R2 auditable worker-execution trace row: proves whether a research
-    worker actually ran, for which question, and what it returned."""
+    worker actually ran, for which question, and what it returned.  A5 adds
+    the provider/model-execution truth so a deterministic Python service is
+    never again called an agent."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -2796,6 +2830,10 @@ class ResearchWorkerExecution(BaseModel):
     completed_at: str = ""
     status: ResearchWorkerStatus
     result_ref: str = ""
+    # A5: execution substrate truth.
+    provider: str = "DETERMINISTIC"
+    model_execution: bool = False
+    role_contract: str = ""
 
 
 class QuestionResearchRecord(BaseModel):
