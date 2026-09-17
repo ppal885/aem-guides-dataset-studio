@@ -507,6 +507,46 @@ _AC_META_PROSE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Coverage lanes must report real dispositions.  A line that only says an
+# internal record exists tells a tester nothing and is not coverage.  Match
+# that exact bookkeeping phrasing only - "(see trace)" on its own is a
+# legitimate citation suffix on a real disposition.
+_COVERAGE_FILLER_RE = re.compile(
+    r"internal evidence recorded for\s+\d+\s+closure records",
+    re.IGNORECASE,
+)
+
+
+def _normalize_for_paraphrase(text: str) -> str:
+    """Collapse a statement to compare meaning-bearing words only."""
+
+    return " ".join(re.sub(r"[^a-z0-9\s]", " ", text.lower()).split())
+
+
+# Request grammar describes what someone WANTS, not what the product DOES.
+# "Ability to view the topic list", "Need a way to export" and "Support for
+# COUNT retention" cannot be passed or failed by exercising the product, so
+# they are requests carried through verbatim, never acceptance criteria.
+# Outcome grammar ("the export job writes a completion marker") is testable
+# even when the ticket author happened to phrase the request that way, so this
+# deliberately keys on the asking phrase rather than on text identity.
+_AC_REQUEST_GRAMMAR_RE = re.compile(
+    r"\b(?:ability to|abilities to|need(?:s)? (?:a|the) (?:way|ability|option)|"
+    r"provide (?:a|the) (?:way|ability|option)|"
+    r"there (?:should|must) be (?:a way|an option)|"
+    r"would like (?:to|the)|want(?:s)? (?:a|the) (?:way|ability|option)|"
+    r"request(?:ing)? (?:a|the) (?:way|ability|option)|"
+    r"support for (?:adding|having|providing))\b",
+    re.IGNORECASE,
+)
+
+
+def _is_request_not_outcome(statement: str) -> bool:
+    """True when an AC asks for a capability instead of stating an outcome."""
+
+    return bool(_AC_REQUEST_GRAMMAR_RE.search(statement))
+
+
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
     IssueDomain.PUBLISHING: (
         "publish",
@@ -7525,6 +7565,23 @@ class CanonicalTestPlanReasoningService:
             for statement in promoted_statements
             if _AC_META_PROSE_RE.search(statement)
         ]
+
+        # An accepted human contract IS the ticket text, and UAC fidelity
+        # requires preserving it exactly.  Only a contract the runtime
+        # proposed itself can be rejected for asking instead of asserting.
+        if facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT:
+            reviewer_failures.extend(
+                "Acceptance criterion requests a capability instead of "
+                f"stating a testable product outcome: {statement[:120]}"
+                for statement in promoted_statements
+                if _is_request_not_outcome(statement)
+            )
+
+        # Coverage lanes that only announce an internal record are not
+        # coverage.  They are suppressed from the human-facing markdown at
+        # render time rather than failing the plan: the closure records stay
+        # in the structured plan and the trace, so nothing is lost, but a
+        # content-free bullet never reaches the tester.
         if reviewer_failures:
             gates.append(
                 GateDecision(
@@ -7727,8 +7784,28 @@ class CanonicalTestPlanReasoningService:
             lines.append("")
         else:
             for section in sections:
+                # Bookkeeping lines announce that an internal record exists
+                # without dispositioning anything, so they are not shown to
+                # the tester.  The closure records remain in the structured
+                # plan and the trace.
+                visible_items = [
+                    item
+                    for item in section.items
+                    if not _COVERAGE_FILLER_RE.search(item)
+                ]
+                if not visible_items:
+                    continue
                 lines.extend([f"## {section.title}", ""])
-                lines.extend(f"- {item}" for item in section.items)
+                if section.section_key == "acceptance_contract":
+                    # The acceptance contract is a numbered, flat list so each
+                    # criterion is individually referenceable in review and in
+                    # the mapped test scenarios.
+                    lines.extend(
+                        f"- AC-{index:02d}: {item}"
+                        for index, item in enumerate(visible_items, start=1)
+                    )
+                else:
+                    lines.extend(f"- {item}" for item in visible_items)
                 lines.append("")
         rendered = "\n".join(lines).rstrip() + "\n"
         rendered_source_ids = {
