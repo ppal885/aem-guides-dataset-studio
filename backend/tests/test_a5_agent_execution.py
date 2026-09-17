@@ -517,30 +517,29 @@ def test_doc_request_receives_rag_candidates_before_live_verification(
 
     import json
 
-    import app.services.embedding_service as emb_mod
-    import app.services.vector_store_service as vs_mod
+    import app.services.doc_retriever_service as docs_mod
     from app.services.agent_execution_provider import HostMediatedResearchProvider
 
-    monkeypatch.setattr(emb_mod, "is_embedding_available", lambda: True)
-    monkeypatch.setattr(emb_mod, "embed_query", lambda text: [0.1, 0.2])
-    monkeypatch.setattr(vs_mod, "is_chroma_available", lambda: True)
-
-    def fake_query(collection, emb, k=5, where=None):
-        assert collection == vs_mod.CHROMA_COLLECTION_AEM_GUIDES
-        return [
-            {
-                "id": "chunk-1",
-                "document": "The Map dashboard output history shows each run's status and log.",
-                "metadata": {
-                    "corpus": "aem_guides",
+    def fake_retrieve(query, k=5, max_snippet_chars=400, allowed_host_suffixes=None):
+        assert "output history" in query.lower() or "publish" in query.lower()
+        return {
+            "query": query,
+            "retrieval_mode": "semantic",
+            "results": [
+                {
+                    "url": "https://experienceleague.adobe.com/en/docs/output-generation",
                     "title": "Generate output",
-                    "source_url": "https://experienceleague.adobe.com/en/docs/output-generation",
-                },
-                "distance": 0.42,
-            }
-        ]
+                    "snippet": "The Map dashboard output history shows each run's status and log.",
+                    "score": 0.42,
+                    "corpus": "aem_guides",
+                    "chunk_id": "chunk-1",
+                }
+            ],
+        }
 
-    monkeypatch.setattr(vs_mod, "query_collection", fake_query)
+    monkeypatch.setattr(
+        docs_mod, "retrieve_relevant_docs_with_diagnostics", fake_retrieve
+    )
 
     record = _record("doc-rag", "baseline", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION)
     bundle = _bundle(record)
@@ -567,7 +566,7 @@ def test_doc_request_receives_rag_candidates_before_live_verification(
     pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
     payload = json.loads(pending.read_text(encoding="utf-8"))
 
-    assert payload["rag_status"] == "ok"
+    assert payload["rag_status"] == "ok:semantic"
     candidates = payload["rag_candidates"]
     assert len(candidates) == 1
     assert candidates[0]["title"] == "Generate output"

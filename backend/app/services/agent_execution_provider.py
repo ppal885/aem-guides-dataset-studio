@@ -248,44 +248,38 @@ def _rag_documentation_candidates(
     claim: str, *, top_k: int = 5
 ) -> tuple[list[dict], str]:
     """Discovery leads from the existing indexed AEM Guides / product
-    documentation corpus (the same Chroma ``aem_guides`` collection the
-    Skill's offline RAG path queries).  Returns (candidates, status_note).
+    documentation retrieval layer (``doc_retriever_service`` - the same
+    retrieval the pipeline's full_rag path uses: Chroma, then
+    JSON+embedding, then lexical).  Returns (candidates, status_note).
     Candidates are discovery input for the delegated DOC researcher - never
     acceptance authority, and a retrieval score is never authority."""
 
     try:
-        from app.services.embedding_service import (
-            embed_query,
-            is_embedding_available,
-        )
-        from app.services.vector_store_service import (
-            CHROMA_COLLECTION_AEM_GUIDES,
-            is_chroma_available,
-            query_collection,
+        from app.services.doc_retriever_service import (
+            retrieve_relevant_docs_with_diagnostics,
         )
 
-        if not is_chroma_available() or not is_embedding_available():
-            return [], "rag retrieval unavailable: chroma or embedding not available"
-        emb = embed_query((claim or "")[:4000])
-        if emb is None:
-            return [], "rag retrieval unavailable: embedding returned nothing"
-        rows = query_collection(CHROMA_COLLECTION_AEM_GUIDES, emb, k=top_k)
+        payload = retrieve_relevant_docs_with_diagnostics(
+            (claim or "")[:4000], k=top_k
+        )
     except Exception as exc:
         return [], f"rag retrieval unavailable: {exc.__class__.__name__}"
+    rows = payload.get("results") or []
+    mode = str(payload.get("retrieval_mode") or "none")
     candidates: list[dict] = []
     for row in rows:
-        meta = row.get("metadata") or {}
         candidates.append(
             {
-                "chunk_id": str(row.get("id") or ""),
-                "source_type": str(meta.get("corpus") or "aem_guides"),
-                "title": str(meta.get("title") or ""),
-                "url": str(meta.get("source_url") or meta.get("url") or ""),
-                "score": row.get("distance"),
-                "snippet": _excerpt(row.get("document") or ""),
+                "chunk_id": str(row.get("chunk_id") or row.get("id") or ""),
+                "source_type": str(row.get("corpus") or "aem_guides"),
+                "title": str(row.get("title") or ""),
+                "url": str(row.get("url") or ""),
+                "score": row.get("score"),
+                "snippet": _excerpt(row.get("snippet") or ""),
             }
         )
-    return candidates, ("ok" if candidates else "no candidates")
+    status = f"ok:{mode}" if candidates else f"no candidates:{mode}"
+    return candidates, status
 
 
 def _attachment_files(
