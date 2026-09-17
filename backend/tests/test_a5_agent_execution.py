@@ -648,6 +648,49 @@ def test_copilot_host_envelope_rejects_smuggled_fields(tmp_path) -> None:
     assert not fulfilled.with_suffix(".consumed").exists()
 
 
+def test_copilot_host_pending_falls_back_to_env_repository_roots(
+    tmp_path, monkeypatch
+) -> None:
+    """When the caller passes no roots, the pending payload resolves the same
+    configured env vars the deterministic code worker uses."""
+
+    import json
+    import os
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    monkeypatch.setenv("STARLING_REPO_PATH", str(tmp_path / "starling"))
+    monkeypatch.delenv("XML_EDITOR_REPO_PATH", raising=False)
+    monkeypatch.delenv("GUIDES_UI_TESTS_REPO_PATH", raising=False)
+    monkeypatch.delenv("AEM_STUDIO_REPO", raising=False)
+
+    record = _record("authorized", "excerpt", EvidenceSourceType.CURRENT_CODE)
+    bundle = _bundle(record)
+    question = _question("What does the implementation do today?")
+    requirement = _requirement(
+        question, ResearchRequirement.IMPLEMENTATION, [EvidenceSourceType.CURRENT_CODE]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.CODE_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the implementation do today?",
+        research_requirement=ResearchRequirement.IMPLEMENTATION,
+        authorized_source_refs=[record.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(
+        request, bundle=bundle, question=question, requirement=requirement
+    )
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    assert payload["authorized_repository_roots"] == [
+        os.path.abspath(str(tmp_path / "starling"))
+    ]
+
+
 def test_copilot_host_pending_is_not_rewritten_on_repeat(tmp_path) -> None:
     import json
 

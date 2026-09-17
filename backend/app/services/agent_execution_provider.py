@@ -599,8 +599,18 @@ class HostMediatedResearchProvider:
             payload["authorized_evidence"] = _authorized_evidence_rows(
                 request, bundle
             )
+            # Same root resolution as the deterministic code worker: when the
+            # caller did not pass roots, fall back to the configured env vars.
+            effective_roots = (
+                repository_roots
+                if repository_roots is not None
+                else [
+                    os.environ.get(name, "").strip()
+                    for name in RESEARCH_REPOSITORY_ENV_VARS
+                ]
+            )
             payload["authorized_repository_roots"] = [
-                os.path.abspath(root) for root in (repository_roots or [])
+                os.path.abspath(root) for root in effective_roots if root
             ]
             # Bind the role-contract version AT EMISSION: the result must
             # answer this request under the contract this request was
