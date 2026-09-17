@@ -5906,6 +5906,7 @@ class CanonicalTestPlanReasoningService:
         clarifications: list[HumanClarification] | None = None,
         research_resolved_question_ids: set[str] | None = None,
         waiting_for_research: bool = False,
+        convergence: list | None = None,
     ) -> tuple[StructuredQEPlan, str]:
         if research_records is not None:
             incomplete_research_question_ids = {
@@ -6426,17 +6427,37 @@ class CanonicalTestPlanReasoningService:
                 )
                 lines.append("")
             decision_texts: list[str] = []
-            for text, _record_id in section_items.get("product_decisions", []):
+            decision_entries: list[tuple[str, str]] = []
+            for text, record_id in section_items.get("product_decisions", []):
                 normalized = " ".join(text.split())
                 if normalized and normalized.casefold() not in {
-                    seen.casefold() for seen in decision_texts
+                    seen.casefold() for seen, _rid in decision_entries
                 }:
-                    decision_texts.append(normalized)
+                    decision_entries.append((normalized, record_id))
+            decision_texts = [text for text, _rid in decision_entries]
             # While waiting for host research, product decisions are not yet
             # presented as user asks - research may resolve them.
             if decision_texts and not waiting_for_research:
+                convergence_by_question = {
+                    row.question_id: row for row in (convergence or [])
+                }
                 lines.extend(["## Open product decisions", ""])
-                lines.extend(f"- (TBD) {text}" for text in decision_texts)
+                for normalized, record_id in decision_entries:
+                    lines.append(f"- (TBD) {normalized}")
+                    # Conversational, evidence-bearing clarification: attach
+                    # what research established and any conflict, so QE can
+                    # answer in context instead of reading raw tickets.
+                    conv = convergence_by_question.get(record_id)
+                    if conv is not None:
+                        evidence_shown = (
+                            conv.pm_view[:1] or conv.dev_view[:1] or conv.qe_view[:1]
+                        )
+                        for claim in evidence_shown:
+                            lines.append(f"  - What the evidence shows: {claim}")
+                        for unknown in conv.acceptance_changing_unknowns[:1]:
+                            lines.append(f"  - Still unknown: {unknown}")
+                        for conflict in conv.conflicts[:1]:
+                            lines.append(f"  - Conflict to resolve: {conflict}")
                 lines.append("")
             lines.extend(["## Acceptance criteria", ""])
             lines.append(

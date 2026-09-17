@@ -2861,6 +2861,45 @@ class ResearchWorkerExecution(BaseModel):
     model: str = ""
 
 
+class ConvergenceStatus(StrEnum):
+    """The virtual refinement team's per-question convergence state."""
+
+    CONVERGED = "CONVERGED"
+    CONVERGED_WITH_LIMITS = "CONVERGED_WITH_LIMITS"
+    CONFLICTED = "CONFLICTED"
+    UNRESOLVED = "UNRESOLVED"
+
+
+class ConvergenceRecord(BaseModel):
+    """Three-perspective evidence evaluation for one material question,
+    computed after research and before coverage finalizes: the Product/PM
+    view (intended product contract), the Developer view (what the code
+    establishes), and the QE view (observable behavior, negative cases,
+    regression implications).  It names agreements, conflicts, and
+    acceptance-changing unknowns; it never invents a product decision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    convergence_id: str = ""
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    pm_view: list[str] = Field(default_factory=list)
+    dev_view: list[str] = Field(default_factory=list)
+    qe_view: list[str] = Field(default_factory=list)
+    agreements: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    acceptance_changing_unknowns: list[str] = Field(default_factory=list)
+    status: ConvergenceStatus
+
+    @model_validator(mode="after")
+    def identify(self) -> "ConvergenceRecord":
+        identity = self.model_dump(mode="json", exclude={"convergence_id"})
+        expected = f"convergence:{stable_sha256(identity)[:32]}"
+        if self.convergence_id and self.convergence_id != expected:
+            raise ValueError("convergence_id does not match deterministic identity")
+        self.convergence_id = expected
+        return self
+
+
 class HostAgentResultEnvelope(BaseModel):
     """The host-attached receipt around a leaf agent's ResearchWorkerResult.
 

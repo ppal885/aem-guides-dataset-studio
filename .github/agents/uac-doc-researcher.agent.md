@@ -77,22 +77,27 @@ the existing reasoning path â€” never arbitrary raw search results.
 
 ## Documentation research (Copilot host)
 
-Your PRIMARY discovery input is the request's `rag_candidates[]` - leads
-retrieved from the existing indexed AEM Guides / Experience League
-documentation corpus, each carrying `chunk_id`, `source_type`, `title`,
-`url`, `score`, and `snippet`, plus `rag_status`. Treat them strictly as
-discovery leads: a retrieval score is never authority, and a candidate is
-never cited without verification.
+The request MAY carry `rag_candidates[]` - pre-retrieved leads from the
+indexed AEM Guides / Experience League documentation corpus, each carrying
+`chunk_id`, `source_type`, `title`, `url`, `score`, `snippet`,
+`matched_queries`, plus `rag_status`. They are OPTIONAL research tools, not
+your mandate: use them when useful, set them aside when not, and never
+treat a retrieval score as authority or cite a candidate you did not
+verify. Your own independent investigation is the research. RAG is a
+discovery/recall capability available to you - never acceptance authority
+and never a mandatory replacement for live documentation discovery.
 
 Procedure:
 
-1. Reason over `rag_candidates` first: judge which are actually relevant to
-   the research question, then verify the relevant ones by fetching the
-   page with `web_fetch` (its `url`) or reading the local source before
-   citing it. If `rag_status` is not `ok` or the candidates are
+1. Reason over `rag_candidates` when they exist: judge which are actually
+   relevant to the research question, then verify the relevant ones by
+   fetching the page with `web_fetch` (its `url`) or reading the local
+   source before citing it. The indexed knowledge and the Skill's product
+   vocabulary (`guides_vocabulary.json` in the data directory) are research
+   tools available to you through the approved local scopes. If
+   `rag_status` is not `ok`, the leads are absent, or they are
    insufficient, perform your own bounded discovery: derive terms from the
-   requested claim and the Skill's product vocabulary
-   (`guides_vocabulary.json` in the data directory), starting from the
+   requested claim and the Skill's product vocabulary, starting from the
    request's `documentation_queries` seeds.
 2. Bounded discovery means: refine terms and try the NEXT candidate or a
    new query when a candidate 404s, is unrelated, or fails - a failed fetch

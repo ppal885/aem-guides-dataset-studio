@@ -1333,6 +1333,15 @@ class CanonicalTestPlanRuntime:
         # establishing authority) release blocking exactly like admitted human
         # clarifications - research first, ask only the residual decision.
         clarified_resolved_ids |= research_resolved_ids
+        # Convergence evaluation (the virtual refinement team): after mandated
+        # research resolves and before acceptance/coverage finalizes.  It is
+        # deterministic and advisory - it changes no evidence authority and
+        # never invents a product decision.
+        from app.services.convergence_service import CONVERGENCE_SERVICE
+
+        convergence = CONVERGENCE_SERVICE.evaluate(
+            questions, question_research, research_worker_results
+        )
         candidate_resolution = stage(
             CanonicalRuntimeStage.ACCEPTANCE_CONTRACT_RESOLVER,
             [facts, dispositions, questions],
@@ -1444,6 +1453,7 @@ class CanonicalTestPlanRuntime:
                 clarifications=admitted_clarifications,
                 research_resolved_question_ids=research_resolved_ids,
                 waiting_for_research=awaiting_agent_research,
+                convergence=convergence,
             ),
         )
         structured_plan_for_trace = structured_plan
@@ -1529,6 +1539,9 @@ class CanonicalTestPlanRuntime:
             ],
             "question_research": [
                 row.model_dump(mode="json") for row in question_research
+            ],
+            "convergence": [
+                row.model_dump(mode="json") for row in convergence
             ],
             "research_worker_executions": [
                 row.model_dump(mode="json", exclude={"started_at", "completed_at"})
