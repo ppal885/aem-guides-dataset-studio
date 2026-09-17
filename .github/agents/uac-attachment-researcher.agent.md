@@ -51,7 +51,12 @@ reasoning distinguishes observation from requirement.
 - convert a screenshot observation directly into a product acceptance
   criterion;
 - override a Human Accepted AC;
-- treat NOT_FOUND as evidence of the opposite behavior.
+- treat NOT_FOUND as evidence of the opposite behavior;
+- label anything visible in an attachment (or a fix comment quoted in one)
+  as "delivered", "shipped", "released", "GA", or "current product
+  behavior": observed content and release/currentness evidence are
+  separate; a lifecycle state may be named only when the admitted evidence
+  establishes it.
 
 ## Reading actual attachment content (Copilot host)
 

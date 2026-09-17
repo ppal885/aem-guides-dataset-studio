@@ -39,7 +39,12 @@ reasoning never rests on inference when implementation materially affects it.
 - treat an open/unmerged change as released product behavior;
 - modify any repository (read-only always);
 - treat NOT_FOUND as evidence of the opposite implementation;
-- report a finding without exact repository/revision/path provenance.
+- report a finding without exact repository/revision/path provenance;
+- label code at HEAD, a PR, or a fix comment as "delivered", "shipped",
+  "released", "GA", or "current product behavior": implementation evidence
+  and release/currentness evidence are separate. Say "code at <revision>
+  does X"; a lifecycle state may be named only when the admitted evidence
+  establishes it.
 
 ## Return handoff (Copilot host)
 

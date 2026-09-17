@@ -352,6 +352,13 @@ def _terminal_result(
     )
 
 
+_RESEARCHER_LIFECYCLE_RE = re.compile(
+    r"\b(delivered|shipped|released|generally available|in production|"
+    r"current product behavior|current product behaviour)\b",
+    re.IGNORECASE,
+)
+
+
 def validate_agent_result_shape(raw: object, worker_role) -> str | None:
     """Canonical result-shape rules shared by the bridge (fulfill time) and
     the provider (resume time): one schema, one vocabulary, one path grammar.
@@ -375,6 +382,19 @@ def validate_agent_result_shape(raw: object, worker_role) -> str | None:
     for index, item in enumerate(findings):
         if not isinstance(item, dict) or not str(item.get("claim") or "").strip():
             return f"findings[{index}] lacks a claim"
+        # Lifecycle language discipline: "delivered/shipped/released/current
+        # product behavior" claims are documentation-established-behavior
+        # statements only (EXISTING_BEHAVIOR).  A fix comment, a PR, code at
+        # HEAD, or a screenshot never by itself establishes release state.
+        claim_text = str(item.get("claim") or "")
+        role_value = str(item.get("evidence_role") or "")
+        if _RESEARCHER_LIFECYCLE_RE.search(claim_text) and (
+            role_value != ResearchFindingEvidenceRole.EXISTING_BEHAVIOR.value
+        ):
+            return (
+                f"findings[{index}] uses release/current-behavior language "
+                "without documentation-established EXISTING_BEHAVIOR evidence"
+            )
         if is_code:
             path = str(item.get("path") or "")
             if not path:
@@ -500,7 +520,7 @@ def _validate_agent_result(
                     discovered_ok = (
                         isinstance(prov, dict)
                         and all(
-                            re.fullmatch(r"doc:[a-z0-9]{12}", ref)
+                            re.fullmatch(r"doc:[A-Za-z0-9._~-]{3,80}", ref)
                             for ref in unknown
                         )
                         and str(prov.get("locator") or "").strip()
@@ -515,12 +535,56 @@ def _validate_agent_result(
                         ResearchWorkerStatus.FAILED,
                         ["finding cites sources outside the authorized set"],
                     )
+            # A discovered-source provenance block must be tied to a doc: ref;
+            # provenance without the ref (or vice versa) is malformed.
+            if request.worker_role == ResearchWorkerRole.DOC_RESEARCHER:
+                has_doc_ref = any(
+                    re.fullmatch(r"doc:[A-Za-z0-9._~-]{3,80}", ref)
+                    for ref in refs
+                )
+                has_prov = bool(item.get("provenance"))
+                if has_doc_ref != has_prov:
+                    return _terminal_result(
+                        request,
+                        ResearchWorkerStatus.FAILED,
+                        [
+                            f"findings[{index}] discovered-source provenance "
+                            "and doc: reference must appear together"
+                        ],
+                    )
         try:
             role = ResearchFindingEvidenceRole(
                 str(item.get("evidence_role") or "SUPPORTING_CONTEXT")
             )
         except ValueError:
             role = ResearchFindingEvidenceRole.SUPPORTING_CONTEXT
+        # Lifecycle language ("delivered", "current product behavior", ...)
+        # additionally requires a documentation basis, not only the role
+        # label: the finding must cite documentation (bundle doc record or a
+        # provenance-carrying discovered doc source).
+        if _RESEARCHER_LIFECYCLE_RE.search(str(item.get("claim") or "")):
+            doc_ids = {
+                record.evidence_id
+                for record in bundle.records
+                if record.source_type
+                in {
+                    EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+                    EvidenceSourceType.DITA_SPECIFICATION,
+                    EvidenceSourceType.DITA_OT_DOCUMENTATION,
+                    EvidenceSourceType.AEM_ASSETS_PLATFORM_DOCUMENTATION,
+                }
+            }
+            if not (set(refs) & doc_ids) and not any(
+                ref.startswith("doc:") for ref in refs
+            ):
+                return _terminal_result(
+                    request,
+                    ResearchWorkerStatus.FAILED,
+                    [
+                        f"findings[{index}] claims release/current product "
+                        "behavior without a documentation source"
+                    ],
+                )
         findings.append(
             ResearchFinding(
                 claim=str(item["claim"]).strip()[:2000],

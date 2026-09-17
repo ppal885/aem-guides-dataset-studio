@@ -46,7 +46,16 @@ rests on inference when documentation materially affects it.
 - infer new behavior from old documentation (existing documentation
   establishes the baseline; it never proves a new feature);
 - promote nearby/related functionality into scope;
-- treat NOT_FOUND as evidence of the opposite behavior.
+- treat NOT_FOUND as evidence of the opposite behavior;
+- label a fix comment, PR, or code observation as "delivered", "shipped",
+  "released", "GA", "in production", or "current product behavior":
+  implementation evidence and release/currentness evidence are separate. A
+  `Fixed by` comment records an implementation claim; only a
+  documentation-established EXISTING_BEHAVIOR finding (citing
+  documentation) may use current-behavior language, and a lifecycle state
+  may be named only when the admitted evidence establishes it - otherwise
+  state exactly what the evidence is (for example "a 2026-08-15 Jira
+  comment describes the fix; the linked fix ticket is In Progress").
 
 The Writer receives only admitted research (`admitted_research_ids`) through
 the existing reasoning path â€” never arbitrary raw search results.
@@ -92,7 +101,9 @@ Plan Skill:
 You MAY discover new documentation evidence inside those scopes. For every
 discovered source a finding cites:
 
-- mint `doc:<first 12 hex of sha256(locator)>` as its `source_refs` entry;
+- mint `doc:<short stable slug from the locator>` (for example the page's
+  trailing path) as its `source_refs` entry - you do not need to compute a
+  hash; the provenance block is the identity;
 - attach `provenance`: `locator` (full URL or absolute file path), `title`,
   `query` (the exact search/fetch that found it), `accessed_at`;
 - a discovered source without complete provenance is rejected wholesale by

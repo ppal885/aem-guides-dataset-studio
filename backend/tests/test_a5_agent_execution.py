@@ -423,6 +423,44 @@ def test_doc_discovered_source_without_provenance_fails_closed() -> None:
     assert results[0].status == ResearchWorkerStatus.FAILED
 
 
+def test_doc_discovered_source_slug_ref_and_pairing_rule() -> None:
+    doc, question, requirement = _doc_question_setup()
+
+    def run(finding):
+        results, _ = (
+            _doc_orchestrator({"status": "ANSWER_FOUND", "findings": [finding]})
+            .execute([question], [requirement], _bundle(doc), repository_roots=[])
+        )
+        return results[0]
+
+    prov = {
+        "locator": "https://experienceleague.adobe.com/en/docs/x",
+        "title": "X",
+        "query": "q",
+    }
+    # Slug-style ref (no hash capability needed) with provenance: admitted.
+    ok = run(
+        {
+            "claim": "Documented behavior.",
+            "source_refs": ["doc:manage-digital-assets"],
+            "evidence_role": "EXISTING_BEHAVIOR",
+            "provenance": prov,
+        }
+    )
+    assert ok.status == ResearchWorkerStatus.ANSWER_FOUND
+    # Provenance block without the doc: ref is malformed.
+    bad = run(
+        {
+            "claim": "Documented behavior.",
+            "source_refs": [],
+            "evidence_role": "SUPPORTING_CONTEXT",
+            "provenance": prov,
+        }
+    )
+    assert bad.status == ResearchWorkerStatus.FAILED
+    assert "together" in bad.limitations[0]
+
+
 def test_doc_refs_are_not_valid_for_attachment_research() -> None:
     attachment = _record(
         "att1", "metadata only", EvidenceSourceType.JIRA_ATTACHMENT
@@ -581,6 +619,83 @@ def test_doc_request_receives_rag_candidates_before_live_verification(
     assert any("map dashboard" in q or "output preset" in q for q in queries)
     assert any("publish" in q or "output" in q for q in queries)
     assert all("overview" not in q for q in queries)
+
+
+def test_lifecycle_language_requires_documented_existing_behavior() -> None:
+    """A fix comment / code finding must never be labeled delivered/shipped/
+    current product behavior unless documentation establishes that state."""
+
+    from app.services.agent_execution_provider import validate_agent_result_shape
+
+    impl_claim = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "The fix was delivered and adds the indicator.",
+                "source_refs": [],
+                "repository": "repo",
+                "revision": "f" * 40,
+                "path": "src/app.java",
+                "evidence_role": "IMPLEMENTATION_EVIDENCE",
+            }
+        ],
+    }
+    rejection = validate_agent_result_shape(
+        impl_claim, ResearchWorkerRole.CODE_RESEARCHER
+    )
+    assert rejection is not None and "release/current-behavior" in rejection
+
+    # EXISTING_BEHAVIOR role but only a Jira comment behind it: provider
+    # rejects (no documentation basis for current-behavior language).
+    comment = _record(
+        "fix-comment", "Fixed by: added the indicator.", EvidenceSourceType.JIRA_COMMENT
+    )
+    doc = _record(
+        "doc-lc",
+        "The documented behavior today.",
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+    )
+    question = _question("What is the current documented behavior?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
+    )
+
+    def payload_with(ref_id):
+        return {
+            "status": "ANSWER_FOUND",
+            "findings": [
+                {
+                    "claim": "This is the current product behavior.",
+                    "source_refs": [ref_id],
+                    "evidence_role": "EXISTING_BEHAVIOR",
+                }
+            ],
+        }
+
+    orchestrator = _orchestrator_with(
+        RoutedResearchProvider(
+            DeterministicResearchProvider({}),
+            _FakeModelProvider(payload_with(comment.evidence_id)),
+            mode="backend_model",
+        )
+    )
+    results, _ = orchestrator.execute(
+        [question], [requirement], _bundle(doc, comment), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+    assert "documentation source" in results[0].limitations[0]
+
+    orchestrator = _orchestrator_with(
+        RoutedResearchProvider(
+            DeterministicResearchProvider({}),
+            _FakeModelProvider(payload_with(doc.evidence_id)),
+            mode="backend_model",
+        )
+    )
+    results, _ = orchestrator.execute(
+        [question], [requirement], _bundle(doc, comment), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.ANSWER_FOUND
 
 
 def test_shadow_mode_keeps_deterministic_authoritative() -> None:
