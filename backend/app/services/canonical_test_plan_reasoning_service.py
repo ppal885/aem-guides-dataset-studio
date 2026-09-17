@@ -367,6 +367,12 @@ _DESIRED_WRAPPER_RE = re.compile(
     r"^[^.]{0,120}?\b(?:states|says|reads|notes)\b[^:]{0,40}:\s*",
     re.IGNORECASE,
 )
+# Researchers sometimes prefix findings with a role tag ("DESIRED: ...",
+# "OBSERVED: ..."): it is framing, not content.
+_ROLE_TAG_RE = re.compile(
+    r"^\s*(?:DESIRED|OBSERVED|CONTEXT|NOTE|BACKGROUND)\s*[:.\-]\s*",
+    re.IGNORECASE,
+)
 # Meta/evidence sentences are provenance, never the contract: they mention
 # the evidence itself instead of product behavior.
 _META_SENTENCE_RE = re.compile(
@@ -381,6 +387,14 @@ _WANT_FLIP_RE = re.compile(
     r"\b(?:the\s+customer\s*(?:\([^)]*\))?|customer|they)\s+"
     r"(?:explicitly\s+)?(?:states?|says?|notes?)(?:\s+they)?\s*"
     r"wants?\s+(?:that\s+)?",
+    re.IGNORECASE,
+)
+# "... states on the slide that authors need X" - the need-frame variant of
+# the same attribution pattern.
+_NEED_FLIP_RE = re.compile(
+    r"\b(?:states?|says?|notes?)\b[^.:]{0,60}?\bthat\s+"
+    r"(?:authors?|users?|they|we)\s+"
+    r"(?:need|needs|want|wants|should\s+(?:get|see|have))\s+",
     re.IGNORECASE,
 )
 _MODAL_RE = re.compile(r"\b(?:must|shall|should|will)\b", re.IGNORECASE)
@@ -398,7 +412,8 @@ def _desired_claim_text(claim: str) -> str:
     wanting frame into a requirement modal, and bound at a sentence boundary
     (never mid-word)."""
 
-    text = _DESIRED_WRAPPER_RE.sub("", str(claim).strip()).strip()
+    text = _ROLE_TAG_RE.sub("", str(claim).strip()).strip()
+    text = _DESIRED_WRAPPER_RE.sub("", text).strip()
     if text.startswith(('"', "'")):
         quote_char = text[0]
         close = -1
@@ -424,9 +439,14 @@ def _desired_claim_text(claim: str) -> str:
     ]
     if kept:
         text = " ".join(kept)
-    match = _WANT_FLIP_RE.search(text)
+    match = _WANT_FLIP_RE.search(text) or _NEED_FLIP_RE.search(text)
     if match:
         obj = text[match.end() :].strip().rstrip(".")
+        # A quoted customer sentence trailing the object ("... side: 'The
+        # outputs are ...'") is evidence for the object, never part of it.
+        quote_trail = re.search(r"\s*[:;,\-–—]\s*[\"']", obj)
+        if quote_trail:
+            obj = obj[: quote_trail.start()].strip().rstrip(".")
         if obj:
             if _MODAL_RE.search(obj):
                 text = obj[0].upper() + obj[1:] + "."
@@ -6428,6 +6448,10 @@ class CanonicalTestPlanReasoningService:
             "coverage_gate_result": "Coverage gate result",
         }
         section_items: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        # Dispositions suppressed from the human-facing evidence-gaps lane
+        # (settled research or planner boilerplate with no evidence linkage)
+        # remain in the trace; the render invariant exempts them explicitly.
+        skipped_open_dispositions: set[str] = set()
         # Issue understanding is WHAT THE TICKET STATES: only facts carrying
         # a ticket/human authority class belong.  Retrieved documentation may
         # establish existing product behavior downstream, but a doc-chunk
@@ -6617,6 +6641,9 @@ class CanonicalTestPlanReasoningService:
         research_by_question = {
             row.question_id: row for row in research_records or []
         }
+        dimension_by_question = {
+            row.question_id: row.dimension for row in questions
+        }
         for question in questions:
             if question.question_id in resolved_question_ids:
                 continue
@@ -6647,25 +6674,24 @@ class CanonicalTestPlanReasoningService:
                 # non-blocking question surfaces only when material evidence
                 # shows it can change acceptance behavior.  A question whose
                 # mandated research terminated with an answer (or a bounded
-                # negative) is settled; a not-applicable question with no
-                # evidence-linked disposition is boilerplate.
+                # negative) is settled; a planner-family question (no
+                # dimension) with not-applicable research is boilerplate.
                 research = research_by_question.get(question.question_id)
                 if research is not None and research.research_status in {
                     ResearchStatus.ANSWER_FOUND,
                     ResearchStatus.PARTIAL,
                 }:
                     continue
-                if research is not None and research.research_status in {
-                    ResearchStatus.NOT_APPLICABLE,
-                    ResearchStatus.NOT_REQUIRED,
-                }:
-                    has_evidence = any(
-                        row.evidence_ids or row.source_hypothesis_ids
-                        for row in dispositions
-                        if question.question_id in row.source_question_ids
-                    )
-                    if not has_evidence:
-                        continue
+                if (
+                    research is not None
+                    and research.research_status
+                    in {
+                        ResearchStatus.NOT_APPLICABLE,
+                        ResearchStatus.NOT_REQUIRED,
+                    }
+                    and question.dimension is None
+                ):
+                    continue
             section_items[key].append((question.question, question.question_id))
         # P1: clarification audit - stale/rejected clarifications stay visible;
         # admitted ones live in the trace (L1 lineage), never in AC source lines.
@@ -6702,6 +6728,39 @@ class CanonicalTestPlanReasoningService:
                     "FinalQEPlanRenderer has no section for disposition: "
                     f"{disposition.disposition.value}"
                 )
+            if key == "evidence_gaps" and disposition.source_question_ids:
+                # Same rule as the question loop: settled or boilerplate
+                # planner questions are not evidence gaps.  Boilerplate =
+                # planner-family question (no dimension) whose research is
+                # not applicable/required; dimension-linked questions carry
+                # real investigation linkage and stay visible.
+                settled = False
+                boilerplate = False
+                for question_id in disposition.source_question_ids:
+                    research = research_by_question.get(question_id)
+                    if research is None:
+                        continue
+                    if research.research_status in {
+                        ResearchStatus.ANSWER_FOUND,
+                        ResearchStatus.PARTIAL,
+                    }:
+                        settled = True
+                    elif (
+                        research.research_status
+                        in {
+                            ResearchStatus.NOT_APPLICABLE,
+                            ResearchStatus.NOT_REQUIRED,
+                        }
+                        and dimension_by_question.get(question_id) is None
+                    ):
+                        boilerplate = True
+                if settled or boilerplate:
+                    # Settled questions are answered, not gaps; boilerplate
+                    # rows without any evidence linkage are planner noise.
+                    # The disposition still lands in the trace (the render
+                    # invariant counts it via the plan's disposition list).
+                    skipped_open_dispositions.add(disposition.disposition_id)
+                    continue
             disposition_text = _plain_candidate(disposition.candidate)
             section_items[key].append((disposition_text, disposition.disposition_id))
             classification = classification_by_disposition.get(
@@ -7010,6 +7069,7 @@ class CanonicalTestPlanReasoningService:
             row.disposition_id
             for row in dispositions
             if row.disposition_id not in rendered_source_ids
+            and row.disposition_id not in skipped_open_dispositions
         )
         if missing_disposition_ids:
             raise RuntimeError(

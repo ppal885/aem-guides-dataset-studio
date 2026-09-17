@@ -2221,6 +2221,36 @@ def test_fj16_every_terminal_disposition_is_addressable_in_one_section() -> (
         row["disposition_id"]
         for row in result.output_payload["coverage_dispositions"]
     }
+    # Settled (research-answered) and dimension-less boilerplate
+    # planner questions are intentionally suppressed from the
+    # human-facing evidence-gaps lane; they stay in the trace.
+    payload = result.output_payload
+    research_by_q = {
+        row["question_id"]: row for row in payload.get("question_research", [])
+    }
+    question_by_id = {
+        row["question_id"]: row for row in payload.get("missing_questions", [])
+    }
+    suppressed: set[str] = set()
+    for row in payload["coverage_dispositions"]:
+        if row["disposition"] != CoverageDisposition.OPEN_QUESTION.value:
+            continue
+        settled = False
+        boilerplate = False
+        for question_id in row["source_question_ids"]:
+            research = research_by_q.get(question_id)
+            if research is None:
+                continue
+            if research["research_status"] in {"ANSWER_FOUND", "PARTIAL"}:
+                settled = True
+            elif research["research_status"] in {
+                "NOT_APPLICABLE",
+                "NOT_REQUIRED",
+            } and question_by_id.get(question_id, {}).get("dimension") is None:
+                boilerplate = True
+        if settled or boilerplate:
+            suppressed.add(row["disposition_id"])
+    expected_ids -= suppressed
     assert set(visible_counts) == expected_ids
     assert set(visible_counts.values()) == {1}
     all_source_ids = {
