@@ -451,3 +451,49 @@ def test_expansion_questions_still_satisfy_the_question_quality_contract() -> No
             for row in quality["family_satisfaction"]
             if row["status"] == "UNSATISFIED"
         ], packet["jira_key"]
+
+
+def test_every_semantic_dimension_has_a_usable_question_contract() -> None:
+    """Hardening for the latent gap this expansion exposed three times.
+
+    Adding a SemanticDimension member silently breaks question generation in
+    three separate direct-index tables. A missing keyword or question entry is a
+    KeyError; a question whose wording does not intersect its mapped relation's
+    terms is worse, because the question is generated and then rejected as
+    NO_RELATIONSHIP, which strands the family as UNSATISFIED without a visible
+    cause. Assert the contract for every member so the next dimension cannot
+    reintroduce it.
+    """
+
+    from app.services.canonical_missing_question_service import (
+        _PRODUCT_ASSUMPTION_RE,
+        _RELATION_TERMS,
+        _expected_relation,
+        _tokens,
+    )
+    from app.services.canonical_test_plan_reasoning_service import (
+        _DIMENSION_KEYWORDS,
+        _QUESTION_TEXT,
+    )
+
+    for dimension in SemanticDimension:
+        assert dimension in _DIMENSION_KEYWORDS, dimension.value
+        assert dimension in _QUESTION_TEXT, dimension.value
+
+        text = _QUESTION_TEXT[dimension].format(entity="the affected entity")
+
+        # A question must not presuppose the product decision it is asking about.
+        assert not _PRODUCT_ASSUMPTION_RE.search(text), (dimension.value, text)
+
+        # The question must be recognisable as being about its own relation,
+        # whether that relation is mapped explicitly or falls through to the
+        # DEFINED_BY default.
+        relation = _expected_relation(dimension)
+        terms = _RELATION_TERMS.get(relation, frozenset())
+        if terms:
+            assert _tokens(text) & set(terms), (
+                dimension.value,
+                relation.value,
+                text,
+                sorted(terms),
+            )
