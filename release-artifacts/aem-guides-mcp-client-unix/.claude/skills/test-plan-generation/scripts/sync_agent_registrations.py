@@ -11,6 +11,12 @@ verbatim.  Regenerate after editing a role contract:
 CI/review verification (fails on any drift):
 
     python scripts/sync_agent_registrations.py --check
+
+Registrations are written as raw bytes with LF newlines and no BOM.  The
+Copilot host only registers a custom agent whose file begins with exactly
+"---\n", so a Windows text-mode write (which translates LF to CRLF) silently
+unregisters every role agent, and a universal-newline read hides the damage
+from --check.
 """
 
 from __future__ import annotations
@@ -42,9 +48,9 @@ SKILL_AGENTS = _repo_root() / "skills" / "test-plan-generation" / "agents"
 REGISTRATIONS = _repo_root() / ".github" / "agents"
 
 # Read-only minimum tool surface per role (A5 section 13): no write, no
-# shell mutation, no Jira/Git mutation - research only.  send_session_message
-# is the return handoff: the leaf reports its strict result back to the
-# coordinator session (see each contract's "Return handoff" section).
+# shell mutation, no Jira/Git mutation - research only.  There is no session
+# tool: each role runs as a `task` subagent and returns its strict result as
+# its final message (see each contract's "Return handoff" section).
 ROLES = {
     "uac-doc-researcher": {
         "description": (
@@ -53,7 +59,7 @@ ROLES = {
             "packs and Experience League - with provenance for every "
             "discovered source; never writes ACs."
         ),
-        "tools": ["view", "grep", "web_fetch", "web_search", "send_session_message"],
+        "tools": ["view", "grep", "web_fetch", "web_search"],
     },
     "uac-code-researcher": {
         "description": (
@@ -62,7 +68,7 @@ ROLES = {
             "provenance; never converts implementation into acceptance "
             "behavior."
         ),
-        "tools": ["view", "grep", "send_session_message"],
+        "tools": ["view", "grep"],
     },
     "uac-attachment-researcher": {
         "description": (
@@ -70,7 +76,7 @@ ROLES = {
             "question: separates observed behavior from customer-stated "
             "desired behavior; never fabricates unreadable content."
         ),
-        "tools": ["view", "send_session_message"],
+        "tools": ["view"],
     },
 }
 
@@ -113,18 +119,18 @@ def main() -> int:
             print(f"MISSING canonical role contract: {canonical_path}")
             drift.append(name)
             continue
-        canonical = canonical_path.read_text(encoding="utf-8")
+        canonical = canonical_path.read_text(encoding="utf-8-sig")
         expected = _registration_text(name, canonical)
         if args.check:
             if not registration_path.exists():
                 print(f"MISSING registration: {registration_path}")
                 drift.append(name)
-            elif registration_path.read_text(encoding="utf-8") != expected:
+            elif registration_path.read_bytes() != expected.encode("utf-8"):
                 print(f"DRIFT: {registration_path} != {canonical_path}")
                 drift.append(name)
         else:
             REGISTRATIONS.mkdir(parents=True, exist_ok=True)
-            registration_path.write_text(expected, encoding="utf-8")
+            registration_path.write_bytes(expected.encode("utf-8"))
             print(f"synced: {registration_path}")
     if drift:
         print(f"\nFAIL: {len(drift)} role registration(s) drifted or missing")

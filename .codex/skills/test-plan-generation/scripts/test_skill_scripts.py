@@ -2424,24 +2424,50 @@ def test_uac_fidelity_reference() -> None:
         "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
     )
 
-    # Host event-loop protocol (terminal-event discipline): leaf lifecycle
-    # events must never become user-visible work items.
+    # Host delegation protocol: one UAC request = exactly one user-visible
+    # conversation.  Researchers stay parallel but run as hidden `task`
+    # subagents; `create_session` would create a sidebar thread per leaf.
     check(
-        "host protocol forbids leaf idle notifications",
-        "Do NOT set `notify_on_idle`" in skill_text,
+        "host protocol delegates research through the task tool",
+        "call the `task` tool with `agent_type`" in skill_text,
     )
     check(
-        "host protocol treats archive/idle events as internal terminal events",
+        "host protocol forbids user-visible sessions for research",
+        "NEVER use `create_session` (or any `open_*_session` tool) to run "
+        "research" in skill_text,
+    )
+    check(
+        "host protocol keeps researchers parallel",
+        '`mode: "background"`' in skill_text
+        and "BEFORE reading any result" in skill_text,
+    )
+    check(
+        "host protocol collects results through read_agent exactly once",
+        "with `read_agent`" in skill_text
+        and "consumed exactly once" in skill_text,
+    )
+    check(
+        "host protocol keeps no user-visible leaf conversation",
+        "creates NO user-visible conversation" in skill_text,
+    )
+
+    # Terminal-event discipline: lifecycle events are internal, emit nothing,
+    # and can never re-enter orchestration.
+    check(
+        "host protocol treats lifecycle events as internal terminal events",
         "INTERNAL TERMINAL EVENTS" in skill_text,
     )
     check(
-        "host protocol forbids recursive archive/response cycles",
-        "must never recursively trigger another archive/response cycle"
-        in skill_text,
+        "host protocol forbids recursive response cycles",
+        "must never recursively trigger another response cycle" in skill_text,
     )
     check(
-        "host protocol archives leaves in one batch after the final render",
-        "archive the run's leaf sessions in ONE batch" in skill_text,
+        "host protocol emits no user-visible message for terminal events",
+        "emit NO user-visible message for any of these events" in skill_text,
+    )
+    check(
+        "host protocol never re-enters orchestration for a stale leaf",
+        "never re-enter orchestration for it" in skill_text,
     )
     check(
         "host protocol locks the debug-mode exception",
@@ -2480,6 +2506,62 @@ def test_uac_fidelity_reference() -> None:
     counterpart = counterpart_root / "references" / "uac-reference-examples.md"
     if counterpart.is_file():
         check("Codex and Claude UAC references stay identical", reference_path.read_bytes() == counterpart.read_bytes())
+
+
+def test_agent_registrations() -> None:
+    """A5 role registrations must be byte-loadable by the Copilot host.
+
+    The host registers a custom agent only when its file begins with exactly
+    "---\\n".  A BOM or a CRLF newline silently unregisters the role, which
+    strands the coordinator with no researcher to delegate to and pushes it
+    back onto user-visible sessions.
+    """
+    sync = _load("sync_agent_registrations", "sync_agent_registrations.py")
+    for name in sorted(sync.ROLES):
+        path = sync.REGISTRATIONS / f"{name}.agent.md"
+        check(f"registration exists for {name}", path.exists())
+        if not path.exists():
+            continue
+        raw = path.read_bytes()
+        check(
+            f"{name} registration starts with exactly '---\\n'",
+            raw.startswith(b"---\n"),
+        )
+        check(
+            f"{name} registration carries no BOM",
+            not raw.startswith(b"\xef\xbb\xbf"),
+        )
+        check(f"{name} registration carries no CR byte", b"\r" not in raw)
+        check(
+            f"{name} registration declares no session-messaging tool",
+            b"send_session_message" not in raw,
+        )
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "sync_agent_registrations.py"
+    ).read_text(encoding="utf-8")
+    check(
+        "registration writer emits raw bytes, never Windows text mode",
+        'write_bytes(expected.encode("utf-8"))' in source,
+    )
+    check(
+        "registration drift guard compares raw bytes",
+        'read_bytes() != expected.encode("utf-8")' in source,
+    )
+
+    attributes = sync.REGISTRATIONS.parents[1] / ".gitattributes"
+    if attributes.exists():
+        rules = attributes.read_text(encoding="utf-8")
+        check(
+            "checkout pins .agent.md registrations to LF",
+            any(
+                line.split("#", 1)[0].strip().startswith("*.agent.md")
+                and "eol=lf" in line
+                for line in rules.splitlines()
+            ),
+        )
 
 
 def test_component_reference_routing() -> None:
@@ -15557,6 +15639,7 @@ def main() -> int:
     test_reasoning_required()
     test_authoring_state_contract()
     test_uac_fidelity_reference()
+    test_agent_registrations()
     test_component_reference_routing()
     test_relevance_prioritizer()
     test_disposition_classifier()

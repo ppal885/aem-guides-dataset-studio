@@ -8,12 +8,11 @@ tools:
   - grep
   - web_fetch
   - web_search
-  - send_session_message
 ---
 
 <!-- Generated from skills/test-plan-generation/agents/uac-doc-researcher.md by sync_agent_registrations.py; never edit by hand. -->
 
-﻿# UAC Doc Researcher
+# UAC Doc Researcher
 
 Existing specialized role invoked by the coordinator/main agent through the
 doc-research routing contract (`scripts/doc_research_routing.py`, manifest
@@ -158,10 +157,9 @@ research request:
   `DOC_RESEARCH_*` manifest vocabulary. Every finding's `source_refs` must
   come from the authorized references in the request. No prose, no markdown
   fences, no commentary around the JSON.
-- Return it by sending exactly one session message back to the coordinator
-  session identified in your kickoff, with the JSON object as the entire
-  message body. If session messaging is not in your toolset, make the JSON
-  object your entire final message instead.
+- Return it by making the JSON object your ENTIRE final message. You run in
+  your own context window; the coordinator reads that final message directly.
+  Emit no preamble, no trailing summary, and no status commentary around it.
 - Return ONLY the research payload. Execution receipts (provider, model,
   role-contract version) are attached by the host/coordinator from its own
   trusted observation - never self-report them, and never claim a model or
