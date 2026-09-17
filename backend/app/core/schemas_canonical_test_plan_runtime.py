@@ -446,6 +446,11 @@ class CanonicalRuntimeStage(StrEnum):
     CHANGE_SURFACE_EXTRACTOR = "ChangeSurfaceExtractor"
     EVIDENCE_BACKED_BEHAVIOR_GRAPH_BUILDER = "EvidenceBackedBehaviorGraphBuilder"
     BEHAVIOR_MODEL_BUILDER = "BehaviorModelBuilder"
+    # C1: broad behavioral discovery runs after the normalized behavior model and
+    # before closure, so dependent product semantics that can regress become
+    # material closure dimensions instead of being missed.  Discovery only; the
+    # acceptance gates downstream still decide what may become an AC.
+    BEHAVIORAL_COVERAGE_EXPANDER = "BehavioralCoverageExpander"
     SEMANTIC_BEHAVIORAL_CLOSURE_EXPLORER = "SemanticBehavioralClosureExplorer"
     MISSING_QUESTION_GENERATOR = "MissingQuestionGenerator"
     RESEARCH_REQUIREMENT_CLASSIFIER = "ResearchRequirementClassifier"
@@ -860,6 +865,9 @@ class SemanticDimension(StrEnum):
     GOVERNING_SEMANTICS = "GOVERNING_SEMANTICS"
     CONTROLLING_ATTRIBUTES = "CONTROLLING_ATTRIBUTES"
     GOVERNING_CONFIGURATION = "GOVERNING_CONFIGURATION"
+    # C1: where a displayed/exported/sorted/compared value actually comes from.
+    # A field named in a requirement is not atomic until this is considered.
+    VALUE_PROVENANCE = "VALUE_PROVENANCE"
     DIRECT_CONSUMERS = "DIRECT_CONSUMERS"
     SIBLING_CONSUMERS = "SIBLING_CONSUMERS"
     ALTERNATE_MECHANISMS = "ALTERNATE_MECHANISMS"
@@ -869,13 +877,26 @@ class SemanticDimension(StrEnum):
     SPECIALIZATIONS = "SPECIALIZATIONS"
     REFERENCED_CONTENT = "REFERENCED_CONTENT"
     NESTED_REFERENCED_CONTENT = "NESTED_REFERENCED_CONTENT"
+    # C1: feature-neutral indirection family.  Concrete product mechanisms
+    # (conref, conkeyref, keyref, key scope, mapref) are populated from evidence
+    # and vocabulary, never hardcoded as the definition of the dimension.
+    VALUE_RESOLUTION_OR_INDIRECTION = "VALUE_RESOLUTION_OR_INDIRECTION"
     ALTERNATE_REPRESENTATION = "ALTERNATE_REPRESENTATION"
     FALLBACK = "FALLBACK"
     ABSENT_VALUE = "ABSENT_VALUE"
     INVALID_VALUE = "INVALID_VALUE"
+    # C1: unresolved/broken target, undefined key, partial resolution.  Distinct
+    # from INVALID_VALUE: the value is well formed but cannot be resolved.
+    BROKEN_RESOLUTION = "BROKEN_RESOLUTION"
     POSITIVE_STATE = "POSITIVE_STATE"
     NEGATIVE_STATE = "NEGATIVE_STATE"
     LIFECYCLE = "LIFECYCLE"
+    # C1: identity/path movement kept separate from LIFECYCLE so a physical
+    # asset move/rename is never merged with a logical reorder.
+    IDENTITY_CHANGE = "IDENTITY_CHANGE"
+    # C1: does a derived/resolved/indexed value refresh when its source mutates,
+    # or can a stale result survive?
+    MUTATION_FRESHNESS = "MUTATION_FRESHNESS"
     CROSS_SURFACE_SYNC = "CROSS_SURFACE_SYNC"
     DOWNSTREAM_PROCESSOR = "DOWNSTREAM_PROCESSOR"
     GENERATED_OUTPUT = "GENERATED_OUTPUT"
@@ -938,6 +959,60 @@ class ClosureDisposition(StrEnum):
     COVERED = "COVERED"
     INVESTIGATED_AND_REJECTED = "INVESTIGATED_AND_REJECTED"
     UNRESOLVED_AND_EXPOSED = "UNRESOLVED_AND_EXPOSED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class CoverageExpansionAxis(StrEnum):
+    """C1: reusable behavioral-coverage-expansion axes.
+
+    Feature-neutral by construction: an axis describes a *kind* of dependent
+    product semantics that can regress, never an AEM Guides feature.  Concrete
+    variants are populated from evidence and product vocabulary.
+    """
+
+    VALUE_PROVENANCE = "VALUE_PROVENANCE"
+    FALLBACK_AND_ABSENCE = "FALLBACK_AND_ABSENCE"
+    VALUE_RESOLUTION_OR_INDIRECTION = "VALUE_RESOLUTION_OR_INDIRECTION"
+    IDENTITY_AND_LIFECYCLE = "IDENTITY_AND_LIFECYCLE"
+    CONTEXT_AND_SCOPE = "CONTEXT_AND_SCOPE"
+    CONSUMER_SURFACE_PARITY = "CONSUMER_SURFACE_PARITY"
+    MUTATION_AND_FRESHNESS = "MUTATION_AND_FRESHNESS"
+    NEGATIVE_AND_BROKEN_RESOLUTION = "NEGATIVE_AND_BROKEN_RESOLUTION"
+
+
+class CoverageExpansionTrigger(StrEnum):
+    """What in the normalized requirement made an axis material.
+
+    These are requirement *shapes* (a value is displayed, an order is defined,
+    an identity is referenced), not product names, so the same triggers apply
+    across feature families.
+    """
+
+    DISPLAYED_VALUE = "DISPLAYED_VALUE"
+    EXPORTED_VALUE = "EXPORTED_VALUE"
+    ORDERING_RULE = "ORDERING_RULE"
+    COMPARED_OR_FILTERED_VALUE = "COMPARED_OR_FILTERED_VALUE"
+    PERSISTED_VALUE = "PERSISTED_VALUE"
+    RESOLVED_REFERENCE = "RESOLVED_REFERENCE"
+    IDENTITY_REFERENCE = "IDENTITY_REFERENCE"
+    MULTIPLE_CONSUMER_SURFACES = "MULTIPLE_CONSUMER_SURFACES"
+    STATE_TRANSITION = "STATE_TRANSITION"
+    CONFIGURATION_DEPENDENCY = "CONFIGURATION_DEPENDENCY"
+
+
+class CoverageExpansionDisposition(StrEnum):
+    """C1 Invariant 3: discovery is not acceptance.
+
+    An expansion candidate is routed to one of these; ``AC_SUPPORTED`` only
+    records that the downstream acceptance pipeline *may* consider it, never
+    that it has been promoted.
+    """
+
+    AC_SUPPORTED = "AC_SUPPORTED"
+    QE_REGRESSION = "QE_REGRESSION"
+    RESEARCH_REQUIRED = "RESEARCH_REQUIRED"
+    OPEN_QUESTION = "OPEN_QUESTION"
+    OUT_OF_SCOPE = "OUT_OF_SCOPE"
     NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
@@ -2277,6 +2352,81 @@ class CanonicalBehaviorModel(BaseModel):
     generated_artifact_delivery: ApplicabilityState = ApplicabilityState.NOT_APPLICABLE
     generated_output_oracles: list[GeneratedOutputOracle] = Field(default_factory=list)
     lifecycle_operations: list[LifecycleOperation] = Field(default_factory=list)
+
+
+class BehavioralCoverageCandidate(BaseModel):
+    """One discovered dependent behavior that could regress.
+
+    A candidate is *discovery only*.  It carries no acceptance authority: it
+    exists so the dimension it names becomes material to closure, and so it can
+    be proven to have received an explicit disposition (Invariant 4).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str = ""
+    axis: CoverageExpansionAxis
+    subject: str
+    trigger: CoverageExpansionTrigger
+    dimensions: list[SemanticDimension] = Field(default_factory=list)
+    question: str
+    rationale: str
+    material: bool = True
+
+    @model_validator(mode="after")
+    def identify(self) -> "BehavioralCoverageCandidate":
+        if not self.subject.strip():
+            raise ValueError("a coverage candidate requires a subject")
+        if not self.dimensions:
+            raise ValueError("a coverage candidate must name at least one dimension")
+        self.dimensions = sorted(set(self.dimensions), key=lambda row: row.value)
+        identity = self.model_dump(mode="json", exclude={"candidate_id"})
+        expected = f"covexp:{stable_sha256(identity)[:32]}"
+        if self.candidate_id and self.candidate_id != expected:
+            raise ValueError("candidate_id does not match deterministic identity")
+        self.candidate_id = expected
+        return self
+
+
+class BehavioralCoverageExpansion(BaseModel):
+    """Output of the BehavioralCoverageExpander stage.
+
+    Broad discovery, strict promotion: this record widens what closure must
+    disposition, and changes nothing about evidence authority or acceptance
+    promotion.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["aem-guides-behavioral-coverage-expansion-v1"] = (
+        "aem-guides-behavioral-coverage-expansion-v1"
+    )
+    candidates: list[BehavioralCoverageCandidate] = Field(default_factory=list)
+    triggers: list[CoverageExpansionTrigger] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "BehavioralCoverageExpansion":
+        self.triggers = sorted(set(self.triggers), key=lambda row: row.value)
+        seen: set[str] = set()
+        unique: list[BehavioralCoverageCandidate] = []
+        for candidate in self.candidates:
+            if candidate.candidate_id in seen:
+                continue
+            seen.add(candidate.candidate_id)
+            unique.append(candidate)
+        self.candidates = unique
+        return self
+
+    @property
+    def activated_dimensions(self) -> set[SemanticDimension]:
+        """Dimensions that discovery proved material and closure must decide."""
+
+        return {
+            dimension
+            for candidate in self.candidates
+            if candidate.material
+            for dimension in candidate.dimensions
+        }
 
 
 class ClosureDimensionResult(BaseModel):
@@ -4624,6 +4774,8 @@ __all__ = [
     "CandidateTerminalDisposition",
     "ChangeSurface",
     "ChangeSurfaceKind",
+    "BehavioralCoverageCandidate",
+    "BehavioralCoverageExpansion",
     "ClosureDimensionResult",
     "CompatibilityProjectionLink",
     "ContractFact",
@@ -4704,6 +4856,9 @@ __all__ = [
     "RuntimeStageTrace",
     "RuntimeTrace",
     "ScopeResolution",
+    "CoverageExpansionAxis",
+    "CoverageExpansionDisposition",
+    "CoverageExpansionTrigger",
     "SemanticDimension",
     "ClosureDisposition",
     "MissingQuestion",

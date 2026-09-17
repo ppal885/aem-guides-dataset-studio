@@ -952,6 +952,13 @@ class CanonicalTestPlanRuntime:
                 domains, scope, surfaces, graph, facts
             ),
         )
+        expansion = stage(
+            CanonicalRuntimeStage.BEHAVIORAL_COVERAGE_EXPANDER,
+            [model, surfaces, facts],
+            lambda: self._reasoning.expand_behavioral_coverage(
+                model, surfaces, facts
+            ),
+        )
         investigation = self._qe_investigation.prepare_qe_investigation(
             request=request,
             facts=facts,
@@ -961,7 +968,7 @@ class CanonicalTestPlanRuntime:
             signals=abstract_signals,
             activations=reasoning_pattern_activations,
             deterministic_dimensions=self._reasoning.applicable_semantic_dimensions(
-                visible, model
+                visible, model, expansion=expansion
             ),
             pattern_lookup=pattern_lookup,
         )
@@ -973,6 +980,7 @@ class CanonicalTestPlanRuntime:
                 abstract_signals,
                 reasoning_pattern_activations,
                 investigation.mandatory_families,
+                expansion,
             ],
             lambda: self._reasoning.explore_semantic_closure(
                 visible,
@@ -980,6 +988,7 @@ class CanonicalTestPlanRuntime:
                 abstract_signals,
                 reasoning_pattern_activations,
                 investigation.mandatory_families,
+                expansion=expansion,
             ),
         )
         investigation_payload = investigation.model_dump(
@@ -1381,6 +1390,7 @@ class CanonicalTestPlanRuntime:
                 research_requirements,
                 question_research,
                 behavior_classifications,
+                expansion,
             ],
             lambda: self._reasoning.behavioral_completeness_gate(
                 closure,
@@ -1392,6 +1402,7 @@ class CanonicalTestPlanRuntime:
                 research_requirements,
                 question_research,
                 behavior_classifications,
+                expansion=expansion,
             ),
         )
         def promote_with_lifecycle() -> tuple[
@@ -1563,6 +1574,7 @@ class CanonicalTestPlanRuntime:
                 for row in research_worker_results
             ],
             "behavior_model": model.model_dump(mode="json"),
+            "behavioral_coverage_expansion": expansion.model_dump(mode="json"),
             "semantic_closure": [row.model_dump(mode="json") for row in closure],
             "missing_questions": [row.model_dump(mode="json") for row in questions],
             "directed_retrievals": [row.model_dump(mode="json") for row in retrievals],

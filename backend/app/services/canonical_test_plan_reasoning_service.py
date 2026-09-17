@@ -28,6 +28,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     BehaviorClassificationRecord,
     BehaviorHypothesis,
     BehaviorRelationType,
+    BehavioralCoverageCandidate,
+    BehavioralCoverageExpansion,
     CanonicalBehaviorModel,
     CanonicalEvidenceBundle,
     CandidateDedupDecision,
@@ -48,6 +50,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ContractPreservationState,
     CoverageDisposition,
     CoverageDispositionRecord,
+    CoverageExpansionAxis,
+    CoverageExpansionTrigger,
     CurrentnessState,
     DirectedRetrievalRecord,
     DitaOtProcessingState,
@@ -1383,6 +1387,51 @@ _DIMENSION_KEYWORDS: dict[SemanticDimension, tuple[str, ...]] = {
         "sync",
         "all views",
     ),
+    # C1: value-centric families.  These keywords decide only whether supplied
+    # evidence already resolves the dimension; they never define the dimension.
+    SemanticDimension.VALUE_PROVENANCE: (
+        "provenance",
+        "comes from",
+        "derived from",
+        "populated from",
+        "read from",
+        "computed",
+        "source of truth",
+    ),
+    SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION: (
+        "resolved",
+        "resolution",
+        "indirect",
+        "conref",
+        "conkeyref",
+        "keyref",
+        "key scope",
+        "reused content",
+    ),
+    SemanticDimension.IDENTITY_CHANGE: (
+        "moved",
+        "renamed",
+        "relocated",
+        "path change",
+        "identity",
+        "uuid",
+    ),
+    SemanticDimension.MUTATION_FRESHNESS: (
+        "stale",
+        "up to date",
+        "recompute",
+        "reindex",
+        "cached",
+        "after the source changes",
+    ),
+    SemanticDimension.BROKEN_RESOLUTION: (
+        "unresolved",
+        "broken",
+        "missing target",
+        "undefined key",
+        "cannot be resolved",
+        "dangling",
+    ),
     SemanticDimension.DOWNSTREAM_PROCESSOR: ("processor", "transformer", "downstream"),
     SemanticDimension.GENERATED_OUTPUT: ("generated", "output", "artifact", "page"),
     SemanticDimension.PERSISTED_STATE: ("persist", "repository state", "stored", "cq:"),
@@ -1414,19 +1463,267 @@ _QUESTION_TEXT: dict[SemanticDimension, str] = {
     SemanticDimension.REFERENCED_CONTENT: "Can referenced content reach {entity}?",
     SemanticDimension.NESTED_REFERENCED_CONTENT: "Can nested referenced content reach {entity}?",
     SemanticDimension.ALTERNATE_REPRESENTATION: "Is there another representation of {entity}?",
+    SemanticDimension.VALUE_PROVENANCE: "Where does the value shown for {entity} come from?",
+    SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION: "Can the value for {entity} be resolved indirectly through referenced or reused content?",
+    SemanticDimension.IDENTITY_CHANGE: "What happens to the stored state for {entity} when the underlying item is moved or renamed?",
+    SemanticDimension.MUTATION_FRESHNESS: "Does {entity} read an updated value after its source changes, or can an out-of-date value remain?",
+    SemanticDimension.BROKEN_RESOLUTION: "What is shown for {entity} when the reference cannot be resolved?",
     SemanticDimension.FALLBACK: "What fallback is used for {entity}?",
     SemanticDimension.ABSENT_VALUE: "What happens when the value for {entity} is absent?",
     SemanticDimension.INVALID_VALUE: "What happens when the value for {entity} is invalid?",
     SemanticDimension.POSITIVE_STATE: "What is the expected enabled state for {entity}?",
     SemanticDimension.NEGATIVE_STATE: "What is the expected disabled or failure state for {entity}?",
     SemanticDimension.LIFECYCLE: "Which lifecycle operations affect {entity}?",
-    SemanticDimension.CROSS_SURFACE_SYNC: "Which surfaces must stay synchronized for {entity}?",
+    SemanticDimension.CROSS_SURFACE_SYNC: "Which surfaces stay synchronized for {entity}, and which ones can show a different value?",
     SemanticDimension.DOWNSTREAM_PROCESSOR: "Which downstream processor consumes {entity}?",
     SemanticDimension.GENERATED_OUTPUT: "Which generated output proves {entity} is correct?",
     SemanticDimension.PERSISTED_STATE: "Which persisted state is written or read for {entity}?",
     SemanticDimension.VERSION_APPLICABILITY: "Which product versions support {entity}?",
     SemanticDimension.DEPLOYMENT_APPLICABILITY: "Which deployment modes support {entity}?",
     SemanticDimension.ROLE_PROFILE_APPLICABILITY: "Is {entity} user, role, or profile specific?",
+}
+
+
+# C1 behavioral coverage expansion.
+#
+# A requirement is described by what it *does* (a value is displayed, an order
+# is defined, an identity is referenced), never by the product feature it names.
+# These signals are ordinary requirement-shape English so the same table works
+# for an ordering ticket, a reference-resolution ticket, and a configuration
+# ticket alike.  Product vocabulary stays in `_DIMENSION_KEYWORDS`, which only
+# decides whether supplied evidence already resolves a dimension.
+_EXPANSION_TRIGGER_SIGNALS: dict[CoverageExpansionTrigger, tuple[str, ...]] = {
+    CoverageExpansionTrigger.DISPLAYED_VALUE: (
+        "display",
+        "shown",
+        "show",
+        "listed",
+        "column",
+        "label",
+        "title",
+        "visible",
+    ),
+    CoverageExpansionTrigger.EXPORTED_VALUE: (
+        "export",
+        "download",
+        "report",
+        "generated file",
+        "csv",
+    ),
+    CoverageExpansionTrigger.ORDERING_RULE: (
+        "order",
+        "sort",
+        "sequence",
+        "position",
+        "hierarchy",
+    ),
+    CoverageExpansionTrigger.COMPARED_OR_FILTERED_VALUE: (
+        "filter",
+        "search",
+        "compare",
+        "match",
+        "group",
+    ),
+    CoverageExpansionTrigger.PERSISTED_VALUE: (
+        "persist",
+        "stored",
+        "saved",
+        "metadata",
+        "property",
+    ),
+    CoverageExpansionTrigger.RESOLVED_REFERENCE: (
+        "reference",
+        "referenced",
+        "resolve",
+        "resolved",
+        "reuse",
+        "reused",
+        "link",
+    ),
+    CoverageExpansionTrigger.IDENTITY_REFERENCE: (
+        "move",
+        "moved",
+        "rename",
+        "renamed",
+        "delete",
+        "deleted",
+        "path",
+    ),
+    CoverageExpansionTrigger.STATE_TRANSITION: (
+        "state",
+        "status",
+        "transition",
+        "enable",
+        "disable",
+    ),
+    CoverageExpansionTrigger.CONFIGURATION_DEPENDENCY: (
+        "configuration",
+        "setting",
+        "preset",
+        "profile",
+        "flag",
+    ),
+}
+
+_EXPANSION_TRIGGER_AXES: dict[
+    CoverageExpansionTrigger, tuple[CoverageExpansionAxis, ...]
+] = {
+    CoverageExpansionTrigger.DISPLAYED_VALUE: (
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+        CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+    ),
+    CoverageExpansionTrigger.EXPORTED_VALUE: (
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+    ),
+    CoverageExpansionTrigger.ORDERING_RULE: (
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
+        CoverageExpansionAxis.CONTEXT_AND_SCOPE,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+    ),
+    CoverageExpansionTrigger.COMPARED_OR_FILTERED_VALUE: (
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
+    ),
+    CoverageExpansionTrigger.PERSISTED_VALUE: (
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+    ),
+    CoverageExpansionTrigger.RESOLVED_REFERENCE: (
+        CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION,
+        CoverageExpansionAxis.CONTEXT_AND_SCOPE,
+        CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+    ),
+    CoverageExpansionTrigger.IDENTITY_REFERENCE: (
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+        CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+    ),
+    CoverageExpansionTrigger.MULTIPLE_CONSUMER_SURFACES: (
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+    ),
+    CoverageExpansionTrigger.STATE_TRANSITION: (
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+    ),
+    CoverageExpansionTrigger.CONFIGURATION_DEPENDENCY: (
+        CoverageExpansionAxis.CONTEXT_AND_SCOPE,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+    ),
+}
+
+_EXPANSION_AXIS_DIMENSIONS: dict[
+    CoverageExpansionAxis, tuple[SemanticDimension, ...]
+] = {
+    CoverageExpansionAxis.VALUE_PROVENANCE: (SemanticDimension.VALUE_PROVENANCE,),
+    CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
+        SemanticDimension.FALLBACK,
+        SemanticDimension.ABSENT_VALUE,
+    ),
+    CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION: (
+        SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
+        SemanticDimension.REFERENCED_CONTENT,
+        SemanticDimension.NESTED_REFERENCED_CONTENT,
+    ),
+    # Physical identity change and ordinary lifecycle state are separate
+    # contracts: moving an asset is not the same product behavior as reordering
+    # an entry, so they are never collapsed into one dimension.
+    CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE: (
+        SemanticDimension.LIFECYCLE,
+        SemanticDimension.IDENTITY_CHANGE,
+    ),
+    CoverageExpansionAxis.CONTEXT_AND_SCOPE: (
+        SemanticDimension.PARENT_CONTEXT,
+        SemanticDimension.CHILD_CONTEXT,
+        SemanticDimension.HIERARCHY,
+    ),
+    CoverageExpansionAxis.CONSUMER_SURFACE_PARITY: (
+        SemanticDimension.CROSS_SURFACE_SYNC,
+        SemanticDimension.DIRECT_CONSUMERS,
+        SemanticDimension.SIBLING_CONSUMERS,
+        SemanticDimension.ALTERNATE_REPRESENTATION,
+    ),
+    CoverageExpansionAxis.MUTATION_AND_FRESHNESS: (
+        SemanticDimension.MUTATION_FRESHNESS,
+        SemanticDimension.CROSS_SURFACE_SYNC,
+    ),
+    CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION: (
+        SemanticDimension.BROKEN_RESOLUTION,
+        SemanticDimension.INVALID_VALUE,
+        SemanticDimension.NEGATIVE_STATE,
+    ),
+}
+
+_EXPANSION_AXIS_QUESTION: dict[CoverageExpansionAxis, str] = {
+    CoverageExpansionAxis.VALUE_PROVENANCE: (
+        "Where does the value shown for {subject} come from, and does every "
+        "supported way of setting it behave the same?"
+    ),
+    CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
+        "What is shown for {subject} when the expected value is missing or empty?"
+    ),
+    CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION: (
+        "Can the value for {subject} be supplied indirectly through referenced "
+        "or reused content, and is it resolved the same way?"
+    ),
+    CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE: (
+        "How does {subject} behave after the underlying item is added, moved, "
+        "renamed, reordered, or removed?"
+    ),
+    CoverageExpansionAxis.CONTEXT_AND_SCOPE: (
+        "Does the behavior of {subject} change with the surrounding context, "
+        "scope, or configuration it is used in?"
+    ),
+    CoverageExpansionAxis.CONSUMER_SURFACE_PARITY: (
+        "Do all supported surfaces present the same set, order, and resolved "
+        "value for {subject}?"
+    ),
+    CoverageExpansionAxis.MUTATION_AND_FRESHNESS: (
+        "Does {subject} stay up to date after its source value changes?"
+    ),
+    CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION: (
+        "What does {subject} show when the expected source or reference cannot "
+        "be resolved?"
+    ),
+}
+
+_EXPANSION_AXIS_RATIONALE: dict[CoverageExpansionAxis, str] = {
+    CoverageExpansionAxis.VALUE_PROVENANCE: (
+        "A named value is not atomic until every channel that can set it is known."
+    ),
+    CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
+        "Absence behavior is a separate product contract from the populated case."
+    ),
+    CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION: (
+        "An indirectly supplied value can reach the same surface through a "
+        "different resolution path."
+    ),
+    CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE: (
+        "Changing an item's identity or lifecycle state can regress behavior "
+        "that looked correct at creation time."
+    ),
+    CoverageExpansionAxis.CONTEXT_AND_SCOPE: (
+        "The same value can behave differently depending on the context it is "
+        "resolved in."
+    ),
+    CoverageExpansionAxis.CONSUMER_SURFACE_PARITY: (
+        "Every surface that presents the behavior can diverge from the others."
+    ),
+    CoverageExpansionAxis.MUTATION_AND_FRESHNESS: (
+        "A value that is correct once can go out of date after its source changes."
+    ),
+    CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION: (
+        "Broken and invalid inputs are a distinct contract from the positive path."
+    ),
 }
 
 
@@ -3546,6 +3843,87 @@ class CanonicalTestPlanReasoningService:
             lifecycle_operations=lifecycle,
         )
 
+    def expand_behavioral_coverage(
+        self,
+        model: CanonicalBehaviorModel,
+        surfaces: list[ChangeSurface],
+        facts: ContractFactSet,
+    ) -> BehavioralCoverageExpansion:
+        """Widen *discovery* to the behaviors that depend on the stated ask.
+
+        The literal requirement is never the whole product contract: a named
+        field is not atomic until its provenance, absence, indirect resolution,
+        identity changes, contexts and consumer surfaces have been considered.
+        This stage derives those dependent behaviors from requirement shape
+        alone, so the same reasoning applies to any feature family.
+
+        Discovery is not acceptance.  Nothing here promotes an acceptance
+        criterion; it only makes a dependent behavior material so the existing
+        closure, research and promotion pipeline must dispose of it explicitly.
+        """
+
+        entities = list(dict.fromkeys(row.entity for row in surfaces))[:12]
+        units = _semantic_text_units(
+            [
+                fact.literal
+                for fact in facts.facts
+                if fact.fact_type != ContractFactType.OUT_OF_SCOPE
+            ]
+            + entities
+            + list(model.primary_entities or [])
+        )
+        triggers: set[CoverageExpansionTrigger] = {
+            trigger
+            for trigger, signals in _EXPANSION_TRIGGER_SIGNALS.items()
+            if _units_contain_any(units, signals)
+        }
+        consumer_surfaces = {
+            row.entity
+            for row in surfaces
+            if row.kind
+            in {
+                ChangeSurfaceKind.CONSUMERS,
+                ChangeSurfaceKind.DOWNSTREAM_DECISION_CONSUMERS,
+            }
+        }
+        # Two independent readings of the same behavior can diverge, whether the
+        # second surface is declared structurally or implied by the requirement
+        # describing both a displayed and an exported form of one value.
+        if len(consumer_surfaces) > 1 or {
+            CoverageExpansionTrigger.DISPLAYED_VALUE,
+            CoverageExpansionTrigger.EXPORTED_VALUE,
+        } <= triggers:
+            triggers.add(CoverageExpansionTrigger.MULTIPLE_CONSUMER_SURFACES)
+
+        subjects = list(dict.fromkeys((model.primary_entities or []) + entities))[:4]
+        if not subjects:
+            subjects = ["the requested behavior"]
+
+        axis_triggers: dict[CoverageExpansionAxis, CoverageExpansionTrigger] = {}
+        for trigger in sorted(triggers, key=lambda row: row.value):
+            for axis in _EXPANSION_TRIGGER_AXES[trigger]:
+                axis_triggers.setdefault(axis, trigger)
+
+        candidates: list[BehavioralCoverageCandidate] = []
+        for axis, trigger in sorted(
+            axis_triggers.items(), key=lambda item: item[0].value
+        ):
+            for subject in subjects:
+                candidates.append(
+                    BehavioralCoverageCandidate(
+                        axis=axis,
+                        subject=subject,
+                        trigger=trigger,
+                        dimensions=list(_EXPANSION_AXIS_DIMENSIONS[axis]),
+                        question=_EXPANSION_AXIS_QUESTION[axis].format(subject=subject),
+                        rationale=_EXPANSION_AXIS_RATIONALE[axis],
+                    )
+                )
+        return BehavioralCoverageExpansion(
+            candidates=candidates,
+            triggers=sorted(triggers, key=lambda row: row.value),
+        )
+
     def explore_semantic_closure(
         self,
         bundle: CanonicalEvidenceBundle,
@@ -3553,11 +3931,14 @@ class CanonicalTestPlanReasoningService:
         signals: list[AbstractSignal] | None = None,
         activations: list[ReasoningPatternActivation] | None = None,
         mandatory_families: list[MandatoryInvestigationFamily] | None = None,
+        expansion: BehavioralCoverageExpansion | None = None,
     ) -> list[ClosureDimensionResult]:
         signals = signals or []
         activations = activations or []
         mandatory_families = mandatory_families or []
-        applicable = self.applicable_semantic_dimensions(bundle, model)
+        applicable = self.applicable_semantic_dimensions(
+            bundle, model, expansion=expansion
+        )
         applicable.update(
             row.family_id
             for row in mandatory_families
@@ -3643,6 +4024,7 @@ class CanonicalTestPlanReasoningService:
         self,
         bundle: CanonicalEvidenceBundle,
         model: CanonicalBehaviorModel,
+        expansion: BehavioralCoverageExpansion | None = None,
     ) -> set[SemanticDimension]:
         """Return the existing deterministic domain/model family set."""
 
@@ -3713,6 +4095,10 @@ class CanonicalTestPlanReasoningService:
                     SemanticDimension.PERSISTED_STATE,
                 }
             )
+        if expansion is not None:
+            # Behavioral coverage expansion only widens what must be decided.
+            # It never marks a dimension covered and never promotes anything.
+            applicable.update(expansion.activated_dimensions)
         return applicable
 
     def generate_missing_questions(
@@ -5643,6 +6029,7 @@ class CanonicalTestPlanReasoningService:
         research_requirements: list[ResearchRequirementRecord] | None = None,
         research_records: list[QuestionResearchRecord] | None = None,
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
+        expansion: BehavioralCoverageExpansion | None = None,
     ) -> GateDecision:
         questions_by_id = {row.question_id: row for row in questions}
         question_closure_ids = {
@@ -5662,6 +6049,24 @@ class CanonicalTestPlanReasoningService:
             for hypothesis_id in disposition.source_hypothesis_ids:
                 dispositions_by_hypothesis_id[hypothesis_id].append(disposition)
         failures: list[str] = []
+        if expansion is not None:
+            # Invariant: no silent candidate loss.  Expansion declaring a
+            # behavior material while closure answers NOT_APPLICABLE for every
+            # entity is exactly the silent drop this stage exists to prevent.
+            decided_dimensions = {
+                row.dimension
+                for row in closure
+                if row.applicability != ApplicabilityState.NOT_APPLICABLE
+            }
+            for dimension in sorted(
+                expansion.activated_dimensions, key=lambda row: row.value
+            ):
+                if dimension not in decided_dimensions:
+                    failures.append(
+                        "Behavioral coverage expansion marked a dependent behavior "
+                        "material but closure dropped it without a disposition: "
+                        f"{dimension.value}"
+                    )
         if research_requirements is not None:
             research_by_question = {
                 row.question_id: row for row in research_records or []

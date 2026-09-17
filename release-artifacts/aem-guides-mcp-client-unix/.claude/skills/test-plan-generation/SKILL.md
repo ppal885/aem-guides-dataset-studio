@@ -105,6 +105,7 @@ clones, or retrieve unrelated RAG before saving the selected Human correction.
 - Read `references/open-questions-catalog.md` before writing the `Open Questions` section.
 - Read `references/clarification-gate.md` after behavior/coverage discovery and before authoring acceptance criteria. Enumerate every material dimension, resolve it from evidence or ask the user, and stop while a blocking question is unanswered.
 - Read `references/v3-reasoning-authoring.md` and `references/discovery-disposition.md` before authoring any behavioral plan or revising its coverage. Build the real evidence-grounded model, run `v3_scaffold.py --manifest <manifest.json>` to create editable graph/closure/question/file-binding records, then run `dimension_synthesizer.py --manifest <manifest.scaffold.json> --json`. Replace every author-review placeholder with an inspected decision and carry each exact discovery through directed retrieval, verification, disposition, and promotion. An axis/feature tag or copied candidate without this chain leaves DISCOVERY REVIEW non-postable. Repeat discovery for a reported omission or scope/behavior change; a wording-only edit is not a fresh completeness run. Scaffold success is not gate success. Do not start from a v2 fixture or generate blanket waivers.
+- Read `references/behavioral-coverage-expansion.md` before authoring coverage for any plan whose requirement displays, exports, orders, filters, persists, resolves a reference, moves or renames an item, changes state, or depends on configuration. Populate `behavioral_coverage_expansion` so discovery widens past the literal ask to the behaviors that regress with it, and disposition every activated dimension explicitly. Discovery is not acceptance: an expansion candidate carries no acceptance authority and must not block an explicitly accepted Human contract.
 - Read `references/manifest-completeness.md` before finalizing the evidence manifest. Behavioral `behavior_model`, `coverage_hypotheses`, and `verifications` cannot use ordinary author waivers. Every reasoning waiver emits REVIEW and makes the receipt non-postable, including a genuinely reviewed escape.
 - Read `references/qe-completeness-coverage.md` before finalizing any plan with Open Questions, regression items, or QE/reviewer checks. Checkable reviewer requirements belong in ACs, not a separate QE-checks section; genuine undecided product outcomes remain Open Questions. Map every requested check to its AC or unresolved question before responding. For UAC-only output, omit a separate QE-checks section. Classify retained full-plan checklist items explicitly in `qe_completeness`.
 - Read `references/root-cause-fix-driven.md` whenever current evidence supplies a root cause, linked PR/commit/fix branch/diff, or a positive merged/fixed/verified claim. Populate `root_cause_fix` before authoring so the fix contract, preserved invariants, newly introduced risks, added tests, and verification gaps drive the plan instead of appearing only as citations.
@@ -524,6 +525,43 @@ NOT_APPLICABLE with a one-line reason — the gate fails closed if any is missin
 Only when every dimension above is dispositioned may you proceed to Phase 7. If the sweep
 surfaces a blocking unknown, resolve it from evidence or raise it as an Open Question FIRST
 — do not author around it.
+
+### Phase 6.5.5 — Behavioral Coverage Expansion (widen discovery, never acceptance)
+
+The sweep above catches the dimensions you thought to look for. This stage catches the
+ones the ticket never mentions. A named value is not atomic: before it can be treated as
+covered, the plan must also have considered where it comes from, what is shown when it is
+absent, whether it can be supplied indirectly through referenced or reused content, what a
+move or rename does to it, whether it can go stale, and whether every consumer surface
+agrees. Read `references/behavioral-coverage-expansion.md` and record the result in the
+manifest `behavioral_coverage_expansion` block, validated by
+`scripts/behavioral_coverage_expansion.py`. The canonical runtime enforces the same
+contract in its `BehavioralCoverageExpander` stage, which runs between
+`BehaviorModelBuilder` and `SemanticBehavioralClosureExplorer`.
+
+- **Derive triggers from requirement shape, never from a feature name.** A trigger fires on
+  what the requirement does — display, export, order, filter, persist, resolve a reference,
+  move or rename, change state, depend on configuration — so the same reasoning applies to
+  any product family. `MULTIPLE_CONSUMER_SURFACES` is derived, not matched: either two or
+  more consumer surfaces exist structurally, or the requirement describes both a displayed
+  and an exported form of one value.
+- **Map triggers to axes and axes to dimensions**, then treat every activated dimension as a
+  question you must answer from evidence. Activation is not coverage.
+- **Keep distinct contracts distinct.** Moving or renaming an item is not the same behavior
+  as an entry changing lifecycle state, and neither is the same as reordering. They get
+  separate dimensions, separate questions, and separate dispositions; never collapse them
+  to shorten the list.
+- **Discovery is not acceptance.** An expansion candidate carries no acceptance authority.
+  It lives in its own `covexp:` identifier namespace, can never be cited as the source for
+  an AC, and must not block an explicitly accepted Human contract. Promotion rules,
+  source authority, evidence roles, and the existing-vs-new behavior classification are
+  all unchanged.
+- **Nothing discovered may silently disappear.** Disposition every activated dimension
+  explicitly — covered, investigated and rejected, exposed as unresolved, routed to
+  research, or not applicable with a concrete reason. Omission is not a disposition, and
+  `NOT_APPLICABLE` or `INVESTIGATED_AND_REJECTED` without a reason fails the gate. An
+  unresolved activated dimension flows into the existing missing-question and mandatory
+  research path unchanged; `NOT_FOUND` still never asserts the opposite behavior.
 
 ### Phase 6.6 — Question-Based Reasoning (Planner → Research Router → Resolver)
 
