@@ -3729,11 +3729,24 @@ class CanonicalTestPlanReasoningService:
             # never reach human question text.  When every entity is raw, the
             # question is projected to its typed behavior dimension; the raw
             # evidence stays in the trace via source_closure_ids.
-            entity_text = (
-                ", ".join(clean_entities)
-                if clean_entities
-                else "the affected behavior"
-            )
+            #
+            # #51: the per-entity check is not enough - joining many
+            # individually clean tokens reconstitutes a comma dump
+            # ("skip_feature_if_flag, before_feature, 2688, ...").  More than
+            # two joined entities is an enumeration dump, so the question
+            # names the typed behavior dimension instead; the final question
+            # text is re-validated as a fail-safe either way.
+            if len(clean_entities) > 2:
+                entity_text = "the affected behavior"
+            elif clean_entities:
+                entity_text = ", ".join(clean_entities)
+            else:
+                entity_text = "the affected behavior"
+            question_text = _QUESTION_TEXT[dimension].format(entity=entity_text)
+            if not _human_question_safe(question_text):
+                question_text = _QUESTION_TEXT[dimension].format(
+                    entity="the affected behavior"
+                )
             family = families.get(dimension)
             target_sources = list(_target_sources(subject))
             if family is not None:

@@ -221,6 +221,41 @@ def test_equivalent_blocking_questions_deduplicate() -> None:
     assert len(consumer_questions[0].source_closure_ids) == 2
 
 
+def test_many_clean_entities_never_reconstitute_a_comma_dump() -> None:
+    """#51: the per-entity safety check is not sufficient - joining many
+    individually clean tokens rebuilds a grep/retrieval dump in the
+    human-facing question.  More than two entities project to the typed
+    behavior dimension instead."""
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [
+            _unresolved_closure("skip_feature_if_flag"),
+            _unresolved_closure("before_feature"),
+            _unresolved_closure("2688"),
+            _unresolved_closure("explicit_wait"),
+        ],
+        ScopeResolution(),
+        _facts("Export jobs must write a completion marker."),
+    )
+    assert questions
+    for question in questions:
+        assert _human_question_safe(question.question)
+        assert "the affected behavior" in question.question
+        assert "skip_feature_if_flag" not in question.question
+        assert question.question.count(",") == 0
+
+    # Two genuinely clean entities still name the actual subjects.
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [
+            _unresolved_closure("output history"),
+            _unresolved_closure("publish log"),
+        ],
+        ScopeResolution(),
+        _facts("Export jobs must write a completion marker."),
+    )
+    assert questions
+    assert "output history, publish log" in questions[0].question
+
+
 # ---------------------------------------------------------------------------
 # Domain-bound NFR activation (spec sections 10, 11, 12)
 # ---------------------------------------------------------------------------
