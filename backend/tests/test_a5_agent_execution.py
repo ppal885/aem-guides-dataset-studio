@@ -660,6 +660,44 @@ def test_lifecycle_language_requires_documented_existing_behavior() -> None:
         validate_agent_result_shape(negated, ResearchWorkerRole.DOC_RESEARCHER)
         is None
     )
+    # Sentence-scoped: the negation may sit far before the phrase.
+    negated_long = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": (
+                    "No consulted product documentation establishes this as "
+                    "delivered or current product behavior."
+                ),
+                "source_refs": [],
+                "evidence_role": "REQUIREMENT_CLARIFICATION",
+            }
+        ],
+    }
+    assert (
+        validate_agent_result_shape(
+            negated_long, ResearchWorkerRole.DOC_RESEARCHER
+        )
+        is None
+    )
+    # A later affirmative sentence still trips even after a negated one.
+    mixed = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": (
+                    "No comment establishes release state. The indicator is "
+                    "delivered in the current build."
+                ),
+                "source_refs": [],
+                "evidence_role": "REQUIREMENT_CLARIFICATION",
+            }
+        ],
+    }
+    assert (
+        validate_agent_result_shape(mixed, ResearchWorkerRole.DOC_RESEARCHER)
+        is not None
+    )
 
     # EXISTING_BEHAVIOR role but only a Jira comment behind it: provider
     # rejects (no documentation basis for current-behavior language).

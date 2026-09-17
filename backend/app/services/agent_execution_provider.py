@@ -366,13 +366,22 @@ _RESEARCHER_NEGATION_RE = re.compile(
 
 def _lifecycle_claimed(text: str) -> bool:
     """True only when lifecycle language is used AFFIRMATIVELY.  A disciplined
-    negation ("not established as current product behavior") is exactly the
-    language the rule exists to encourage, so it never trips the gate."""
+    negation anywhere earlier in the same sentence ("No consulted
+    documentation establishes this as delivered or current product
+    behavior") is exactly the language the rule exists to encourage, so it
+    never trips the gate."""
 
-    for match in _RESEARCHER_LIFECYCLE_RE.finditer(text or ""):
-        prefix = text[: match.start()]
-        if not _RESEARCHER_NEGATION_RE.search(prefix):
-            return True
+    for sentence in re.split(r"(?<=[.!?])\s+", text or ""):
+        for match in _RESEARCHER_LIFECYCLE_RE.finditer(sentence):
+            prefix = sentence[: match.start()]
+            if not _RESEARCHER_NEGATION_RE.search(
+                prefix.replace("\n", " ")
+            ) and not re.search(
+                r"\b(no|not|never|cannot|can't|doesn't|don't|didn't|isn't|without)\b",
+                prefix,
+                re.IGNORECASE,
+            ):
+                return True
     return False
 
 
