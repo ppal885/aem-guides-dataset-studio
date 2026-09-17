@@ -64,6 +64,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     GitHubImplementationVerificationHandoff,
     HumanClarification,
     HypothesisState,
+    InvestigationMateriality,
     IssueDomain,
     InvestigationFamilySatisfactionStatus,
     LifecycleOperation,
@@ -427,6 +428,64 @@ def scope_question_id(field: str) -> str:
         "blocking": blocking,
     }
     return f"question:{stable_sha256(identity)[:32]}"
+
+
+# Generic materiality gate: an applicability/configuration dimension becomes
+# a user-facing acceptance question only when admitted evidence indicates
+# that changing the dimension can change an acceptance-material outcome.
+# Mere existence of the setting, same-domain vocabulary, or an unknown value
+# is NOT material interaction.  The interaction evidence must tie the
+# dimension itself to conditional or differing behavior.
+_DIMENSION_INTERACTION_BEHAVIOR_RE = re.compile(
+    r"\b(?:enabled|disabled|differs?|different|changes?|changed|only|"
+    r"respects|honours?|honors?|ignores?|both|either|modes?|depends|"
+    r"depending|varies|vary|affects?)\b",
+    re.IGNORECASE,
+)
+
+# Per-dimension identity signals (the scope dimensions the runtime owns).
+_SCOPE_DIMENSION_SIGNALS: dict[str, tuple[str, ...]] = {
+    "ENABLE_DITA_OT_PROCESSING": ("dita-ot", "dita ot", "dita_ot"),
+    "PRIMARY_PRESET_TYPE": ("preset", "output type", "output format"),
+}
+
+# Human-readable dimension labels for research-first materiality probes.
+_SCOPE_FIELD_DIMENSION_LABELS: dict[str, str] = {
+    "ENABLE_DITA_OT_PROCESSING": "the processing mode",
+    "PRIMARY_PRESET_TYPE": "the output preset choice",
+}
+
+
+def _dimension_interaction_present(
+    semantic_units: list[str], field: str
+) -> bool:
+    """True only when the dimension is tied to conditional or differing
+    behavior within a bounded window around its own mention - never from the
+    dimension merely existing, and never from vocabulary in an unrelated
+    sentence of the same unit."""
+
+    signals = _SCOPE_DIMENSION_SIGNALS.get(field, ())
+    if not signals:
+        return False
+    text = " ".join(semantic_units)
+    for signal in signals:
+        for match in re.finditer(re.escape(signal), text):
+            start = max(0, match.start() - 60)
+            window = text[start : match.end() + 60]
+            if _DIMENSION_INTERACTION_BEHAVIOR_RE.search(window):
+                return True
+    return False
+
+
+def _dimension_signal_present(semantic_units: list[str], field: str) -> bool:
+    """True when admitted evidence mentions the dimension at all - a
+    plausible evidence-bound relationship that warrants a bounded
+    research-first materiality probe instead of silent suppression."""
+
+    signals = _SCOPE_DIMENSION_SIGNALS.get(field, ())
+    return any(
+        signal in unit for unit in semantic_units for signal in signals
+    )
 
 
 # P1: authority classes whose human clarification may establish an
@@ -2653,22 +2712,16 @@ class CanonicalTestPlanReasoningService:
                         dita_ot_basis = "HUMAN_CLARIFICATION"
                         applied_clarification_ids.append(admitted.clarification_id)
             if dita_ot == DitaOtProcessingState.UNRESOLVED:
-                # P1 material-question suppression: with no evidence that the
-                # changed behavior involves output generation, transformation,
-                # or delivery, the adjacent processing toggle is not materially
-                # connected to this ticket - resolve NOT_APPLICABLE with a
-                # recorded basis instead of escalating a generic dimension to
-                # the user.
-                generation_evidence_present = (
-                    _units_contain_any(
-                        semantic_units, _GENERATED_ARTIFACT_DELIVERY_SIGNALS
-                    )
-                    or _units_match(
-                        semantic_units, _CONTEXTUAL_GENERATED_ARTIFACT_DELIVERY_RE
-                    )
-                    or bool(dita_scope_units)
-                )
-                if not generation_evidence_present:
+                # Materiality gate (generic): the processing toggle becomes a
+                # user-facing acceptance question only when admitted evidence
+                # ties the dimension itself to conditional or differing
+                # behavior.  Same-domain vocabulary ("outputs", "processing")
+                # or an unknown value is NOT material interaction; without it
+                # the dimension is NOT_APPLICABLE to this acceptance contract
+                # with an auditable basis, never a blocking question.
+                if not _dimension_interaction_present(
+                    semantic_units, "ENABLE_DITA_OT_PROCESSING"
+                ):
                     dita_ot = DitaOtProcessingState.NOT_APPLICABLE
                     dita_ot_basis = "NO_MATERIAL_INTERACTION_EVIDENCE"
         out_literals = {
@@ -2729,10 +2782,42 @@ class CanonicalTestPlanReasoningService:
             }
         )
         unresolved: list[str] = []
+        dimension_materiality: dict[str, str] = {}
         if publishing and dita_ot == DitaOtProcessingState.UNRESOLVED:
             unresolved.append("ENABLE_DITA_OT_PROCESSING")
+            dimension_materiality["ENABLE_DITA_OT_PROCESSING"] = "MATERIAL"
+        elif dita_ot_basis == "NO_MATERIAL_INTERACTION_EVIDENCE":
+            # Three-way gate: no dimension signal at all is plainly
+            # non-material; a bare mention without a behavior tie is
+            # UNRESOLVED_MATERIALITY - a bounded research-first probe decides
+            # before any human question (never a blocking TBD by default).
+            if _dimension_signal_present(
+                semantic_units, "ENABLE_DITA_OT_PROCESSING"
+            ):
+                dimension_materiality["ENABLE_DITA_OT_PROCESSING"] = (
+                    "UNRESOLVED_MATERIALITY:RESEARCH_FIRST"
+                )
+            else:
+                dimension_materiality["ENABLE_DITA_OT_PROCESSING"] = (
+                    "NON_MATERIAL_TO_CURRENT_ACCEPTANCE:NO_MATERIAL_INTERACTION_EVIDENCE"
+                )
+        # PRIMARY_PRESET_TYPE: unknown preset is a blocking question only when
+        # evidence ties preset/output-type choice to conditional or differing
+        # behavior; merely being a publishing ticket is not material.
         if publishing and not preset:
-            unresolved.append("PRIMARY_PRESET_TYPE")
+            if _dimension_interaction_present(
+                semantic_units, "PRIMARY_PRESET_TYPE"
+            ):
+                unresolved.append("PRIMARY_PRESET_TYPE")
+                dimension_materiality["PRIMARY_PRESET_TYPE"] = "MATERIAL"
+            elif _dimension_signal_present(semantic_units, "PRIMARY_PRESET_TYPE"):
+                dimension_materiality["PRIMARY_PRESET_TYPE"] = (
+                    "UNRESOLVED_MATERIALITY:RESEARCH_FIRST"
+                )
+            else:
+                dimension_materiality["PRIMARY_PRESET_TYPE"] = (
+                    "NON_MATERIAL_TO_CURRENT_ACCEPTANCE:NO_MATERIAL_INTERACTION_EVIDENCE"
+                )
         if publishing and not by_type[ContractFactType.OUT_OF_SCOPE]:
             unresolved.append("OUT_OF_SCOPE")
         if publishing and not shared_path_outputs:
@@ -2749,6 +2834,7 @@ class CanonicalTestPlanReasoningService:
             enable_dita_ot_processing=dita_ot,
             dita_ot_resolution_basis=dita_ot_basis,
             applied_clarification_ids=applied_clarification_ids,
+            dimension_materiality=dimension_materiality,
             aem_sites_implementation=(
                 ApplicabilityState.NOT_APPLICABLE
                 if "aem sites" in normalized_out_scope
@@ -3413,6 +3499,39 @@ class CanonicalTestPlanReasoningService:
                     ),
                     blocking=blocking,
                     open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
+                )
+            )
+        # Research-first materiality probes (UX1/materiality gate): a dimension
+        # mentioned in evidence without an established behavior interaction is
+        # researched ("does it change this behavior?") before any value/scope
+        # question may reach the human.  Non-blocking; never a TBD; never a
+        # promotion block.
+        for field, decision in sorted(scope.dimension_materiality.items()):
+            if not decision.startswith("UNRESOLVED_MATERIALITY"):
+                continue
+            label = _SCOPE_FIELD_DIMENSION_LABELS.get(field, field)
+            questions.append(
+                MissingQuestion(
+                    question=(
+                        f"Does {label} change the behavior under acceptance "
+                        "here, given that existing evidence mentions it "
+                        "without establishing an interaction?"
+                    ),
+                    authority_subject=AuthoritySubject.ACTUAL_IMPLEMENTATION,
+                    target_source_types=sorted(
+                        {
+                            EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+                            EvidenceSourceType.DITA_SPECIFICATION,
+                            EvidenceSourceType.DITA_OT_DOCUMENTATION,
+                            EvidenceSourceType.CURRENT_CODE,
+                            EvidenceSourceType.CURRENT_PR,
+                            EvidenceSourceType.IMPLEMENTATION_DIFF,
+                        },
+                        key=lambda row: row.value,
+                    ),
+                    blocking=False,
+                    open_question_class=OpenQuestionClass.RESEARCH_REQUIRED,
+                    materiality=InvestigationMateriality.P1,
                 )
             )
         for fact in facts.facts:

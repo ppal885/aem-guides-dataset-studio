@@ -88,14 +88,19 @@ def _retention_facts() -> ContractFactSet:
 
 
 def _transformation_facts() -> ContractFactSet:
-    """A ticket whose evidence DOES involve output generation - the adjacent
-    processing toggle stays material and must still be asked."""
+    """A ticket whose evidence DOES establish a material interaction with the
+    processing toggle (behavior differs by mode) - the dimension stays
+    material and must still be asked.  Mere same-domain generation vocabulary
+    no longer qualifies (generic materiality gate)."""
 
     return ContractFactSet(
         contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
         facts=[
             _fact("The generated output must include the merged appendix."),
             _fact("Output generation must preserve the existing page order."),
+            _fact(
+                "The observable output differs between DITA-OT processing modes."
+            ),
         ],
     )
 
@@ -296,6 +301,9 @@ def test_answering_one_question_does_not_unblock_another() -> None:
         facts=[
             _fact("The generated output must include the merged appendix."),
             _fact(
+                "The observable output differs between DITA-OT processing modes."
+            ),
+            _fact(
                 'What does the human term "cleanup" mean?',
                 ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
             ),
@@ -308,9 +316,11 @@ def test_answering_one_question_does_not_unblock_another() -> None:
         [], scope, facts
     )
     blocking = {row.question_id for row in questions if row.blocking}
-    # The clarified DITA-OT question is gone; the independent preset-type and
-    # terminology questions keep blocking.
-    assert len(blocking) == 2
+    # The clarified DITA-OT question is gone; the preset question is
+    # suppressed by the generic materiality gate (no evidence ties preset
+    # choice to differing behavior here); the independent terminology
+    # question keeps blocking.
+    assert len(blocking) == 1
     assert not any("DITA-OT" in row.question for row in questions if row.blocking)
 
     admitted, _ = CANONICAL_REASONING_SERVICE.admit_clarifications(
@@ -564,7 +574,8 @@ def test_production_entry_point_resume_with_clarification() -> None:
 
     description = (
         "The generated page must include the merged appendix. "
-        "Output generation must preserve the existing page order."
+        "Output generation must preserve the existing page order. "
+        "The observable output differs between DITA-OT processing modes."
     )
     first = _run_runtime(_runtime_packet(description))
     first_questions = first.output_payload["missing_questions"]

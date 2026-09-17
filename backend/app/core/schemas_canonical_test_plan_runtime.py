@@ -1719,6 +1719,11 @@ class ScopeResolution(BaseModel):
     # or "HUMAN_CLARIFICATION" (P1 materiality + clarification resume).
     dita_ot_resolution_basis: str = ""
     applied_clarification_ids: list[str] = Field(default_factory=list)
+    # Generic dimension materiality decisions (spec: UNKNOWN VALUE is not a
+    # MATERIAL acceptance question).  field -> "MATERIAL" /
+    # "NON_MATERIAL_TO_CURRENT_ACCEPTANCE:<reason code>".  Recorded only when
+    # the gate made an explicit decision; absent means legacy/default.
+    dimension_materiality: dict[str, str] = Field(default_factory=dict)
     aem_sites_implementation: ApplicabilityState = ApplicabilityState.NOT_APPLICABLE
     in_scope: list[str] = Field(default_factory=list)
     out_of_scope: list[str] = Field(default_factory=list)

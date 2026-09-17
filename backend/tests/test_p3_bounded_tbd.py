@@ -311,7 +311,8 @@ def test_partial_promotion_production_run() -> None:
             "description": (
                 "Generation completes successfully but can contain log "
                 "entries reviewers miss. Authors publish the map as Native "
-                "PDF output."
+                "PDF output. The observable output differs between DITA-OT "
+                "processing modes."
             ),
             "labels": ["accepted_uac"],
             "acceptance_criteria": [

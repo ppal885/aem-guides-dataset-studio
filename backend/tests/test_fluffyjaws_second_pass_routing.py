@@ -780,10 +780,13 @@ def test_provider_failure_preserves_blocking_p0_as_an_open_question() -> None:
         "jira_key": "FWD-72",
         "issue": {
             "issue_key": "FWD-72",
-            # P1: the blocking scope question now requires material interaction
-            # evidence; "generated output" keeps the processing dimension
-            # materially connected so the blocking P0 premise still holds.
-            "summary": "Change an output preset setting used for generated output.",
+            # The blocking scope question requires material interaction
+            # evidence: the fixture states the observable output differs by
+            # processing mode, so the dimension is materially connected and
+            # the blocking P0 premise holds legitimately.
+            "summary": "Change an output preset setting used for generated "
+            "output. The observable output differs between DITA-OT "
+            "processing modes.",
         },
     }
     disabled_runtime = CanonicalTestPlanRuntime()
