@@ -1854,6 +1854,46 @@ def _flatten_strings(value: Any, path: str = "$") -> list[tuple[str, str]]:
     return rows
 
 
+_MAX_CODE_ENTITY_CHARS = 120
+_CODE_FILE_SUFFIX_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,9}$")
+_CODE_SYMBOL_RE = re.compile(
+    r"^[A-Za-z_$][A-Za-z0-9_$]*(?:[.:#][A-Za-z_$][A-Za-z0-9_$]*)*$"
+)
+_CAMEL_HUMP_RE = re.compile(r"[a-z0-9][A-Z]")
+_NON_PATH_CHARS = frozenset("\"'`{}()[];,=<>|*?")
+
+
+def _is_code_entity_literal(value: str) -> bool:
+    """Return True when a literal names a file or code symbol rather than prose.
+
+    Implementation evidence nests snippets, matched source lines, and test
+    titles beneath keys such as ``matches`` or ``file``.  ``_flatten_strings``
+    propagates an ancestor key into every descendant path, so an admitting path
+    says nothing about the leaf itself.  A changed *entity* is therefore
+    identified by the shape of its own value.
+    """
+
+    text = value.strip()
+    if not text or len(text) > _MAX_CODE_ENTITY_CHARS:
+        return False
+    if any(char in text for char in "\r\n\t"):
+        return False
+
+    if "/" in text or "\\" in text:
+        if _NON_PATH_CHARS & set(text):
+            return False
+        tail = re.split(r"[\\/]", text)[-1].strip()
+        return bool(tail) and bool(_CODE_FILE_SUFFIX_RE.search(tail))
+
+    if not _CODE_SYMBOL_RE.match(text):
+        return False
+    if any(separator in text for separator in "._:#$"):
+        return True
+    # A bare single token is only an entity when its own casing or digits mark
+    # it as an identifier; otherwise it is an ordinary word such as "model".
+    return bool(_CAMEL_HUMP_RE.search(text)) or any(char.isdigit() for char in text)
+
+
 def _words(value: str) -> set[str]:
     return {
         token
@@ -3621,9 +3661,18 @@ class CanonicalTestPlanReasoningService:
                     token in path.casefold() for token in ("match", "file", "source")
                 ):
                     continue
+                resolved_kind = kind or ChangeSurfaceKind.CHANGED_ENTITY
+                if (
+                    resolved_kind == ChangeSurfaceKind.CHANGED_ENTITY
+                    and not _is_code_entity_literal(literal)
+                ):
+                    # Snippets, matched lines, and test titles inherit an
+                    # admitting path from their parent key.  Admitting them as
+                    # entities floods directed retrieval with non-entity terms.
+                    continue
                 surfaces.append(
                     ChangeSurface(
-                        kind=kind or ChangeSurfaceKind.CHANGED_ENTITY,
+                        kind=resolved_kind,
                         entity=literal[:500],
                         source_evidence_ids=[record.evidence_id],
                         confidence=record.evidence_confidence,
