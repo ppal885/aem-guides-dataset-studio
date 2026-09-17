@@ -1568,6 +1568,15 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
 # documentation, specs, code, diffs, and automation text are evidence, not a
 # human asking anything - quoted sentences inside them must never become
 # "human term" clarification questions.
+_TICKET_UNDERSTANDING_AUTHORITIES = frozenset(
+    {
+        AuthorityClass.CUSTOMER_REQUEST,
+        AuthorityClass.USER_EXPECTATION,
+        AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
+        AuthorityClass.CONFIRMED_PRODUCT_DECISION,
+    }
+)
+
 _NON_HUMAN_TERMINOLOGY_SOURCES = frozenset(
     {
         EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
@@ -3463,6 +3472,7 @@ class CanonicalTestPlanReasoningService:
         scope: ScopeResolution,
         facts: ContractFactSet,
         investigation: QeInvestigationPreparation | None = None,
+        bundle: CanonicalEvidenceBundle | None = None,
     ) -> list[MissingQuestion]:
         questions: list[MissingQuestion] = []
         families = {
@@ -3609,10 +3619,34 @@ class CanonicalTestPlanReasoningService:
                 AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
                 AuthorityClass.SPECIFICATION_AUTHORITY,
             }
+            # A retrieved documentation/spec record carries specification-grade
+            # authority for WHAT IT DOCUMENTS, but it is not the ticket's
+            # answer: only facts sourced from the ticket's own accepted
+            # records (accepted UAC / product or engineering decision) may
+            # establish that the reported gap is already addressed.
+            accepted_evidence_ids: set[str] | None = None
+            if bundle is not None:
+                accepted_evidence_ids = {
+                    record.evidence_id
+                    for record in bundle.records
+                    if record.source_type
+                    in {
+                        EvidenceSourceType.ACCEPTED_UAC,
+                        EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+                        EvidenceSourceType.PRODUCT_DECISION,
+                        EvidenceSourceType.ENGINEERING_DECISION,
+                    }
+                }
             solution_established = any(
                 fact.authority_class in solution_authorities
                 and fact.fact_type != ContractFactType.PROBLEM_STATEMENT
                 and not _content_tokens(fact.literal) <= problem_tokens
+                and (
+                    accepted_evidence_ids is None
+                    or bool(
+                        set(fact.source_evidence_ids) & accepted_evidence_ids
+                    )
+                )
                 for fact in facts.facts
             )
             if not solution_established:
@@ -6006,6 +6040,10 @@ class CanonicalTestPlanReasoningService:
             "coverage_gate_result": "Coverage gate result",
         }
         section_items: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        # Issue understanding is WHAT THE TICKET STATES: only facts carrying
+        # a ticket/human authority class belong.  Retrieved documentation may
+        # establish existing product behavior downstream, but a doc-chunk
+        # sentence is never the issue's own understanding.
         understanding = [
             row
             for row in facts.facts
@@ -6016,6 +6054,7 @@ class CanonicalTestPlanReasoningService:
                 # source for thin tickets (no requirement signal, no promotion).
                 ContractFactType.CONTEXT_STATEMENT,
             }
+            and row.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
         ]
         for fact in understanding:
             section_items["issue_understanding"].append((fact.literal, fact.fact_id))

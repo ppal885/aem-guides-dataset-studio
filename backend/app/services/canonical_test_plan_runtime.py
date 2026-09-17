@@ -1001,6 +1001,7 @@ class CanonicalTestPlanRuntime:
                     scope,
                     facts,
                     investigation,
+                    bundle=visible,
                 )
                 if claude_question_submission is None
                 else []
