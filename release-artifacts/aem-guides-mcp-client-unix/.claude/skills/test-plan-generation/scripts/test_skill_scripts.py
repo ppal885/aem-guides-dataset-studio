@@ -2424,6 +2424,35 @@ def test_uac_fidelity_reference() -> None:
         "Final accepted UAC exists but its fidelity audit is missing" in checklist_text,
     )
 
+    # Host event-loop protocol (terminal-event discipline): leaf lifecycle
+    # events must never become user-visible work items.
+    check(
+        "host protocol forbids leaf idle notifications",
+        "Do NOT set `notify_on_idle`" in skill_text,
+    )
+    check(
+        "host protocol treats archive/idle events as internal terminal events",
+        "INTERNAL TERMINAL EVENTS" in skill_text,
+    )
+    check(
+        "host protocol forbids recursive archive/response cycles",
+        "must never recursively trigger another archive/response cycle"
+        in skill_text,
+    )
+    check(
+        "host protocol archives leaves in one batch after the final render",
+        "archive the run's leaf sessions in ONE batch" in skill_text,
+    )
+    check(
+        "host protocol locks the debug-mode exception",
+        "AGENT_RESEARCH_DEBUG" in skill_text,
+    )
+    check(
+        "host protocol posts exactly one research status line",
+        "Researching relevant Jira evidence, documentation, attachments and "
+        "implementation" in skill_text,
+    )
+
     authoring_reference = (
         skill_root / "references" / "authoring-state-uac.md"
     ).read_text(encoding="utf-8")
