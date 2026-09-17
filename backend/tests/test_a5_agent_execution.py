@@ -551,7 +551,11 @@ def _fake_retrieve_factory(monkeypatch, rows_by_substring):
     import app.services.doc_retriever_service as docs_mod
 
     def fake(query, k=5, max_snippet_chars=400, allowed_host_suffixes=None):
-        for substring, rows in rows_by_substring.items():
+        # Longest key first so precise keys ("equations") win over prefixes
+        # ("equation").
+        for substring, rows in sorted(
+            rows_by_substring.items(), key=lambda item: -len(item[0])
+        ):
             if substring in query.lower():
                 return {"query": query, "retrieval_mode": "semantic", "results": rows}
         return {"query": query, "retrieval_mode": "semantic", "results": []}
@@ -640,10 +644,14 @@ def test_duplicate_candidates_across_expansions_collapse(tmp_path, monkeypatch) 
     )
     candidates = payload["rag_candidates"]
     assert len(candidates) == 1
-    assert set(candidates[0]["matched_queries"]) == set(
-        payload["documentation_queries"]
-    )
-    assert len(candidates[0]["matched_queries"]) >= 2
+    assert set(candidates[0]["matched_queries"]) >= {
+        _OUTPUT_CLAIM,
+        next(
+            query
+            for query in payload["documentation_queries"]
+            if "generated outputs" in query.lower()
+        ),
+    }
 
 
 def test_expansion_terms_never_become_evidence(tmp_path, monkeypatch) -> None:
@@ -686,6 +694,135 @@ def test_irrelevant_expansion_cannot_override_original_query(tmp_path, monkeypat
     candidates = payload["rag_candidates"]
     assert candidates[0]["url"] == strong_original["url"]
     assert candidates[0]["score"] > candidates[1]["score"]
+
+
+import pytest
+
+@pytest.mark.parametrize(
+    "claim, stage1_row, target_row, corpus_term",
+    [
+        # Authoring: Jira wording never names the documentation phrasing.
+        (
+            "the mathml equation renders blank in the authoring canvas",
+            {
+                "url": "https://docs.example.test/authoring-mathml-intro",
+                "title": "MathML equations in the Web Editor",
+                "snippet": "How equations render inside the editor canvas.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-auth-1",
+            },
+            {
+                "url": "https://docs.example.test/authoring-equations-troubleshoot",
+                "title": "Troubleshoot blank equations in the Web Editor",
+                "snippet": "When equations render blank in the editor, check the MathML support.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-auth-2",
+            },
+            "equations",
+        ),
+        # Publishing: no bootstrap-map entry for this claim's wording.
+        (
+            "the rollout queue never drains overnight",
+            {
+                "url": "https://docs.example.test/publishing-queue-intro",
+                "title": "Publishing queue and deferred jobs",
+                "snippet": "Deferred jobs wait in the publishing queue.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-pub-1",
+            },
+            {
+                "url": "https://docs.example.test/publishing-queue-monitor",
+                "title": "Monitoring the publishing queue",
+                "snippet": "Watch deferred jobs and drain the publishing queue.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-pub-2",
+            },
+            "deferred",
+        ),
+        # Review: ticket slang vs documented term.
+        (
+            "review remarks vanish after a page reload",
+            {
+                "url": "https://docs.example.test/review-tasks-intro",
+                "title": "Review tasks in the Editor",
+                "snippet": "A review task collects review comments.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-rev-1",
+            },
+            {
+                "url": "https://docs.example.test/review-tasks-manage",
+                "title": "Managing review tasks and comments",
+                "snippet": "Review tasks persist comments across sessions.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-rev-2",
+            },
+            "tasks",
+        ),
+    ],
+)
+def test_corpus_observed_terminology_bridges_jira_and_doc_wording(
+    tmp_path, monkeypatch, claim, stage1_row, target_row, corpus_term
+) -> None:
+    """Authoring/Publishing/Review fixtures: the Jira wording never matches
+    the documentation wording and no dictionary entry covers it - the
+    generic pseudo-relevance pass harvests the corpus's own phrasing from
+    the first-pass candidate and the reformulated query finds the target
+    documentation."""
+
+    # The corpus term must not come from any dictionary: it is absent from
+    # the claim, the vocabulary, and the bootstrap map.
+    assert corpus_term not in claim.lower()
+    payload = _doc_pending_payload(
+        tmp_path,
+        monkeypatch,
+        claim,
+        {
+            claim.lower().split()[2]: [stage1_row],
+            corpus_term: [target_row],
+        },
+    )
+    candidates = payload["rag_candidates"]
+    urls = {candidate["url"] for candidate in candidates}
+    assert target_row["url"] in urls
+    target = next(c for c in candidates if c["url"] == target_row["url"])
+    # The target was surfaced by a corpus-phrasing query, not the original
+    # claim (which never contained the documentation's term).
+    assert claim not in target["matched_queries"]
+    assert any(corpus_term in query.lower() for query in target["matched_queries"])
+    # And that term was harvested from the corpus, not from a dictionary:
+    assert corpus_term not in payload["rag_expansion_terms"]
+
+
+def test_domain_classification_boosts_but_never_filters(tmp_path, monkeypatch) -> None:
+    # "publish" maps to the taxonomy's publishing domain.  The same
+    # candidate must score exactly +0.1 with the matching area metadata and
+    # never be dropped when the metadata is absent.
+    base_row = {
+        "url": "https://docs.example.test/pub-area",
+        "title": "Publishing warnings",
+        "snippet": "Output History publish log warnings.",
+        "corpus": "aem_guides",
+        "chunk_id": "chunk-area-yes",
+        "area": "publishing",
+    }
+    payload = _doc_pending_payload(
+        tmp_path, monkeypatch, _OUTPUT_CLAIM, {"output history": [base_row]}
+    )
+    boosted = next(
+        c for c in payload["rag_candidates"] if c["url"] == base_row["url"]
+    )
+
+    no_area = dict(base_row)
+    no_area["area"] = ""
+    payload2 = _doc_pending_payload(
+        tmp_path / "second", monkeypatch, _OUTPUT_CLAIM, {"output history": [no_area]}
+    )
+    unboosted = next(
+        c for c in payload2["rag_candidates"] if c["url"] == base_row["url"]
+    )
+    assert round(boosted["score"] - unboosted["score"], 4) == 0.1
+    # No filtering either way: the candidate is present in both runs.
+    assert boosted["url"] == unboosted["url"] == base_row["url"]
 
 
 def test_doc_request_receives_rag_candidates_before_live_verification(

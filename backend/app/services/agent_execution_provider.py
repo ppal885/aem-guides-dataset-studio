@@ -288,6 +288,54 @@ def _documentation_query_plan(claim: str) -> tuple[list[str], list[str]]:
     return plan[:4], used
 
 
+def _claim_domains(text: str) -> set[str]:
+    """Light claim-side domain signal from the existing AEM Guides taxonomy.
+    Used only to BOOST candidates whose own metadata declares a matching
+    area - never to filter any candidate out."""
+
+    try:
+        from app.core.aem_guides_taxonomy import get_domain_specs
+    except Exception:
+        return set()
+    out: set[str] = set()
+    for dom_id, keywords, _weight in get_domain_specs():
+        if any(str(keyword).casefold() in text for keyword in keywords):
+            out.add(dom_id)
+    return out
+
+
+def _corpus_phrasing_terms(
+    claim: str, candidates: list[dict], *, max_terms: int = 5
+) -> list[str]:
+    """Pseudo-relevance feedback: harvest the terminology the INDEXED
+    DOCUMENTATION itself uses from the first-pass candidates' titles and
+    snippets.  This is the primary expansion mechanism - it grows with the
+    corpus and needs no hand-maintained dictionary."""
+
+    claim_tokens = set(re.findall(r"[a-z][a-z0-9-]{3,}", (claim or "").casefold()))
+    scores: dict[str, float] = {}
+    for index, candidate in enumerate(candidates[:5]):
+        weight = 1.0 / (index + 1)
+        title_tokens = dict.fromkeys(
+            re.findall(r"[a-z][a-z0-9-]{3,}", (candidate.get("title") or "").casefold())
+        )
+        snippet_tokens = dict.fromkeys(
+            re.findall(
+                r"[a-z][a-z0-9-]{3,}", (candidate.get("snippet") or "").casefold()
+            )
+        )
+        for token in title_tokens:
+            scores[token] = scores.get(token, 0.0) + 2.0 * weight
+        for token in snippet_tokens:
+            scores[token] = scores.get(token, 0.0) + 0.5 * weight
+    ordered = sorted(scores, key=lambda token: (-scores[token], token))
+    return [
+        token
+        for token in ordered
+        if token not in claim_tokens and token not in _QUERY_STOPWORDS
+    ][:max_terms]
+
+
 def _rag_documentation_candidates(
     claim: str, *, top_k: int = 5
 ) -> tuple[list[dict], str, list[str], list[str]]:
@@ -315,12 +363,13 @@ def _rag_documentation_candidates(
     modes: list[str] = []
     claim_tokens = set(re.findall(r"[a-z][a-z0-9-]{3,}", (claim or "").casefold()))
     errors: list[str] = []
-    for query in queries:
+
+    def _merge(query: str) -> None:
         try:
             payload = retrieve_relevant_docs_with_diagnostics(query[:4000], k=top_k)
         except Exception as exc:
             errors.append(f"{exc.__class__.__name__}")
-            continue
+            return
         mode = str(payload.get("retrieval_mode") or "none")
         if mode not in modes:
             modes.append(mode)
@@ -340,6 +389,7 @@ def _rag_documentation_candidates(
                     "title": str(row.get("title") or ""),
                     "url": str(row.get("url") or ""),
                     "snippet": _excerpt(row.get("snippet") or ""),
+                    "area": str(row.get("area") or row.get("aem_guides_area") or ""),
                     "matched_queries": [],
                     "retrieval_modes": [],
                     "discovery_lead": True,
@@ -351,7 +401,19 @@ def _rag_documentation_candidates(
                 candidate["retrieval_modes"].append(mode)
             candidate["_ranks"].append(rank)
 
+    for query in queries:
+        _merge(query)
+    # Pseudo-relevance feedback: one extra pass using the phrasing the
+    # indexed documentation itself used in the first-pass candidates.
+    prf_terms = _corpus_phrasing_terms(claim, list(merged.values()))
+    if prf_terms:
+        prf_query = "AEM Guides " + " ".join(prf_terms)
+        if prf_query not in queries:
+            queries.append(prf_query)
+            _merge(prf_query)
+
     claim_query = claim
+    claim_domains = _claim_domains((claim or "").casefold())
     candidates: list[dict] = []
     for candidate in merged.values():
         ranks = candidate.pop("_ranks")
@@ -359,7 +421,18 @@ def _rag_documentation_candidates(
         original_bonus = 0.5 if claim_query in candidate["matched_queries"] else 0.0
         text = (candidate["title"] + " " + candidate["snippet"]).casefold()
         overlap = len(claim_tokens & set(re.findall(r"[a-z][a-z0-9-]{3,}", text)))
-        candidate["score"] = round(rrf + original_bonus + 0.02 * overlap, 4)
+        # Domain classification BOOSTS matching candidates only; nothing is
+        # ever filtered out by domain.
+        domain_bonus = (
+            0.1
+            if claim_domains
+            and candidate.get("area")
+            and candidate["area"].casefold() in {d.casefold() for d in claim_domains}
+            else 0.0
+        )
+        candidate["score"] = round(
+            rrf + original_bonus + 0.02 * overlap + domain_bonus, 4
+        )
         candidates.append(candidate)
     candidates.sort(key=lambda row: row["score"], reverse=True)
     candidates = candidates[:top_k]
