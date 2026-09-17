@@ -194,92 +194,182 @@ def _load_guides_vocabulary() -> dict:
     return {}
 
 
-def _suggested_documentation_queries(claim: str) -> list[str]:
-    """Generic, vocabulary-routed documentation search seeds for the DOC
-    researcher: match the requested claim against the curated AEM Guides
-    product vocabulary (canonical terms + synonym groups) and build bounded
-    queries from matched canonical terms plus the claim's own significant
-    tokens.  Nothing here is ticket-specific; routing comes from the claim
-    text and the shipped vocabulary file only."""
+def _load_doc_query_expansions() -> list[dict]:
+    import json as _json
+
+    current = Path(__file__).resolve()
+    for ancestor in current.parents:
+        candidate = (
+            ancestor
+            / "skills"
+            / "test-plan-generation"
+            / "data"
+            / "doc_query_expansions.json"
+        )
+        if candidate.exists():
+            try:
+                data = _json.loads(candidate.read_text(encoding="utf-8-sig"))
+            except Exception:
+                return []
+            return [
+                row
+                for row in data.get("expansions", [])
+                if isinstance(row, dict) and row.get("concept") and row.get("doc_terms")
+            ]
+    return []
+
+
+def _term_present(term: str, text: str) -> bool:
+    return bool(
+        len(term) > 3
+        and re.search(r"(?<![\w-])" + re.escape(term.casefold()) + r"(?![\w-])", text)
+    )
+
+
+def _documentation_query_plan(claim: str) -> tuple[list[str], list[str]]:
+    """Bounded documentation query plan: the ORIGINAL claim is always the
+    first query; a small set of high-value alternates follows, derived from
+    the shipped product vocabulary (canonical terms + synonym groups) and
+    the provenance-tagged bootstrap expansion map (Jira-side concept ->
+    documentation-side terminology).  Expansion terms are retrieval hints,
+    never evidence.  Returns (queries, expansion_terms_used)."""
 
     text = (claim or "").casefold()
     if not text.strip():
-        return []
+        return [], []
+    queries = [claim]
+    used: list[str] = []
+
     vocab = _load_guides_vocabulary()
-    terms = [
+    vocab_terms = [
         term for term in vocab.get("canonical_terms", []) if isinstance(term, str)
     ]
     for group in vocab.get("synonyms", []) or []:
         if isinstance(group, dict):
-            terms.extend(
-                t for t in group.get("terms", []) if isinstance(t, str)
-            )
-    matched = sorted(
-        {
-            term
-            for term in terms
-            if len(term) > 3
-            and re.search(
-                r"(?<![\w-])" + re.escape(term.casefold()) + r"(?![\w-])", text
-            )
-        },
-        key=str.casefold,
+            group_terms = [t for t in group.get("terms", []) if isinstance(t, str)]
+            if any(_term_present(t, text) for t in group_terms):
+                # The claim uses one name; documentation may use its sibling.
+                for t in group_terms:
+                    if not _term_present(t, text) and t not in used:
+                        used.append(t)
+            vocab_terms.extend(group_terms)
+
+    matched_vocab = sorted(
+        {t for t in vocab_terms if _term_present(t, text)}, key=str.casefold
     )
+    for row in _load_doc_query_expansions():
+        if any(_term_present(str(concept), text) for concept in row["concept"]):
+            for term in row["doc_terms"]:
+                term = str(term)
+                if not _term_present(term, text) and term not in used:
+                    used.append(term)
+
     tokens = [
         token
         for token in re.findall(r"[a-z][a-z0-9-]{3,}", text)
         if token not in _QUERY_STOPWORDS
     ]
-    queries: list[str] = []
-    if matched:
-        queries.append("AEM Guides " + " ".join(matched[:4]))
-    if tokens:
+    # Alternate 1: documentation-side terminology for the matched concepts.
+    if used:
+        queries.append("AEM Guides " + " ".join(used[:6]))
+    # Alternate 2: the product's canonical names plus the claim's own
+    # significant tokens (helps when documentation uses the canonical name).
+    if matched_vocab:
+        queries.append("AEM Guides " + " ".join((matched_vocab[:3] + tokens[:3])))
+    elif tokens:
         queries.append("AEM Guides " + " ".join(tokens[:6]))
+    # Bound the plan: original + at most 3 alternates.
     seen: set[str] = set()
-    out: list[str] = []
+    plan: list[str] = []
     for query in queries:
         if query not in seen:
             seen.add(query)
-            out.append(query)
-    return out[:3]
+            plan.append(query)
+    return plan[:4], used
 
 
 def _rag_documentation_candidates(
     claim: str, *, top_k: int = 5
-) -> tuple[list[dict], str]:
-    """Discovery leads from the existing indexed AEM Guides / product
-    documentation retrieval layer (``doc_retriever_service`` - the same
-    retrieval the pipeline's full_rag path uses: Chroma, then
-    JSON+embedding, then lexical).  Returns (candidates, status_note).
-    Candidates are discovery input for the delegated DOC researcher - never
-    acceptance authority, and a retrieval score is never authority."""
+) -> tuple[list[dict], str, list[str], list[str]]:
+    """RAG discovery for the DOC researcher over the existing indexed
+    product-documentation retrieval layer, run across the bounded query
+    plan (original claim first, vocabulary/terminology expansions after).
+    Results merge by source (url/chunk), keeping every surfacing query as
+    provenance, and rerank for the ORIGINAL research question (reciprocal
+    rank fusion + a bonus for surfacing under the original query + claim
+    token overlap).  Returns (candidates, status, queries, expansion_terms).
+    Candidates are discovery leads - never evidence or acceptance claims,
+    and a retrieval score is never authority."""
 
+    queries, expansion_terms = _documentation_query_plan(claim)
+    if not queries:
+        return [], "rag retrieval unavailable: empty claim", [], []
     try:
         from app.services.doc_retriever_service import (
             retrieve_relevant_docs_with_diagnostics,
         )
+    except Exception as exc:  # pragma: no cover - import guard
+        return [], f"rag retrieval unavailable: {exc.__class__.__name__}", queries, expansion_terms
 
-        payload = retrieve_relevant_docs_with_diagnostics(
-            (claim or "")[:4000], k=top_k
-        )
-    except Exception as exc:
-        return [], f"rag retrieval unavailable: {exc.__class__.__name__}"
-    rows = payload.get("results") or []
-    mode = str(payload.get("retrieval_mode") or "none")
+    merged: dict[str, dict] = {}
+    modes: list[str] = []
+    claim_tokens = set(re.findall(r"[a-z][a-z0-9-]{3,}", (claim or "").casefold()))
+    errors: list[str] = []
+    for query in queries:
+        try:
+            payload = retrieve_relevant_docs_with_diagnostics(query[:4000], k=top_k)
+        except Exception as exc:
+            errors.append(f"{exc.__class__.__name__}")
+            continue
+        mode = str(payload.get("retrieval_mode") or "none")
+        if mode not in modes:
+            modes.append(mode)
+        for rank, row in enumerate(payload.get("results") or []):
+            key = (
+                str(row.get("url") or "")
+                or str(row.get("chunk_id") or row.get("id") or "")
+                or str(row.get("title") or "")
+            )
+            if not key:
+                continue
+            candidate = merged.get(key)
+            if candidate is None:
+                candidate = {
+                    "chunk_id": str(row.get("chunk_id") or row.get("id") or ""),
+                    "source_type": str(row.get("corpus") or "aem_guides"),
+                    "title": str(row.get("title") or ""),
+                    "url": str(row.get("url") or ""),
+                    "snippet": _excerpt(row.get("snippet") or ""),
+                    "matched_queries": [],
+                    "retrieval_modes": [],
+                    "discovery_lead": True,
+                    "_ranks": [],
+                }
+                merged[key] = candidate
+            candidate["matched_queries"].append(query)
+            if mode not in candidate["retrieval_modes"]:
+                candidate["retrieval_modes"].append(mode)
+            candidate["_ranks"].append(rank)
+
+    claim_query = claim
     candidates: list[dict] = []
-    for row in rows:
-        candidates.append(
-            {
-                "chunk_id": str(row.get("chunk_id") or row.get("id") or ""),
-                "source_type": str(row.get("corpus") or "aem_guides"),
-                "title": str(row.get("title") or ""),
-                "url": str(row.get("url") or ""),
-                "score": row.get("score"),
-                "snippet": _excerpt(row.get("snippet") or ""),
-            }
-        )
-    status = f"ok:{mode}" if candidates else f"no candidates:{mode}"
-    return candidates, status
+    for candidate in merged.values():
+        ranks = candidate.pop("_ranks")
+        rrf = sum(1.0 / (rank + 1) for rank in ranks)
+        original_bonus = 0.5 if claim_query in candidate["matched_queries"] else 0.0
+        text = (candidate["title"] + " " + candidate["snippet"]).casefold()
+        overlap = len(claim_tokens & set(re.findall(r"[a-z][a-z0-9-]{3,}", text)))
+        candidate["score"] = round(rrf + original_bonus + 0.02 * overlap, 4)
+        candidates.append(candidate)
+    candidates.sort(key=lambda row: row["score"], reverse=True)
+    candidates = candidates[:top_k]
+    if candidates:
+        status = "ok:" + "+".join(modes or ["none"])
+    elif errors:
+        status = "rag retrieval unavailable: " + ",".join(sorted(set(errors)))
+    else:
+        status = "no candidates:" + "+".join(modes or ["none"])
+    return candidates, status, queries, expansion_terms
 
 
 def _attachment_files(
@@ -939,14 +1029,18 @@ class HostMediatedResearchProvider:
             # discovery input; the leaf verifies before citing).
             if request.worker_role == ResearchWorkerRole.DOC_RESEARCHER:
                 payload["documentation_roots"] = _documentation_roots()
-                payload["documentation_queries"] = (
-                    _suggested_documentation_queries(request.requested_claim)
-                )
-                candidates, rag_status = _rag_documentation_candidates(
-                    request.requested_claim
-                )
+                (
+                    candidates,
+                    rag_status,
+                    doc_queries,
+                    expansion_terms,
+                ) = _rag_documentation_candidates(request.requested_claim)
+                payload["documentation_queries"] = doc_queries
                 payload["rag_candidates"] = candidates
                 payload["rag_status"] = rag_status
+                # Retrieval hints only - provenance for the coordinator and
+                # audit, never evidence.
+                payload["rag_expansion_terms"] = expansion_terms
             # Bind the role-contract version AT EMISSION: the result must
             # answer this request under the contract this request was
             # emitted with, regardless of later contract edits.

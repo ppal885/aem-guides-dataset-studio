@@ -1,0 +1,25 @@
+{
+  "schema_version": "aem-guides-doc-query-expansions-v1",
+  "governance": "BOOTSTRAP",
+  "note": "Retrieval-only query expansion hints for documentation RAG discovery. Each entry maps product concepts as they appear in Jira/ticket wording to the terminology product documentation actually uses. These are retrieval hints only: they never become evidence, never appear in source lines, and never become acceptance claims. Grow this list through the same provenance discipline as guides_vocabulary.json (a real retrieval miss plus the documentation page that used the different term). Keep it small; broad synonym dictionaries are not the mechanism.",
+  "expansions": [
+    {
+      "concept": ["output history", "output run history"],
+      "doc_terms": ["generated outputs", "outputs tab", "output generation", "map dashboard", "map console"],
+      "provenance": "BOOTSTRAP",
+      "rationale": "Product documentation describes per-run output status under Generated Outputs / Outputs tab on the Map dashboard and Map console, not under the phrase output history."
+    },
+    {
+      "concept": ["traffic light", "warning indicator", "status indicator", "warning icon"],
+      "doc_terms": ["output warnings", "publish log", "view log", "output generation log", "status"],
+      "provenance": "BOOTSTRAP",
+      "rationale": "Documentation describes warning visibility through the output/publish log and status columns, not through the customer phrase traffic light."
+    },
+    {
+      "concept": ["publish log", "publishing log"],
+      "doc_terms": ["output log", "view log", "download log", "troubleshooting"],
+      "provenance": "BOOTSTRAP",
+      "rationale": "The log viewer for a generated output is documented under output-generation troubleshooting actions (View log/Download log)."
+    }
+  ]
+}

@@ -544,47 +544,31 @@ def test_attachment_files_materialize_content_or_exact_error(tmp_path) -> None:
     assert "no content URL" in files[0]["error"]
 
 
-def test_doc_request_receives_rag_candidates_before_live_verification(
-    tmp_path, monkeypatch
-) -> None:
-    """An output-history / publishing-warning claim must reach the DOC
-    researcher WITH retrieval candidates from the existing indexed product
-    documentation (chunk id, title, url, score, snippet) and
-    vocabulary-routed queries - before any live document verification the
-    leaf performs.  Retrieval is faked; the wiring is what is proven."""
-
-    import json
+def _fake_retrieve_factory(monkeypatch, rows_by_substring):
+    """A plan-aware fake of the pipeline doc retriever: returns the mapped
+    rows only when the query contains the mapped substring."""
 
     import app.services.doc_retriever_service as docs_mod
-    from app.services.agent_execution_provider import HostMediatedResearchProvider
 
-    def fake_retrieve(query, k=5, max_snippet_chars=400, allowed_host_suffixes=None):
-        assert "output history" in query.lower() or "publish" in query.lower()
-        return {
-            "query": query,
-            "retrieval_mode": "semantic",
-            "results": [
-                {
-                    "url": "https://experienceleague.adobe.com/en/docs/output-generation",
-                    "title": "Generate output",
-                    "snippet": "The Map dashboard output history shows each run's status and log.",
-                    "score": 0.42,
-                    "corpus": "aem_guides",
-                    "chunk_id": "chunk-1",
-                }
-            ],
-        }
+    def fake(query, k=5, max_snippet_chars=400, allowed_host_suffixes=None):
+        for substring, rows in rows_by_substring.items():
+            if substring in query.lower():
+                return {"query": query, "retrieval_mode": "semantic", "results": rows}
+        return {"query": query, "retrieval_mode": "semantic", "results": []}
 
     monkeypatch.setattr(
-        docs_mod, "retrieve_relevant_docs_with_diagnostics", fake_retrieve
+        docs_mod, "retrieve_relevant_docs_with_diagnostics", fake
     )
+    return docs_mod
 
+
+def _doc_pending_payload(tmp_path, monkeypatch, claim, rows_by_substring):
+    import json
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    _fake_retrieve_factory(monkeypatch, rows_by_substring)
     record = _record("doc-rag", "baseline", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION)
-    bundle = _bundle(record)
-    claim = (
-        "Does the Output History on the Map dashboard show publishing "
-        "warnings from the publish log?"
-    )
     question = _question(claim)
     requirement = _requirement(
         question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
@@ -600,24 +584,131 @@ def test_doc_request_receives_rag_candidates_before_live_verification(
         authorized_source_refs=[record.evidence_id],
     )
     provider = HostMediatedResearchProvider(store=tmp_path)
-    provider.execute(request, bundle=bundle, question=question, requirement=requirement)
+    provider.execute(request, bundle=_bundle(record), question=question, requirement=requirement)
     pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
-    payload = json.loads(pending.read_text(encoding="utf-8"))
+    return json.loads(pending.read_text(encoding="utf-8"))
 
-    assert payload["rag_status"] == "ok:semantic"
+
+# The regression fixture family: an output-history / publishing-warning
+# question whose indexed documentation uses output-generation / map
+# dashboard terminology.  Production logic stays ticket-agnostic; only this
+# fixture uses these terms.
+_OUTPUT_CLAIM = (
+    "Does the Output History on the outputs panel show publishing "
+    "warnings from the publish log?"
+)
+_OUTPUT_DOC_ROW = {
+    "url": "https://docs.example.test/output-generation",
+    "title": "Output generation troubleshooting",
+    "snippet": "The Map dashboard Generated Outputs list shows each run's status and its log.",
+    "corpus": "aem_guides",
+    "chunk_id": "chunk-out-1",
+}
+
+
+def test_query_plan_always_retains_the_original_query_first(tmp_path, monkeypatch) -> None:
+    payload = _doc_pending_payload(tmp_path, monkeypatch, _OUTPUT_CLAIM, {})
+    assert payload["documentation_queries"][0] == _OUTPUT_CLAIM
+    assert len(payload["documentation_queries"]) <= 4
+
+
+def test_vocabulary_expansion_improves_recall_across_terminology(tmp_path, monkeypatch) -> None:
+    # The doc only surfaces when the query carries documentation-side
+    # terminology ("generated outputs" / "map dashboard"), which the claim's
+    # own words ("output history") never contain.
+    payload = _doc_pending_payload(
+        tmp_path, monkeypatch, _OUTPUT_CLAIM, {"generated outputs": [_OUTPUT_DOC_ROW]}
+    )
     candidates = payload["rag_candidates"]
     assert len(candidates) == 1
-    assert candidates[0]["title"] == "Generate output"
-    assert candidates[0]["url"].startswith("https://experienceleague.adobe.com")
-    assert candidates[0]["score"] == 0.42
-    assert "output history" in candidates[0]["snippet"].lower()
+    assert candidates[0]["url"] == _OUTPUT_DOC_ROW["url"]
+    assert any(
+        "generated outputs" in query.lower()
+        for query in candidates[0]["matched_queries"]
+    )
+    assert "generated outputs" in payload["rag_expansion_terms"]
 
-    # Vocabulary routing: the claim routes toward Map dashboard / output
-    # vocabulary, never a generic overview query.
+
+def test_duplicate_candidates_across_expansions_collapse(tmp_path, monkeypatch) -> None:
+    # Same URL surfaced by both the original claim and the expansion: one
+    # candidate, both queries recorded as provenance.
+    payload = _doc_pending_payload(
+        tmp_path,
+        monkeypatch,
+        _OUTPUT_CLAIM,
+        {"output history": [_OUTPUT_DOC_ROW], "generated outputs": [_OUTPUT_DOC_ROW]},
+    )
+    candidates = payload["rag_candidates"]
+    assert len(candidates) == 1
+    assert set(candidates[0]["matched_queries"]) == set(
+        payload["documentation_queries"]
+    )
+    assert len(candidates[0]["matched_queries"]) >= 2
+
+
+def test_expansion_terms_never_become_evidence(tmp_path, monkeypatch) -> None:
+    payload = _doc_pending_payload(
+        tmp_path, monkeypatch, _OUTPUT_CLAIM, {"generated outputs": [_OUTPUT_DOC_ROW]}
+    )
+    assert payload["rag_expansion_terms"]
+    # Expansion terms are retrieval hints: candidates are marked as discovery
+    # leads and carry no evidence authority of their own.
+    assert all(
+        candidate.get("discovery_lead") is True
+        for candidate in payload["rag_candidates"]
+    )
+
+
+def test_irrelevant_expansion_cannot_override_original_query(tmp_path, monkeypatch) -> None:
+    strong_original = {
+        "url": "https://docs.example.test/original-strong",
+        "title": "Output History warnings",
+        "snippet": "Output History shows publishing warnings from the publish log.",
+        "corpus": "aem_guides",
+        "chunk_id": "chunk-orig",
+    }
+    weak_expansion = {
+        "url": "https://docs.example.test/expansion-weak",
+        "title": "Unrelated page",
+        "snippet": "Completely unrelated content.",
+        "corpus": "aem_guides",
+        "chunk_id": "chunk-weak",
+    }
+    payload = _doc_pending_payload(
+        tmp_path,
+        monkeypatch,
+        _OUTPUT_CLAIM,
+        {
+            "output history": [strong_original],
+            "generated outputs": [weak_expansion],
+        },
+    )
+    candidates = payload["rag_candidates"]
+    assert candidates[0]["url"] == strong_original["url"]
+    assert candidates[0]["score"] > candidates[1]["score"]
+
+
+def test_doc_request_receives_rag_candidates_before_live_verification(
+    tmp_path, monkeypatch
+) -> None:
+    """An output-history / publishing-warning claim reaches the DOC
+    researcher WITH merged, provenance-carrying retrieval candidates -
+    before any live document verification the leaf performs."""
+
+    payload = _doc_pending_payload(
+        tmp_path, monkeypatch, _OUTPUT_CLAIM, {"output history": [_OUTPUT_DOC_ROW]}
+    )
+    assert payload["rag_status"].startswith("ok:")
+    candidates = payload["rag_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["title"] == _OUTPUT_DOC_ROW["title"]
+    assert _OUTPUT_CLAIM in candidates[0]["matched_queries"]
+    assert "semantic" in candidates[0]["retrieval_modes"]
+    assert candidates[0]["score"] is not None
+    assert "generated outputs" in candidates[0]["snippet"].lower()
+    # Vocabulary routing stays away from generic overview queries.
     queries = [q.lower() for q in payload["documentation_queries"]]
-    assert queries
-    assert any("map dashboard" in q or "output preset" in q for q in queries)
-    assert any("publish" in q or "output" in q for q in queries)
+    assert queries[0] == _OUTPUT_CLAIM.lower()
     assert all("overview" not in q for q in queries)
 
 
