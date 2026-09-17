@@ -81,11 +81,26 @@ def test_convergence_conflicts_and_unknowns_are_explicit() -> None:
         question,
         ResearchWorkerStatus.CONFLICTED,
         findings=(_finding("Comment claims WARN lines set the flag.", "REQUIREMENT_CLARIFICATION"),),
-        conflicts=("Comment says WARN; code at HEAD only flags Error/Fatal.",),
+        conflicts=("The ticket requires WARN to set the flag; the accepted scope note sets it only on failures.",),
     )
     records = CONVERGENCE_SERVICE.evaluate([question], [], [conflicted])
     assert records[0].status == ConvergenceStatus.CONFLICTED
     assert "WARN" in records[0].conflicts[0]
+    assert records[0].conflict_classes == ["PRODUCT_CONTRACT"]
+
+    # A requirement-vs-code mismatch is an implementation finding, never a
+    # product decision.
+    mismatch = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(_finding("Comment claims WARN lines set the flag.", "REQUIREMENT_CLARIFICATION"),),
+        conflicts=("Fix comment says WARN lines set the flag; code at HEAD flags only Error/Fatal.",),
+    )
+    records = CONVERGENCE_SERVICE.evaluate([question], [], [mismatch])
+    assert records[0].conflict_classes == ["REQUIREMENT_IMPLEMENTATION_MISMATCH"]
+    assert records[0].status == ConvergenceStatus.CONVERGED_WITH_LIMITS
+    assert not records[0].acceptance_changing
+    assert records[0].implementation_findings
 
     missing = _result(question, ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
                       limitations=["Searched approved docs: nothing relevant."])
@@ -168,7 +183,7 @@ def test_blocked_render_carries_evidence_and_conflict_for_decisions() -> None:
                 "REQUIREMENT_CLARIFICATION",
             ),
         ),
-        conflicts=("Fix comment says WARN lines; code at HEAD flags only Error/Fatal.",),
+        conflicts=("The ticket requires the indicator on every warned output; the accepted scope note limits it to failed outputs.",),
     )
     convergence = CONVERGENCE_SERVICE.evaluate([question], [], [result])
     assert convergence[0].decision  # acceptance-changing conflict

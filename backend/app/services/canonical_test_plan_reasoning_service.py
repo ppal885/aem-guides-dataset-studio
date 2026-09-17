@@ -91,6 +91,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ResearchRequirementRecord,
     ResearchStatus,
     ResearchWorkerStatus,
+    CanonicalRuntimeStage,
     RetrievalStatus,
     ScopeResolution,
     SemanticDimension,
@@ -366,13 +367,36 @@ _DESIRED_WRAPPER_RE = re.compile(
     r"^[^.]{0,120}?\b(?:states|says|reads|notes)\b[^:]{0,40}:\s*",
     re.IGNORECASE,
 )
+# Meta/evidence sentences are provenance, never the contract: they mention
+# the evidence itself instead of product behavior.
+_META_SENTENCE_RE = re.compile(
+    r"\b(?:verbatim|matches the jira|customer-stated|recorded as|"
+    r"not (?:a|an) product requirement|acceptance truth|"
+    r"provenance and prioritization)\b",
+    re.IGNORECASE,
+)
+# "The customer (X) states they want Y" / "the customer wants Y": Y is the
+# requirement; the wanting frame is attribution.
+_WANT_FLIP_RE = re.compile(
+    r"\b(?:the\s+customer\s*(?:\([^)]*\))?|customer|they)\s+"
+    r"(?:explicitly\s+)?(?:states?|says?|notes?)(?:\s+they)?\s*"
+    r"wants?\s+(?:that\s+)?",
+    re.IGNORECASE,
+)
+_MODAL_RE = re.compile(r"\b(?:must|shall|should|will)\b", re.IGNORECASE)
+_PARTICIPLE_TAIL_RE = re.compile(
+    r",\s*(restored|carried over|added|shown|provided|available|displayed|"
+    r"surfaced|reinstated|aligned|present)\b",
+    re.IGNORECASE,
+)
 
 
 def _desired_claim_text(claim: str) -> str:
-    """Normalize a DESIRED_BEHAVIOR finding into readable proposed-AC text:
-    strip the attribution wrapper, prefer the researcher's distilled
-    sentence over the verbatim customer quote, and bound at a sentence
-    boundary (never mid-word)."""
+    """Normalize a DESIRED_BEHAVIOR finding into a short observable outcome:
+    strip the attribution wrapper, prefer the researcher's distilled sentence
+    over the verbatim customer quote, drop meta/evidence sentences, flip the
+    wanting frame into a requirement modal, and bound at a sentence boundary
+    (never mid-word)."""
 
     text = _DESIRED_WRAPPER_RE.sub("", str(claim).strip()).strip()
     if text.startswith(('"', "'")):
@@ -386,8 +410,41 @@ def _desired_claim_text(claim: str) -> str:
             idx = text.find(quote_char, idx + 1)
         if close > 0:
             quoted = text[1:close].strip()
-            trailing = text[close + 1 :].strip()
-            text = trailing or ("Customer-stated desired behavior: " + quoted)
+            trailing = text[close + 1 :].strip().lstrip("-–— ").strip()
+            text = trailing or quoted
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", text)
+        if sentence.strip()
+    ]
+    kept = [
+        sentence
+        for sentence in sentences
+        if not _META_SENTENCE_RE.search(sentence)
+    ]
+    if kept:
+        text = " ".join(kept)
+    match = _WANT_FLIP_RE.search(text)
+    if match:
+        obj = text[match.end() :].strip().rstrip(".")
+        if obj:
+            if _MODAL_RE.search(obj):
+                text = obj[0].upper() + obj[1:] + "."
+            else:
+                tail = _PARTICIPLE_TAIL_RE.search(obj)
+                if tail:
+                    # "X, restored in Y" -> "X must be restored in Y."
+                    head = obj[: tail.start()].strip()
+                    text = (
+                        head[0].upper()
+                        + head[1:]
+                        + " must be "
+                        + tail.group(1).lower()
+                        + obj[tail.end() :]
+                        + "."
+                    )
+                else:
+                    text = obj[0].upper() + obj[1:] + " must be present."
     if len(text) > 320:
         cut = text[:320]
         for sep in (". ", "? ", "! "):
@@ -396,6 +453,31 @@ def _desired_claim_text(claim: str) -> str:
                 return cut[: pos + 1].strip()
         return cut.rsplit(" ", 1)[0].rstrip() + "."
     return text
+
+
+def _normalized_desired_claims(
+    claims: list[tuple[str, list[str]]], limit: int = 2
+) -> list[tuple[str, list[str]]]:
+    """Normalize desired-behavior claims and keep the strongest distinct
+    outcomes first (a distilled observable sentence beats a bare quote)."""
+
+    normalized: list[tuple[str, list[str]]] = []
+    for claim, refs in claims:
+        text = _desired_claim_text(claim)
+        if text and all(text != existing for existing, _ in normalized):
+            normalized.append((text, refs))
+    normalized.sort(key=lambda item: -min(len(item[0]), 320))
+    return normalized[:limit]
+
+
+# Reviewer contract: meta/evidence commentary inside an AC.  These markers
+# describe the evidence, never the product behavior under test.
+_AC_META_PROSE_RE = re.compile(
+    r"\b(?:customer-stated|verbatim|states they want|states:|the slide|"
+    r"the attachment shows|evidence shows|research found|"
+    r"documentation establishes|as per slide)\b",
+    re.IGNORECASE,
+)
 
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
     IssueDomain.PUBLISHING: (
@@ -4984,16 +5066,14 @@ class CanonicalTestPlanReasoningService:
                 # terminal disposition is the PROPOSED candidate, not an open
                 # question.  Only the residual acceptance-changing decision
                 # (carried by the convergence record) may stay a bounded TBD.
-                desired_claims = desired_behavior_claims(
-                    question, research_by_question, worker_results or []
-                )[:1]
+                desired_claims = _normalized_desired_claims(
+                    desired_behavior_claims(
+                        question, research_by_question, worker_results or []
+                    ),
+                    limit=1,
+                )
                 if desired_claims:
-                    claim, refs = desired_claims[0]
-                    proposed_text = _desired_claim_text(claim)
-                    if len(proposed_text) > 400:
-                        proposed_text = (
-                            proposed_text[:400].rsplit(" ", 1)[0].rstrip() + "."
-                        )
+                    proposed_text, refs = desired_claims[0]
                     p_class, p_priority, p_impact = _derive_c1(
                         CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
                         has_direct_evidence=True,
@@ -5069,10 +5149,13 @@ class CanonicalTestPlanReasoningService:
                 # established portion grounds a PROPOSED candidate (never
                 # Confirmed); any residual acceptance-changing decision stays
                 # visible through the convergence record's bounded TBD.
-                for claim, refs in desired_behavior_claims(
-                    question, research_by_question, worker_results or []
-                )[:2]:
-                    candidate = _desired_claim_text(claim)
+                for proposed_text, refs in _normalized_desired_claims(
+                    desired_behavior_claims(
+                        question, research_by_question, worker_results or []
+                    ),
+                    limit=2,
+                ):
+                    candidate = proposed_text
                     if len(candidate) > 400:
                         candidate = (
                             candidate[:400].rsplit(" ", 1)[0].rstrip() + "."
@@ -6510,6 +6593,17 @@ class CanonicalTestPlanReasoningService:
                 represented_tbd_disposition_ids.add(record_id)
             section_items["product_decisions"].append((conv.decision, record_id))
             decision_question_ids.add(conv.question_id)
+        # Developer-perspective findings: implementation-lane conflicts
+        # (code-internal contradictions, requirement-vs-code mismatches) are
+        # recorded as technical notes - never as product decisions.
+        for conv in convergence or []:
+            for finding in getattr(conv, "implementation_findings", None) or []:
+                section_items["technical_notes"].append(
+                    (f"Implementation finding: {finding}", conv.convergence_id)
+                )
+        research_by_question = {
+            row.question_id: row for row in research_records or []
+        }
         for question in questions:
             if question.question_id in resolved_question_ids:
                 continue
@@ -6535,6 +6629,30 @@ class CanonicalTestPlanReasoningService:
             ):
                 continue
             key = "product_decisions" if question.blocking else "evidence_gaps"
+            if key == "evidence_gaps":
+                # Generic planner boilerplate is not an evidence gap: a
+                # non-blocking question surfaces only when material evidence
+                # shows it can change acceptance behavior.  A question whose
+                # mandated research terminated with an answer (or a bounded
+                # negative) is settled; a not-applicable question with no
+                # evidence-linked disposition is boilerplate.
+                research = research_by_question.get(question.question_id)
+                if research is not None and research.research_status in {
+                    ResearchStatus.ANSWER_FOUND,
+                    ResearchStatus.PARTIAL,
+                }:
+                    continue
+                if research is not None and research.research_status in {
+                    ResearchStatus.NOT_APPLICABLE,
+                    ResearchStatus.NOT_REQUIRED,
+                }:
+                    has_evidence = any(
+                        row.evidence_ids or row.source_hypothesis_ids
+                        for row in dispositions
+                        if question.question_id in row.source_question_ids
+                    )
+                    if not has_evidence:
+                        continue
             section_items[key].append((question.question, question.question_id))
         # P1: clarification audit - stale/rejected clarifications stay visible;
         # admitted ones live in the trace (L1 lineage), never in AC source lines.
@@ -6655,6 +6773,27 @@ class CanonicalTestPlanReasoningService:
                 (f"AcceptanceContractLint: {lint_problem}", "acceptance_contract_lint")
             )
 
+        # Reviewer contract (deterministic): a promoted AC that still carries
+        # meta/evidence commentary or the customer's raw problem prose is not
+        # an observable outcome - the final UAC is rejected, never repaired
+        # in place.  This appends a FAILED gate before the branch below reads
+        # the gate list.
+        reviewer_failures = [
+            "Acceptance criterion is meta/evidence commentary, not an "
+            f"observable product outcome: {statement[:120]}"
+            for statement in promoted_statements
+            if _AC_META_PROSE_RE.search(statement)
+        ]
+        if reviewer_failures:
+            gates.append(
+                GateDecision(
+                    gate=CanonicalRuntimeStage.FINAL_QE_PLAN_RENDERER,
+                    status=GateStatus.FAILED,
+                    failures=reviewer_failures,
+                    checked_ids=sorted(seen_promoted),
+                )
+            )
+
         order = list(titles)
         sections: list[PlanSection] = []
         for key in order:
@@ -6761,7 +6900,24 @@ class CanonicalTestPlanReasoningService:
                 )
                 lines.append("")
             lines.extend(["## Generation status", ""])
-            if waiting_for_research:
+            reviewer_failures = [
+                failure
+                for gate in gates
+                if gate.gate == CanonicalRuntimeStage.FINAL_QE_PLAN_RENDERER
+                and gate.status == GateStatus.FAILED
+                for failure in gate.failures
+            ]
+            if reviewer_failures:
+                # The reviewer rejected the drafted UAC (meta/evidence prose
+                # in the contract, or an implementation finding promoted to a
+                # product decision): say so plainly, never mimic success.
+                lines.append(
+                    "- The drafted UAC failed review and was rejected."
+                )
+                for failure in reviewer_failures[:4]:
+                    lines.append(f"- Review finding: {failure}")
+                lines.append("")
+            elif waiting_for_research:
                 # A5 host mediation: required research is dispatched to the
                 # host and unanswered - this is research in progress, never a
                 # product-decision request and never a plan-shaped document.

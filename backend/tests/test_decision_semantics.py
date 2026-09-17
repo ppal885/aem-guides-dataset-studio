@@ -67,6 +67,18 @@ _IMPLEMENTATION_CONFLICT = (
     "Fix comment says WARN lines set the flag; code at HEAD flags only "
     "Error/Fatal."
 )
+# A genuine product-authority conflict: two ticket-side product statements
+# disagree on the required behavior (no code anchor, no lifecycle content).
+_PRODUCT_CONTRACT_CONFLICT = (
+    "The ticket description requires the indicator on every successful "
+    "output with warnings; an accepted scope note on the same ticket limits "
+    "it to failed outputs only."
+)
+# Code-vs-code contradiction with no ticket authority involved.
+_CODE_VS_CODE_CONFLICT = (
+    "The admin path at HEAD sets the flag on WARN matches; the public path "
+    "at HEAD sets the flag only on Error/Fatal matches."
+)
 _LIFECYCLE_CONFLICT = (
     "A comment headed 'Fixed by' describes an approach, but the linked "
     "issue status is In Progress and no release establishes it."
@@ -186,7 +198,7 @@ def test_established_acs_survive_with_one_bounded_tbd() -> None:
         question,
         ResearchWorkerStatus.ANSWER_FOUND,
         findings=(_finding(_DESIRED_CLAIM, "DESIRED_BEHAVIOR"),),
-        conflicts=(_IMPLEMENTATION_CONFLICT,),
+        conflicts=(_PRODUCT_CONTRACT_CONFLICT,),
     )
     research = _research_record(question, worker=worker)
 
@@ -445,6 +457,79 @@ def test_s1_lift_only_with_completed_research() -> None:
     assert missing.status.value == "INSUFFICIENT"
 
 
+def test_writer_contract_produces_observable_outcome_not_evidence_summary() -> None:
+    """Writer contract: the AC is a short observable product outcome - the
+    attribution wrapper, the verbatim customer quote, and the meta sentence
+    are all stripped, and the wanting frame flips to a requirement modal."""
+    from app.services.canonical_test_plan_reasoning_service import (
+        _desired_claim_text,
+    )
+
+    claim = (
+        'The slide text explicitly states the customer position: "The '
+        "outputs are very handy on this side, but as you are not getting "
+        'the traffic lights for processing, authors would need to be '
+        'knowledgeable enough to check the log." The customer states they '
+        "want the per-output traffic-light warning indication that the old "
+        "UI provided, restored in the XML editor outputs. This wording "
+        "matches the Jira issue description verbatim."
+    )
+    assert _desired_claim_text(claim) == (
+        "The per-output traffic-light warning indication that the old UI "
+        "provided must be restored in the XML editor outputs."
+    )
+
+
+def test_reviewer_rejects_meta_prose_in_promoted_ac() -> None:
+    """Reviewer contract: a promoted AC that still carries meta/evidence
+    commentary fails the final UAC instead of passing the gates."""
+    facts = _facts()
+    scope = ScopeResolution()
+    question = _question(
+        _RAW_GAP_QUESTION, fact_ids=(facts.facts[0].fact_id,)
+    )
+    worker = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(
+            _finding(
+                "Verbatim ask from the ticket: authors cannot see warnings "
+                "without opening the log.",
+                "DESIRED_BEHAVIOR",
+            ),
+        ),
+    )
+    research = _research_record(question, worker=worker)
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], scope, [question], [research],
+        worker_results=[worker],
+    )
+    resolution = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts, dispositions, [question],
+        resolved_question_ids={question.question_id},
+        research_records=[research],
+    )
+    gate, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
+        resolution.candidates, facts, scope, dispositions
+    )
+    assert any(row.status == PromotionStatus.PROMOTED for row in promotions)
+    gates = [gate]
+    _plan, rendered = _render(
+        facts, scope, [question], dispositions, resolution, promotions,
+        gates, [],
+        research_resolved={question.question_id},
+    )
+    reviewer = [
+        row
+        for row in gates
+        if row.gate.value == "FinalQEPlanRenderer"
+        and row.status == GateStatus.FAILED
+    ]
+    assert reviewer
+    assert "Verbatim ask" in rendered
+    assert "failed review" in rendered
+
+
 def test_research_answered_question_produces_no_tbd() -> None:
     """G2: a research-answered question with no acceptance-changing conflict
     converges and never surfaces a TBD - in convergence or in the render."""
@@ -528,7 +613,7 @@ def test_raw_problem_prose_is_never_the_decision_question() -> None:
         question,
         ResearchWorkerStatus.ANSWER_FOUND,
         findings=(_finding(_DESIRED_CLAIM, "DESIRED_BEHAVIOR"),),
-        conflicts=(_IMPLEMENTATION_CONFLICT,),
+        conflicts=(_PRODUCT_CONTRACT_CONFLICT,),
     )
     records = CONVERGENCE_SERVICE.evaluate([question], [], [worker])
     decision = records[0].decision
@@ -539,9 +624,31 @@ def test_raw_problem_prose_is_never_the_decision_question() -> None:
     assert "you are not getting the traffic lights" not in decision.casefold()
 
 
+def test_requirement_implementation_mismatch_is_not_a_product_decision() -> None:
+    """The fix comment establishes WARN scanning; the inspected code sets the
+    flag only for Error/Fatal.  That is a requirement-vs-implementation
+    mismatch (a Developer finding), never a QE product decision - the
+    established requirement continues into the contract."""
+    question = _question("Which log severities drive the indicator?")
+    worker = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(_finding(_DESIRED_CLAIM, "DESIRED_BEHAVIOR"),),
+        conflicts=(_IMPLEMENTATION_CONFLICT,),
+    )
+    row = CONVERGENCE_SERVICE.evaluate([question], [], [worker])[0]
+    assert row.conflict_classes == ["REQUIREMENT_IMPLEMENTATION_MISMATCH"]
+    assert row.status == ConvergenceStatus.CONVERGED_WITH_LIMITS
+    assert not row.acceptance_changing
+    assert row.decision == ""
+    assert row.implementation_findings
+    assert "WARN" in row.implementation_findings[0]
+
+
 def test_only_acceptance_changing_conflicts_produce_tbd() -> None:
-    """Regression 4: evidence-quality and lifecycle conflicts never produce
-    a decision; product-contract, implementation, and unknowns do."""
+    """Regression 4: only product-authority conflicts and unresolved
+    unknowns may produce a TBD; implementation-lane, lifecycle, and
+    evidence-quality conflicts never do."""
     question = _question("Which severity drives the indicator?")
 
     quality = _result(
@@ -568,16 +675,17 @@ def test_only_acceptance_changing_conflicts_produce_tbd() -> None:
     assert row.acceptance_changing
     assert row.decision
 
-    implementation = _result(
+    code_vs_code = _result(
         question,
         ResearchWorkerStatus.ANSWER_FOUND,
         findings=(_finding("The indicator exists per output.", "EXISTING_BEHAVIOR"),),
-        conflicts=(_IMPLEMENTATION_CONFLICT,),
+        conflicts=(_CODE_VS_CODE_CONFLICT,),
     )
-    row = CONVERGENCE_SERVICE.evaluate([question], [], [implementation])[0]
+    row = CONVERGENCE_SERVICE.evaluate([question], [], [code_vs_code])[0]
     assert row.conflict_classes == ["IMPLEMENTATION"]
-    assert row.acceptance_changing
-    assert row.decision
+    assert not row.acceptance_changing
+    assert row.decision == ""
+    assert row.implementation_findings
 
     unknown = _result(
         question,

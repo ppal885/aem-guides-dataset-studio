@@ -47,18 +47,27 @@ _UNKNOWN_STATUSES = {
 _MAX_VIEW_ITEMS = 3
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9-]{2,}")
 
-# Conflict classification (decision semantics): only conflicts that can
-# change the acceptance contract itself may produce a human product-decision
-# question/TBD.  Lifecycle/currentness conflicts (for example a "Fixed by"
-# comment beside an In Progress linked issue) cap shipped/current claims
-# only; evidence-quality conflicts cap confidence only.
+# Conflict classification (decision semantics): only a genuine
+# product-authority conflict may produce a human product-decision
+# question/TBD.  A fix-clarification-vs-code disagreement is a
+# REQUIREMENT_IMPLEMENTATION_MISMATCH: the established requirement stands
+# and the mismatch is an implementation finding for the Developer
+# perspective - QE is never asked to choose between established product
+# intent and current implementation merely because the code differs.
 CONFLICT_PRODUCT_CONTRACT = "PRODUCT_CONTRACT"
 CONFLICT_IMPLEMENTATION = "IMPLEMENTATION"
+CONFLICT_REQUIREMENT_IMPLEMENTATION_MISMATCH = (
+    "REQUIREMENT_IMPLEMENTATION_MISMATCH"
+)
 CONFLICT_LIFECYCLE_CURRENTNESS = "LIFECYCLE_CURRENTNESS"
 CONFLICT_EVIDENCE_QUALITY = "EVIDENCE_QUALITY"
 _ACCEPTANCE_CHANGING_CONFLICTS = {
     CONFLICT_PRODUCT_CONTRACT,
+}
+# Conflicts that stay in the implementation/development lane.
+_IMPLEMENTATION_LANE_CONFLICTS = {
     CONFLICT_IMPLEMENTATION,
+    CONFLICT_REQUIREMENT_IMPLEMENTATION_MISMATCH,
 }
 
 _EVIDENCE_QUALITY_SIGNALS = (
@@ -81,6 +90,13 @@ _IMPLEMENTATION_BEHAVIOR_VERBS = (
     "sets ", "flags", "asserts", "does not", "only on", "only flags",
     "reads ", "writes ", "returns ", "computes", "derives", "branches",
 )
+# Ticket-side authority signals: the conflicting claim comes from the
+# ticket's own requirement/fix narrative, so the conflict is requirement
+# vs implementation, not code vs code.
+_TICKET_AUTHORITY_SIGNALS = (
+    "jira", "comment", "fix comment", "ticket", "description states",
+    "uac", "requirement", "acceptance",
+)
 
 
 def _classify_conflict(text: str) -> str:
@@ -96,7 +112,12 @@ def _classify_conflict(text: str) -> str:
     # A strong implementation conflict (code anchor + behavior verb) wins
     # over an incidental evidence-quality mention inside the same sentence
     # (for example "code sets the flag only on Error ... excerpt truncated").
-    if _hits(_IMPLEMENTATION_ANCHORS) and _hits(_IMPLEMENTATION_BEHAVIOR_VERBS):
+    strong_impl = _hits(_IMPLEMENTATION_ANCHORS) and _hits(
+        _IMPLEMENTATION_BEHAVIOR_VERBS
+    )
+    if strong_impl:
+        if _hits(_TICKET_AUTHORITY_SIGNALS):
+            return CONFLICT_REQUIREMENT_IMPLEMENTATION_MISMATCH
         return CONFLICT_IMPLEMENTATION
     if _hits(_EVIDENCE_QUALITY_SIGNALS):
         return CONFLICT_EVIDENCE_QUALITY
@@ -259,6 +280,14 @@ class ConvergenceService:
                 for text, conflict_class in zip(conflicts, conflict_classes)
                 if conflict_class in _ACCEPTANCE_CHANGING_CONFLICTS
             ]
+            # Implementation-lane conflicts (code-internal contradictions and
+            # requirement-vs-code mismatches) are Developer-perspective
+            # findings: recorded, never turned into human product decisions.
+            implementation_findings = [
+                text
+                for text, conflict_class in zip(conflicts, conflict_classes)
+                if conflict_class in _IMPLEMENTATION_LANE_CONFLICTS
+            ]
             unknowns = sorted(set(unknowns))
             # G2: a research unknown is acceptance-changing only when the
             # question has no establishing answer.  When research already
@@ -280,7 +309,11 @@ class ConvergenceService:
                 unknowns_acceptance_changing
             )
 
-            if saw_conflict or contract_conflicts:
+            if contract_conflicts or (saw_conflict and not conflicts):
+                # CONFLICTED requires an acceptance-changing contract
+                # conflict; a worker-level CONFLICTED with no classifiable
+                # conflict text stays conservative.  Implementation-lane and
+                # lifecycle/evidence conflicts converge with limits.
                 status = ConvergenceStatus.CONFLICTED
             elif unknowns_acceptance_changing:
                 status = ConvergenceStatus.UNRESOLVED
@@ -310,6 +343,7 @@ class ConvergenceService:
                     agreements=sorted(set(agreements)),
                     conflicts=conflicts,
                     conflict_classes=conflict_classes,
+                    implementation_findings=sorted(set(implementation_findings)),
                     acceptance_changing_unknowns=unknowns,
                     acceptance_changing=acceptance_changing,
                     decision=decision,

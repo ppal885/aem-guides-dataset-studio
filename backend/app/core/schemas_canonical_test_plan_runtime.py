@@ -2898,11 +2898,18 @@ class ConvergenceRecord(BaseModel):
     agreements: list[str] = Field(default_factory=list)
     conflicts: list[str] = Field(default_factory=list)
     # Parallel to ``conflicts``: each entry's classification -
-    # PRODUCT_CONTRACT / IMPLEMENTATION / LIFECYCLE_CURRENTNESS /
-    # EVIDENCE_QUALITY.  Only PRODUCT_CONTRACT and IMPLEMENTATION conflicts
-    # are acceptance-changing; lifecycle/currentness conflicts cap
-    # shipped/current claims only and never block a behavioral contract.
+    # PRODUCT_CONTRACT / IMPLEMENTATION /
+    # REQUIREMENT_IMPLEMENTATION_MISMATCH / LIFECYCLE_CURRENTNESS /
+    # EVIDENCE_QUALITY.  Only PRODUCT_CONTRACT conflicts are
+    # acceptance-changing; a requirement-vs-code mismatch stays an
+    # implementation finding, lifecycle/currentness conflicts cap
+    # shipped/current claims only, and evidence-quality conflicts cap
+    # confidence only.
     conflict_classes: list[str] = Field(default_factory=list)
+    # Implementation-lane conflicts (IMPLEMENTATION and
+    # REQUIREMENT_IMPLEMENTATION_MISMATCH), recorded for the Developer
+    # perspective; they never produce a human product-decision TBD.
+    implementation_findings: list[str] = Field(default_factory=list)
     acceptance_changing_unknowns: list[str] = Field(default_factory=list)
     # True only when an unresolved conflict/unknown can change the acceptance
     # contract itself.  When False, this record never produces a TBD.
