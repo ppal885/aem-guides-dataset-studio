@@ -424,6 +424,30 @@ class QuestionResearchRouter:
         request_ids = [row.retrieval_id for row in question_retrievals] + [
             row.handoff_id for row in question_handoffs
         ] + [row.research_id for row in question_worker_results]
+        # A5 host mediation: a dispatched-but-unanswered COPILOT_HOST request
+        # means research is in flight, not executed and not unavailable.  The
+        # question stays PENDING only when NO worker result for it has
+        # executed yet; when a mandated route already returned, that result
+        # stands and only the supplementary route is still in flight.
+        if any(
+            row.status == ResearchWorkerStatus.AWAITING_HOST
+            for row in question_worker_results
+        ) and not any(
+            row.status
+            in {
+                ResearchWorkerStatus.ANSWER_FOUND,
+                ResearchWorkerStatus.PARTIAL,
+                ResearchWorkerStatus.NOT_FOUND,
+                ResearchWorkerStatus.CONFLICTED,
+            }
+            for row in question_worker_results
+        ):
+            return build(
+                ResearchStatus.PENDING,
+                "Research was dispatched to the Copilot host and is awaiting "
+                "the delegated agent result; the question is not yet "
+                "user-facing.",
+            )
         if not request_ids:
             return build(
                 ResearchStatus.PENDING,

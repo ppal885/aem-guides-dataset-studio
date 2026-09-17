@@ -43,11 +43,8 @@ _PATHISH_RE = re.compile(r"[\\/]|\.[a-z]{1,5}$", re.IGNORECASE)
 # Read-only repository roots authorized for bounded code research.  These are
 # the existing configured-clone environment conventions; the worker never
 # mutates a repository.
-RESEARCH_REPOSITORY_ENV_VARS = (
-    "STARLING_REPO_PATH",
-    "XML_EDITOR_REPO_PATH",
-    "GUIDES_UI_TESTS_REPO_PATH",
-    "AEM_STUDIO_REPO",
+from app.services.agent_execution_provider import (  # noqa: E402
+    RESEARCH_REPOSITORY_ENV_VARS,
 )
 
 _MAX_TERMS = 6
@@ -546,25 +543,20 @@ class ResearchOrchestrator:
                         status=ResearchWorkerStatus.FAILED,
                         limitations=[f"worker error: {exc.__class__.__name__}"],
                     )
-                    provider_executions = [("DETERMINISTIC", False, result)]
+                    provider_executions = [("DETERMINISTIC", False, result, {})]
                 # The authoritative result is the primary execution; shadow
                 # executions are recorded for comparison only and are never
                 # consumed by the resolver.
                 results.append(result)
                 role_contract = ""
-                if any(model for _provider, model, _r in provider_executions):
-                    try:
-                        from app.services.agent_execution_provider import (
-                            load_role_contract,
-                        )
-
-                        name, version, _text = load_role_contract(role)
-                        role_contract = f"{name}@{version}"
-                    except Exception:
-                        role_contract = ""
-                for provider_id, model_execution, executed_result in (
+                model = ""
+                for provider_id, model_execution, executed_result, receipt in (
                     provider_executions
                 ):
+                    if receipt.get("role_contract"):
+                        role_contract = receipt["role_contract"]
+                    if receipt.get("model"):
+                        model = receipt["model"]
                     executions.append(
                         ResearchWorkerExecution(
                             worker_role=role,
@@ -580,6 +572,7 @@ class ResearchOrchestrator:
                             provider=provider_id,
                             model_execution=model_execution,
                             role_contract=role_contract,
+                            model=model,
                         )
                     )
         return results, executions

@@ -42,7 +42,9 @@ SKILL_AGENTS = _repo_root() / "skills" / "test-plan-generation" / "agents"
 REGISTRATIONS = _repo_root() / ".github" / "agents"
 
 # Read-only minimum tool surface per role (A5 section 13): no write, no
-# shell mutation, no Jira/Git mutation - research only.
+# shell mutation, no Jira/Git mutation - research only.  send_session_message
+# is the return handoff: the leaf reports its strict result back to the
+# coordinator session (see each contract's "Return handoff" section).
 ROLES = {
     "uac-doc-researcher": {
         "description": (
@@ -50,7 +52,7 @@ ROLES = {
             "authorized product documentation only, with applicability, "
             "limitations, and structured findings; never writes ACs."
         ),
-        "tools": ["view"],
+        "tools": ["view", "send_session_message"],
     },
     "uac-code-researcher": {
         "description": (
@@ -59,7 +61,7 @@ ROLES = {
             "provenance; never converts implementation into acceptance "
             "behavior."
         ),
-        "tools": ["view", "grep"],
+        "tools": ["view", "grep", "send_session_message"],
     },
     "uac-attachment-researcher": {
         "description": (
@@ -67,7 +69,7 @@ ROLES = {
             "question: separates observed behavior from customer-stated "
             "desired behavior; never fabricates unreadable content."
         ),
-        "tools": ["view"],
+        "tools": ["view", "send_session_message"],
     },
 }
 

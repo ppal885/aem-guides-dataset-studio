@@ -5825,6 +5825,7 @@ class CanonicalTestPlanReasoningService:
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
         clarifications: list[HumanClarification] | None = None,
         research_resolved_question_ids: set[str] | None = None,
+        waiting_for_research: bool = False,
     ) -> tuple[StructuredQEPlan, str]:
         if research_records is not None:
             incomplete_research_question_ids = {
@@ -6090,13 +6091,22 @@ class CanonicalTestPlanReasoningService:
             for row in clarifications or []
             if row.status == ClarificationStatus.ADMITTED
         }
-        # R2: research-resolved questions are released identically - they were
-        # answered by mandated research, never re-asked.
-        clarified_question_ids |= set(research_resolved_question_ids or ())
+        # R2: research-resolved questions are handled in the loop below: when
+        # their research answer promoted acceptance coverage they are released;
+        # when nothing promoted, the acceptance decision still needs the human.
         for question in questions:
             if question.question_id in resolved_question_ids:
                 continue
             if question.question_id in clarified_question_ids:
+                continue
+            # R2 release nuance: a research-resolved question whose answer
+            # could not promote (e.g. documented but not yet accepted product
+            # decision) must remain visible when nothing was promoted - the
+            # acceptance decision still belongs to the human.
+            if (
+                question.question_id in set(research_resolved_question_ids or ())
+                and promoted_ids
+            ):
                 continue
             key = "product_decisions" if question.blocking else "evidence_gaps"
             section_items[key].append((question.question, question.question_id))
@@ -6310,12 +6320,26 @@ class CanonicalTestPlanReasoningService:
                 )
                 lines.append("")
             lines.extend(["## Generation status", ""])
-            lines.append("- UAC needs product clarification.")
-            lines.append(
-                "- No Acceptance Criteria were generated because required "
-                "product decisions remain unresolved."
-            )
-            lines.append("")
+            if waiting_for_research:
+                # A5 host mediation: required research is dispatched to the
+                # host and unanswered - this is research in progress, never a
+                # product-decision request and never a plan-shaped document.
+                lines.append(
+                    "- Required research is still in progress; no product "
+                    "decision is being requested yet."
+                )
+                lines.append(
+                    "- No Acceptance Criteria were generated because required "
+                    "research has not returned."
+                )
+                lines.append("")
+            else:
+                lines.append("- UAC needs product clarification.")
+                lines.append(
+                    "- No Acceptance Criteria were generated because required "
+                    "product decisions remain unresolved."
+                )
+                lines.append("")
             decision_texts: list[str] = []
             for text, _record_id in section_items.get("product_decisions", []):
                 normalized = " ".join(text.split())
@@ -6323,13 +6347,17 @@ class CanonicalTestPlanReasoningService:
                     seen.casefold() for seen in decision_texts
                 }:
                     decision_texts.append(normalized)
-            if decision_texts:
+            # While waiting for host research, product decisions are not yet
+            # presented as user asks - research may resolve them.
+            if decision_texts and not waiting_for_research:
                 lines.extend(["## Open product decisions", ""])
                 lines.extend(f"- (TBD) {text}" for text in decision_texts)
                 lines.append("")
             lines.extend(["## Acceptance criteria", ""])
             lines.append(
-                "- None generated until the blocking decisions are resolved."
+                "- None generated until required research completes."
+                if waiting_for_research
+                else "- None generated until the blocking decisions are resolved."
             )
             lines.append("")
         else:

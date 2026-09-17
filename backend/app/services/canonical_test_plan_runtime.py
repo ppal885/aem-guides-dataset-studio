@@ -54,6 +54,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     QuestionGenerationDiagnosticTrace,
     QuestionResearchRecord,
     ResearchRequirementRecord,
+    ResearchWorkerExecution,
+    ResearchWorkerStatus,
     RuntimeEntryPoint,
     RuntimePrincipal,
     RuntimeStageTrace,
@@ -1397,6 +1399,12 @@ class CanonicalTestPlanRuntime:
         )
         promotions_for_trace = list(promotions)
         gates = [contract_gate, completeness_gate, promotion_gate]
+        # A5 host mediation: computed once, consumed by the renderer and the
+        # final envelope status.
+        awaiting_agent_research = any(
+            row.status == ResearchWorkerStatus.AWAITING_HOST
+            for row in research_worker_executions
+        )
         structured_plan, rendered_output = stage(
             CanonicalRuntimeStage.FINAL_QE_PLAN_RENDERER,
             [
@@ -1434,6 +1442,7 @@ class CanonicalTestPlanRuntime:
                 behavior_classifications,
                 clarifications=admitted_clarifications,
                 research_resolved_question_ids=research_resolved_ids,
+                waiting_for_research=awaiting_agent_research,
             ),
         )
         structured_plan_for_trace = structured_plan
@@ -1586,13 +1595,18 @@ class CanonicalTestPlanRuntime:
                     ),
                 }
             )
+        # A5 host mediation: when required research is dispatched to the
+        # Copilot host and still unanswered, the run is WAITING for research -
+        # not BLOCKED on a product decision and never silently deterministic.
         result = GenerationResult(
             run_id=run_id,
             request_id=request.request_id,
             evidence_bundle_id=runtime_evidence.bundle_id,
             evidence_bundle=runtime_evidence,
             status=(
-                "blocked"
+                "waiting_for_agent_research"
+                if awaiting_agent_research
+                else "blocked"
                 if blocked
                 else "needs_human_review"
                 if needs_human_review

@@ -2701,6 +2701,10 @@ class ResearchWorkerStatus(StrEnum):
     CONFLICTED = "CONFLICTED"
     FAILED = "FAILED"
     WORKER_UNAVAILABLE = "WORKER_UNAVAILABLE"
+    # A5 host mediation: the request was emitted to the Copilot host and the
+    # runtime is WAITING for the delegated agent's result - this is not a
+    # product decision pending and not a failed research execution.
+    AWAITING_HOST = "AWAITING_HOST"
 
 
 class ResearchFindingEvidenceRole(StrEnum):
@@ -2766,9 +2770,10 @@ class ResearchWorkerResult(BaseModel):
             ResearchWorkerStatus.SOURCE_UNAVAILABLE,
             ResearchWorkerStatus.WORKER_UNAVAILABLE,
             ResearchWorkerStatus.FAILED,
+            ResearchWorkerStatus.AWAITING_HOST,
         } and self.findings:
             raise ValueError(
-                "an unavailable/failed worker cannot report findings"
+                "an unavailable/failed/awaiting worker cannot report findings"
             )
         identity = self.model_dump(
             mode="json",
@@ -2834,6 +2839,34 @@ class ResearchWorkerExecution(BaseModel):
     provider: str = "DETERMINISTIC"
     model_execution: bool = False
     role_contract: str = ""
+    # The model the host actually ran (reported by the host receipt); empty
+    # for deterministic execution.
+    model: str = ""
+
+
+class HostAgentResultEnvelope(BaseModel):
+    """The host-attached receipt around a leaf agent's ResearchWorkerResult.
+
+    Boundary rule: the leaf returns ONLY the research payload (``result``);
+    the trusted host/coordinator attaches identity and execution receipts
+    (provider, model, role-contract version).  A leaf's self-reported JSON
+    is never the source of receipt fields - the bridge takes identity from
+    the emitted pending request and the model from observed host execution
+    metadata.  Extra top-level fields are forbidden so a leaf cannot smuggle
+    receipt claims into the envelope."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: str = Field(min_length=1)
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    question_revision: str = ""
+    worker_role: ResearchWorkerRole
+    provider: Literal["COPILOT_HOST"]
+    model: str = Field(min_length=1, max_length=200)
+    role_contract_version: str = Field(pattern=r"^[a-z0-9][a-z0-9\-]*@[0-9a-f]{12}$")
+    # The leaf's raw ResearchWorkerResult payload; admitted separately by
+    # validate_agent_result_shape + full resume validation.
+    result: dict
 
 
 class QuestionResearchRecord(BaseModel):
@@ -4415,7 +4448,15 @@ class GenerationResult(BaseModel):
     request_id: str
     evidence_bundle_id: str
     evidence_bundle: CanonicalEvidenceBundle
-    status: Literal["completed", "needs_human_review", "blocked", "failed"]
+    status: Literal[
+        "completed",
+        "needs_human_review",
+        "blocked",
+        "failed",
+        # A5 host mediation: waiting for delegated host research - not a
+        # product-decision block.
+        "waiting_for_agent_research",
+    ]
     output_contract: str
     output_kind: Literal["test_plan", "pipeline_compatibility", "packet_compatibility"]
     output_payload: dict[str, Any] = Field(default_factory=dict)

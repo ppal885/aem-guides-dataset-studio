@@ -1,4 +1,4 @@
-"""A5: real agent execution bridge - offline contract tests.
+﻿"""A5: real agent execution bridge - offline contract tests.
 
 These tests use fakes/mocks for the model substrate; they prove contracts,
 routing, validation, and trace truthfulness.  They never claim real agent
@@ -97,12 +97,16 @@ class _FakeModelProvider(ModelAgentExecutionProvider):
         self.last_model_execution = True
 
     def execute(self, request, *, bundle, question, requirement, **kwargs):
+        # Load the real canonical role contract so the trace receipt is the
+        # same shape as production.
+        name, version, _text = load_role_contract(request.worker_role)
+        self.last_role_contract = f"{name}@{version}"
         if isinstance(self._payload, Exception):
             return self._terminal(
                 request, ResearchWorkerStatus.FAILED, ["scripted failure"]
             )
         return self._validate_and_build(
-            request, self._payload, bundle, role_contract="test@contract"
+            request, self._payload, bundle, role_contract=self.last_role_contract
         )
 
 
@@ -197,7 +201,7 @@ def test_agent_mode_unavailable_model_is_honest_worker_unavailable() -> None:
     provider = RoutedResearchProvider(
         DeterministicResearchProvider({}),
         ModelAgentExecutionProvider(),
-        mode="agent",
+        mode="backend_model",
     )
     orchestrator = _orchestrator_with(provider)
     results, executions = orchestrator.execute(
@@ -240,7 +244,7 @@ def test_agent_mode_valid_result_is_admitted_and_traced() -> None:
         RoutedResearchProvider(
             DeterministicResearchProvider({}),
             _FakeModelProvider(payload),
-            mode="agent",
+            mode="backend_model",
         )
     )
     results, executions = orchestrator.execute(
@@ -250,15 +254,19 @@ def test_agent_mode_valid_result_is_admitted_and_traced() -> None:
     assert results[0].findings[0].source_refs == [doc.evidence_id]
     assert executions[0].provider == "MODEL_AGENT"
     assert executions[0].model_execution is True
-    assert executions[0].role_contract == "uac-doc-researcher@" + executions[
-        0
-    ].role_contract.split("@")[1]
+    assert executions[0].role_contract.startswith("uac-doc-researcher@")
 
 
 @pytest.mark.parametrize(
     "payload",
     [
         {"status": "ANSWERED_KIND_OF"},  # outside the R2 vocabulary
+        {
+            "status": "DOC_RESEARCH_COMPLETED",
+            "findings": [
+                {"claim": "x", "source_refs": [], "evidence_role": "EXISTING_BEHAVIOR"}
+            ],
+        },  # R1 manifest vocabulary is not the worker handoff vocabulary
         {"status": "ANSWER_FOUND", "findings": []},  # answer without findings
         {
             "status": "ANSWER_FOUND",
@@ -291,7 +299,7 @@ def test_agent_result_validation_fails_closed(payload) -> None:
         RoutedResearchProvider(
             DeterministicResearchProvider({}),
             _FakeModelProvider(payload),
-            mode="agent",
+            mode="backend_model",
         )
     )
     results, _executions = orchestrator.execute(
@@ -300,6 +308,45 @@ def test_agent_result_validation_fails_closed(payload) -> None:
     # Never a clean answer from a bad result; fail closed.
     assert results[0].status == ResearchWorkerStatus.FAILED
     assert not results[0].findings
+
+
+@pytest.mark.parametrize(
+    "finding",
+    [
+        {  # path carries a line-range suffix
+            "claim": "x",
+            "source_refs": [],
+            "repository": "repo",
+            "revision": "f" * 40,
+            "path": "src/app.java:16-29",
+        },
+        {  # multiple paths packed into one field
+            "claim": "x",
+            "source_refs": [],
+            "repository": "repo",
+            "revision": "f" * 40,
+            "path": "src/a.java; src/b.java",
+        },
+        {  # missing revision
+            "claim": "x",
+            "source_refs": [],
+            "repository": "repo",
+            "path": "src/app.java",
+        },
+        {  # missing repository root
+            "claim": "x",
+            "source_refs": [],
+            "revision": "f" * 40,
+            "path": "src/app.java",
+        },
+    ],
+)
+def test_code_result_path_grammar_fails_closed(finding) -> None:
+    from app.services.agent_execution_provider import validate_agent_result_shape
+
+    payload = {"status": "ANSWER_FOUND", "findings": [finding]}
+    rejection = validate_agent_result_shape(payload, ResearchWorkerRole.CODE_RESEARCHER)
+    assert rejection is not None
 
 
 def test_shadow_mode_keeps_deterministic_authoritative() -> None:
@@ -382,6 +429,258 @@ def test_production_run_records_provider_truth() -> None:
         assert execution["provider"] in {"DETERMINISTIC", "MODEL_AGENT"}
         assert execution["model_execution"] is False
         assert execution["result_ref"]
+
+
+# ---------------------------------------------------------------------------
+# COPILOT_HOST pending payload: the delegated leaf has a bounded read-only
+# toolset and cannot resolve evidence IDs, so the pending request must carry
+# the authorized CONTENT (bounded excerpts) plus authorized repository roots.
+# ---------------------------------------------------------------------------
+
+
+def test_copilot_host_pending_carries_bounded_evidence(tmp_path) -> None:
+    import json
+    import os
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    authorized = _record(
+        "authorized", "documented behavior excerpt", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    )
+    intruder = _record(
+        "intruder", "unrelated record", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    )
+    bundle = _bundle(authorized, intruder)
+    question = _question("What does the documentation establish?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the documentation establish?",
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        authorized_source_refs=[authorized.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    root = str(tmp_path / "repo")
+    result = provider.execute(
+        request,
+        bundle=bundle,
+        question=question,
+        requirement=requirement,
+        repository_roots=[root],
+    )
+    assert result.status == ResearchWorkerStatus.AWAITING_HOST
+
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    rows = payload["authorized_evidence"]
+    # Only the authorized record, with its actual content excerpted.
+    assert [row["source_ref"] for row in rows] == [authorized.evidence_id]
+    assert rows[0]["source_type"] == EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION.value
+    assert "documented behavior excerpt" in rows[0]["excerpt"]
+    assert all(len(row["excerpt"]) <= 400 for row in rows)
+    assert payload["authorized_repository_roots"] == [os.path.abspath(root)]
+    # Identity fields stay exactly as emitted.
+    assert payload["execution_id"] == request.execution_id
+    assert payload["question_revision"] == "rev-test"
+    # The role-contract version is bound at emission.
+    from app.services.agent_execution_provider import load_role_contract
+
+    name, version, _text = load_role_contract(ResearchWorkerRole.DOC_RESEARCHER)
+    assert payload["role_contract_version"] == f"{name}@{version}"
+
+
+def test_copilot_host_resume_binds_envelope_to_emitted_contract(tmp_path) -> None:
+    """fulfill accepted -> provider accepted -> consumed exactly once, with
+    the contract version bound to the emitted request (not wall-clock
+    contract state), and a wrong version rejected."""
+
+    import json
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    record = _record("authorized", "excerpt", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION)
+    bundle = _bundle(record)
+    question = _question("What does the documentation establish?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the documentation establish?",
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        authorized_source_refs=[record.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(request, bundle=bundle, question=question, requirement=requirement)
+    pending_file = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    bound_version = json.loads(pending_file.read_text(encoding="utf-8"))[
+        "role_contract_version"
+    ]
+
+    def _envelope(version: str) -> dict:
+        return {
+            "execution_id": request.execution_id,
+            "question_id": request.question_id,
+            "question_revision": "rev-test",
+            "worker_role": "DOC_RESEARCHER",
+            "provider": "COPILOT_HOST",
+            "model": "test-model",
+            "role_contract_version": version,
+            "result": {
+                "status": "NOT_FOUND",
+                "findings": [],
+                "source_refs": [],
+                "applicability": "",
+                "limitations": ["authorized evidence has no answer"],
+                "conflicts": [],
+            },
+        }
+
+    # Wrong contract version (schema-valid shape, not the bound version):
+    # rejected, not consumed.
+    fulfilled = tmp_path / "fulfilled" / pending_file.name
+    fulfilled.parent.mkdir(parents=True, exist_ok=True)
+    fulfilled.write_text(
+        json.dumps(_envelope("uac-doc-researcher@" + "0" * 12)), encoding="utf-8"
+    )
+    rejected = provider.execute(
+        request, bundle=bundle, question=question, requirement=requirement
+    )
+    assert rejected.status == ResearchWorkerStatus.FAILED
+    assert "drifted" in rejected.limitations[0]
+    assert not fulfilled.with_suffix(".consumed").exists()
+
+    # The version bound into the emitted request: accepted and consumed once.
+    fulfilled.write_text(
+        json.dumps(_envelope(bound_version)), encoding="utf-8"
+    )
+    accepted = provider.execute(
+        request, bundle=bundle, question=question, requirement=requirement
+    )
+    assert accepted.status == ResearchWorkerStatus.NOT_FOUND
+    assert provider.last_model_execution is True
+    assert provider.last_model == "test-model"
+    assert provider.last_role_contract == bound_version
+    assert fulfilled.with_suffix(".consumed").exists()
+
+    # Third pass: duplicate consumption is rejected.
+    duplicate = provider.execute(
+        request, bundle=bundle, question=question, requirement=requirement
+    )
+    assert duplicate.status == ResearchWorkerStatus.FAILED
+    assert "already consumed" in duplicate.limitations[0]
+
+
+def test_copilot_host_envelope_rejects_smuggled_fields(tmp_path) -> None:
+    """The envelope boundary: a leaf cannot smuggle receipt claims (extra
+    top-level fields) past the canonical schema."""
+
+    import json
+
+    from app.services.agent_execution_provider import (
+        HostMediatedResearchProvider,
+        load_role_contract,
+    )
+
+    record = _record("authorized", "excerpt", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION)
+    bundle = _bundle(record)
+    question = _question("What does the documentation establish?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the documentation establish?",
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        authorized_source_refs=[record.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(request, bundle=bundle, question=question, requirement=requirement)
+    pending_file = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    bound_version = json.loads(pending_file.read_text(encoding="utf-8"))[
+        "role_contract_version"
+    ]
+    name, _v, _t = load_role_contract(ResearchWorkerRole.DOC_RESEARCHER)
+    assert bound_version.startswith(f"{name}@")
+
+    smuggled = {
+        "execution_id": request.execution_id,
+        "question_id": request.question_id,
+        "question_revision": "rev-test",
+        "worker_role": "DOC_RESEARCHER",
+        "provider": "COPILOT_HOST",
+        "model": "test-model",
+        "role_contract_version": bound_version,
+        # Smuggled receipt claim: only the host may assert model execution.
+        "model_execution": True,
+        "result": {
+            "status": "NOT_FOUND",
+            "findings": [],
+            "source_refs": [],
+            "applicability": "",
+            "limitations": ["none"],
+            "conflicts": [],
+        },
+    }
+    fulfilled = tmp_path / "fulfilled" / pending_file.name
+    fulfilled.parent.mkdir(parents=True, exist_ok=True)
+    fulfilled.write_text(json.dumps(smuggled), encoding="utf-8")
+    rejected = provider.execute(
+        request, bundle=bundle, question=question, requirement=requirement
+    )
+    assert rejected.status == ResearchWorkerStatus.FAILED
+    assert "canonical schema" in rejected.limitations[0]
+    assert provider.last_model_execution is False
+    assert not fulfilled.with_suffix(".consumed").exists()
+
+
+def test_copilot_host_pending_is_not_rewritten_on_repeat(tmp_path) -> None:
+    import json
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    record = _record("authorized", "excerpt", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION)
+    bundle = _bundle(record)
+    question = _question("What does the documentation establish?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the documentation establish?",
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        authorized_source_refs=[record.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(
+        request, bundle=bundle, question=question, requirement=requirement
+    )
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    first = pending.read_text(encoding="utf-8")
+    # A second pass (e.g. resume poll) must not mutate the emitted request.
+    provider.execute(
+        request, bundle=bundle, question=question, requirement=requirement
+    )
+    assert pending.read_text(encoding="utf-8") == first
+    assert json.loads(first)["authorized_evidence"]
 
 
 # ---------------------------------------------------------------------------
