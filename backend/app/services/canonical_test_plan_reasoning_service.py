@@ -30,6 +30,9 @@ from app.core.schemas_canonical_test_plan_runtime import (
     BehaviorRelationType,
     BehavioralCoverageCandidate,
     BehavioralCoverageExpansion,
+    SemanticDependencyKind,
+    SemanticDependencyRecord,
+    SemanticDependencySlot,
     CanonicalBehaviorModel,
     CanonicalEvidenceBundle,
     CandidateDedupDecision,
@@ -51,6 +54,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     CoverageDisposition,
     CoverageDispositionRecord,
     CoverageExpansionAxis,
+    CoverageExpansionDisposition,
     CoverageExpansionTrigger,
     CurrentnessState,
     DirectedRetrievalRecord,
@@ -1727,6 +1731,114 @@ _EXPANSION_AXIS_RATIONALE: dict[CoverageExpansionAxis, str] = {
 }
 
 
+# Each dependency kind is decided by exactly one discovery axis, so a record is
+# total by construction and an axis can never silently cover two dependencies.
+_DEPENDENCY_KIND_AXIS: dict[SemanticDependencyKind, CoverageExpansionAxis] = {
+    SemanticDependencyKind.PROVENANCE: CoverageExpansionAxis.VALUE_PROVENANCE,
+    SemanticDependencyKind.PRECEDENCE_AND_FALLBACK: (
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE
+    ),
+    SemanticDependencyKind.INDIRECTION_AND_RESOLUTION: (
+        CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION
+    ),
+    SemanticDependencyKind.CONTEXT_DEPENDENCY: (
+        CoverageExpansionAxis.CONTEXT_AND_SCOPE
+    ),
+    SemanticDependencyKind.IDENTITY: CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+    SemanticDependencyKind.LIFECYCLE_MUTATION: (
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE
+    ),
+    SemanticDependencyKind.FRESHNESS_AND_STALENESS: (
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS
+    ),
+    SemanticDependencyKind.CONSUMER_PARITY: (
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY
+    ),
+    SemanticDependencyKind.UNRESOLVED_OR_NEGATIVE_BRANCH: (
+        CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION
+    ),
+}
+
+_DEPENDENCY_KIND_RESEARCH_REASON: dict[SemanticDependencyKind, str] = {
+    SemanticDependencyKind.PROVENANCE: (
+        "Discovery raised this dependency; the channels that can set the value "
+        "must be established from evidence before coverage decides it."
+    ),
+    SemanticDependencyKind.PRECEDENCE_AND_FALLBACK: (
+        "Discovery raised this dependency; the precedence order and the value "
+        "used when the preferred source is absent must be established."
+    ),
+    SemanticDependencyKind.INDIRECTION_AND_RESOLUTION: (
+        "Discovery raised this dependency; whether the value can arrive through "
+        "an indirect resolution path must be established."
+    ),
+    SemanticDependencyKind.CONTEXT_DEPENDENCY: (
+        "Discovery raised this dependency; whether the resolved value depends "
+        "on the context it is read in must be established."
+    ),
+    SemanticDependencyKind.IDENTITY: (
+        "Discovery raised this dependency; whether the behavior survives a "
+        "change to the underlying item's identity must be established."
+    ),
+    SemanticDependencyKind.LIFECYCLE_MUTATION: (
+        "Discovery raised this dependency; the lifecycle operations that can "
+        "change the stored state must be established."
+    ),
+    SemanticDependencyKind.FRESHNESS_AND_STALENESS: (
+        "Discovery raised this dependency; whether an out-of-date value can "
+        "survive an upstream change must be established."
+    ),
+    SemanticDependencyKind.CONSUMER_PARITY: (
+        "Discovery raised this dependency; whether every consuming surface "
+        "reports the same behavior must be established."
+    ),
+    SemanticDependencyKind.UNRESOLVED_OR_NEGATIVE_BRANCH: (
+        "Discovery raised this dependency; the behavior when the value is "
+        "invalid or cannot be resolved must be established."
+    ),
+}
+
+_DEPENDENCY_KIND_NOT_APPLICABLE_REASON: dict[SemanticDependencyKind, str] = {
+    SemanticDependencyKind.PROVENANCE: (
+        "No evidence describes this subject carrying a value that is displayed, "
+        "exported, ordered, compared or persisted, so it has no provenance to "
+        "disposition."
+    ),
+    SemanticDependencyKind.PRECEDENCE_AND_FALLBACK: (
+        "No evidence describes a preferred source that can be absent for this "
+        "subject, so no precedence or fallback rule applies."
+    ),
+    SemanticDependencyKind.INDIRECTION_AND_RESOLUTION: (
+        "No evidence describes this subject resolving a reference, so there is "
+        "no indirect resolution path to disposition."
+    ),
+    SemanticDependencyKind.CONTEXT_DEPENDENCY: (
+        "No evidence describes this subject being read in more than one "
+        "context or scope, so context cannot change its behavior."
+    ),
+    SemanticDependencyKind.IDENTITY: (
+        "No evidence describes this subject referencing an item by identity, "
+        "so an identity change cannot affect it."
+    ),
+    SemanticDependencyKind.LIFECYCLE_MUTATION: (
+        "No evidence describes a lifecycle operation acting on this subject's "
+        "stored state, so no lifecycle mutation applies."
+    ),
+    SemanticDependencyKind.FRESHNESS_AND_STALENESS: (
+        "No evidence describes this subject reading a value that another "
+        "source can change afterwards, so it cannot go stale."
+    ),
+    SemanticDependencyKind.CONSUMER_PARITY: (
+        "Evidence describes a single consuming surface for this subject, so "
+        "there is no second surface that can diverge."
+    ),
+    SemanticDependencyKind.UNRESOLVED_OR_NEGATIVE_BRANCH: (
+        "No evidence describes this subject accepting an input that can be "
+        "invalid or unresolvable, so it has no negative branch."
+    ),
+}
+
+
 def _flatten_strings(value: Any, path: str = "$") -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
     if isinstance(value, dict):
@@ -2419,6 +2531,16 @@ def _subject_for_dimension(dimension: SemanticDimension) -> AuthoritySubject:
         SemanticDimension.SIBLING_CONSUMERS,
         SemanticDimension.DOWNSTREAM_PROCESSOR,
         SemanticDimension.PERSISTED_STATE,
+        # C1: how a value is actually produced, resolved, re-resolved, kept
+        # fresh, or left dangling is established by reading the implementation,
+        # not by asking for a product decision.  Without these entries the
+        # dimensions fall through to the PRODUCT_CONTRACT default below and
+        # their mandatory research misroutes to documentation.
+        SemanticDimension.VALUE_PROVENANCE,
+        SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
+        SemanticDimension.BROKEN_RESOLUTION,
+        SemanticDimension.IDENTITY_CHANGE,
+        SemanticDimension.MUTATION_FRESHNESS,
     }:
         return AuthoritySubject.ACTUAL_IMPLEMENTATION
     return AuthoritySubject.PRODUCT_CONTRACT
@@ -3922,7 +4044,73 @@ class CanonicalTestPlanReasoningService:
         return BehavioralCoverageExpansion(
             candidates=candidates,
             triggers=sorted(triggers, key=lambda row: row.value),
+            dependency_records=self._record_semantic_dependencies(
+                candidates, activated_axes=set(axis_triggers)
+            ),
         )
+
+    def _record_semantic_dependencies(
+        self,
+        candidates: list[BehavioralCoverageCandidate],
+        *,
+        activated_axes: set[CoverageExpansionAxis],
+    ) -> list[SemanticDependencyRecord]:
+        """Give every material subject an explicit, total dependency record.
+
+        Completeness here means *decided*, not *covered*: a dependency whose
+        axis evidence never fired is recorded ``NOT_APPLICABLE`` with the
+        concrete reason, and a dependency discovery did raise is recorded
+        ``RESEARCH_REQUIRED`` and handed to the existing question/research
+        pipeline.  Nothing is promoted, and no dependency can be dropped by
+        staying silent.
+        """
+
+        by_subject: dict[str, list[BehavioralCoverageCandidate]] = defaultdict(list)
+        for candidate in candidates:
+            if candidate.material:
+                by_subject[candidate.subject].append(candidate)
+
+        records: list[SemanticDependencyRecord] = []
+        for subject, subject_candidates in sorted(by_subject.items()):
+            candidates_by_axis: dict[
+                CoverageExpansionAxis, list[BehavioralCoverageCandidate]
+            ] = defaultdict(list)
+            for candidate in subject_candidates:
+                candidates_by_axis[candidate.axis].append(candidate)
+
+            slots: list[SemanticDependencySlot] = []
+            for kind in SemanticDependencyKind:
+                axis = _DEPENDENCY_KIND_AXIS[kind]
+                matched = candidates_by_axis.get(axis, [])
+                if matched:
+                    slots.append(
+                        SemanticDependencySlot(
+                            kind=kind,
+                            disposition=(
+                                CoverageExpansionDisposition.RESEARCH_REQUIRED
+                            ),
+                            reason=_DEPENDENCY_KIND_RESEARCH_REASON[kind],
+                            dimensions=sorted(
+                                {
+                                    dimension
+                                    for candidate in matched
+                                    for dimension in candidate.dimensions
+                                },
+                                key=lambda row: row.value,
+                            ),
+                            candidate_ids=[row.candidate_id for row in matched],
+                        )
+                    )
+                    continue
+                slots.append(
+                    SemanticDependencySlot(
+                        kind=kind,
+                        disposition=CoverageExpansionDisposition.NOT_APPLICABLE,
+                        reason=_DEPENDENCY_KIND_NOT_APPLICABLE_REASON[kind],
+                    )
+                )
+            records.append(SemanticDependencyRecord(subject=subject, slots=slots))
+        return records
 
     def explore_semantic_closure(
         self,
@@ -6067,6 +6255,33 @@ class CanonicalTestPlanReasoningService:
                         "material but closure dropped it without a disposition: "
                         f"{dimension.value}"
                     )
+            # Silence is never coverage: a subject discovery proved material
+            # must carry an explicit decision for every dependency kind.
+            for subject in expansion.undispositioned_subjects:
+                failures.append(
+                    "Behavioral coverage expansion marked a subject material but "
+                    "no semantic dependency record dispositions it: "
+                    f"{subject}"
+                )
+            for record in expansion.dependency_records:
+                for slot in record.slots:
+                    if (
+                        slot.disposition
+                        != CoverageExpansionDisposition.RESEARCH_REQUIRED
+                    ):
+                        continue
+                    undecided = [
+                        dimension
+                        for dimension in slot.dimensions
+                        if dimension not in decided_dimensions
+                    ]
+                    if undecided:
+                        failures.append(
+                            "A semantic dependency requires research but closure "
+                            "never decided its behavior: "
+                            f"{record.subject} / {slot.kind.value} "
+                            f"({', '.join(row.value for row in undecided)})"
+                        )
         if research_requirements is not None:
             research_by_question = {
                 row.question_id: row for row in research_records or []

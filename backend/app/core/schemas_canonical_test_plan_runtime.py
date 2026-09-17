@@ -1003,17 +1003,39 @@ class CoverageExpansionTrigger(StrEnum):
 class CoverageExpansionDisposition(StrEnum):
     """C1 Invariant 3: discovery is not acceptance.
 
-    An expansion candidate is routed to one of these; ``AC_SUPPORTED`` only
+    An expansion candidate is routed to one of these; ``AC_CANDIDATE`` only
     records that the downstream acceptance pipeline *may* consider it, never
-    that it has been promoted.
+    that it has been promoted.  Promotion remains owned by
+    ``AcceptancePromotionGate``.
     """
 
-    AC_SUPPORTED = "AC_SUPPORTED"
+    AC_CANDIDATE = "AC_CANDIDATE"
     QE_REGRESSION = "QE_REGRESSION"
     RESEARCH_REQUIRED = "RESEARCH_REQUIRED"
     OPEN_QUESTION = "OPEN_QUESTION"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class SemanticDependencyKind(StrEnum):
+    """The dependency axes a materially affected subject must disposition.
+
+    These are *semantic* dependencies of a value or behavior, not product
+    features: every entry describes a way a value can be produced, chosen,
+    resolved, scoped, identified, changed, staled, or consumed.  A subject is
+    covered only when every kind below is explicitly dispositioned; silence is
+    never coverage.
+    """
+
+    PROVENANCE = "PROVENANCE"
+    PRECEDENCE_AND_FALLBACK = "PRECEDENCE_AND_FALLBACK"
+    INDIRECTION_AND_RESOLUTION = "INDIRECTION_AND_RESOLUTION"
+    CONTEXT_DEPENDENCY = "CONTEXT_DEPENDENCY"
+    IDENTITY = "IDENTITY"
+    LIFECYCLE_MUTATION = "LIFECYCLE_MUTATION"
+    FRESHNESS_AND_STALENESS = "FRESHNESS_AND_STALENESS"
+    CONSUMER_PARITY = "CONSUMER_PARITY"
+    UNRESOLVED_OR_NEGATIVE_BRANCH = "UNRESOLVED_OR_NEGATIVE_BRANCH"
 
 
 class HypothesisState(StrEnum):
@@ -2388,6 +2410,127 @@ class BehavioralCoverageCandidate(BaseModel):
         return self
 
 
+# A NOT_APPLICABLE dependency must say why.  These collapse to the same empty
+# assertion and would restore the silence the record exists to prevent.
+_PLACEHOLDER_NOT_APPLICABLE_REASONS = frozenset(
+    {
+        "",
+        "na",
+        "n/a",
+        "none",
+        "nonapplicable",
+        "notapplicable",
+        "notrelevant",
+        "notneeded",
+        "notrequired",
+        "unknown",
+        "tbd",
+    }
+)
+
+
+class SemanticDependencySlot(BaseModel):
+    """One dependency kind's explicit disposition for one subject.
+
+    Invariant: silence is never coverage.  A slot always states *what was
+    decided* and *why*, and a ``NOT_APPLICABLE`` decision needs a concrete
+    reason rather than a placeholder, so a dependency can never be dropped by
+    omission.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: SemanticDependencyKind
+    disposition: CoverageExpansionDisposition
+    reason: str = ""
+    dimensions: list[SemanticDimension] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    question_ids: list[str] = Field(default_factory=list)
+    candidate_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def enforce_explicit_decision(self) -> "SemanticDependencySlot":
+        self.reason = self.reason.strip()
+        if not self.reason:
+            raise ValueError(
+                f"dependency {self.kind.value} needs a concrete reason for its "
+                f"{self.disposition.value} disposition"
+            )
+        if self.disposition == CoverageExpansionDisposition.NOT_APPLICABLE:
+            # A bare "n/a" restores the silence this record exists to prevent.
+            collapsed = "".join(
+                character
+                for character in self.reason.casefold()
+                if character.isalnum()
+            )
+            if collapsed in _PLACEHOLDER_NOT_APPLICABLE_REASONS:
+                raise ValueError(
+                    f"dependency {self.kind.value} was marked NOT_APPLICABLE "
+                    "with a placeholder reason; state why this subject cannot "
+                    "exercise the dependency"
+                )
+        if self.disposition == CoverageExpansionDisposition.RESEARCH_REQUIRED and not (
+            self.question_ids or self.candidate_ids
+        ):
+            raise ValueError(
+                f"dependency {self.kind.value} requires research but names no "
+                "question or candidate to carry it"
+            )
+        self.dimensions = sorted(set(self.dimensions), key=lambda row: row.value)
+        self.evidence_ids = sorted(set(self.evidence_ids))
+        self.question_ids = sorted(set(self.question_ids))
+        self.candidate_ids = sorted(set(self.candidate_ids))
+        return self
+
+
+class SemanticDependencyRecord(BaseModel):
+    """Every dependency kind explicitly dispositioned for one subject.
+
+    This is the completeness unit: a materially affected subject is covered
+    only when it carries a record and that record decides all of
+    ``SemanticDependencyKind``.  The record is discovery/traceability only and
+    grants no acceptance authority.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str = ""
+    subject: str
+    slots: list[SemanticDependencySlot] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def enforce_totality(self) -> "SemanticDependencyRecord":
+        self.subject = self.subject.strip()
+        if not self.subject:
+            raise ValueError("a semantic dependency record requires a subject")
+        seen: dict[SemanticDependencyKind, SemanticDependencySlot] = {}
+        for slot in self.slots:
+            if slot.kind in seen:
+                raise ValueError(
+                    f"dependency {slot.kind.value} is dispositioned twice for "
+                    f"subject {self.subject}"
+                )
+            seen[slot.kind] = slot
+        missing = [kind for kind in SemanticDependencyKind if kind not in seen]
+        if missing:
+            raise ValueError(
+                "semantic dependency record for "
+                f"{self.subject} is silent about: "
+                + ", ".join(kind.value for kind in missing)
+            )
+        self.slots = [seen[kind] for kind in SemanticDependencyKind]
+        self.record_id = f"semdep:{stable_sha256(self.subject)[:32]}"
+        return self
+
+    @property
+    def researched_kinds(self) -> set[SemanticDependencyKind]:
+        return {
+            slot.kind
+            for slot in self.slots
+            if slot.disposition == CoverageExpansionDisposition.RESEARCH_REQUIRED
+        }
+
+
 class BehavioralCoverageExpansion(BaseModel):
     """Output of the BehavioralCoverageExpander stage.
 
@@ -2403,6 +2546,7 @@ class BehavioralCoverageExpansion(BaseModel):
     )
     candidates: list[BehavioralCoverageCandidate] = Field(default_factory=list)
     triggers: list[CoverageExpansionTrigger] = Field(default_factory=list)
+    dependency_records: list[SemanticDependencyRecord] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def normalize(self) -> "BehavioralCoverageExpansion":
@@ -2415,7 +2559,28 @@ class BehavioralCoverageExpansion(BaseModel):
             seen.add(candidate.candidate_id)
             unique.append(candidate)
         self.candidates = unique
+        by_subject: dict[str, SemanticDependencyRecord] = {}
+        for record in self.dependency_records:
+            by_subject[record.subject] = record
+        self.dependency_records = [
+            by_subject[subject] for subject in sorted(by_subject)
+        ]
         return self
+
+    @property
+    def material_subjects(self) -> set[str]:
+        """Subjects discovery proved material, which must carry a record."""
+
+        return {
+            candidate.subject for candidate in self.candidates if candidate.material
+        }
+
+    @property
+    def undispositioned_subjects(self) -> list[str]:
+        """Material subjects with no dependency record: the silence check."""
+
+        covered = {record.subject for record in self.dependency_records}
+        return sorted(self.material_subjects - covered)
 
     @property
     def activated_dimensions(self) -> set[SemanticDimension]:
@@ -4775,6 +4940,9 @@ __all__ = [
     "ChangeSurface",
     "ChangeSurfaceKind",
     "BehavioralCoverageCandidate",
+    "SemanticDependencyKind",
+    "SemanticDependencyRecord",
+    "SemanticDependencySlot",
     "BehavioralCoverageExpansion",
     "ClosureDimensionResult",
     "CompatibilityProjectionLink",

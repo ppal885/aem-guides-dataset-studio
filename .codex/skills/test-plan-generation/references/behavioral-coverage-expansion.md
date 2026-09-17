@@ -156,6 +156,51 @@ Optional and backward-compatible: absent means a clean pass. Validated by
 `NOT_APPLICABLE` and `INVESTIGATED_AND_REJECTED` require a concrete `reason`: a
 dimension may not be closed without testing it and without saying why.
 
+## Per-subject dependency records
+
+Dispositioning activated dimensions proves nothing was lost *after* discovery.
+It cannot prove discovery asked about everything in the first place — a
+dependency that was never triggered is never activated, never dispositioned, and
+so disappears silently. The dependency record closes that hole: every materially
+affected subject carries one record that decides all nine dependency dimensions.
+
+```json
+"dependency_records": [
+  {
+    "subject": "the displayed topic title",
+    "slots": [
+      {
+        "kind": "PROVENANCE",
+        "disposition": "RESEARCH_REQUIRED",
+        "reason": "the stated ask does not establish which channel sets this value",
+        "question_ids": ["Q-03"]
+      }
+    ]
+  }
+]
+```
+
+The nine kinds, each decided exactly once per subject: `PROVENANCE`,
+`PRECEDENCE_AND_FALLBACK`, `INDIRECTION_AND_RESOLUTION`, `CONTEXT_DEPENDENCY`,
+`IDENTITY`, `LIFECYCLE_MUTATION`, `FRESHNESS_AND_STALENESS`, `CONSUMER_PARITY`,
+and `UNRESOLVED_OR_NEGATIVE_BRANCH`.
+
+Enforced invariants:
+
+- **Totality.** A record that omits any kind fails. Omission is not a
+  disposition.
+- **No placeholder exits.** `NOT_APPLICABLE` with `n/a`, `none`, `tbd`, or an
+  equivalent empty assertion fails; state why *this subject* cannot exercise the
+  dependency.
+- **Research names its carrier.** `RESEARCH_REQUIRED` must name a question or
+  candidate, so mandated research cannot be recorded and then dropped.
+- **No silent subjects.** Every material candidate's subject needs a record.
+- **No acceptance authority.** A record is discovery and traceability only; it
+  can never carry `promoted` or an `acceptance_ref`.
+
+A record is not a Cartesian expansion: records are built only for material
+subjects, and subjects stay bounded by the existing candidate cap.
+
 ## Authoring checklist
 
 - Run the expander before authoring, not after a reviewer finds the gap.
@@ -163,6 +208,8 @@ dimension may not be closed without testing it and without saying why.
   as coverage you already have.
 - Disposition each one explicitly. "Not mentioned in the ticket" is not a reason;
   say what in the evidence makes it inapplicable.
+- Decide all nine dependency kinds for every material subject, and route each
+  one to documentation or implementation by where its answer actually lives.
 - Keep identity change, lifecycle state, and ordering as separate contracts.
 - Do not convert a discovered candidate into an acceptance criterion because it
   sounds reasonable. It needs the same authority as anything else.

@@ -562,6 +562,25 @@ contract in its `BehavioralCoverageExpander` stage, which runs between
   `NOT_APPLICABLE` or `INVESTIGATED_AND_REJECTED` without a reason fails the gate. An
   unresolved activated dimension flows into the existing missing-question and mandatory
   research path unchanged; `NOT_FOUND` still never asserts the opposite behavior.
+- **Every material subject decides all nine dependency dimensions.** Dispositioning
+  activated dimensions only proves nothing was lost after discovery; it cannot prove
+  discovery asked about everything, because a dependency that never triggered is never
+  activated and so never has to be answered. Record one `dependency_records` entry per
+  material subject deciding `PROVENANCE`, `PRECEDENCE_AND_FALLBACK`,
+  `INDIRECTION_AND_RESOLUTION`, `CONTEXT_DEPENDENCY`, `IDENTITY`, `LIFECYCLE_MUTATION`,
+  `FRESHNESS_AND_STALENESS`, `CONSUMER_PARITY`, and `UNRESOLVED_OR_NEGATIVE_BRANCH`. A
+  record that omits a kind fails; `NOT_APPLICABLE` with `n/a`, `none`, `tbd`, or an
+  equivalent empty assertion fails; `RESEARCH_REQUIRED` must name the question or
+  candidate carrying that research; and a material subject with no record fails. Records
+  are built only for material subjects, so discovery stays bounded rather than becoming a
+  Cartesian expansion.
+- **Route each dependency by where its answer actually lives.** A question about how the
+  product behaves today is an implementation read, not a product decision; a question
+  about governing rules or documented fallback is a documentation read. Declare that in
+  the dimension's evidence path so mandatory research routes correctly — misrouting a
+  code question to documentation silently converts it into a human decision. A dependency
+  record carries no acceptance authority and can never be promoted or cited as an AC
+  source.
 
 ### Phase 6.6 — Question-Based Reasoning (Planner → Research Router → Resolver)
 

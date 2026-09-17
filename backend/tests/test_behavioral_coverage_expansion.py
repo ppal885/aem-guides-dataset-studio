@@ -13,15 +13,23 @@ acceptance.
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from app.core.schemas_canonical_test_plan_runtime import (
     CANONICAL_STAGE_ORDER,
+    AuthoritySubject,
     CanonicalRuntimeStage,
     ClosureDisposition,
     CoverageExpansionAxis,
+    CoverageExpansionDisposition,
     CoverageExpansionTrigger,
     GenerationProfile,
     ResearchRequirement,
     RuntimeEntryPoint,
+    SemanticDependencyKind,
+    SemanticDependencyRecord,
+    SemanticDependencySlot,
     SemanticDimension,
 )
 from app.services.canonical_test_plan_runtime import CANONICAL_TEST_PLAN_RUNTIME
@@ -497,3 +505,395 @@ def test_every_semantic_dimension_has_a_usable_question_contract() -> None:
                 text,
                 sorted(terms),
             )
+
+# --------------------------------------------------------------------------
+# 10. Semantic dependency records: silence is never coverage.
+# --------------------------------------------------------------------------
+
+
+def _records(result) -> dict[str, dict[str, str]]:
+    """subject -> {dependency kind: disposition}."""
+
+    return {
+        record["subject"]: {
+            slot["kind"]: slot["disposition"] for slot in record["slots"]
+        }
+        for record in _expansion(result)["dependency_records"]
+    }
+
+
+def test_every_material_subject_carries_a_total_dependency_record() -> None:
+    """A materially affected subject must decide every dependency kind."""
+
+    for packet in (
+        _ordering_and_reporting_packet(),
+        _reference_resolution_packet(),
+        _configuration_state_packet(),
+    ):
+        result = _run(packet)
+        expansion = _expansion(result)
+        material = {
+            row["subject"] for row in expansion["candidates"] if row["material"]
+        }
+        records = _records(result)
+
+        assert material, packet["jira_key"]
+        assert material <= set(records), packet["jira_key"]
+        for subject, slots in records.items():
+            assert set(slots) == {kind.value for kind in SemanticDependencyKind}, (
+                packet["jira_key"],
+                subject,
+            )
+
+
+def test_not_applicable_dependency_needs_a_concrete_reason() -> None:
+    """A placeholder reason would restore the silence the record prevents."""
+
+    for packet in (
+        _ordering_and_reporting_packet(),
+        _reference_resolution_packet(),
+        _configuration_state_packet(),
+    ):
+        for record in _expansion(_run(packet))["dependency_records"]:
+            for slot in record["slots"]:
+                reason = slot["reason"].strip()
+                assert len(reason) > 30, (packet["jira_key"], slot)
+                assert reason.casefold() not in {"n/a", "na", "none", "tbd"}
+
+    # And the model itself refuses the placeholder rather than trusting callers.
+    with pytest.raises(ValidationError):
+        SemanticDependencySlot(
+            kind=SemanticDependencyKind.IDENTITY,
+            disposition=CoverageExpansionDisposition.NOT_APPLICABLE,
+            reason="N/A",
+        )
+
+
+def test_dependency_record_rejects_a_silent_dimension() -> None:
+    """Omitting a dependency kind must fail closed, not pass quietly."""
+
+    slots = [
+        SemanticDependencySlot(
+            kind=kind,
+            disposition=CoverageExpansionDisposition.QE_REGRESSION,
+            reason="covered by the existing regression sweep for this surface",
+        )
+        for kind in SemanticDependencyKind
+    ]
+    assert SemanticDependencyRecord(subject="a value", slots=slots)
+
+    with pytest.raises(ValidationError) as excinfo:
+        SemanticDependencyRecord(subject="a value", slots=slots[:-1])
+    assert SemanticDependencyKind.UNRESOLVED_OR_NEGATIVE_BRANCH.value in str(
+        excinfo.value
+    )
+
+
+def test_research_required_dependency_must_name_its_carrier() -> None:
+    """RESEARCH_REQUIRED without a question or candidate is an orphan."""
+
+    with pytest.raises(ValidationError):
+        SemanticDependencySlot(
+            kind=SemanticDependencyKind.PROVENANCE,
+            disposition=CoverageExpansionDisposition.RESEARCH_REQUIRED,
+            reason="the channels that can set this value are not established",
+        )
+
+
+def test_dependency_record_is_discovery_not_acceptance() -> None:
+    """No dependency disposition may promote an acceptance criterion."""
+
+    result = _run(_ordering_and_reporting_packet())
+    for slots in _records(result).values():
+        for disposition in slots.values():
+            assert disposition != "AC_CANDIDATE"
+
+    promoted = result.output_payload.get("acceptance_promotions") or []
+    for row in promoted:
+        assert not str(row.get("candidate_id", "")).startswith("semdep:")
+        assert not str(row.get("candidate_id", "")).startswith("covexp:")
+
+
+# --------------------------------------------------------------------------
+# 11. Research routing: documentation vs implementation.
+# --------------------------------------------------------------------------
+
+
+def _requirement_by_dimension(result) -> dict[str, str]:
+    questions = {
+        row["question_id"]: row for row in result.output_payload["missing_questions"]
+    }
+    routes: dict[str, str] = {}
+    for row in result.output_payload["research_requirements"]:
+        question = questions.get(row["question_id"])
+        if question and question.get("dimension"):
+            routes[question["dimension"]] = row["research_requirement"]
+    return routes
+
+
+def test_resolution_semantics_route_to_implementation_research() -> None:
+    """How a value is produced or resolved is read from code, not asked of PM.
+
+    These dimensions previously fell through _subject_for_dimension's
+    PRODUCT_CONTRACT default, so their mandatory research misrouted to
+    documentation and asked for a product decision instead of a code read.
+    """
+
+    routes = _requirement_by_dimension(_run(_ordering_and_reporting_packet()))
+    for dimension in (
+        SemanticDimension.VALUE_PROVENANCE,
+        SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
+        SemanticDimension.IDENTITY_CHANGE,
+        SemanticDimension.MUTATION_FRESHNESS,
+    ):
+        assert routes.get(dimension.value) == "IMPLEMENTATION", (
+            dimension.value,
+            routes.get(dimension.value),
+        )
+
+
+def test_documented_semantics_still_route_to_documentation_research() -> None:
+    """The implementation fix must not swallow documentation-owned dimensions."""
+
+    routes = _requirement_by_dimension(_run(_ordering_and_reporting_packet()))
+    for dimension in (
+        SemanticDimension.GOVERNING_SEMANTICS,
+        SemanticDimension.FALLBACK,
+        SemanticDimension.VERSION_APPLICABILITY,
+    ):
+        assert routes.get(dimension.value) == "DOCUMENTATION", (
+            dimension.value,
+            routes.get(dimension.value),
+        )
+
+
+def test_every_dimension_has_an_explicit_authority_subject() -> None:
+    """Hardening for the fourth latent direct-dispatch table.
+
+    _subject_for_dimension falls through to PRODUCT_CONTRACT, so a new
+    dimension about implementation behaviour silently misroutes its mandatory
+    research to documentation instead of raising. Pin the subject of every
+    dimension whose question asks how the product actually behaves.
+    """
+
+    from app.services.canonical_test_plan_reasoning_service import (
+        _subject_for_dimension,
+    )
+
+    implementation_owned = {
+        SemanticDimension.DIRECT_CONSUMERS,
+        SemanticDimension.SIBLING_CONSUMERS,
+        SemanticDimension.DOWNSTREAM_PROCESSOR,
+        SemanticDimension.PERSISTED_STATE,
+        SemanticDimension.VALUE_PROVENANCE,
+        SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
+        SemanticDimension.BROKEN_RESOLUTION,
+        SemanticDimension.IDENTITY_CHANGE,
+        SemanticDimension.MUTATION_FRESHNESS,
+    }
+    for dimension in implementation_owned:
+        assert (
+            _subject_for_dimension(dimension)
+            == AuthoritySubject.ACTUAL_IMPLEMENTATION
+        ), dimension.value
+
+    # Every dimension still resolves to some subject, so none can KeyError.
+    for dimension in SemanticDimension:
+        assert _subject_for_dimension(dimension) in set(AuthoritySubject)
+
+# --------------------------------------------------------------------------
+# 12. Irrelevance: expansion must not inject dependencies a ticket cannot have.
+# --------------------------------------------------------------------------
+
+
+def _unrelated_non_content_packet() -> dict[str, object]:
+    """A ticket with no value, no reference, no identity and no second surface.
+
+    Deliberately outside the content/authoring domain: nothing is displayed,
+    exported, ordered, resolved, referenced or persisted, so a generic
+    expander has nothing to widen. If DITA-shaped or repository-move
+    dependencies appear here, the rules are leaking product assumptions.
+    """
+
+    return {
+        "jira_key": "GUIDES-44003",
+        "issue": {
+            "issue_key": "GUIDES-44003",
+            "summary": "Increase the session inactivity timeout",
+            "description": (
+                "The administrator wants the inactivity timeout raised from "
+                "fifteen minutes to thirty minutes."
+            ),
+        },
+    }
+
+
+def test_unrelated_ticket_gets_no_injected_content_dependencies() -> None:
+    """The negative control: irrelevant dependencies must stay absent."""
+
+    result = _run(_unrelated_non_content_packet())
+    activated = _activated_dimensions(result)
+
+    # Nothing in this ticket references content, so content-shaped resolution
+    # and identity dependencies must not be manufactured.
+    for dimension in (
+        SemanticDimension.REFERENCED_CONTENT,
+        SemanticDimension.NESTED_REFERENCED_CONTENT,
+        SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
+        SemanticDimension.BROKEN_RESOLUTION,
+        SemanticDimension.IDENTITY_CHANGE,
+    ):
+        assert dimension.value not in activated, dimension.value
+
+    # A ticket that triggers nothing must not fabricate a subject to decide.
+    expansion = _expansion(result)
+    assert not expansion["candidates"]
+    assert not expansion["dependency_records"]
+
+
+def test_irrelevance_is_evidence_directed_not_a_blanket_suppression() -> None:
+    """The negative control must not pass by disabling expansion everywhere."""
+
+    quiet = _activated_dimensions(_run(_unrelated_non_content_packet()))
+    loud = _activated_dimensions(_run(_reference_resolution_packet()))
+
+    assert not quiet
+    assert SemanticDimension.IDENTITY_CHANGE.value in loud
+    assert SemanticDimension.BROKEN_RESOLUTION.value in loud
+
+
+def test_unrelated_ticket_still_completes_without_a_gate_failure() -> None:
+    """No discovery must not become a completeness failure."""
+
+    result = _run(_unrelated_non_content_packet())
+    gates = {
+        row["gate"]: row["status"]
+        for row in result.output_payload["gate_decisions"]
+    }
+    assert gates["BehavioralCompletenessGate"] in {"PASSED", "REVIEW"}
+
+# --------------------------------------------------------------------------
+# 13. The full chain, not just discovery: discovered -> bound -> researched
+#     -> dispositioned -> still not acceptance.
+# --------------------------------------------------------------------------
+
+
+def test_every_material_subject_decides_all_nine_dependency_kinds() -> None:
+    """Totality is the point: a dependency cannot vanish by never firing."""
+
+    result = _run(_ordering_and_reporting_packet())
+    expansion = _expansion(result)
+    records = expansion["dependency_records"]
+
+    assert records, "a material ticket produced no dependency record"
+    for record in records:
+        decided = [slot["kind"] for slot in record["slots"]]
+        assert len(decided) == len(set(decided)), record["subject"]
+        assert set(decided) == {kind.value for kind in SemanticDependencyKind}
+
+
+def test_dependency_records_cover_every_material_subject() -> None:
+    """A subject the expander called material may not be left undecided."""
+
+    result = _run(_ordering_and_reporting_packet())
+    expansion = _expansion(result)
+
+    material = {
+        candidate["subject"]
+        for candidate in expansion["candidates"]
+        if candidate.get("material", True)
+    }
+    recorded = {record["subject"] for record in expansion["dependency_records"]}
+    assert material <= recorded
+
+
+def test_required_research_always_names_a_carrier() -> None:
+    """Research that names nothing cannot be executed, so it is not research."""
+
+    result = _run(_ordering_and_reporting_packet())
+    for record in _expansion(result)["dependency_records"]:
+        for slot in record["slots"]:
+            if slot["disposition"] == CoverageExpansionDisposition.RESEARCH_REQUIRED:
+                assert slot["question_ids"] or slot["candidate_ids"], slot["kind"]
+
+
+def test_not_applicable_dependencies_state_a_concrete_reason() -> None:
+    """Silence and a placeholder are the same empty assertion."""
+
+    placeholders = {"", "na", "n/a", "none", "tbd", "unknown"}
+    result = _run(_ordering_and_reporting_packet())
+    for record in _expansion(result)["dependency_records"]:
+        for slot in record["slots"]:
+            if slot["disposition"] == CoverageExpansionDisposition.NOT_APPLICABLE:
+                reason = slot["reason"].strip().casefold()
+                assert reason and reason not in placeholders, slot["kind"]
+
+
+def test_research_routing_follows_where_the_answer_lives() -> None:
+    """A question about current behavior is a code read, not a human decision.
+
+    Routing every dependency to documentation quietly turns "what does the
+    product do today?" into "what should the product do?", which is the
+    failure this separation exists to prevent.
+    """
+
+    result = _run(_ordering_and_reporting_packet())
+    routes = {
+        row["question_id"]: row["research_requirement"]
+        for row in result.output_payload["research_requirements"]
+    }
+    questions = {
+        row["question_id"]: row
+        for row in result.output_payload["missing_questions"]
+    }
+
+    implementation = {
+        question_id
+        for question_id, requirement in routes.items()
+        if requirement == ResearchRequirement.IMPLEMENTATION.value
+    }
+    assert implementation, "nothing routed to implementation evidence"
+
+    # Provenance asks where a value actually comes from: that is a code read.
+    provenance = {
+        question_id
+        for question_id, row in questions.items()
+        if row["dimension"] == SemanticDimension.VALUE_PROVENANCE.value
+    }
+    assert provenance & implementation, "value provenance misrouted to docs"
+
+    # Nothing may sit unrouted: every material question gets a requirement.
+    assert set(questions) <= set(routes)
+
+
+def test_dependency_records_never_carry_acceptance_authority() -> None:
+    """Discovery widens what we ask, never what we accept."""
+
+    result = _run(_ordering_and_reporting_packet())
+    expansion = _expansion(result)
+
+    for record in expansion["dependency_records"]:
+        assert "acceptance_ref" not in record
+        assert not record.get("promoted")
+        for slot in record["slots"]:
+            assert slot["disposition"] != CoverageExpansionDisposition.AC_CANDIDATE
+
+    # And none of it reached the acceptance contract on its own.
+    subjects = {record["subject"] for record in expansion["dependency_records"]}
+    for row in result.output_payload["acceptance_candidates"]:
+        assert row.get("subject") not in subjects
+    for row in result.output_payload["promotion_decisions"]:
+        assert row.get("subject") not in subjects
+
+
+def test_discovered_dependencies_are_never_auto_confirmed() -> None:
+    """An expanded dimension is a question, not an accepted contract."""
+
+    result = _run(_ordering_and_reporting_packet())
+    closure = {
+        row["dimension"]: row["disposition"]
+        for row in result.output_payload["semantic_closure"]
+    }
+
+    for dimension in _activated_dimensions(result):
+        assert closure.get(dimension) != ClosureDisposition.COVERED.value, dimension
