@@ -358,6 +358,45 @@ def research_resolved_question_ids(
         and desired_behavior_claims(question, research_by_question, worker_results)
     }
 
+
+# A leading attribution clause ending in a colon ("The slide text explicitly
+# states the customer position:", "On the same slide the customer (X)
+# states:") is the researcher's framing, not the desired behavior.
+_DESIRED_WRAPPER_RE = re.compile(
+    r"^[^.]{0,120}?\b(?:states|says|reads|notes)\b[^:]{0,40}:\s*",
+    re.IGNORECASE,
+)
+
+
+def _desired_claim_text(claim: str) -> str:
+    """Normalize a DESIRED_BEHAVIOR finding into readable proposed-AC text:
+    strip the attribution wrapper, prefer the researcher's distilled
+    sentence over the verbatim customer quote, and bound at a sentence
+    boundary (never mid-word)."""
+
+    text = _DESIRED_WRAPPER_RE.sub("", str(claim).strip()).strip()
+    if text.startswith(('"', "'")):
+        quote_char = text[0]
+        close = -1
+        idx = text.find(quote_char, 1)
+        while idx != -1:
+            if idx + 1 >= len(text) or text[idx + 1] in " \t":
+                close = idx
+                break
+            idx = text.find(quote_char, idx + 1)
+        if close > 0:
+            quoted = text[1:close].strip()
+            trailing = text[close + 1 :].strip()
+            text = trailing or ("Customer-stated desired behavior: " + quoted)
+    if len(text) > 320:
+        cut = text[:320]
+        for sep in (". ", "? ", "! "):
+            pos = cut.rfind(sep)
+            if pos > 80:
+                return cut[: pos + 1].strip()
+        return cut.rsplit(" ", 1)[0].rstrip() + "."
+    return text
+
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
     IssueDomain.PUBLISHING: (
         "publish",
@@ -951,6 +990,26 @@ def assess_claim_sufficiency(
     elif clarification_lift:
         authority_basis = "HUMAN_CLARIFICATION"
 
+    # Decision semantics: a research-derived candidate's establishing
+    # evidence is the admitted research finding itself (validated at the
+    # resume boundary: provenance, authority, lifecycle language), not a
+    # contract fact.  The customer-stated desired behavior found by mandated
+    # research is ticket-authority evidence; it establishes the claim the
+    # same way an admitted human clarification does.  Research that is still
+    # pending, conflicted, or found nothing never lifts.
+    research_derived = any(
+        dispositions_by_id[disposition_id].research_derived
+        for disposition_id in candidate.source_disposition_ids
+        if disposition_id in dispositions_by_id
+    )
+    research_lift = bool(
+        research_derived
+        and research_completion in {"COMPLETED", "PARTIAL"}
+        and candidate.evidence_ids
+    )
+    if research_lift and not authority_basis:
+        authority_basis = "ADMITTED_RESEARCH"
+
     # Currentness: only evidence that resolves into the bundle counts.
     currentness_values = {
         evidence_currentness[evidence_id]
@@ -975,9 +1034,13 @@ def assess_claim_sufficiency(
 
     if not candidate.in_scope:
         hard_insufficient.append("the claim is out of the established scope")
-    if not source_facts and not clarification_lift:
+    if not source_facts and not clarification_lift and not research_lift:
         hard_insufficient.append("no evidence is bound to the claim")
-    elif not establishing_facts and not clarification_lift:
+    elif (
+        not establishing_facts
+        and not clarification_lift
+        and not research_lift
+    ):
         if problem_facts:
             hard_insufficient.append(
                 "bound evidence establishes the problem, not a particular "
@@ -989,7 +1052,7 @@ def assess_claim_sufficiency(
                 "bound evidence exists but none of it is establishing for this "
                 "claim (observation/inference/historical authority only)"
             )
-    elif problem_facts and not clarification_lift:
+    elif problem_facts and not clarification_lift and not research_lift:
         # P2 guard: problem evidence plus unrelated establishing evidence must
         # not bleed into a claim whose behavior content nothing establishes.
         covered: set[str] = set()
@@ -1047,11 +1110,14 @@ def assess_claim_sufficiency(
         status = SufficiencyStatus.SUFFICIENT
 
     # The established portion is exactly what the establishing evidence says -
-    # never more than the claim, never invented.
+    # never more than the claim, never invented.  For a research-lifted claim
+    # the admitted research finding IS the portion, bounded by the claim.
     portion_literals = sorted({fact.literal for fact in establishing_facts})
     established_portion = ""
     if status == SufficiencyStatus.PARTIAL:
         established_portion = " / ".join(portion_literals)[:2000]
+        if research_lift and not established_portion:
+            established_portion = candidate.statement[:2000]
 
     reason_bits = []
     if status == SufficiencyStatus.SUFFICIENT:
@@ -4907,6 +4973,57 @@ class CanonicalTestPlanReasoningService:
                     "mandatory research terminated; the missing value is "
                     "never invented."
                 )
+            if (
+                disposition == CoverageDisposition.OPEN_QUESTION
+                and question is not None
+                and question.question_id in desired_resolved_ids
+            ):
+                # Decision semantics: admitted research established the
+                # customer-stated desired behavior for this question - the
+                # hypothesis is answered by the desired behavior, so its one
+                # terminal disposition is the PROPOSED candidate, not an open
+                # question.  Only the residual acceptance-changing decision
+                # (carried by the convergence record) may stay a bounded TBD.
+                desired_claims = desired_behavior_claims(
+                    question, research_by_question, worker_results or []
+                )[:1]
+                if desired_claims:
+                    claim, refs = desired_claims[0]
+                    proposed_text = _desired_claim_text(claim)
+                    if len(proposed_text) > 400:
+                        proposed_text = (
+                            proposed_text[:400].rsplit(" ", 1)[0].rstrip() + "."
+                        )
+                    p_class, p_priority, p_impact = _derive_c1(
+                        CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                        has_direct_evidence=True,
+                    )
+                    rows.append(
+                        CoverageDispositionRecord(
+                            candidate=proposed_text,
+                            disposition=(
+                                CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                            ),
+                            source_question_ids=[question.question_id],
+                            source_hypothesis_ids=[hypothesis.hypothesis_id],
+                            source_fact_ids=list(question.source_fact_ids),
+                            evidence_ids=[
+                                ref for ref in refs if str(ref).strip()
+                            ],
+                            rationale=(
+                                "Customer-stated desired behavior established "
+                                "by admitted research; proposed pending the "
+                                "product decision carried by convergence."
+                            ),
+                            coverage_class=p_class,
+                            priority=p_priority,
+                            acceptance_impact=p_impact,
+                            contract_type="POSITIVE",
+                            applicability="APPLICABLE",
+                            research_derived=True,
+                        )
+                    )
+                    continue
             c1_class, c1_priority, c1_impact = _derive_c1(
                 disposition,
                 has_direct_evidence=hypothesis.state == HypothesisState.CONFIRMED,
@@ -4955,7 +5072,7 @@ class CanonicalTestPlanReasoningService:
                 for claim, refs in desired_behavior_claims(
                     question, research_by_question, worker_results or []
                 )[:2]:
-                    candidate = claim
+                    candidate = _desired_claim_text(claim)
                     if len(candidate) > 400:
                         candidate = (
                             candidate[:400].rsplit(" ", 1)[0].rstrip() + "."

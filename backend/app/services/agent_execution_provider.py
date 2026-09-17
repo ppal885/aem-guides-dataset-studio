@@ -893,7 +893,14 @@ def _validate_agent_result(
             applicability=str(raw.get("applicability") or "")[:500],
             currentness=str(raw.get("currentness") or "")[:200],
             limitations=[str(item)[:500] for item in (raw.get("limitations") or [])],
-            conflicts=[str(item)[:500] for item in (raw.get("conflicts") or [])],
+            conflicts=[
+                (
+                    str(item.get("description") or item.get("text") or "")[:500]
+                    if isinstance(item, dict)
+                    else str(item)[:500]
+                )
+                for item in (raw.get("conflicts") or [])
+            ],
         )
     except Exception as exc:
         return _terminal_result(

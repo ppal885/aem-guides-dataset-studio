@@ -106,7 +106,8 @@ def _result(question, status, findings=(), conflicts=(), limitations=()):
 
 
 def _research_record(question, status=ResearchStatus.ANSWER_FOUND, worker=None):
-    request_ids = ["research-request:test-1"]
+    # PENDING means research never executed: it cannot cite requests/evidence.
+    request_ids = [] if status == ResearchStatus.PENDING else ["research-request:test-1"]
     if worker is not None:
         # Production binding: the record carries the worker result's
         # research_id in research_request_ids.
@@ -241,11 +242,71 @@ def test_established_acs_survive_with_one_bounded_tbd() -> None:
     # The established contract survived...
     assert "None generated until the blocking decisions" not in rendered
     assert _DESIRED_CLAIM[:60] in rendered
-    # ...and only the residual decision is the bounded TBD.
+    # ...and only the residual decision is the bounded TBD - at most one.
     assert "(TBD)" in rendered
     assert "Decision needed:" in rendered
+    assert rendered.count("Decision needed:") == 1
     # The raw Jira problem prose is never the human question.
     assert _RAW_GAP_QUESTION not in rendered
+
+
+def test_lifecycle_conflict_does_not_block_established_acs() -> None:
+    """Regression 1+2: admitted documentation + Jira + implementation
+    evidence produce ACs even while a lifecycle/currentness conflict
+    remains; the lifecycle conflict is not a product-decision blocker."""
+    facts = _facts()
+    scope = ScopeResolution()
+    question = _question(
+        _RAW_GAP_QUESTION, fact_ids=(facts.facts[0].fact_id,)
+    )
+    desired = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(_finding(_DESIRED_CLAIM, "DESIRED_BEHAVIOR"),),
+        conflicts=(_LIFECYCLE_CONFLICT,),
+    )
+    implementation = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(
+            _finding(
+                "Code at the inspected revision derives the indicator from "
+                "the stored flag.",
+                "IMPLEMENTATION_EVIDENCE",
+            ),
+        ),
+    )
+    research = _research_record(question, worker=desired)
+    convergence = CONVERGENCE_SERVICE.evaluate(
+        [question], [research], [desired, implementation]
+    )
+    row = convergence[0]
+    assert row.conflict_classes == ["LIFECYCLE_CURRENTNESS"]
+    assert not row.acceptance_changing
+    assert row.decision == ""
+
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], scope, [question], [research],
+        worker_results=[desired, implementation],
+    )
+    resolution = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts, dispositions, [question],
+        resolved_question_ids={question.question_id},
+        research_records=[research],
+    )
+    gate, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
+        resolution.candidates, facts, scope, dispositions
+    )
+    assert any(row.status == PromotionStatus.PROMOTED for row in promotions)
+
+    _plan, rendered = _render(
+        facts, scope, [question], dispositions, resolution, promotions,
+        [gate], convergence,
+        research_resolved={question.question_id},
+    )
+    assert _DESIRED_CLAIM[:60] in rendered
+    assert "(TBD)" not in rendered
+    assert "None generated until the blocking decisions" not in rendered
 
 
 def test_lifecycle_conflict_alone_produces_no_decision() -> None:
@@ -310,6 +371,78 @@ def test_lifecycle_conflict_alone_produces_no_decision() -> None:
     assert _DESIRED_CLAIM[:60] in rendered
     assert _LIFECYCLE_CONFLICT not in rendered
     assert "(TBD)" not in rendered
+
+
+def test_s1_lift_only_with_completed_research() -> None:
+    """The S1 research lift: a research-derived candidate is sufficient when
+    the mandated research terminated with an answer, and stays INSUFFICIENT
+    when research is still pending or found nothing - the lift never rescues
+    unresearched claims."""
+    from app.services.canonical_test_plan_reasoning_service import (
+        assess_claim_sufficiency,
+    )
+
+    facts = _facts()
+    scope = ScopeResolution()
+    question = _question(
+        _RAW_GAP_QUESTION, fact_ids=(facts.facts[0].fact_id,)
+    )
+    worker = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(_finding(_DESIRED_CLAIM, "DESIRED_BEHAVIOR"),),
+    )
+    research = _research_record(question, worker=worker)
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], scope, [question], [research],
+        worker_results=[worker],
+    )
+    resolution = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts, dispositions, [question],
+        resolved_question_ids={question.question_id},
+        research_records=[research],
+    )
+    assert resolution.candidates
+    candidate = resolution.candidates[0]
+    facts_by_id = {row.fact_id: row for row in facts.facts}
+    dispositions_by_id = {row.disposition_id: row for row in dispositions}
+
+    completed = assess_claim_sufficiency(
+        candidate,
+        facts_by_id=facts_by_id,
+        dispositions_by_id=dispositions_by_id,
+        research_by_question={question.question_id: research},
+        classifications_by_disposition={},
+        evidence_currentness={},
+        admitted_clarifications=[],
+    )
+    assert completed.status.value != "INSUFFICIENT"
+    assert completed.authority_basis == "ADMITTED_RESEARCH"
+
+    pending = _research_record(question, status=ResearchStatus.PENDING)
+    blocked = assess_claim_sufficiency(
+        candidate,
+        facts_by_id=facts_by_id,
+        dispositions_by_id=dispositions_by_id,
+        research_by_question={question.question_id: pending},
+        classifications_by_disposition={},
+        evidence_currentness={},
+        admitted_clarifications=[],
+    )
+    assert blocked.status.value == "INSUFFICIENT"
+
+    not_found = _research_record(question, status=ResearchStatus.NOT_FOUND)
+    not_found_record = not_found
+    missing = assess_claim_sufficiency(
+        candidate,
+        facts_by_id=facts_by_id,
+        dispositions_by_id=dispositions_by_id,
+        research_by_question={question.question_id: not_found_record},
+        classifications_by_disposition={},
+        evidence_currentness={},
+        admitted_clarifications=[],
+    )
+    assert missing.status.value == "INSUFFICIENT"
 
 
 def test_research_answered_question_produces_no_tbd() -> None:

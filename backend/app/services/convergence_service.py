@@ -93,10 +93,13 @@ def _classify_conflict(text: str) -> str:
     def _hits(signals: tuple[str, ...]) -> int:
         return sum(1 for signal in signals if signal in lowered)
 
-    if _hits(_EVIDENCE_QUALITY_SIGNALS):
-        return CONFLICT_EVIDENCE_QUALITY
+    # A strong implementation conflict (code anchor + behavior verb) wins
+    # over an incidental evidence-quality mention inside the same sentence
+    # (for example "code sets the flag only on Error ... excerpt truncated").
     if _hits(_IMPLEMENTATION_ANCHORS) and _hits(_IMPLEMENTATION_BEHAVIOR_VERBS):
         return CONFLICT_IMPLEMENTATION
+    if _hits(_EVIDENCE_QUALITY_SIGNALS):
+        return CONFLICT_EVIDENCE_QUALITY
     if _hits(_LIFECYCLE_SIGNALS):
         return CONFLICT_LIFECYCLE_CURRENTNESS
     if _hits(_IMPLEMENTATION_ANCHORS):
@@ -116,10 +119,19 @@ def _build_decision(
     prose."""
 
     parts: list[str] = []
-    established = agreements[0] if agreements else (pm_view[0] if pm_view else "")
+    undecided = contract_conflicts[0] if contract_conflicts else unknowns[0]
+    # The established anchor is the view item closest to the undecided
+    # point, not merely the first view item.
+    pool = list(agreements) or list(pm_view)
+    established = ""
+    if pool:
+        undecided_tokens = _tokens(undecided)
+        established = max(
+            pool,
+            key=lambda claim: _overlap_ratio(_tokens(claim), undecided_tokens),
+        )
     if established:
         parts.append(f"Established by evidence: {established[:360]}")
-    undecided = contract_conflicts[0] if contract_conflicts else unknowns[0]
     parts.append(f"Undecided: {undecided[:360]}")
     parts.append(
         "Decision needed: which interpretation defines the acceptance "
@@ -188,7 +200,18 @@ class ConvergenceService:
                     elif finding.evidence_role in _QE_ROLES and len(qe_view) < _MAX_VIEW_ITEMS:
                         qe_view.append(claim)
                 for conflict in result.conflicts:
-                    conflicts.append(str(conflict)[:500])
+                    # Workers may return structured conflicts; the human-facing
+                    # text is the description, never a stringified dict.
+                    if isinstance(conflict, dict):
+                        text = str(
+                            conflict.get("description")
+                            or conflict.get("text")
+                            or ""
+                        ).strip()
+                    else:
+                        text = str(conflict).strip()
+                    if text:
+                        conflicts.append(text[:500])
                 if result.status == ResearchWorkerStatus.CONFLICTED:
                     saw_conflict = True
                 if result.status == ResearchWorkerStatus.PARTIAL:
