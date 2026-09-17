@@ -2887,7 +2887,20 @@ class ConvergenceRecord(BaseModel):
     qe_view: list[str] = Field(default_factory=list)
     agreements: list[str] = Field(default_factory=list)
     conflicts: list[str] = Field(default_factory=list)
+    # Parallel to ``conflicts``: each entry's classification -
+    # PRODUCT_CONTRACT / IMPLEMENTATION / LIFECYCLE_CURRENTNESS /
+    # EVIDENCE_QUALITY.  Only PRODUCT_CONTRACT and IMPLEMENTATION conflicts
+    # are acceptance-changing; lifecycle/currentness conflicts cap
+    # shipped/current claims only and never block a behavioral contract.
+    conflict_classes: list[str] = Field(default_factory=list)
     acceptance_changing_unknowns: list[str] = Field(default_factory=list)
+    # True only when an unresolved conflict/unknown can change the acceptance
+    # contract itself.  When False, this record never produces a TBD.
+    acceptance_changing: bool = False
+    # The decision-quality clarification: established behavior + the
+    # undecided point + what QE must decide.  Never the raw Jira problem
+    # prose; empty when no acceptance-changing decision remains.
+    decision: str = ""
     status: ConvergenceStatus
 
     @model_validator(mode="after")
@@ -3912,6 +3925,12 @@ class CoverageDispositionRecord(BaseModel):
     configuration: str = ""
     variants: list[str] = Field(default_factory=list)
     revision: str = ""
+    # True when the candidate text was established by admitted research
+    # findings (for example a customer-stated DESIRED_BEHAVIOR) rather than
+    # by the question's triggering facts alone.  Research-derived candidates
+    # are exempt from the PROBLEM_TO_SOLUTION promotion guard because the
+    # desired behavior carries its own research evidence.
+    research_derived: bool = False
 
     @model_validator(mode="after")
     def identify(self) -> "CoverageDispositionRecord":

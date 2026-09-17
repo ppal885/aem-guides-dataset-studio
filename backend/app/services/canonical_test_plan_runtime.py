@@ -1284,6 +1284,16 @@ class CanonicalTestPlanRuntime:
                 for evidence_id in row.evidence_ids
             )
         }
+        # Decision semantics: research that established the customer-stated
+        # desired behavior releases the question's established portion the
+        # same way - a PROPOSED candidate carries it, and only the residual
+        # acceptance-changing decision stays a bounded TBD via convergence.
+        from app.services.canonical_test_plan_reasoning_service import (
+            research_resolved_question_ids as _desired_established_ids,
+        )
+        research_resolved_ids |= _desired_established_ids(
+            questions, question_research, research_worker_results
+        )
         hypotheses_for_trace = list(hypotheses)
         impact_model = pre_verifier_model if semantic_batch is not None else model
         impacts = stage(
@@ -1303,6 +1313,7 @@ class CanonicalTestPlanRuntime:
                 questions,
                 question_research,
                 admitted_clarified_question_ids,
+                worker_results=research_worker_results,
             ),
         )
         dispositions_for_trace = list(dispositions)

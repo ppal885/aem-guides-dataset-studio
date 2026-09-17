@@ -2188,10 +2188,22 @@ def test_fj16_resolved_questions_leave_open_question_sections_but_unresolved_rem
     open_ids = section_ids.get("product_decisions", set()) | section_ids.get(
         "evidence_gaps", set()
     )
+    # Decision semantics: when convergence produced the decision-quality
+    # clarification, the open section addresses the question through its
+    # ACCEPTANCE_TBD disposition id instead of the raw question id.
+    tbd_by_question: dict[str, set[str]] = {}
+    for row in result.output_payload["coverage_dispositions"]:
+        if row["disposition"] == CoverageDisposition.ACCEPTANCE_TBD.value:
+            for question_id in row["source_question_ids"]:
+                tbd_by_question.setdefault(question_id, set()).add(
+                    row["disposition_id"]
+                )
     for hypothesis in hypotheses:
         question = questions[hypothesis["derived_from_question_id"]]
         if hypothesis["state"] == HypothesisState.UNRESOLVED.value:
-            assert question["question_id"] in open_ids
+            assert question["question_id"] in open_ids or (
+                tbd_by_question.get(question["question_id"], set()) & open_ids
+            )
         elif question["dimension"] is not None:
             assert question["question_id"] not in open_ids
 

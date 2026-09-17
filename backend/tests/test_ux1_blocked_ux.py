@@ -457,8 +457,21 @@ def test_blocked_questions_keep_canonical_identity_for_resume() -> None:
     # canonical question text (no presentation rewrite), so its ID/revision
     # stays bound for clarification resume.
     decisions_section = rendered.split("## Open product decisions")[-1]
+    convergence_rows = {
+        row["question_id"]: row
+        for row in result.output_payload.get("convergence", [])
+    }
     for question in questions:
-        if question["blocking"]:
+        if not question["blocking"]:
+            continue
+        conv = convergence_rows.get(question["question_id"])
+        if conv and conv.get("decision"):
+            # Decision-quality clarification: convergence converted the
+            # residual uncertainty into one concrete product decision; the
+            # raw problem prose is no longer the human question.  Identity
+            # for resume stays bound through the payload below.
+            assert conv["decision"] in decisions_section
+        else:
             assert question["question"] in decisions_section
     # P1 admission binds the same canonical question id.
     from app.core.schemas_canonical_test_plan_runtime import MissingQuestion

@@ -116,7 +116,6 @@ def test_convergence_uses_research_record_when_no_worker_rows() -> None:
 
 def test_blocked_render_carries_evidence_and_conflict_for_decisions() -> None:
     from app.core.schemas_canonical_test_plan_runtime import (
-        ConvergenceRecord,
         ContractFact,
         ContractFactSet,
         ContractFactType,
@@ -158,18 +157,21 @@ def test_blocked_render_carries_evidence_and_conflict_for_decisions() -> None:
     _gate, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
         resolution.candidates, facts, scope, dispositions
     )
-    convergence = [
-        ConvergenceRecord(
-            question_id=question.question_id,
-            pm_view=["The 2026-08-15 Jira comment describes a log-scan indicator."],
-            dev_view=[],
-            qe_view=[],
-            agreements=[],
-            conflicts=["Fix comment says WARN lines; code at HEAD flags only Error/Fatal."],
-            acceptance_changing_unknowns=[],
-            status=ConvergenceStatus.CONFLICTED,
-        )
-    ]
+    # Build the convergence record through the service so conflict
+    # classification and the decision formulation are the real ones.
+    result = _result(
+        question,
+        ResearchWorkerStatus.CONFLICTED,
+        findings=(
+            _finding(
+                "The 2026-08-15 Jira comment describes a log-scan indicator.",
+                "REQUIREMENT_CLARIFICATION",
+            ),
+        ),
+        conflicts=("Fix comment says WARN lines; code at HEAD flags only Error/Fatal.",),
+    )
+    convergence = CONVERGENCE_SERVICE.evaluate([question], [], [result])
+    assert convergence[0].decision  # acceptance-changing conflict
     blocked_gate = GateDecision(
         gate="AcceptancePromotionGate",
         status=GateStatus.BLOCKED,
@@ -187,6 +189,8 @@ def test_blocked_render_carries_evidence_and_conflict_for_decisions() -> None:
         acceptance_resolution=resolution,
         convergence=convergence,
     )
-    assert "(TBD) Which product decision covers the warning indicator gap?" in rendered
-    assert "What the evidence shows: The 2026-08-15 Jira comment" in rendered
-    assert "Conflict to resolve: Fix comment says WARN lines" in rendered
+    # Decision-quality clarification: the raw question prose is never the
+    # human question; the decision form carries established + undecided.
+    assert "Decision needed:" in rendered
+    assert "Established by evidence:" in rendered
+    assert "Which product decision covers the warning indicator gap?" not in rendered

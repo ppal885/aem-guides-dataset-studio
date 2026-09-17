@@ -86,9 +86,11 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ReasoningPatternActivation,
     ReasoningQuestionFamily,
     RendererProjectionDecision,
+    ResearchFindingEvidenceRole,
     ResearchRequirement,
     ResearchRequirementRecord,
     ResearchStatus,
+    ResearchWorkerStatus,
     RetrievalStatus,
     ScopeResolution,
     SemanticDimension,
@@ -284,6 +286,77 @@ def _acceptance_tbd_eligible(
         # No research classification at all is never "research exhausted".
         return False
     return record.research_status in _TBD_EXHAUSTED_RESEARCH_STATUSES
+
+
+# Decision semantics: research that terminated with an answer may establish
+# the customer-stated desired behavior for a blocking question.  The
+# established portion then grounds a PROPOSED candidate; only the residual
+# acceptance-changing decision (carried by convergence) remains a bounded
+# TBD.  Observed behavior never qualifies here - observation is not a
+# requirement; only an explicit DESIRED_BEHAVIOR finding counts.
+_DESIRED_ESTABLISHING_RESEARCH_STATUSES = {
+    ResearchStatus.ANSWER_FOUND,
+    ResearchStatus.PARTIAL,
+}
+_DESIRED_ESTABLISHING_WORKER_STATUSES = {
+    ResearchWorkerStatus.ANSWER_FOUND,
+    ResearchWorkerStatus.PARTIAL,
+}
+
+
+def desired_behavior_claims(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    worker_results: list,
+) -> list[tuple[str, list[str]]]:
+    """Customer-stated desired-behavior claims established by admitted
+    research for this question, as (claim, source_refs) pairs."""
+
+    record = research_by_question.get(question.question_id)
+    if (
+        record is None
+        or record.research_status not in _DESIRED_ESTABLISHING_RESEARCH_STATUSES
+    ):
+        return []
+    claims: list[tuple[str, list[str]]] = []
+    for result in worker_results or []:
+        if result.question_id != question.question_id:
+            continue
+        if (
+            record.research_request_ids
+            and result.research_id not in record.research_request_ids
+        ):
+            continue
+        if result.status not in _DESIRED_ESTABLISHING_WORKER_STATUSES:
+            continue
+        for finding in result.findings:
+            if finding.evidence_role != ResearchFindingEvidenceRole.DESIRED_BEHAVIOR:
+                continue
+            claim = str(finding.claim).strip()
+            if claim:
+                claims.append((claim, list(finding.source_refs or [])))
+    return claims
+
+
+def research_resolved_question_ids(
+    questions: list[MissingQuestion],
+    research_records: list[QuestionResearchRecord] | None,
+    worker_results: list,
+) -> set[str]:
+    """Blocking questions whose behavioral core was established by admitted
+    research (a customer-stated desired behavior was found).  They stop
+    blocking the established portion; any residual acceptance-changing
+    decision still surfaces through convergence as a bounded TBD."""
+
+    research_by_question = {
+        row.question_id: row for row in research_records or []
+    }
+    return {
+        question.question_id
+        for question in questions or []
+        if question.blocking
+        and desired_behavior_claims(question, research_by_question, worker_results)
+    }
 
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
     IssueDomain.PUBLISHING: (
@@ -4473,11 +4546,19 @@ class CanonicalTestPlanReasoningService:
         questions: list[MissingQuestion],
         research_records: list[QuestionResearchRecord] | None = None,
         clarified_question_ids: set[str] | None = None,
+        worker_results: list | None = None,
     ) -> list[CoverageDispositionRecord]:
         clarified_question_ids = clarified_question_ids or set()
         research_by_question = {
             row.question_id: row for row in research_records or []
         }
+        # Decision semantics: a blocking question whose admitted research
+        # established the customer-stated desired behavior no longer blocks
+        # the established portion - it grounds a PROPOSED candidate and only
+        # its residual acceptance-changing decision stays a bounded TBD.
+        desired_resolved_ids = research_resolved_question_ids(
+            questions, research_records, worker_results or []
+        )
         rows: list[CoverageDispositionRecord] = []
         out_scope_values = [_scope_clause_value(value) for value in scope.out_of_scope]
         for fact in facts.facts:
@@ -4833,6 +4914,49 @@ class CanonicalTestPlanReasoningService:
         for question in questions:
             if question.question_id in linked_question_ids:
                 continue
+            if question.question_id in desired_resolved_ids:
+                # Decision semantics: research established the customer-stated
+                # desired behavior for this blocking question.  That
+                # established portion grounds a PROPOSED candidate (never
+                # Confirmed); any residual acceptance-changing decision stays
+                # visible through the convergence record's bounded TBD.
+                for claim, refs in desired_behavior_claims(
+                    question, research_by_question, worker_results or []
+                )[:2]:
+                    candidate = claim
+                    if len(candidate) > 400:
+                        candidate = (
+                            candidate[:400].rsplit(" ", 1)[0].rstrip() + "."
+                        )
+                    c1_class, c1_priority, c1_impact = _derive_c1(
+                        CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                        has_direct_evidence=True,
+                    )
+                    rows.append(
+                        CoverageDispositionRecord(
+                            candidate=candidate,
+                            disposition=(
+                                CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                            ),
+                            source_question_ids=[question.question_id],
+                            source_fact_ids=list(question.source_fact_ids),
+                            evidence_ids=[
+                                ref for ref in refs if str(ref).strip()
+                            ],
+                            rationale=(
+                                "Customer-stated desired behavior established "
+                                "by admitted research; proposed pending the "
+                                "product decision carried by convergence."
+                            ),
+                            coverage_class=c1_class,
+                            priority=c1_priority,
+                            acceptance_impact=c1_impact,
+                            contract_type="POSITIVE",
+                            applicability="APPLICABLE",
+                            research_derived=True,
+                        )
+                    )
+                continue
             if not _acceptance_tbd_eligible(
                 question, research_by_question, clarified_question_ids
             ):
@@ -4986,8 +5110,7 @@ class CanonicalTestPlanReasoningService:
             row.question_id
             for row in questions
             if row.blocking and row.question_id not in resolved_question_ids
-        ]
-        # P3: claim-level dependency.  A candidate is blocked only by
+        ]        # P3: claim-level dependency.  A candidate is blocked only by
         # unresolved blocking questions actually linked to its source coverage
         # dispositions; independent sufficiently-established claims must not
         # inherit ticket-wide blocking.  The disposition linkage IS the
@@ -5718,10 +5841,21 @@ class CanonicalTestPlanReasoningService:
                 unresolved = True
             # P2 defense in depth: a candidate resting only on problem/gap
             # statements can never promote (Reviewer failure class
-            # PROBLEM_TO_SOLUTION_PROMOTION).
-            if source_facts and all(
-                fact.fact_type == ContractFactType.PROBLEM_STATEMENT
-                for fact in source_facts
+            # PROBLEM_TO_SOLUTION_PROMOTION).  A research-derived candidate
+            # is exempt: the admitted research finding IS the establishing
+            # evidence for the desired behavior, so the solution does not
+            # rest on the problem statement alone.
+            research_backed = any(
+                row.research_derived
+                for row in source_dispositions
+            )
+            if (
+                source_facts
+                and all(
+                    fact.fact_type == ContractFactType.PROBLEM_STATEMENT
+                    for fact in source_facts
+                )
+                and not research_backed
             ):
                 reasons.append(
                     "PROBLEM_TO_SOLUTION_PROMOTION: an established problem does "
@@ -6180,10 +6314,60 @@ class CanonicalTestPlanReasoningService:
         # R2: research-resolved questions are handled in the loop below: when
         # their research answer promoted acceptance coverage they are released;
         # when nothing promoted, the acceptance decision still needs the human.
+        #
+        # Decision-quality product questions: convergence converts each
+        # residual acceptance-changing uncertainty into one concrete product
+        # decision (established behavior + undecided point + what QE must
+        # decide).  The raw Jira problem prose is never the human question,
+        # and lifecycle/currentness or evidence-quality conflicts never
+        # become a product-decision question by themselves.
+        convergence_by_question = {
+            row.question_id: row for row in (convergence or [])
+        }
+        decision_question_ids: set[str] = set()
+        # A decision-quality line represents its question's TBD disposition;
+        # the disposition id rides on the decision line so the render
+        # invariant (every disposition lands in a section) still holds.
+        tbd_disposition_by_question: dict[str, str] = {}
+        for disposition in dispositions:
+            if disposition.disposition == CoverageDisposition.ACCEPTANCE_TBD:
+                for question_id in disposition.source_question_ids:
+                    tbd_disposition_by_question.setdefault(
+                        question_id, disposition.disposition_id
+                    )
+        represented_tbd_disposition_ids: set[str] = set()
+        for conv in convergence or []:
+            if not conv.decision:
+                continue
+            if (
+                conv.question_id in resolved_question_ids
+                or conv.question_id in clarified_question_ids
+            ):
+                # A question whose coverage was resolved is never reopened by
+                # a research unknown alone; only a live evidence conflict
+                # (product-contract or implementation) stays visible.
+                from app.services.convergence_service import (
+                    _ACCEPTANCE_CHANGING_CONFLICTS,
+                )
+                if not any(
+                    conflict_class in _ACCEPTANCE_CHANGING_CONFLICTS
+                    for conflict_class in conv.conflict_classes
+                ):
+                    continue
+            record_id = tbd_disposition_by_question.get(
+                conv.question_id, conv.question_id
+            )
+            if record_id in tbd_disposition_by_question.values():
+                represented_tbd_disposition_ids.add(record_id)
+            section_items["product_decisions"].append((conv.decision, record_id))
+            decision_question_ids.add(conv.question_id)
         for question in questions:
             if question.question_id in resolved_question_ids:
                 continue
             if question.question_id in clarified_question_ids:
+                continue
+            if question.question_id in decision_question_ids:
+                # The decision-quality line already represents this question.
                 continue
             # R2 release nuance: a research-resolved question whose answer
             # could not promote (e.g. documented but not yet accepted product
@@ -6216,6 +6400,14 @@ class CanonicalTestPlanReasoningService:
                 CoverageDisposition.ACCEPTANCE_CONTRACT,
                 CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
             }:
+                continue
+            if (
+                disposition.disposition == CoverageDisposition.ACCEPTANCE_TBD
+                and disposition.disposition_id in represented_tbd_disposition_ids
+            ):
+                # Represented by the decision-quality line built from the
+                # convergence record - the raw question prose is never the
+                # human-facing product decision.
                 continue
             key = disposition_sections.get(disposition.disposition)
             if key is None:
@@ -6316,6 +6508,13 @@ class CanonicalTestPlanReasoningService:
             deduped: dict[str, set[str]] = {}
             for text, record_id in items:
                 normalized_text = text.strip()
+                if key == "product_decisions" and not normalized_text.startswith(
+                    "(TBD)"
+                ):
+                    # The final UAC distinguishes established behavior from
+                    # unresolved decisions: every open product decision is
+                    # marked (TBD) in both render paths.
+                    normalized_text = f"(TBD) {normalized_text}"
                 deduped.setdefault(normalized_text, set())
                 if record_id:
                     deduped[normalized_text].add(record_id)
@@ -6441,9 +6640,16 @@ class CanonicalTestPlanReasoningService:
                 convergence_by_question = {
                     row.question_id: row for row in (convergence or [])
                 }
+                # Entries whose text IS the convergence decision already
+                # carry the established/undecided lines inside them.
+                decision_record_ids = {
+                    row.question_id for row in (convergence or []) if row.decision
+                }
                 lines.extend(["## Open product decisions", ""])
                 for normalized, record_id in decision_entries:
                     lines.append(f"- (TBD) {normalized}")
+                    if record_id in decision_record_ids:
+                        continue
                     # Conversational, evidence-bearing clarification: attach
                     # what research established and any conflict, so QE can
                     # answer in context instead of reading raw tickets.

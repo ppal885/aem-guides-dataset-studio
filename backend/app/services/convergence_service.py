@@ -47,6 +47,78 @@ _UNKNOWN_STATUSES = {
 _MAX_VIEW_ITEMS = 3
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9-]{2,}")
 
+# Conflict classification (decision semantics): only conflicts that can
+# change the acceptance contract itself may produce a human product-decision
+# question/TBD.  Lifecycle/currentness conflicts (for example a "Fixed by"
+# comment beside an In Progress linked issue) cap shipped/current claims
+# only; evidence-quality conflicts cap confidence only.
+CONFLICT_PRODUCT_CONTRACT = "PRODUCT_CONTRACT"
+CONFLICT_IMPLEMENTATION = "IMPLEMENTATION"
+CONFLICT_LIFECYCLE_CURRENTNESS = "LIFECYCLE_CURRENTNESS"
+CONFLICT_EVIDENCE_QUALITY = "EVIDENCE_QUALITY"
+_ACCEPTANCE_CHANGING_CONFLICTS = {
+    CONFLICT_PRODUCT_CONTRACT,
+    CONFLICT_IMPLEMENTATION,
+}
+
+_EVIDENCE_QUALITY_SIGNALS = (
+    "truncat", "unreadable", "metadata only", "not supplied", "not opened",
+    "cannot be verified", "could not be verified", "could not verify",
+    "cannot verify", "unavailable", "absence of",
+)
+_LIFECYCLE_SIGNALS = (
+    "fixed by", "in progress", "shipped", "release", "merged", "delivered",
+    "current product", "current build", "status", "version", "backport",
+)
+_IMPLEMENTATION_SIGNALS = (
+    "code", "at head", "revision", "branch", "commit", "class", "method",
+    "function", "repo", "implement", "flag", "property", "config",
+    "source file",
+)
+
+
+def _classify_conflict(text: str) -> str:
+    """Classify one conflict statement.  Generic signal matching only - the
+    class decides whether the conflict can change the acceptance contract,
+    never whether the conflict is real."""
+
+    lowered = (text or "").casefold()
+
+    def _hits(signals: tuple[str, ...]) -> int:
+        return sum(1 for signal in signals if signal in lowered)
+
+    if _hits(_EVIDENCE_QUALITY_SIGNALS):
+        return CONFLICT_EVIDENCE_QUALITY
+    if _hits(_LIFECYCLE_SIGNALS):
+        return CONFLICT_LIFECYCLE_CURRENTNESS
+    if _hits(_IMPLEMENTATION_SIGNALS):
+        return CONFLICT_IMPLEMENTATION
+    return CONFLICT_PRODUCT_CONTRACT
+
+
+def _build_decision(
+    agreements: list[str],
+    pm_view: list[str],
+    contract_conflicts: list[str],
+    unknowns: list[str],
+) -> str:
+    """Convert a residual acceptance-changing uncertainty into one concrete
+    product decision: what the evidence already establishes, what remains
+    undecided, and what QE must decide.  Never the raw Jira problem
+    prose."""
+
+    parts: list[str] = []
+    established = agreements[0] if agreements else (pm_view[0] if pm_view else "")
+    if established:
+        parts.append(f"Established by evidence: {established[:360]}")
+    undecided = contract_conflicts[0] if contract_conflicts else unknowns[0]
+    parts.append(f"Undecided: {undecided[:360]}")
+    parts.append(
+        "Decision needed: which interpretation defines the acceptance "
+        "expectation for this question."
+    )
+    return " ".join(parts)[:1200]
+
 
 def _tokens(text: str) -> set[str]:
     return set(_TOKEN_RE.findall((text or "").casefold()))
@@ -149,14 +221,42 @@ class ConvergenceService:
                         agreements.append(pm_claim)
                         break
 
-            if saw_conflict or conflicts:
+            conflicts = sorted(set(conflicts))
+            conflict_classes = [_classify_conflict(text) for text in conflicts]
+            contract_conflicts = [
+                text
+                for text, conflict_class in zip(conflicts, conflict_classes)
+                if conflict_class in _ACCEPTANCE_CHANGING_CONFLICTS
+            ]
+            unknowns = sorted(set(unknowns))
+            # Only product-contract and implementation conflicts can change
+            # the acceptance contract.  A lifecycle/currentness conflict (for
+            # example "Fixed by" beside an In Progress linked issue) caps
+            # shipped/current claims but never blocks an otherwise
+            # established behavioral contract; evidence-quality conflicts cap
+            # confidence only.
+            acceptance_changing = bool(contract_conflicts) or bool(unknowns)
+
+            if saw_conflict or contract_conflicts:
                 status = ConvergenceStatus.CONFLICTED
             elif unknowns:
                 status = ConvergenceStatus.UNRESOLVED
-            elif saw_partial:
+            elif saw_partial or conflicts:
                 status = ConvergenceStatus.CONVERGED_WITH_LIMITS
             else:
                 status = ConvergenceStatus.CONVERGED
+
+            decision = ""
+            if acceptance_changing and status in {
+                ConvergenceStatus.CONFLICTED,
+                ConvergenceStatus.UNRESOLVED,
+            }:
+                decision = _build_decision(
+                    sorted(set(agreements)),
+                    pm_view,
+                    contract_conflicts,
+                    unknowns,
+                )
 
             records.append(
                 ConvergenceRecord(
@@ -165,8 +265,11 @@ class ConvergenceService:
                     dev_view=dev_view,
                     qe_view=qe_view,
                     agreements=sorted(set(agreements)),
-                    conflicts=sorted(set(conflicts)),
-                    acceptance_changing_unknowns=sorted(set(unknowns)),
+                    conflicts=conflicts,
+                    conflict_classes=conflict_classes,
+                    acceptance_changing_unknowns=unknowns,
+                    acceptance_changing=acceptance_changing,
+                    decision=decision,
                     status=status,
                 )
             )
