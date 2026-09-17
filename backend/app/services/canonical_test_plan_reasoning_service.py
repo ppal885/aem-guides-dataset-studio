@@ -2518,6 +2518,14 @@ class CanonicalTestPlanReasoningService:
                             fact_type
                             for fact_type in fact_types
                             if fact_type not in _TERMINOLOGY_FACT_TYPES
+                            # Retrieved documentation/spec/code is research
+                            # evidence; its sentences are never the ticket's
+                            # own expected behavior or narrative context.
+                            and fact_type
+                            not in {
+                                ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                                ContractFactType.CONTEXT_STATEMENT,
+                            }
                         ]
                     if (
                         record.source_type
