@@ -357,6 +357,23 @@ _RESEARCHER_LIFECYCLE_RE = re.compile(
     r"current product behavior|current product behaviour)\b",
     re.IGNORECASE,
 )
+_RESEARCHER_NEGATION_RE = re.compile(
+    r"\b(not|never|no|isn't|cannot|can't|doesn't|don't|didn't|without)\b"
+    r"[^.]{0,60}$",
+    re.IGNORECASE,
+)
+
+
+def _lifecycle_claimed(text: str) -> bool:
+    """True only when lifecycle language is used AFFIRMATIVELY.  A disciplined
+    negation ("not established as current product behavior") is exactly the
+    language the rule exists to encourage, so it never trips the gate."""
+
+    for match in _RESEARCHER_LIFECYCLE_RE.finditer(text or ""):
+        prefix = text[: match.start()]
+        if not _RESEARCHER_NEGATION_RE.search(prefix):
+            return True
+    return False
 
 
 def validate_agent_result_shape(raw: object, worker_role) -> str | None:
@@ -388,7 +405,7 @@ def validate_agent_result_shape(raw: object, worker_role) -> str | None:
         # HEAD, or a screenshot never by itself establishes release state.
         claim_text = str(item.get("claim") or "")
         role_value = str(item.get("evidence_role") or "")
-        if _RESEARCHER_LIFECYCLE_RE.search(claim_text) and (
+        if _lifecycle_claimed(claim_text) and (
             role_value != ResearchFindingEvidenceRole.EXISTING_BEHAVIOR.value
         ):
             return (
@@ -562,7 +579,7 @@ def _validate_agent_result(
         # additionally requires a documentation basis, not only the role
         # label: the finding must cite documentation (bundle doc record or a
         # provenance-carrying discovered doc source).
-        if _RESEARCHER_LIFECYCLE_RE.search(str(item.get("claim") or "")):
+        if _lifecycle_claimed(str(item.get("claim") or "")):
             doc_ids = {
                 record.evidence_id
                 for record in bundle.records

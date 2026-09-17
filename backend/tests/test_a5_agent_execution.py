@@ -645,6 +645,22 @@ def test_lifecycle_language_requires_documented_existing_behavior() -> None:
     )
     assert rejection is not None and "release/current-behavior" in rejection
 
+    # A negated, disciplined use of the phrase is not a lifecycle claim.
+    negated = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "The linked fix is In Progress; this is not established as current product behavior.",
+                "source_refs": [],
+                "evidence_role": "REQUIREMENT_CLARIFICATION",
+            }
+        ],
+    }
+    assert (
+        validate_agent_result_shape(negated, ResearchWorkerRole.DOC_RESEARCHER)
+        is None
+    )
+
     # EXISTING_BEHAVIOR role but only a Jira comment behind it: provider
     # rejects (no documentation basis for current-behavior language).
     comment = _record(
