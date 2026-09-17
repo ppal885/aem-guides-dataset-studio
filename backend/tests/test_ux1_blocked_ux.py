@@ -256,6 +256,28 @@ def test_many_clean_entities_never_reconstitute_a_comma_dump() -> None:
     assert "output history, publish log" in questions[0].question
 
 
+def test_emitted_question_is_the_fail_safe_validated_text() -> None:
+    """#51: two entities pass the >2 projection and each passes the
+    per-entity check, yet their join still reconstitutes a retrieval dump
+    ("935, c, 9, 1837").  The fail-safe that re-validates the assembled
+    question must govern the EMITTED question, not a discarded local."""
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [
+            _unresolved_closure("935, c"),
+            _unresolved_closure("9, 1837"),
+        ],
+        ScopeResolution(),
+        _facts("Export jobs must write a completion marker."),
+    )
+    assert questions
+    for question in questions:
+        assert _human_question_safe(question.question), question.question
+        assert "1837" not in question.question
+        # The raw entities stay bound to the trace, never lost.
+        assert question.investigation_terms == ["935, c", "9, 1837"]
+        assert question.source_closure_ids
+
+
 # ---------------------------------------------------------------------------
 # Domain-bound NFR activation (spec sections 10, 11, 12)
 # ---------------------------------------------------------------------------

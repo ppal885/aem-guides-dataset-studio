@@ -3775,7 +3775,7 @@ class CanonicalTestPlanReasoningService:
                         target_sources.append(source)
             questions.append(
                 MissingQuestion(
-                    question=_QUESTION_TEXT[dimension].format(entity=entity_text),
+                    question=question_text,
                     dimension=dimension,
                     authority_subject=subject,
                     target_source_types=target_sources,
