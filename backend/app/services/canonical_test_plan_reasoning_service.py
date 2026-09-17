@@ -1564,6 +1564,38 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
     )
 
 
+# Terminology facts exist to clarify the TICKET AUTHOR's words.  Retrieved
+# documentation, specs, code, diffs, and automation text are evidence, not a
+# human asking anything - quoted sentences inside them must never become
+# "human term" clarification questions.
+_NON_HUMAN_TERMINOLOGY_SOURCES = frozenset(
+    {
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+        EvidenceSourceType.DITA_SPECIFICATION,
+        EvidenceSourceType.DITA_OT_DOCUMENTATION,
+        EvidenceSourceType.AEM_ASSETS_PLATFORM_DOCUMENTATION,
+        EvidenceSourceType.CURRENT_CODE,
+        EvidenceSourceType.CURRENT_PR,
+        EvidenceSourceType.EXISTING_AUTOMATION,
+        EvidenceSourceType.HISTORICAL_JIRA,
+        EvidenceSourceType.EVIDENCE_GRAPH_LEAF,
+        EvidenceSourceType.MODEL_INFERENCE,
+        EvidenceSourceType.IMPLEMENTATION_DIFF,
+        EvidenceSourceType.CODE_DIFF,
+        EvidenceSourceType.BENCHMARK_PUBLIC_INPUT,
+        EvidenceSourceType.CODEX_MANIFEST,
+        EvidenceSourceType.UNKNOWN,
+    }
+)
+
+_TERMINOLOGY_FACT_TYPES = frozenset(
+    {
+        ContractFactType.HUMAN_TERMINOLOGY,
+        ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+    }
+)
+
+
 def _fact_types(path: str, literal: str) -> list[ContractFactType]:
     key = path.casefold()
     text = literal.casefold()
@@ -2472,6 +2504,12 @@ class CanonicalTestPlanReasoningService:
                     if len(literal) > 2000:
                         literal = literal[:2000]
                     fact_types = _fact_types(path, literal)
+                    if record.source_type in _NON_HUMAN_TERMINOLOGY_SOURCES:
+                        fact_types = [
+                            fact_type
+                            for fact_type in fact_types
+                            if fact_type not in _TERMINOLOGY_FACT_TYPES
+                        ]
                     if (
                         record.source_type
                         in {
