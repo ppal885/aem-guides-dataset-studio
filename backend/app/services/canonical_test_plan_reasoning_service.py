@@ -248,6 +248,42 @@ def _mandatory_research_open_rationale(
         )
     return None
 
+
+# P3: research statuses that prove the mandated research actually terminated
+# (or was never required) - only these may yield an ACCEPTANCE_TBD.  PENDING
+# means research never executed: fail closed, never a final TBD.
+_TBD_EXHAUSTED_RESEARCH_STATUSES = {
+    ResearchStatus.PARTIAL,
+    ResearchStatus.NOT_FOUND,
+    ResearchStatus.SOURCE_UNAVAILABLE,
+    ResearchStatus.CONFLICTED,
+    ResearchStatus.NOT_REQUIRED,
+    ResearchStatus.NOT_APPLICABLE,
+}
+
+
+def _acceptance_tbd_eligible(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    clarified_question_ids: set[str],
+) -> bool:
+    """P3: a blocking acceptance-decision question whose mandated research is
+    exhausted (or not required) and that no clarification answered becomes a
+    bounded ACCEPTANCE_TBD instead of a generic open question.  The runtime
+    never invents the missing value."""
+
+    if question.question_id in clarified_question_ids:
+        return False
+    if not question.blocking:
+        return False
+    if question.open_question_class != OpenQuestionClass.USER_ACCEPTANCE_DECISION:
+        return False
+    record = research_by_question.get(question.question_id)
+    if record is None:
+        # No research classification at all is never "research exhausted".
+        return False
+    return record.research_status in _TBD_EXHAUSTED_RESEARCH_STATUSES
+
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
     IssueDomain.PUBLISHING: (
         "publish",
@@ -645,6 +681,15 @@ def _derive_c1(
 
     if disposition in _C1_ACCEPTANCE_DISPOSITIONS:
         return "ACCEPTANCE", "P0", _C1_IMPACT_TEXT["P0"]
+    if disposition == CoverageDisposition.ACCEPTANCE_TBD:
+        # P3: acceptance-material but unresolved - stays acceptance-lane so it
+        # is never silently demoted to regression/investigation.
+        return (
+            "ACCEPTANCE",
+            "P0",
+            "Acceptance-material; a bounded product decision remains "
+            "unresolved (TBD).",
+        )
     if disposition in _C1_REGRESSION_DISPOSITIONS:
         priority = "P1" if has_direct_evidence else "SUPPORTING"
         return "QE_REGRESSION", priority, _C1_IMPACT_TEXT[priority]
@@ -4228,7 +4273,9 @@ class CanonicalTestPlanReasoningService:
         scope: ScopeResolution,
         questions: list[MissingQuestion],
         research_records: list[QuestionResearchRecord] | None = None,
+        clarified_question_ids: set[str] | None = None,
     ) -> list[CoverageDispositionRecord]:
+        clarified_question_ids = clarified_question_ids or set()
         research_by_question = {
             row.question_id: row for row in research_records or []
         }
@@ -4387,8 +4434,34 @@ class CanonicalTestPlanReasoningService:
                     research_by_question,
                 )
                 if research_override is not None:
-                    disposition = CoverageDisposition.OPEN_QUESTION
-                    rationale = research_override
+                    # P3: an exhausted-research blocking product decision is a
+                    # bounded ACCEPTANCE_TBD, not a generic open question.
+                    if any(
+                        _acceptance_tbd_eligible(
+                            row, research_by_question, clarified_question_ids
+                        )
+                        for row in related_questions
+                    ):
+                        disposition = CoverageDisposition.ACCEPTANCE_TBD
+                        rationale = research_override
+                    else:
+                        disposition = CoverageDisposition.OPEN_QUESTION
+                        rationale = research_override
+            elif disposition == CoverageDisposition.OPEN_QUESTION and any(
+                _acceptance_tbd_eligible(
+                    row, research_by_question, clarified_question_ids
+                )
+                for row in related_questions
+            ):
+                # P3: an already-open closure row for a blocking product
+                # decision with exhausted research upgrades to a bounded
+                # ACCEPTANCE_TBD - acceptance-lane, never promoted.
+                disposition = CoverageDisposition.ACCEPTANCE_TBD
+                rationale = (
+                    "Acceptance-material decision remains unresolved after "
+                    "mandatory research terminated; the missing value is "
+                    "never invented."
+                )
             entities = ", ".join(dict.fromkeys(item.entity for item in items))
             candidate = f"{dimension.value}: {entities}"
             if _RAW_FRAGMENT_RE.search(entities):
@@ -4499,8 +4572,29 @@ class CanonicalTestPlanReasoningService:
                     research_by_question,
                 )
                 if research_override is not None:
-                    disposition = CoverageDisposition.OPEN_QUESTION
+                    if _acceptance_tbd_eligible(
+                        question, research_by_question, clarified_question_ids
+                    ):
+                        disposition = CoverageDisposition.ACCEPTANCE_TBD
+                    else:
+                        disposition = CoverageDisposition.OPEN_QUESTION
                     rationale = research_override
+            elif (
+                disposition == CoverageDisposition.OPEN_QUESTION
+                and question is not None
+                and _acceptance_tbd_eligible(
+                    question, research_by_question, clarified_question_ids
+                )
+            ):
+                # P3: an already-open row for a blocking product decision with
+                # exhausted research upgrades to a bounded ACCEPTANCE_TBD - it
+                # stays acceptance-lane instead of a generic open question.
+                disposition = CoverageDisposition.ACCEPTANCE_TBD
+                rationale = (
+                    "Acceptance-material decision remains unresolved after "
+                    "mandatory research terminated; the missing value is "
+                    "never invented."
+                )
             c1_class, c1_priority, c1_impact = _derive_c1(
                 disposition,
                 has_direct_evidence=hypothesis.state == HypothesisState.CONFIRMED,
@@ -4525,6 +4619,44 @@ class CanonicalTestPlanReasoningService:
                     priority=c1_priority,
                     acceptance_impact=c1_impact,
                     contract_type=_derive_contract_type(disposition, set()),
+                    applicability="APPLICABLE",
+                )
+            )
+        # P3: blocking acceptance-decision questions with exhausted research
+        # but no hypothesis/closure linkage still earn a bounded ACCEPTANCE_TBD
+        # coverage row, so the unresolved dimension is a first-class canonical
+        # artifact (not merely rendered prose) and can never promote.
+        linked_question_ids = {
+            question_id
+            for row in rows
+            for question_id in row.source_question_ids
+        }
+        for question in questions:
+            if question.question_id in linked_question_ids:
+                continue
+            if not _acceptance_tbd_eligible(
+                question, research_by_question, clarified_question_ids
+            ):
+                continue
+            c1_class, c1_priority, c1_impact = _derive_c1(
+                CoverageDisposition.ACCEPTANCE_TBD,
+                has_direct_evidence=False,
+            )
+            rows.append(
+                CoverageDispositionRecord(
+                    candidate=question.question,
+                    disposition=CoverageDisposition.ACCEPTANCE_TBD,
+                    source_question_ids=[question.question_id],
+                    source_fact_ids=list(question.source_fact_ids),
+                    rationale=(
+                        "Acceptance-material decision remains unresolved after "
+                        "mandatory research terminated; the missing value is "
+                        "never invented."
+                    ),
+                    coverage_class=c1_class,
+                    priority=c1_priority,
+                    acceptance_impact=c1_impact,
+                    contract_type="POSITIVE",
                     applicability="APPLICABLE",
                 )
             )
@@ -4656,6 +4788,17 @@ class CanonicalTestPlanReasoningService:
             for row in questions
             if row.blocking and row.question_id not in resolved_question_ids
         ]
+        # P3: claim-level dependency.  A candidate is blocked only by
+        # unresolved blocking questions actually linked to its source coverage
+        # dispositions; independent sufficiently-established claims must not
+        # inherit ticket-wide blocking.  The disposition linkage IS the
+        # dependency record - an unlinked claim has no dependency.
+        def _dependent_blocking_ids(row: CoverageDispositionRecord) -> list[str]:
+            linked = set(row.source_question_ids)
+            return sorted(
+                question_id for question_id in blocking_ids if question_id in linked
+            )
+
         discovered_candidates: list[AcceptanceCandidate] = []
         for row in dispositions:
             if row.disposition not in {
@@ -4718,7 +4861,8 @@ class CanonicalTestPlanReasoningService:
                         )
                     ),
                     unresolved_decision_ids=(
-                        [] if accepted_human_contract else blocking_ids
+                        [] if accepted_human_contract
+                        else _dependent_blocking_ids(row)
                     ),
                 )
             )
@@ -5065,6 +5209,9 @@ class CanonicalTestPlanReasoningService:
             if hypothesis.state == HypothesisState.UNRESOLVED and disposition not in {
                 CoverageDisposition.OPEN_QUESTION,
                 CoverageDisposition.PRODUCT_SCOPE_QUESTION,
+                # P3: a bounded acceptance TBD IS the exposed form of an
+                # unresolved acceptance-material hypothesis.
+                CoverageDisposition.ACCEPTANCE_TBD,
             }:
                 failures.append(
                     "Unresolved material hypothesis is not exposed as an open "
@@ -5265,6 +5412,16 @@ class CanonicalTestPlanReasoningService:
                 )
                 integrity_failures.append(
                     f"{candidate.candidate_id}: source disposition is not acceptance eligible"
+                )
+            if any(
+                row.disposition == CoverageDisposition.ACCEPTANCE_TBD
+                for row in source_dispositions
+            ):
+                # P3: a bounded TBD is acceptance-lane but never promotable
+                # until its product decision is resolved.
+                reasons.append(
+                    "Unresolved acceptance dimension (TBD) cannot promote "
+                    "until its product decision is resolved."
                 )
             if not authority_supported:
                 reasons.append("Intended behavior lacks product-contract authority.")
@@ -5562,6 +5719,9 @@ class CanonicalTestPlanReasoningService:
                     CoverageDisposition.OPEN_QUESTION,
                     CoverageDisposition.PRODUCT_SCOPE_QUESTION,
                     CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+                    # P3: a bounded TBD is NOT finalization - it keeps the
+                    # unresolved decision visible; the renderer may carry it.
+                    CoverageDisposition.ACCEPTANCE_TBD,
                 }
                 for disposition in dispositions:
                     if disposition.disposition in open_states:
@@ -5648,6 +5808,7 @@ class CanonicalTestPlanReasoningService:
             CoverageDisposition.CROSS_MODE_REGRESSION: "cross_mode_regression",
             CoverageDisposition.NFR_COVERAGE: "nfr_coverage",
             CoverageDisposition.PRODUCT_SCOPE_QUESTION: "product_decisions",
+            CoverageDisposition.ACCEPTANCE_TBD: "product_decisions",
             CoverageDisposition.ENGINEERING_DESIGN_DECISION: "product_decisions",
             CoverageDisposition.OUT_OF_SCOPE: "explicit_out_of_scope",
             CoverageDisposition.INVESTIGATED_AND_REJECTED: "investigated_and_rejected",
@@ -5790,6 +5951,8 @@ class CanonicalTestPlanReasoningService:
             CoverageDisposition.OPEN_QUESTION,
             CoverageDisposition.PRODUCT_SCOPE_QUESTION,
             CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+            # P3: a bounded TBD keeps its question in the open set.
+            CoverageDisposition.ACCEPTANCE_TBD,
         }
         linked_question_ids = {
             question_id

@@ -442,8 +442,11 @@ def test_cli_selects_canonical_text_and_never_falls_back_to_draft(
 
 
 def test_blocked_questions_keep_canonical_identity_for_resume() -> None:
+    # Problem-only fixture: nothing promotable, a blocking product decision
+    # remains -> genuinely blocked run.
     result = _runtime_run(
-        "The old dialog gives a colored hint that the log should be checked. "
+        "The old dialog gives a colored hint as an indication that you "
+        "should check the log. "
         "There is no easy way to see processing problems before publishing."
     )
     assert result.status == "blocked"

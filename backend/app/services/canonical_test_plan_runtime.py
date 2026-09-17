@@ -1023,6 +1023,18 @@ class CanonicalTestPlanRuntime:
             select_missing_questions,
         )
         questions = list(missing_question_quality.accepted_questions)
+        # P1/P3: admit human clarifications as soon as questions exist so
+        # coverage classification can lift clarified questions out of
+        # blocking/TBD flips.  The same admitted list is reused downstream;
+        # admission itself depends only on the questions.
+        admitted_clarifications, clarification_errors = (
+            self._reasoning.admit_clarifications(raw_clarifications, questions)
+        )
+        admitted_clarified_question_ids = {
+            row.question_ref
+            for row in admitted_clarifications
+            if row.status.value == "ADMITTED"
+        }
         question_generation_trace = self._reasoning.build_question_generation_trace(
             bundle=visible,
             facts=facts,
@@ -1287,6 +1299,7 @@ class CanonicalTestPlanRuntime:
                 scope,
                 questions,
                 question_research,
+                admitted_clarified_question_ids,
             ),
         )
         dispositions_for_trace = list(dispositions)
@@ -1307,17 +1320,12 @@ class CanonicalTestPlanRuntime:
         # terminal state is carried by the separate, evidence-linked resolution
         # records so second-pass evidence cannot rewrite question identity.
         questions_for_trace = list(questions)
-        admitted_clarifications, clarification_errors = (
-            self._reasoning.admit_clarifications(raw_clarifications, questions)
-        )
+        # Clarifications were admitted right after question generation (P3)
+        # so coverage classification could honor them; reuse that result.
         for error in clarification_errors:
             if error not in runtime_warnings:
                 runtime_warnings.append(error)
-        clarified_resolved_ids = {
-            row.question_ref
-            for row in admitted_clarifications
-            if row.status.value == "ADMITTED"
-        }
+        clarified_resolved_ids = set(admitted_clarified_question_ids)
         # R2: evidence-resolved questions (terminal research answer bound to
         # establishing authority) release blocking exactly like admitted human
         # clarifications - research first, ask only the residual decision.
@@ -1472,8 +1480,15 @@ class CanonicalTestPlanRuntime:
         blocked = any(
             gate.status in {GateStatus.FAILED, GateStatus.BLOCKED} for gate in gates
         )
+        # P3: a bounded acceptance TBD with at least one promoted AC is
+        # NEEDS_HUMAN_REVIEW, never BLOCKED and never silently COMPLETED.
+        acceptance_tbds = any(
+            row.disposition == CoverageDisposition.ACCEPTANCE_TBD
+            for row in dispositions
+        )
         needs_human_review = not blocked and (
             facts.contract_mode.value != "HUMAN_ACCEPTED_CONTRACT"
+            or acceptance_tbds
             or bool(unresolved_implementation_handoff_ids_for_trace)
             or any(
                 row.status == InvestigationFamilySatisfactionStatus.UNSATISFIED

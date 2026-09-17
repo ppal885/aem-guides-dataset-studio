@@ -341,7 +341,26 @@ def test_answering_one_question_does_not_unblock_another() -> None:
         resolved_question_ids=resolved_ids,
     )
     candidate = batch.candidates[0]
-    assert candidate.unresolved_decision_ids == sorted(blocking)
+    # P3: claim-level dependency.  This candidate's coverage links no
+    # question, so it inherits no ticket-wide blocking; the two remaining
+    # blocking questions stay blocking for claims that DO link them.
+    assert candidate.unresolved_decision_ids == []
+    linked_batch = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts,
+        [
+            CoverageDispositionRecord(
+                candidate="The merged appendix appears in the generated output.",
+                disposition=CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                source_fact_ids=[facts.facts[0].fact_id],
+                source_question_ids=[sorted(blocking)[0]],
+                rationale="from ticket",
+            )
+        ],
+        questions,
+        resolved_question_ids=resolved_ids,
+    )
+    linked_candidate = linked_batch.candidates[0]
+    assert linked_candidate.unresolved_decision_ids == [sorted(blocking)[0]]
 
 
 # ---------------------------------------------------------------------------

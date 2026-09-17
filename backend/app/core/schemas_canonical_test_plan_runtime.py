@@ -1020,6 +1020,10 @@ class CoverageDisposition(StrEnum):
     NFR_COVERAGE = "NFR_COVERAGE"
     PRODUCT_SCOPE_QUESTION = "PRODUCT_SCOPE_QUESTION"
     OPEN_QUESTION = "OPEN_QUESTION"
+    # P3: acceptance-material but genuinely unresolved after exhausted
+    # research - stays acceptance-lane (never QE_REGRESSION/INVESTIGATION),
+    # never promotes, renders as a bounded TBD.
+    ACCEPTANCE_TBD = "ACCEPTANCE_TBD"
     ENGINEERING_DESIGN_DECISION = "ENGINEERING_DESIGN_DECISION"
     IMPLEMENTATION_ORACLE = "IMPLEMENTATION_ORACLE"
     TECHNICAL_NOTE = "TECHNICAL_NOTE"
@@ -3790,6 +3794,9 @@ class CoverageDispositionRecord(BaseModel):
         if self.coverage_class == "ACCEPTANCE" and self.disposition not in {
             CoverageDisposition.ACCEPTANCE_CONTRACT,
             CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+            # P3: TBD stays in the acceptance lane; promotion eligibility is
+            # still denied by the resolver/gate (no candidates derive from it).
+            CoverageDisposition.ACCEPTANCE_TBD,
         }:
             raise ValueError(
                 "ACCEPTANCE coverage class requires an acceptance-contract "
