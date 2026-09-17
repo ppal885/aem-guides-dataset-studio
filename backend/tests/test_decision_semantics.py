@@ -312,6 +312,81 @@ def test_lifecycle_conflict_alone_produces_no_decision() -> None:
     assert "(TBD)" not in rendered
 
 
+def test_research_answered_question_produces_no_tbd() -> None:
+    """G2: a research-answered question with no acceptance-changing conflict
+    converges and never surfaces a TBD - in convergence or in the render."""
+    facts = _facts()
+    scope = ScopeResolution()
+    question = _question(
+        "What does the product documentation establish for the outputs list?",
+        fact_ids=(facts.facts[0].fact_id,),
+    )
+    worker = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(
+            _finding(
+                "Documentation establishes the outputs list with per-run "
+                "status colors.",
+                "EXISTING_BEHAVIOR",
+            ),
+        ),
+    )
+    research = _research_record(question, worker=worker)
+    records = CONVERGENCE_SERVICE.evaluate([question], [research], [worker])
+    row = records[0]
+    assert row.status == ConvergenceStatus.CONVERGED
+    assert not row.acceptance_changing
+    assert row.decision == ""
+
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], scope, [question], [research],
+        worker_results=[worker],
+    )
+    resolution = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts, dispositions, [question], research_records=[research]
+    )
+    gate, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
+        resolution.candidates, facts, scope, dispositions
+    )
+    _plan, rendered = _render(
+        facts, scope, [question], dispositions, resolution, promotions,
+        [gate], records,
+    )
+    assert question.question not in rendered
+    assert "(TBD)" not in rendered
+
+
+def test_non_material_unknown_after_an_answer_produces_no_tbd() -> None:
+    """G2: when research established the answer, a remaining NOT_FOUND on a
+    secondary route is an evidence limitation, not a product decision."""
+    question = _question("Which documented behavior covers the outputs list?")
+    answered = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(
+            _finding(
+                "Documentation establishes the outputs list status behavior.",
+                "EXISTING_BEHAVIOR",
+            ),
+        ),
+    )
+    blind_route = _result(
+        question,
+        ResearchWorkerStatus.NOT_FOUND,
+        limitations=["The attachment does not address the claim."],
+    )
+    research = _research_record(question, worker=answered)
+    records = CONVERGENCE_SERVICE.evaluate(
+        [question], [research], [answered, blind_route]
+    )
+    row = records[0]
+    assert row.acceptance_changing_unknowns  # the limitation stays visible
+    assert row.status == ConvergenceStatus.CONVERGED_WITH_LIMITS
+    assert not row.acceptance_changing
+    assert row.decision == ""
+
+
 def test_raw_problem_prose_is_never_the_decision_question() -> None:
     """Regression 3: convergence converts the uncertainty into a concrete
     product decision; the raw Jira problem statement is not emitted."""

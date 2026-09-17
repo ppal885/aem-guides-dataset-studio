@@ -2812,6 +2812,16 @@ class AgentResearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     execution_id: str = ""
+    # G1: run-scoped execution identity.  Every top-level Generate-UAC
+    # invocation carries a distinct canonical run id; scoping the request to
+    # it makes the deterministic execution_id (and therefore the
+    # pending/fulfilled/consumed handoff state) unique per run while the
+    # logical question identity (question_id / revision / claim) stays
+    # stable and traceable across runs.  A repeated run of the same Jira
+    # creates fresh executions; a duplicate result for an already-consumed
+    # execution within one run still fails closed.  Empty only for legacy
+    # pre-G1 artifacts.
+    run_scope: str = ""
     worker_role: ResearchWorkerRole
     question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
     question_revision: str = ""

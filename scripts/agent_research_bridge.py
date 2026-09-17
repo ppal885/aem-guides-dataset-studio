@@ -61,7 +61,7 @@ def _fulfilled_dir(store: Path) -> Path:
     return store / "fulfilled"
 
 
-def cmd_pending(store: Path) -> int:
+def cmd_pending(store: Path, run_scope: str | None = None) -> int:
     pending = _pending_dir(store)
     rows = []
     if pending.is_dir():
@@ -70,10 +70,18 @@ def cmd_pending(store: Path) -> int:
                 request = json.loads(path.read_text(encoding="utf-8-sig"))
             except Exception:
                 continue
+            if run_scope is not None and str(
+                request.get("run_scope") or ""
+            ) != run_scope:
+                continue
             fulfilled = _fulfilled_dir(store) / path.name
             rows.append(
                 {
                     "execution_id": request.get("execution_id"),
+                    "run_scope": request.get("run_scope") or "",
+                    "logical_execution_key": request.get(
+                        "logical_execution_key"
+                    ),
                     "worker_role": request.get("worker_role"),
                     "question_id": request.get("question_id"),
                     "question_revision": request.get("question_revision"),
@@ -244,6 +252,23 @@ def cmd_status(store: Path) -> int:
     consumed_n = (
         len(list(fulfilled.glob("*.consumed"))) if fulfilled.is_dir() else 0
     )
+    # G1: run-scope breakdown so repeated runs of the same Jira are visibly
+    # distinct episodes; legacy pre-G1 pendings report an empty scope.
+    scopes: dict[str, dict[str, int]] = {}
+    if pending.is_dir():
+        for path in sorted(pending.glob("*.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8-sig"))
+            except Exception:
+                continue
+            scope = str(payload.get("run_scope") or "(legacy)")
+            row = scopes.setdefault(scope, {"pending": 0, "consumed": 0})
+            row["pending"] += 1
+            if (
+                fulfilled.is_dir()
+                and (fulfilled / path.name).with_suffix(".consumed").exists()
+            ):
+                row["consumed"] += 1
     print(
         json.dumps(
             {
@@ -252,6 +277,7 @@ def cmd_status(store: Path) -> int:
                 "fulfilled": fulfilled_n,
                 "consumed": consumed_n,
                 "remaining": pending_n - consumed_n,
+                "run_scopes": scopes,
             },
             indent=1,
         )
@@ -269,10 +295,15 @@ def main() -> int:
     parser.add_argument("--execution-id", default=None)
     parser.add_argument("--result", default=None)
     parser.add_argument("--model", default=None)
+    parser.add_argument(
+        "--run-scope",
+        default=None,
+        help="pending only: list just the named run scope's requests",
+    )
     args = parser.parse_args()
     store = Path(args.store) if args.store else agent_research_store()
     if args.command == "pending":
-        return cmd_pending(store)
+        return cmd_pending(store, run_scope=args.run_scope)
     if args.command == "status":
         return cmd_status(store)
     if args.command == "fulfill-agent":

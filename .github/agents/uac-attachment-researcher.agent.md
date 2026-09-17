@@ -67,6 +67,11 @@ attachment it contains either `path` (the downloaded local file) or
 - When `path` is present, open the actual file with `view` before making
   any OBSERVED_BEHAVIOR claim - images are rendered visually, text and log
   content is read directly. Never describe a file you did not open.
+- PDF attachments may also carry `text_path`: bounded text extracted from
+  the PDF's real text layer by the coordinator (no OCR). Read it as the
+  attachment's content evidence. When `text_error` is present instead
+  (encrypted, corrupt, oversized, or image-only), that exact reason goes
+  in `limitations` and the extracted-text claim stays unmade.
 - When only `error` is present, that attachment is SOURCE_UNAVAILABLE for
   content claims: include the exact error in `limitations` and never
   pretend it was researched.

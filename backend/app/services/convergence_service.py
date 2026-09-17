@@ -70,10 +70,16 @@ _LIFECYCLE_SIGNALS = (
     "fixed by", "in progress", "shipped", "release", "merged", "delivered",
     "current product", "current build", "status", "version", "backport",
 )
-_IMPLEMENTATION_SIGNALS = (
-    "code", "at head", "revision", "branch", "commit", "class", "method",
-    "function", "repo", "implement", "flag", "property", "config",
-    "source file",
+# Implementation conflicts are about a behavioral mismatch between a claim
+# and code: they need a code anchor AND a behavior verb.  The bare word
+# "implementation" is not an anchor (lifecycle prose uses it too).
+_IMPLEMENTATION_ANCHORS = (
+    "code at", "at head", "revision", ".java", ".py", ".ts", ".jsx",
+    "class ", "method", "function", "line ", "commit", "repo",
+)
+_IMPLEMENTATION_BEHAVIOR_VERBS = (
+    "sets ", "flags", "asserts", "does not", "only on", "only flags",
+    "reads ", "writes ", "returns ", "computes", "derives", "branches",
 )
 
 
@@ -89,9 +95,11 @@ def _classify_conflict(text: str) -> str:
 
     if _hits(_EVIDENCE_QUALITY_SIGNALS):
         return CONFLICT_EVIDENCE_QUALITY
+    if _hits(_IMPLEMENTATION_ANCHORS) and _hits(_IMPLEMENTATION_BEHAVIOR_VERBS):
+        return CONFLICT_IMPLEMENTATION
     if _hits(_LIFECYCLE_SIGNALS):
         return CONFLICT_LIFECYCLE_CURRENTNESS
-    if _hits(_IMPLEMENTATION_SIGNALS):
+    if _hits(_IMPLEMENTATION_ANCHORS):
         return CONFLICT_IMPLEMENTATION
     return CONFLICT_PRODUCT_CONTRACT
 
@@ -229,19 +237,31 @@ class ConvergenceService:
                 if conflict_class in _ACCEPTANCE_CHANGING_CONFLICTS
             ]
             unknowns = sorted(set(unknowns))
+            # G2: a research unknown is acceptance-changing only when the
+            # question has no establishing answer.  When research already
+            # established documented existing behavior or the customer-stated
+            # desired behavior, a remaining NOT_FOUND / SOURCE_UNAVAILABLE is
+            # an evidence limitation, not a product decision.
+            answered = bool(
+                pm_bucketed[ResearchFindingEvidenceRole.EXISTING_BEHAVIOR]
+                or pm_bucketed[ResearchFindingEvidenceRole.DESIRED_BEHAVIOR]
+            )
+            unknowns_acceptance_changing = bool(unknowns) and not answered
             # Only product-contract and implementation conflicts can change
             # the acceptance contract.  A lifecycle/currentness conflict (for
             # example "Fixed by" beside an In Progress linked issue) caps
             # shipped/current claims but never blocks an otherwise
             # established behavioral contract; evidence-quality conflicts cap
             # confidence only.
-            acceptance_changing = bool(contract_conflicts) or bool(unknowns)
+            acceptance_changing = bool(contract_conflicts) or (
+                unknowns_acceptance_changing
+            )
 
             if saw_conflict or contract_conflicts:
                 status = ConvergenceStatus.CONFLICTED
-            elif unknowns:
+            elif unknowns_acceptance_changing:
                 status = ConvergenceStatus.UNRESOLVED
-            elif saw_partial or conflicts:
+            elif saw_partial or conflicts or unknowns:
                 status = ConvergenceStatus.CONVERGED_WITH_LIMITS
             else:
                 status = ConvergenceStatus.CONVERGED

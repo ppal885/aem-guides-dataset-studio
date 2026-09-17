@@ -40,6 +40,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ResearchWorkerResult,
     ResearchWorkerRole,
     ResearchWorkerStatus,
+    stable_sha256,
 )
 
 _PROVIDER_DETERMINISTIC = "DETERMINISTIC"
@@ -496,12 +497,74 @@ def _attachment_files(
                     target.write_bytes(data)
                     entry["path"] = str(target)
                     entry["size_bytes"] = len(data)
+                    _extract_pdf_text(entry, target)
             except Exception as exc:
                 entry["error"] = (
                     f"download failed: {exc.__class__.__name__}: {exc}"
                 )[:500]
         out.append(entry)
     return out
+
+
+# G3: bounded PDF text materialization for the attachment researcher.
+# Text extraction only - never OCR.  Failures record the exact reason.
+_PDF_MAX_BYTES = 25 * 1024 * 1024
+_PDF_MAX_PAGES = 20
+_PDF_MAX_CHARS = 20000
+
+
+def _extract_pdf_text(entry: dict, target: Path) -> None:
+    """For PDF attachments, write bounded extracted text beside the binary
+    (``text_path``) so the researcher reads actual content.  Encrypted,
+    corrupt, oversized, or image-only files set ``text_error`` with the
+    exact reason instead."""
+
+    filename = str(entry.get("filename") or "")
+    mime = str(entry.get("mime_type") or "")
+    if not (
+        mime.strip().lower() == "application/pdf"
+        or filename.lower().endswith(".pdf")
+    ):
+        return
+    entry["text_path"] = ""
+    entry["text_error"] = ""
+    if int(entry.get("size_bytes") or 0) > _PDF_MAX_BYTES:
+        entry["text_error"] = (
+            f"oversized PDF ({entry['size_bytes']} bytes exceeds the "
+            f"{_PDF_MAX_BYTES}-byte extraction bound)"
+        )
+        return
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(str(target))
+        if reader.is_encrypted:
+            entry["text_error"] = (
+                "encrypted PDF: text extraction not attempted"
+            )
+            return
+        parts: list[str] = []
+        total = 0
+        for page in reader.pages[:_PDF_MAX_PAGES]:
+            text = page.extract_text() or ""
+            parts.append(text)
+            total += len(text)
+            if total >= _PDF_MAX_CHARS:
+                break
+        text = "\n".join(parts)[:_PDF_MAX_CHARS]
+        if not text.strip():
+            entry["text_error"] = (
+                "no extractable text layer (image-only PDF; OCR is not "
+                "performed)"
+            )
+            return
+        text_path = target.with_name(target.name + ".txt")
+        text_path.write_text(text, encoding="utf-8")
+        entry["text_path"] = str(text_path)
+    except Exception as exc:
+        entry["text_error"] = (
+            f"text extraction failed: {exc.__class__.__name__}: {exc}"
+        )[:300]
 
 
 def _terminal_result(
@@ -1017,6 +1080,70 @@ class HostMediatedResearchProvider:
     def _fulfilled_path(store: Path, execution_id: str) -> Path:
         return store / "fulfilled" / f"{execution_id.replace(':', '_')}.json"
 
+    @staticmethod
+    def _logical_execution_key(request: AgentResearchRequest) -> str:
+        """Run-independent identity of the logical research execution: the
+        question, role, claim and evidence binding WITHOUT the run scope.
+        The logical question stays traceable across runs through this key
+        (and question_id); the run scope makes each run's executions
+        distinct."""
+
+        identity = request.model_dump(mode="json", exclude={"execution_id"})
+        identity["run_scope"] = ""
+        return stable_sha256(identity)[:32]
+
+    def _resolve_run_scope(self, request: AgentResearchRequest) -> AgentResearchRequest:
+        """G1: bind this invocation's request to its research episode.
+
+        - No pending episode for the logical key -> the current invocation's
+          own run scope (a fresh episode).
+        - An episode exists and is still in flight (pending unfulfilled, or
+          fulfilled but not yet consumed) -> resume under the episode's
+          recorded scope; the emit-side pass and the resume pass are
+          different top-level invocations of one logical run.
+        - The episode's fulfilled result was already consumed -> that logical
+          run completed; this invocation is a NEW run and gets a fresh scope,
+          so a second Generate-UAC run delegates fresh research instead of
+          dying on the consumed marker.
+
+        Consume-once is untouched: within one episode, an already-consumed
+        fulfilled file can never be consumed again (the bridge rejects the
+        duplicate write; a new episode has a different execution id)."""
+
+        import json as _json
+
+        logical_key = self._logical_execution_key(request)
+        pending_dir = self._store / "pending"
+        episode_scope: str | None = None
+        if pending_dir.is_dir():
+            for candidate in sorted(pending_dir.glob("agent-request_*.json")):
+                try:
+                    payload = _json.loads(
+                        candidate.read_text(encoding="utf-8-sig")
+                    )
+                except Exception:
+                    continue
+                if payload.get("logical_execution_key") == logical_key:
+                    episode_scope = str(payload.get("run_scope") or "")
+                    break
+        if episode_scope is None:
+            return request
+        episode_request = AgentResearchRequest.model_validate(
+            {
+                **request.model_dump(
+                    mode="json", exclude={"execution_id"}
+                ),
+                "run_scope": episode_scope,
+            }
+        )
+        fulfilled = self._fulfilled_path(
+            self._store, episode_request.execution_id
+        )
+        if fulfilled.exists() and fulfilled.with_suffix(".consumed").exists():
+            # The episode completed; this top-level invocation is a new run.
+            return request
+        return episode_request
+
     def execute(
         self,
         request: AgentResearchRequest,
@@ -1029,6 +1156,13 @@ class HostMediatedResearchProvider:
         import json
 
         self.last_model_execution = False
+        # G1: bind the request to its run-scoped research episode before any
+        # store access.  A completed episode (fulfilled+consumed) yields the
+        # current invocation's fresh scope, so a repeated Generate-UAC run
+        # delegates fresh research; an in-flight episode resumes under its
+        # recorded scope even though the resume pass is a new top-level
+        # invocation with a different canonical run id.
+        request = self._resolve_run_scope(request)
         fulfilled = self._fulfilled_path(self._store, request.execution_id)
         if fulfilled.exists():
             consumed = fulfilled.with_suffix(".consumed")
@@ -1070,6 +1204,12 @@ class HostMediatedResearchProvider:
         pending = self._pending_path(self._store, request.execution_id)
         if not pending.exists():
             payload = request.model_dump(mode="json")
+            # G1: the run-independent logical identity lets a later
+            # invocation resolve this episode's run scope; run_scope itself
+            # rides in the payload as a model field.
+            payload["logical_execution_key"] = self._logical_execution_key(
+                request
+            )
             # The delegated leaf agent has a read-only, bounded toolset and
             # cannot resolve evidence IDs: carry the authorized content
             # (bounded excerpts) and, for code research, the authorized

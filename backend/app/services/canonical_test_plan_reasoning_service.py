@@ -3687,6 +3687,38 @@ class CanonicalTestPlanReasoningService:
             if fact.fact_type == ContractFactType.PROBLEM_STATEMENT
             and fact.authoritative
         ]
+        # The gap anchor is the ticket's own problem statement, chosen
+        # deterministically: description/current-ticket sources before
+        # comments before attachments before anything else, then fact id.
+        # Extraction order must never pick the anchor (run-to-run identity
+        # stability), and a quoted implementation step inside a comment is
+        # not the customer problem.
+        _ANCHOR_SOURCE_RANK = {
+            EvidenceSourceType.JIRA_DESCRIPTION: 0,
+            EvidenceSourceType.CURRENT_JIRA: 0,
+            EvidenceSourceType.CUSTOMER_REQUEST: 0,
+            EvidenceSourceType.BUSINESS_IMPACT: 0,
+            EvidenceSourceType.JIRA_COMMENT: 2,
+            EvidenceSourceType.LINKED_JIRA: 2,
+            EvidenceSourceType.JIRA_ATTACHMENT: 3,
+            EvidenceSourceType.SCREENSHOT_REPRODUCTION: 3,
+        }
+        if bundle is not None and problem_facts:
+            record_type_by_id = {
+                record.evidence_id: record.source_type
+                for record in bundle.records
+            }
+
+            def _anchor_rank(fact) -> tuple[int, str]:
+                ranks = [
+                    _ANCHOR_SOURCE_RANK.get(
+                        record_type_by_id.get(evidence_id), 1
+                    )
+                    for evidence_id in fact.source_evidence_ids
+                ]
+                return (min(ranks, default=1), fact.fact_id)
+
+            problem_facts = sorted(problem_facts, key=_anchor_rank)
         if (
             problem_facts
             and facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT
@@ -6368,6 +6400,13 @@ class CanonicalTestPlanReasoningService:
                 continue
             if question.question_id in decision_question_ids:
                 # The decision-quality line already represents this question.
+                continue
+            conv = convergence_by_question.get(question.question_id)
+            if question.blocking and conv is not None and not conv.decision:
+                # G2: convergence is the authoritative TBD/clarification
+                # eligibility gate.  A research-answered question, a
+                # lifecycle/currentness-only conflict, or an evidence-quality
+                # limitation never surfaces as a product-decision TBD.
                 continue
             # R2 release nuance: a research-resolved question whose answer
             # could not promote (e.g. documented but not yet accepted product

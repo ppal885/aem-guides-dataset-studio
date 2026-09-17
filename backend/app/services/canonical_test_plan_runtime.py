@@ -1064,7 +1064,7 @@ class CanonicalTestPlanRuntime:
             CanonicalRuntimeStage.RESEARCH_ORCHESTRATOR,
             [questions, research_requirements, visible],
             lambda: RESEARCH_ORCHESTRATOR.execute(
-                questions, research_requirements, visible
+                questions, research_requirements, visible, run_scope=run_id
             ),
         )
 
