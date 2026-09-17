@@ -49,10 +49,11 @@ ROLES = {
     "uac-doc-researcher": {
         "description": (
             "Bounded documentation research for one UAC question: answer from "
-            "authorized product documentation only, with applicability, "
-            "limitations, and structured findings; never writes ACs."
+            "authorized product documentation only - approved local reference "
+            "packs and Experience League - with provenance for every "
+            "discovered source; never writes ACs."
         ),
-        "tools": ["view", "send_session_message"],
+        "tools": ["view", "grep", "web_fetch", "web_search", "send_session_message"],
     },
     "uac-code-researcher": {
         "description": (

@@ -51,6 +51,68 @@ rests on inference when documentation materially affects it.
 The Writer receives only admitted research (`admitted_research_ids`) through
 the existing reasoning path â€” never arbitrary raw search results.
 
+## Documentation research (Copilot host)
+
+Your PRIMARY discovery input is the request's `rag_candidates[]` - leads
+retrieved from the existing indexed AEM Guides / Experience League
+documentation corpus, each carrying `chunk_id`, `source_type`, `title`,
+`url`, `score`, and `snippet`, plus `rag_status`. Treat them strictly as
+discovery leads: a retrieval score is never authority, and a candidate is
+never cited without verification.
+
+Procedure:
+
+1. Reason over `rag_candidates` first: judge which are actually relevant to
+   the research question, then verify the relevant ones by fetching the
+   page with `web_fetch` (its `url`) or reading the local source before
+   citing it. If `rag_status` is not `ok` or the candidates are
+   insufficient, perform your own bounded discovery: derive terms from the
+   requested claim and the Skill's product vocabulary
+   (`guides_vocabulary.json` in the data directory), starting from the
+   request's `documentation_queries` seeds.
+2. Bounded discovery means: refine terms and try the NEXT candidate or a
+   new query when a candidate 404s, is unrelated, or fails - a failed fetch
+   is never "no documentation exists". At most 4 fetch attempts per
+   request.
+3. Return only documentation that actually supports the research question.
+
+When invoked for a pending research request you have bounded, read-only
+access to the approved documentation sources already supported by the Test
+Plan Skill:
+
+- The request's `authorized_evidence` rows (ticket-side context - cite them
+  by their `source_ref`).
+- The approved local documentation scopes listed in the request's
+  `documentation_roots` (the Skill's curated reference packs and the
+  repository docs directory) - search them with `grep`, read with `view`.
+- Public product documentation on Experience League
+  (experienceleague.adobe.com, helpx.adobe.com) via `web_search` /
+  `web_fetch` only. Never fetch or cite any other host.
+
+You MAY discover new documentation evidence inside those scopes. For every
+discovered source a finding cites:
+
+- mint `doc:<first 12 hex of sha256(locator)>` as its `source_refs` entry;
+- attach `provenance`: `locator` (full URL or absolute file path), `title`,
+  `query` (the exact search/fetch that found it), `accessed_at`;
+- a discovered source without complete provenance is rejected wholesale by
+  admission validation, so never invent one.
+
+Rules:
+
+- Historical Jira content surfaced through retrieval remains
+  discovery/supporting evidence only; it never becomes acceptance authority
+  automatically.
+- If the sources are reachable but none are relevant to the question after
+  the bounded discovery above, return `NO_RELEVANT_EVIDENCE` with
+  `limitations` naming the scopes and queries actually searched. Never
+  report it merely because documentation was not handed to you.
+- If a scope is genuinely unreachable (tool not granted, network error),
+  name it in `limitations`; that alone does not make the result
+  `SOURCE_UNAVAILABLE` while another authorized scope was searched.
+- Documentation establishes documented behavior only; it never becomes
+  acceptance authority for a new requirement, and you never write ACs.
+
 ## Return handoff (Copilot host)
 
 When the coordinator invokes you as a Copilot custom agent for one pending

@@ -438,6 +438,7 @@ class QuestionResearchRouter:
                 ResearchWorkerStatus.ANSWER_FOUND,
                 ResearchWorkerStatus.PARTIAL,
                 ResearchWorkerStatus.NOT_FOUND,
+                ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
                 ResearchWorkerStatus.CONFLICTED,
             }
             for row in question_worker_results
@@ -504,6 +505,7 @@ class QuestionResearchRouter:
                 ResearchWorkerStatus.ANSWER_FOUND,
                 ResearchWorkerStatus.PARTIAL,
                 ResearchWorkerStatus.NOT_FOUND,
+                ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
                 ResearchWorkerStatus.CONFLICTED,
             }:
                 executed_worker_categories.add(category)
@@ -528,13 +530,19 @@ class QuestionResearchRouter:
         # R2: workers executed and found nothing, with no other evidence or
         # hypothesis: that is a true NOT_FOUND (executed, no answer), never a
         # PARTIAL upgrade and never evidence of the opposite behavior.
+        # NO_RELEVANT_EVIDENCE (searched the authorized scopes, none relevant)
+        # is the same terminal no-answer outcome.
         if (
             question_worker_results
             and not evidence_ids
             and not question_hypotheses
             and not unresearched
             and all(
-                row.status == ResearchWorkerStatus.NOT_FOUND
+                row.status
+                in {
+                    ResearchWorkerStatus.NOT_FOUND,
+                    ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
+                }
                 for row in question_worker_results
             )
         ):

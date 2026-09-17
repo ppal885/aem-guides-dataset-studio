@@ -41,6 +41,21 @@ reasoning distinguishes observation from requirement.
 - override a Human Accepted AC;
 - treat NOT_FOUND as evidence of the opposite behavior.
 
+## Reading actual attachment content (Copilot host)
+
+The request carries `attachment_files[]`: for every authorized Jira
+attachment it contains either `path` (the downloaded local file) or
+`error` (the exact reason the content could not be fetched).
+
+- When `path` is present, open the actual file with `view` before making
+  any OBSERVED_BEHAVIOR claim - images are rendered visually, text and log
+  content is read directly. Never describe a file you did not open.
+- When only `error` is present, that attachment is SOURCE_UNAVAILABLE for
+  content claims: include the exact error in `limitations` and never
+  pretend it was researched.
+- Attachment metadata alone (filename, size, mime type) is never content
+  evidence.
+
 ## Return handoff (Copilot host)
 
 When the coordinator invokes you as a Copilot custom agent for one pending

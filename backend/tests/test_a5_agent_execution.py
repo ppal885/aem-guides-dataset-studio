@@ -349,6 +349,241 @@ def test_code_result_path_grammar_fails_closed(finding) -> None:
     assert rejection is not None
 
 
+# ---------------------------------------------------------------------------
+# Researcher capability: discovered documentation provenance + attachment
+# content materialization + NO_RELEVANT_EVIDENCE semantics.
+# ---------------------------------------------------------------------------
+
+
+def _doc_orchestrator(payload):
+    return _orchestrator_with(
+        RoutedResearchProvider(
+            DeterministicResearchProvider({}),
+            _FakeModelProvider(payload),
+            mode="backend_model",
+        )
+    )
+
+
+def _doc_question_setup():
+    doc = _record(
+        "doc-scope",
+        "The configured period governs the retention of entries.",
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+    )
+    question = _question("What does documentation establish for retention?")
+    requirement = _requirement(
+        question,
+        ResearchRequirement.DOCUMENTATION,
+        [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION],
+    )
+    return doc, question, requirement
+
+
+def test_doc_discovered_source_with_provenance_is_admitted() -> None:
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Experience League documents the retention behavior.",
+                "source_refs": ["doc:1a2b3c4d5e6f"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+                "provenance": {
+                    "locator": "https://experienceleague.adobe.com/some/page",
+                    "title": "Some page",
+                    "query": "output history retention",
+                    "accessed_at": "2026-09-17",
+                },
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.ANSWER_FOUND
+    assert results[0].findings[0].provenance["locator"].startswith("https://")
+
+
+def test_doc_discovered_source_without_provenance_fails_closed() -> None:
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "x",
+                "source_refs": ["doc:1a2b3c4d5e6f"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+
+
+def test_doc_refs_are_not_valid_for_attachment_research() -> None:
+    attachment = _record(
+        "att1", "metadata only", EvidenceSourceType.JIRA_ATTACHMENT
+    )
+    question = _question("What does the screenshot show?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.JIRA_ATTACHMENT]
+    )
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "x",
+                "source_refs": ["doc:1a2b3c4d5e6f"],
+                "evidence_role": "OBSERVED_BEHAVIOR",
+                "provenance": {"locator": "p", "title": "t", "query": "q"},
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(attachment), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+
+
+def test_no_relevant_evidence_requires_searched_scopes() -> None:
+    doc, question, requirement = _doc_question_setup()
+    payload = {"status": "NO_RELEVANT_EVIDENCE", "findings": [], "limitations": []}
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    # Schema rule: NO_RELEVANT_EVIDENCE must name what was actually searched.
+    assert results[0].status == ResearchWorkerStatus.FAILED
+    payload["limitations"] = ["searched references pack and Experience League: nothing relevant"]
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.NO_RELEVANT_EVIDENCE
+
+
+def test_attachment_files_materialize_content_or_exact_error(tmp_path) -> None:
+    import json
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    attachment = EvidenceRecord(
+        source_type=EvidenceSourceType.JIRA_ATTACHMENT,
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+        source_reference="test:att-content",
+        tenant_id="tenant_a5",
+        visibility=SourceVisibility(tenant_id="tenant_a5"),
+        requirement_authority=AuthorityClass.SPECIFICATION_AUTHORITY,
+        # Attachment metadata WITHOUT a content URL: the exact reason must be
+        # recorded, never a fabricated path.
+        content={"id": "1", "filename": "shot.png", "mime_type": "image/png"},
+    )
+    bundle = _bundle(attachment)
+    question = _question("What does the screenshot show?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.JIRA_ATTACHMENT]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.ATTACHMENT_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the screenshot show?",
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        authorized_source_refs=[attachment.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(request, bundle=bundle, question=question, requirement=requirement)
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    files = payload["attachment_files"]
+    assert len(files) == 1
+    assert files[0]["source_ref"] == attachment.evidence_id
+    # No content URL -> exact reason recorded, no fabricated path.
+    assert files[0]["path"] == ""
+    assert "no content URL" in files[0]["error"]
+
+
+def test_doc_request_receives_rag_candidates_before_live_verification(
+    tmp_path, monkeypatch
+) -> None:
+    """An output-history / publishing-warning claim must reach the DOC
+    researcher WITH retrieval candidates from the existing indexed product
+    documentation (chunk id, title, url, score, snippet) and
+    vocabulary-routed queries - before any live document verification the
+    leaf performs.  Retrieval is faked; the wiring is what is proven."""
+
+    import json
+
+    import app.services.embedding_service as emb_mod
+    import app.services.vector_store_service as vs_mod
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    monkeypatch.setattr(emb_mod, "is_embedding_available", lambda: True)
+    monkeypatch.setattr(emb_mod, "embed_query", lambda text: [0.1, 0.2])
+    monkeypatch.setattr(vs_mod, "is_chroma_available", lambda: True)
+
+    def fake_query(collection, emb, k=5, where=None):
+        assert collection == vs_mod.CHROMA_COLLECTION_AEM_GUIDES
+        return [
+            {
+                "id": "chunk-1",
+                "document": "The Map dashboard output history shows each run's status and log.",
+                "metadata": {
+                    "corpus": "aem_guides",
+                    "title": "Generate output",
+                    "source_url": "https://experienceleague.adobe.com/en/docs/output-generation",
+                },
+                "distance": 0.42,
+            }
+        ]
+
+    monkeypatch.setattr(vs_mod, "query_collection", fake_query)
+
+    record = _record("doc-rag", "baseline", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION)
+    bundle = _bundle(record)
+    claim = (
+        "Does the Output History on the Map dashboard show publishing "
+        "warnings from the publish log?"
+    )
+    question = _question(claim)
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim=claim,
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        authorized_source_refs=[record.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(request, bundle=bundle, question=question, requirement=requirement)
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+
+    assert payload["rag_status"] == "ok"
+    candidates = payload["rag_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["title"] == "Generate output"
+    assert candidates[0]["url"].startswith("https://experienceleague.adobe.com")
+    assert candidates[0]["score"] == 0.42
+    assert "output history" in candidates[0]["snippet"].lower()
+
+    # Vocabulary routing: the claim routes toward Map dashboard / output
+    # vocabulary, never a generic overview query.
+    queries = [q.lower() for q in payload["documentation_queries"]]
+    assert queries
+    assert any("map dashboard" in q or "output preset" in q for q in queries)
+    assert any("publish" in q or "output" in q for q in queries)
+    assert all("overview" not in q for q in queries)
+
+
 def test_shadow_mode_keeps_deterministic_authoritative() -> None:
     doc = _record(
         "doc4",

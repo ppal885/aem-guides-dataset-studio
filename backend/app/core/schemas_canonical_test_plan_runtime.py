@@ -2697,6 +2697,10 @@ class ResearchWorkerStatus(StrEnum):
     ANSWER_FOUND = "ANSWER_FOUND"
     PARTIAL = "PARTIAL"
     NOT_FOUND = "NOT_FOUND"
+    # The worker actually searched/read its authorized sources and none were
+    # relevant to the question - distinct from NOT_FOUND (no answer found) and
+    # never reportable merely because sources were not supplied to the worker.
+    NO_RELEVANT_EVIDENCE = "NO_RELEVANT_EVIDENCE"
     SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
     CONFLICTED = "CONFLICTED"
     FAILED = "FAILED"
@@ -2733,6 +2737,11 @@ class ResearchFinding(BaseModel):
     repository: str = Field(default="", max_length=500)
     revision: str = Field(default="", max_length=200)
     path: str = Field(default="", max_length=1000)
+    # For documentation sources the worker discovered itself inside the
+    # authorized scopes (ref form doc:<sha12>): provenance carries at least
+    # locator (URL or file path), title, and the query that found it.  Empty
+    # for bundle-cited evidence.
+    provenance: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def normalize(self) -> "ResearchFinding":
@@ -2771,9 +2780,17 @@ class ResearchWorkerResult(BaseModel):
             ResearchWorkerStatus.WORKER_UNAVAILABLE,
             ResearchWorkerStatus.FAILED,
             ResearchWorkerStatus.AWAITING_HOST,
+            ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
         } and self.findings:
             raise ValueError(
                 "an unavailable/failed/awaiting worker cannot report findings"
+            )
+        if (
+            self.status == ResearchWorkerStatus.NO_RELEVANT_EVIDENCE
+            and not self.limitations
+        ):
+            raise ValueError(
+                "NO_RELEVANT_EVIDENCE requires limitations naming the sources actually searched"
             )
         identity = self.model_dump(
             mode="json",

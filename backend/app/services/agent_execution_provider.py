@@ -33,6 +33,7 @@ from pathlib import Path
 from app.core.schemas_canonical_test_plan_runtime import (
     AgentResearchRequest,
     CanonicalEvidenceBundle,
+    EvidenceSourceType,
     HostAgentResultEnvelope,
     ResearchFinding,
     ResearchFindingEvidenceRole,
@@ -137,6 +138,213 @@ def _authorized_evidence_rows(
         if len(rows) >= _MAX_EVIDENCE_ITEMS:
             break
     return rows
+
+
+def _documentation_roots() -> list[str]:
+    """Approved local documentation scopes for delegated DOC research: the
+    Skill's curated reference packs and product vocabulary plus the
+    repository docs directory."""
+
+    current = Path(__file__).resolve()
+    for ancestor in current.parents:
+        refs = ancestor / "skills" / "test-plan-generation" / "references"
+        if refs.is_dir():
+            roots = [str(refs)]
+            data = ancestor / "skills" / "test-plan-generation" / "data"
+            if data.is_dir():
+                roots.append(str(data))
+            docs = ancestor / "docs"
+            if docs.is_dir():
+                roots.append(str(docs))
+            return roots
+    return []
+
+
+_QUERY_STOPWORDS = frozenset(
+    {
+        "this", "that", "with", "from", "which", "what", "does", "do", "is",
+        "are", "the", "a", "an", "and", "or", "of", "to", "in", "on", "for",
+        "under", "given", "here", "there", "when", "will", "would", "should",
+        "could", "must", "than", "then", "them", "they", "their", "have",
+        "has", "had", "been", "being", "into", "about", "after", "before",
+        "between", "existing", "evidence", "mentions", "without", "change",
+        "behavior", "behaviour", "question", "claim", "acceptance", "current",
+        "ticket", "jira",
+    }
+)
+
+
+def _load_guides_vocabulary() -> dict:
+    import json as _json
+
+    current = Path(__file__).resolve()
+    for ancestor in current.parents:
+        candidate = (
+            ancestor
+            / "skills"
+            / "test-plan-generation"
+            / "data"
+            / "guides_vocabulary.json"
+        )
+        if candidate.exists():
+            try:
+                return _json.loads(candidate.read_text(encoding="utf-8-sig"))
+            except Exception:
+                return {}
+    return {}
+
+
+def _suggested_documentation_queries(claim: str) -> list[str]:
+    """Generic, vocabulary-routed documentation search seeds for the DOC
+    researcher: match the requested claim against the curated AEM Guides
+    product vocabulary (canonical terms + synonym groups) and build bounded
+    queries from matched canonical terms plus the claim's own significant
+    tokens.  Nothing here is ticket-specific; routing comes from the claim
+    text and the shipped vocabulary file only."""
+
+    text = (claim or "").casefold()
+    if not text.strip():
+        return []
+    vocab = _load_guides_vocabulary()
+    terms = [
+        term for term in vocab.get("canonical_terms", []) if isinstance(term, str)
+    ]
+    for group in vocab.get("synonyms", []) or []:
+        if isinstance(group, dict):
+            terms.extend(
+                t for t in group.get("terms", []) if isinstance(t, str)
+            )
+    matched = sorted(
+        {
+            term
+            for term in terms
+            if len(term) > 3
+            and re.search(
+                r"(?<![\w-])" + re.escape(term.casefold()) + r"(?![\w-])", text
+            )
+        },
+        key=str.casefold,
+    )
+    tokens = [
+        token
+        for token in re.findall(r"[a-z][a-z0-9-]{3,}", text)
+        if token not in _QUERY_STOPWORDS
+    ]
+    queries: list[str] = []
+    if matched:
+        queries.append("AEM Guides " + " ".join(matched[:4]))
+    if tokens:
+        queries.append("AEM Guides " + " ".join(tokens[:6]))
+    seen: set[str] = set()
+    out: list[str] = []
+    for query in queries:
+        if query not in seen:
+            seen.add(query)
+            out.append(query)
+    return out[:3]
+
+
+def _rag_documentation_candidates(
+    claim: str, *, top_k: int = 5
+) -> tuple[list[dict], str]:
+    """Discovery leads from the existing indexed AEM Guides / product
+    documentation corpus (the same Chroma ``aem_guides`` collection the
+    Skill's offline RAG path queries).  Returns (candidates, status_note).
+    Candidates are discovery input for the delegated DOC researcher - never
+    acceptance authority, and a retrieval score is never authority."""
+
+    try:
+        from app.services.embedding_service import (
+            embed_query,
+            is_embedding_available,
+        )
+        from app.services.vector_store_service import (
+            CHROMA_COLLECTION_AEM_GUIDES,
+            is_chroma_available,
+            query_collection,
+        )
+
+        if not is_chroma_available() or not is_embedding_available():
+            return [], "rag retrieval unavailable: chroma or embedding not available"
+        emb = embed_query((claim or "")[:4000])
+        if emb is None:
+            return [], "rag retrieval unavailable: embedding returned nothing"
+        rows = query_collection(CHROMA_COLLECTION_AEM_GUIDES, emb, k=top_k)
+    except Exception as exc:
+        return [], f"rag retrieval unavailable: {exc.__class__.__name__}"
+    candidates: list[dict] = []
+    for row in rows:
+        meta = row.get("metadata") or {}
+        candidates.append(
+            {
+                "chunk_id": str(row.get("id") or ""),
+                "source_type": str(meta.get("corpus") or "aem_guides"),
+                "title": str(meta.get("title") or ""),
+                "url": str(meta.get("source_url") or meta.get("url") or ""),
+                "score": row.get("distance"),
+                "snippet": _excerpt(row.get("document") or ""),
+            }
+        )
+    return candidates, ("ok" if candidates else "no candidates")
+
+
+def _attachment_files(
+    request: "AgentResearchRequest",
+    bundle: "CanonicalEvidenceBundle",
+    store: Path,
+) -> list[dict]:
+    """Materialize the actual content of authorized Jira attachments so the
+    delegated attachment researcher reads real content, never metadata alone.
+    Failures are recorded with their exact reason - never hidden - so the
+    researcher can honestly report SOURCE_UNAVAILABLE for that source."""
+
+    authorized = set(request.authorized_source_refs) | set(request.context_refs)
+    out: list[dict] = []
+    for record in bundle.records:
+        if record.evidence_id not in authorized:
+            continue
+        if record.source_type != EvidenceSourceType.JIRA_ATTACHMENT:
+            continue
+        content = record.content if isinstance(record.content, dict) else {}
+        url = str(content.get("url") or "").strip()
+        filename = str(content.get("filename") or "attachment.bin")
+        entry = {
+            "source_ref": record.evidence_id,
+            "filename": filename,
+            "mime_type": str(content.get("mime_type") or ""),
+            "path": "",
+            "size_bytes": 0,
+            "error": "",
+        }
+        if not url:
+            entry["error"] = "attachment record carries no content URL"
+        else:
+            try:
+                from app.services.jira_client import JiraClient
+
+                client = JiraClient()
+                if not client.is_configured():
+                    entry["error"] = (
+                        "Jira credentials not configured "
+                        "(JIRA_BASE_URL/JIRA_PAT)"
+                    )
+                else:
+                    data = client.download_attachment(url)
+                    target_dir = (
+                        store / "attachments" / request.execution_id.replace(":", "_")
+                    )
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename)
+                    target = target_dir / safe
+                    target.write_bytes(data)
+                    entry["path"] = str(target)
+                    entry["size_bytes"] = len(data)
+            except Exception as exc:
+                entry["error"] = (
+                    f"download failed: {exc.__class__.__name__}: {exc}"
+                )[:500]
+        out.append(entry)
+    return out
 
 
 def _terminal_result(
@@ -289,12 +497,30 @@ def _validate_agent_result(
         else:
             unknown = [ref for ref in refs if ref not in allowed_refs]
             if unknown:
-                # Fabricated/unknown source reference: reject the result.
-                return _terminal_result(
-                    request,
-                    ResearchWorkerStatus.FAILED,
-                    ["finding cites sources outside the authorized set"],
-                )
+                # Fabricated/unknown source reference: reject the result -
+                # except documentation sources the DOC researcher discovered
+                # itself inside the authorized documentation scopes, which
+                # must carry full provenance instead of a bundle id.
+                if request.worker_role == ResearchWorkerRole.DOC_RESEARCHER:
+                    prov = item.get("provenance") or {}
+                    discovered_ok = (
+                        isinstance(prov, dict)
+                        and all(
+                            re.fullmatch(r"doc:[a-z0-9]{12}", ref)
+                            for ref in unknown
+                        )
+                        and str(prov.get("locator") or "").strip()
+                        and str(prov.get("title") or "").strip()
+                        and str(prov.get("query") or "").strip()
+                    )
+                    if discovered_ok:
+                        unknown = []
+                if unknown:
+                    return _terminal_result(
+                        request,
+                        ResearchWorkerStatus.FAILED,
+                        ["finding cites sources outside the authorized set"],
+                    )
         try:
             role = ResearchFindingEvidenceRole(
                 str(item.get("evidence_role") or "SUPPORTING_CONTEXT")
@@ -307,6 +533,11 @@ def _validate_agent_result(
                 source_refs=refs,
                 evidence_role=role,
                 applicability=str(item.get("applicability") or "")[:500],
+                provenance=(
+                    item.get("provenance")
+                    if isinstance(item.get("provenance"), dict)
+                    else {}
+                ),
                 repository=(
                     str(item.get("repository") or "")[:500]
                     if request.worker_role == ResearchWorkerRole.CODE_RESEARCHER
@@ -612,6 +843,26 @@ class HostMediatedResearchProvider:
             payload["authorized_repository_roots"] = [
                 os.path.abspath(root) for root in effective_roots if root
             ]
+            # Attachment researchers read real content: materialize authorized
+            # attachments into the store (exact failure reasons recorded).
+            payload["attachment_files"] = _attachment_files(
+                request, bundle, self._store
+            )
+            # Doc researchers get the approved local documentation scopes to
+            # search/read directly, generic vocabulary-routed search seeds
+            # derived from the requested claim, and RAG discovery leads from
+            # the existing indexed product-documentation corpus (the primary
+            # discovery input; the leaf verifies before citing).
+            if request.worker_role == ResearchWorkerRole.DOC_RESEARCHER:
+                payload["documentation_roots"] = _documentation_roots()
+                payload["documentation_queries"] = (
+                    _suggested_documentation_queries(request.requested_claim)
+                )
+                candidates, rag_status = _rag_documentation_candidates(
+                    request.requested_claim
+                )
+                payload["rag_candidates"] = candidates
+                payload["rag_status"] = rag_status
             # Bind the role-contract version AT EMISSION: the result must
             # answer this request under the contract this request was
             # emitted with, regardless of later contract edits.
