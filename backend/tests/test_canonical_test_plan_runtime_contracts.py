@@ -986,7 +986,10 @@ def test_human_accepted_contract_is_preserved_while_scope_questions_stay_separat
         "issue": {
             "issue_key": "GUIDES-88",
             "summary": "Publishing status needs correction.",
-            "description": "This affects Native PDF publishing.",
+            "description": (
+                "This affects Native PDF publishing. The observable output "
+                "differs between DITA-OT processing modes."
+            ),
             "labels": ["accepted_uac"],
             "acceptance_criteria": [
                 "The generated PDF should display the Ready status."

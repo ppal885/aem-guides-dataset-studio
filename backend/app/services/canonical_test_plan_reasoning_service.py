@@ -64,6 +64,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     GitHubImplementationVerificationHandoff,
     HumanClarification,
     HypothesisState,
+    InvestigationMateriality,
     IssueDomain,
     InvestigationFamilySatisfactionStatus,
     LifecycleOperation,
@@ -248,6 +249,42 @@ def _mandatory_research_open_rationale(
         )
     return None
 
+
+# P3: research statuses that prove the mandated research actually terminated
+# (or was never required) - only these may yield an ACCEPTANCE_TBD.  PENDING
+# means research never executed: fail closed, never a final TBD.
+_TBD_EXHAUSTED_RESEARCH_STATUSES = {
+    ResearchStatus.PARTIAL,
+    ResearchStatus.NOT_FOUND,
+    ResearchStatus.SOURCE_UNAVAILABLE,
+    ResearchStatus.CONFLICTED,
+    ResearchStatus.NOT_REQUIRED,
+    ResearchStatus.NOT_APPLICABLE,
+}
+
+
+def _acceptance_tbd_eligible(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    clarified_question_ids: set[str],
+) -> bool:
+    """P3: a blocking acceptance-decision question whose mandated research is
+    exhausted (or not required) and that no clarification answered becomes a
+    bounded ACCEPTANCE_TBD instead of a generic open question.  The runtime
+    never invents the missing value."""
+
+    if question.question_id in clarified_question_ids:
+        return False
+    if not question.blocking:
+        return False
+    if question.open_question_class != OpenQuestionClass.USER_ACCEPTANCE_DECISION:
+        return False
+    record = research_by_question.get(question.question_id)
+    if record is None:
+        # No research classification at all is never "research exhausted".
+        return False
+    return record.research_status in _TBD_EXHAUSTED_RESEARCH_STATUSES
+
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
     IssueDomain.PUBLISHING: (
         "publish",
@@ -391,6 +428,64 @@ def scope_question_id(field: str) -> str:
         "blocking": blocking,
     }
     return f"question:{stable_sha256(identity)[:32]}"
+
+
+# Generic materiality gate: an applicability/configuration dimension becomes
+# a user-facing acceptance question only when admitted evidence indicates
+# that changing the dimension can change an acceptance-material outcome.
+# Mere existence of the setting, same-domain vocabulary, or an unknown value
+# is NOT material interaction.  The interaction evidence must tie the
+# dimension itself to conditional or differing behavior.
+_DIMENSION_INTERACTION_BEHAVIOR_RE = re.compile(
+    r"\b(?:enabled|disabled|differs?|different|changes?|changed|only|"
+    r"respects|honours?|honors?|ignores?|both|either|modes?|depends|"
+    r"depending|varies|vary|affects?)\b",
+    re.IGNORECASE,
+)
+
+# Per-dimension identity signals (the scope dimensions the runtime owns).
+_SCOPE_DIMENSION_SIGNALS: dict[str, tuple[str, ...]] = {
+    "ENABLE_DITA_OT_PROCESSING": ("dita-ot", "dita ot", "dita_ot"),
+    "PRIMARY_PRESET_TYPE": ("preset", "output type", "output format"),
+}
+
+# Human-readable dimension labels for research-first materiality probes.
+_SCOPE_FIELD_DIMENSION_LABELS: dict[str, str] = {
+    "ENABLE_DITA_OT_PROCESSING": "the processing mode",
+    "PRIMARY_PRESET_TYPE": "the output preset choice",
+}
+
+
+def _dimension_interaction_present(
+    semantic_units: list[str], field: str
+) -> bool:
+    """True only when the dimension is tied to conditional or differing
+    behavior within a bounded window around its own mention - never from the
+    dimension merely existing, and never from vocabulary in an unrelated
+    sentence of the same unit."""
+
+    signals = _SCOPE_DIMENSION_SIGNALS.get(field, ())
+    if not signals:
+        return False
+    text = " ".join(semantic_units)
+    for signal in signals:
+        for match in re.finditer(re.escape(signal), text):
+            start = max(0, match.start() - 60)
+            window = text[start : match.end() + 60]
+            if _DIMENSION_INTERACTION_BEHAVIOR_RE.search(window):
+                return True
+    return False
+
+
+def _dimension_signal_present(semantic_units: list[str], field: str) -> bool:
+    """True when admitted evidence mentions the dimension at all - a
+    plausible evidence-bound relationship that warrants a bounded
+    research-first materiality probe instead of silent suppression."""
+
+    signals = _SCOPE_DIMENSION_SIGNALS.get(field, ())
+    return any(
+        signal in unit for unit in semantic_units for signal in signals
+    )
 
 
 # P1: authority classes whose human clarification may establish an
@@ -645,6 +740,15 @@ def _derive_c1(
 
     if disposition in _C1_ACCEPTANCE_DISPOSITIONS:
         return "ACCEPTANCE", "P0", _C1_IMPACT_TEXT["P0"]
+    if disposition == CoverageDisposition.ACCEPTANCE_TBD:
+        # P3: acceptance-material but unresolved - stays acceptance-lane so it
+        # is never silently demoted to regression/investigation.
+        return (
+            "ACCEPTANCE",
+            "P0",
+            "Acceptance-material; a bounded product decision remains "
+            "unresolved (TBD).",
+        )
     if disposition in _C1_REGRESSION_DISPOSITIONS:
         priority = "P1" if has_direct_evidence else "SUPPORTING"
         return "QE_REGRESSION", priority, _C1_IMPACT_TEXT[priority]
@@ -2608,22 +2712,16 @@ class CanonicalTestPlanReasoningService:
                         dita_ot_basis = "HUMAN_CLARIFICATION"
                         applied_clarification_ids.append(admitted.clarification_id)
             if dita_ot == DitaOtProcessingState.UNRESOLVED:
-                # P1 material-question suppression: with no evidence that the
-                # changed behavior involves output generation, transformation,
-                # or delivery, the adjacent processing toggle is not materially
-                # connected to this ticket - resolve NOT_APPLICABLE with a
-                # recorded basis instead of escalating a generic dimension to
-                # the user.
-                generation_evidence_present = (
-                    _units_contain_any(
-                        semantic_units, _GENERATED_ARTIFACT_DELIVERY_SIGNALS
-                    )
-                    or _units_match(
-                        semantic_units, _CONTEXTUAL_GENERATED_ARTIFACT_DELIVERY_RE
-                    )
-                    or bool(dita_scope_units)
-                )
-                if not generation_evidence_present:
+                # Materiality gate (generic): the processing toggle becomes a
+                # user-facing acceptance question only when admitted evidence
+                # ties the dimension itself to conditional or differing
+                # behavior.  Same-domain vocabulary ("outputs", "processing")
+                # or an unknown value is NOT material interaction; without it
+                # the dimension is NOT_APPLICABLE to this acceptance contract
+                # with an auditable basis, never a blocking question.
+                if not _dimension_interaction_present(
+                    semantic_units, "ENABLE_DITA_OT_PROCESSING"
+                ):
                     dita_ot = DitaOtProcessingState.NOT_APPLICABLE
                     dita_ot_basis = "NO_MATERIAL_INTERACTION_EVIDENCE"
         out_literals = {
@@ -2684,10 +2782,42 @@ class CanonicalTestPlanReasoningService:
             }
         )
         unresolved: list[str] = []
+        dimension_materiality: dict[str, str] = {}
         if publishing and dita_ot == DitaOtProcessingState.UNRESOLVED:
             unresolved.append("ENABLE_DITA_OT_PROCESSING")
+            dimension_materiality["ENABLE_DITA_OT_PROCESSING"] = "MATERIAL"
+        elif dita_ot_basis == "NO_MATERIAL_INTERACTION_EVIDENCE":
+            # Three-way gate: no dimension signal at all is plainly
+            # non-material; a bare mention without a behavior tie is
+            # UNRESOLVED_MATERIALITY - a bounded research-first probe decides
+            # before any human question (never a blocking TBD by default).
+            if _dimension_signal_present(
+                semantic_units, "ENABLE_DITA_OT_PROCESSING"
+            ):
+                dimension_materiality["ENABLE_DITA_OT_PROCESSING"] = (
+                    "UNRESOLVED_MATERIALITY:RESEARCH_FIRST"
+                )
+            else:
+                dimension_materiality["ENABLE_DITA_OT_PROCESSING"] = (
+                    "NON_MATERIAL_TO_CURRENT_ACCEPTANCE:NO_MATERIAL_INTERACTION_EVIDENCE"
+                )
+        # PRIMARY_PRESET_TYPE: unknown preset is a blocking question only when
+        # evidence ties preset/output-type choice to conditional or differing
+        # behavior; merely being a publishing ticket is not material.
         if publishing and not preset:
-            unresolved.append("PRIMARY_PRESET_TYPE")
+            if _dimension_interaction_present(
+                semantic_units, "PRIMARY_PRESET_TYPE"
+            ):
+                unresolved.append("PRIMARY_PRESET_TYPE")
+                dimension_materiality["PRIMARY_PRESET_TYPE"] = "MATERIAL"
+            elif _dimension_signal_present(semantic_units, "PRIMARY_PRESET_TYPE"):
+                dimension_materiality["PRIMARY_PRESET_TYPE"] = (
+                    "UNRESOLVED_MATERIALITY:RESEARCH_FIRST"
+                )
+            else:
+                dimension_materiality["PRIMARY_PRESET_TYPE"] = (
+                    "NON_MATERIAL_TO_CURRENT_ACCEPTANCE:NO_MATERIAL_INTERACTION_EVIDENCE"
+                )
         if publishing and not by_type[ContractFactType.OUT_OF_SCOPE]:
             unresolved.append("OUT_OF_SCOPE")
         if publishing and not shared_path_outputs:
@@ -2704,6 +2834,7 @@ class CanonicalTestPlanReasoningService:
             enable_dita_ot_processing=dita_ot,
             dita_ot_resolution_basis=dita_ot_basis,
             applied_clarification_ids=applied_clarification_ids,
+            dimension_materiality=dimension_materiality,
             aem_sites_implementation=(
                 ApplicabilityState.NOT_APPLICABLE
                 if "aem sites" in normalized_out_scope
@@ -3368,6 +3499,39 @@ class CanonicalTestPlanReasoningService:
                     ),
                     blocking=blocking,
                     open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
+                )
+            )
+        # Research-first materiality probes (UX1/materiality gate): a dimension
+        # mentioned in evidence without an established behavior interaction is
+        # researched ("does it change this behavior?") before any value/scope
+        # question may reach the human.  Non-blocking; never a TBD; never a
+        # promotion block.
+        for field, decision in sorted(scope.dimension_materiality.items()):
+            if not decision.startswith("UNRESOLVED_MATERIALITY"):
+                continue
+            label = _SCOPE_FIELD_DIMENSION_LABELS.get(field, field)
+            questions.append(
+                MissingQuestion(
+                    question=(
+                        f"Does {label} change the behavior under acceptance "
+                        "here, given that existing evidence mentions it "
+                        "without establishing an interaction?"
+                    ),
+                    authority_subject=AuthoritySubject.ACTUAL_IMPLEMENTATION,
+                    target_source_types=sorted(
+                        {
+                            EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+                            EvidenceSourceType.DITA_SPECIFICATION,
+                            EvidenceSourceType.DITA_OT_DOCUMENTATION,
+                            EvidenceSourceType.CURRENT_CODE,
+                            EvidenceSourceType.CURRENT_PR,
+                            EvidenceSourceType.IMPLEMENTATION_DIFF,
+                        },
+                        key=lambda row: row.value,
+                    ),
+                    blocking=False,
+                    open_question_class=OpenQuestionClass.RESEARCH_REQUIRED,
+                    materiality=InvestigationMateriality.P1,
                 )
             )
         for fact in facts.facts:
@@ -4228,7 +4392,9 @@ class CanonicalTestPlanReasoningService:
         scope: ScopeResolution,
         questions: list[MissingQuestion],
         research_records: list[QuestionResearchRecord] | None = None,
+        clarified_question_ids: set[str] | None = None,
     ) -> list[CoverageDispositionRecord]:
+        clarified_question_ids = clarified_question_ids or set()
         research_by_question = {
             row.question_id: row for row in research_records or []
         }
@@ -4387,8 +4553,34 @@ class CanonicalTestPlanReasoningService:
                     research_by_question,
                 )
                 if research_override is not None:
-                    disposition = CoverageDisposition.OPEN_QUESTION
-                    rationale = research_override
+                    # P3: an exhausted-research blocking product decision is a
+                    # bounded ACCEPTANCE_TBD, not a generic open question.
+                    if any(
+                        _acceptance_tbd_eligible(
+                            row, research_by_question, clarified_question_ids
+                        )
+                        for row in related_questions
+                    ):
+                        disposition = CoverageDisposition.ACCEPTANCE_TBD
+                        rationale = research_override
+                    else:
+                        disposition = CoverageDisposition.OPEN_QUESTION
+                        rationale = research_override
+            elif disposition == CoverageDisposition.OPEN_QUESTION and any(
+                _acceptance_tbd_eligible(
+                    row, research_by_question, clarified_question_ids
+                )
+                for row in related_questions
+            ):
+                # P3: an already-open closure row for a blocking product
+                # decision with exhausted research upgrades to a bounded
+                # ACCEPTANCE_TBD - acceptance-lane, never promoted.
+                disposition = CoverageDisposition.ACCEPTANCE_TBD
+                rationale = (
+                    "Acceptance-material decision remains unresolved after "
+                    "mandatory research terminated; the missing value is "
+                    "never invented."
+                )
             entities = ", ".join(dict.fromkeys(item.entity for item in items))
             candidate = f"{dimension.value}: {entities}"
             if _RAW_FRAGMENT_RE.search(entities):
@@ -4499,8 +4691,29 @@ class CanonicalTestPlanReasoningService:
                     research_by_question,
                 )
                 if research_override is not None:
-                    disposition = CoverageDisposition.OPEN_QUESTION
+                    if _acceptance_tbd_eligible(
+                        question, research_by_question, clarified_question_ids
+                    ):
+                        disposition = CoverageDisposition.ACCEPTANCE_TBD
+                    else:
+                        disposition = CoverageDisposition.OPEN_QUESTION
                     rationale = research_override
+            elif (
+                disposition == CoverageDisposition.OPEN_QUESTION
+                and question is not None
+                and _acceptance_tbd_eligible(
+                    question, research_by_question, clarified_question_ids
+                )
+            ):
+                # P3: an already-open row for a blocking product decision with
+                # exhausted research upgrades to a bounded ACCEPTANCE_TBD - it
+                # stays acceptance-lane instead of a generic open question.
+                disposition = CoverageDisposition.ACCEPTANCE_TBD
+                rationale = (
+                    "Acceptance-material decision remains unresolved after "
+                    "mandatory research terminated; the missing value is "
+                    "never invented."
+                )
             c1_class, c1_priority, c1_impact = _derive_c1(
                 disposition,
                 has_direct_evidence=hypothesis.state == HypothesisState.CONFIRMED,
@@ -4525,6 +4738,44 @@ class CanonicalTestPlanReasoningService:
                     priority=c1_priority,
                     acceptance_impact=c1_impact,
                     contract_type=_derive_contract_type(disposition, set()),
+                    applicability="APPLICABLE",
+                )
+            )
+        # P3: blocking acceptance-decision questions with exhausted research
+        # but no hypothesis/closure linkage still earn a bounded ACCEPTANCE_TBD
+        # coverage row, so the unresolved dimension is a first-class canonical
+        # artifact (not merely rendered prose) and can never promote.
+        linked_question_ids = {
+            question_id
+            for row in rows
+            for question_id in row.source_question_ids
+        }
+        for question in questions:
+            if question.question_id in linked_question_ids:
+                continue
+            if not _acceptance_tbd_eligible(
+                question, research_by_question, clarified_question_ids
+            ):
+                continue
+            c1_class, c1_priority, c1_impact = _derive_c1(
+                CoverageDisposition.ACCEPTANCE_TBD,
+                has_direct_evidence=False,
+            )
+            rows.append(
+                CoverageDispositionRecord(
+                    candidate=question.question,
+                    disposition=CoverageDisposition.ACCEPTANCE_TBD,
+                    source_question_ids=[question.question_id],
+                    source_fact_ids=list(question.source_fact_ids),
+                    rationale=(
+                        "Acceptance-material decision remains unresolved after "
+                        "mandatory research terminated; the missing value is "
+                        "never invented."
+                    ),
+                    coverage_class=c1_class,
+                    priority=c1_priority,
+                    acceptance_impact=c1_impact,
+                    contract_type="POSITIVE",
                     applicability="APPLICABLE",
                 )
             )
@@ -4656,6 +4907,17 @@ class CanonicalTestPlanReasoningService:
             for row in questions
             if row.blocking and row.question_id not in resolved_question_ids
         ]
+        # P3: claim-level dependency.  A candidate is blocked only by
+        # unresolved blocking questions actually linked to its source coverage
+        # dispositions; independent sufficiently-established claims must not
+        # inherit ticket-wide blocking.  The disposition linkage IS the
+        # dependency record - an unlinked claim has no dependency.
+        def _dependent_blocking_ids(row: CoverageDispositionRecord) -> list[str]:
+            linked = set(row.source_question_ids)
+            return sorted(
+                question_id for question_id in blocking_ids if question_id in linked
+            )
+
         discovered_candidates: list[AcceptanceCandidate] = []
         for row in dispositions:
             if row.disposition not in {
@@ -4718,7 +4980,8 @@ class CanonicalTestPlanReasoningService:
                         )
                     ),
                     unresolved_decision_ids=(
-                        [] if accepted_human_contract else blocking_ids
+                        [] if accepted_human_contract
+                        else _dependent_blocking_ids(row)
                     ),
                 )
             )
@@ -5065,6 +5328,9 @@ class CanonicalTestPlanReasoningService:
             if hypothesis.state == HypothesisState.UNRESOLVED and disposition not in {
                 CoverageDisposition.OPEN_QUESTION,
                 CoverageDisposition.PRODUCT_SCOPE_QUESTION,
+                # P3: a bounded acceptance TBD IS the exposed form of an
+                # unresolved acceptance-material hypothesis.
+                CoverageDisposition.ACCEPTANCE_TBD,
             }:
                 failures.append(
                     "Unresolved material hypothesis is not exposed as an open "
@@ -5265,6 +5531,16 @@ class CanonicalTestPlanReasoningService:
                 )
                 integrity_failures.append(
                     f"{candidate.candidate_id}: source disposition is not acceptance eligible"
+                )
+            if any(
+                row.disposition == CoverageDisposition.ACCEPTANCE_TBD
+                for row in source_dispositions
+            ):
+                # P3: a bounded TBD is acceptance-lane but never promotable
+                # until its product decision is resolved.
+                reasons.append(
+                    "Unresolved acceptance dimension (TBD) cannot promote "
+                    "until its product decision is resolved."
                 )
             if not authority_supported:
                 reasons.append("Intended behavior lacks product-contract authority.")
@@ -5549,6 +5825,7 @@ class CanonicalTestPlanReasoningService:
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
         clarifications: list[HumanClarification] | None = None,
         research_resolved_question_ids: set[str] | None = None,
+        waiting_for_research: bool = False,
     ) -> tuple[StructuredQEPlan, str]:
         if research_records is not None:
             incomplete_research_question_ids = {
@@ -5562,6 +5839,9 @@ class CanonicalTestPlanReasoningService:
                     CoverageDisposition.OPEN_QUESTION,
                     CoverageDisposition.PRODUCT_SCOPE_QUESTION,
                     CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+                    # P3: a bounded TBD is NOT finalization - it keeps the
+                    # unresolved decision visible; the renderer may carry it.
+                    CoverageDisposition.ACCEPTANCE_TBD,
                 }
                 for disposition in dispositions:
                     if disposition.disposition in open_states:
@@ -5648,6 +5928,7 @@ class CanonicalTestPlanReasoningService:
             CoverageDisposition.CROSS_MODE_REGRESSION: "cross_mode_regression",
             CoverageDisposition.NFR_COVERAGE: "nfr_coverage",
             CoverageDisposition.PRODUCT_SCOPE_QUESTION: "product_decisions",
+            CoverageDisposition.ACCEPTANCE_TBD: "product_decisions",
             CoverageDisposition.ENGINEERING_DESIGN_DECISION: "product_decisions",
             CoverageDisposition.OUT_OF_SCOPE: "explicit_out_of_scope",
             CoverageDisposition.INVESTIGATED_AND_REJECTED: "investigated_and_rejected",
@@ -5790,6 +6071,8 @@ class CanonicalTestPlanReasoningService:
             CoverageDisposition.OPEN_QUESTION,
             CoverageDisposition.PRODUCT_SCOPE_QUESTION,
             CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+            # P3: a bounded TBD keeps its question in the open set.
+            CoverageDisposition.ACCEPTANCE_TBD,
         }
         linked_question_ids = {
             question_id
@@ -5808,13 +6091,22 @@ class CanonicalTestPlanReasoningService:
             for row in clarifications or []
             if row.status == ClarificationStatus.ADMITTED
         }
-        # R2: research-resolved questions are released identically - they were
-        # answered by mandated research, never re-asked.
-        clarified_question_ids |= set(research_resolved_question_ids or ())
+        # R2: research-resolved questions are handled in the loop below: when
+        # their research answer promoted acceptance coverage they are released;
+        # when nothing promoted, the acceptance decision still needs the human.
         for question in questions:
             if question.question_id in resolved_question_ids:
                 continue
             if question.question_id in clarified_question_ids:
+                continue
+            # R2 release nuance: a research-resolved question whose answer
+            # could not promote (e.g. documented but not yet accepted product
+            # decision) must remain visible when nothing was promoted - the
+            # acceptance decision still belongs to the human.
+            if (
+                question.question_id in set(research_resolved_question_ids or ())
+                and promoted_ids
+            ):
                 continue
             key = "product_decisions" if question.blocking else "evidence_gaps"
             section_items[key].append((question.question, question.question_id))
@@ -6028,12 +6320,26 @@ class CanonicalTestPlanReasoningService:
                 )
                 lines.append("")
             lines.extend(["## Generation status", ""])
-            lines.append("- UAC needs product clarification.")
-            lines.append(
-                "- No Acceptance Criteria were generated because required "
-                "product decisions remain unresolved."
-            )
-            lines.append("")
+            if waiting_for_research:
+                # A5 host mediation: required research is dispatched to the
+                # host and unanswered - this is research in progress, never a
+                # product-decision request and never a plan-shaped document.
+                lines.append(
+                    "- Required research is still in progress; no product "
+                    "decision is being requested yet."
+                )
+                lines.append(
+                    "- No Acceptance Criteria were generated because required "
+                    "research has not returned."
+                )
+                lines.append("")
+            else:
+                lines.append("- UAC needs product clarification.")
+                lines.append(
+                    "- No Acceptance Criteria were generated because required "
+                    "product decisions remain unresolved."
+                )
+                lines.append("")
             decision_texts: list[str] = []
             for text, _record_id in section_items.get("product_decisions", []):
                 normalized = " ".join(text.split())
@@ -6041,13 +6347,17 @@ class CanonicalTestPlanReasoningService:
                     seen.casefold() for seen in decision_texts
                 }:
                     decision_texts.append(normalized)
-            if decision_texts:
+            # While waiting for host research, product decisions are not yet
+            # presented as user asks - research may resolve them.
+            if decision_texts and not waiting_for_research:
                 lines.extend(["## Open product decisions", ""])
                 lines.extend(f"- (TBD) {text}" for text in decision_texts)
                 lines.append("")
             lines.extend(["## Acceptance criteria", ""])
             lines.append(
-                "- None generated until the blocking decisions are resolved."
+                "- None generated until required research completes."
+                if waiting_for_research
+                else "- None generated until the blocking decisions are resolved."
             )
             lines.append("")
         else:

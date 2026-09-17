@@ -981,6 +981,10 @@ def test_fj17_normalized_terminal_results_resolve_qe_scope_without_new_ac() -> N
     resolved = CanonicalTestPlanRuntime(
         github_verification_service=_authorized_github_service()
     ).run(request, normalized)
+    # Scope resolved through verified implementation results - handoffs are
+    # gone and no new AC is invented; the generic materiality gate suppresses
+    # the remaining applicability question (no interaction evidence), so the
+    # run completes.
     assert resolved.status == "completed"
     assert not resolved.output_payload[
         "unresolved_github_implementation_handoff_ids"

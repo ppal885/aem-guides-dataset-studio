@@ -54,6 +54,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     QuestionGenerationDiagnosticTrace,
     QuestionResearchRecord,
     ResearchRequirementRecord,
+    ResearchWorkerExecution,
+    ResearchWorkerStatus,
     RuntimeEntryPoint,
     RuntimePrincipal,
     RuntimeStageTrace,
@@ -1023,6 +1025,18 @@ class CanonicalTestPlanRuntime:
             select_missing_questions,
         )
         questions = list(missing_question_quality.accepted_questions)
+        # P1/P3: admit human clarifications as soon as questions exist so
+        # coverage classification can lift clarified questions out of
+        # blocking/TBD flips.  The same admitted list is reused downstream;
+        # admission itself depends only on the questions.
+        admitted_clarifications, clarification_errors = (
+            self._reasoning.admit_clarifications(raw_clarifications, questions)
+        )
+        admitted_clarified_question_ids = {
+            row.question_ref
+            for row in admitted_clarifications
+            if row.status.value == "ADMITTED"
+        }
         question_generation_trace = self._reasoning.build_question_generation_trace(
             bundle=visible,
             facts=facts,
@@ -1287,6 +1301,7 @@ class CanonicalTestPlanRuntime:
                 scope,
                 questions,
                 question_research,
+                admitted_clarified_question_ids,
             ),
         )
         dispositions_for_trace = list(dispositions)
@@ -1307,17 +1322,12 @@ class CanonicalTestPlanRuntime:
         # terminal state is carried by the separate, evidence-linked resolution
         # records so second-pass evidence cannot rewrite question identity.
         questions_for_trace = list(questions)
-        admitted_clarifications, clarification_errors = (
-            self._reasoning.admit_clarifications(raw_clarifications, questions)
-        )
+        # Clarifications were admitted right after question generation (P3)
+        # so coverage classification could honor them; reuse that result.
         for error in clarification_errors:
             if error not in runtime_warnings:
                 runtime_warnings.append(error)
-        clarified_resolved_ids = {
-            row.question_ref
-            for row in admitted_clarifications
-            if row.status.value == "ADMITTED"
-        }
+        clarified_resolved_ids = set(admitted_clarified_question_ids)
         # R2: evidence-resolved questions (terminal research answer bound to
         # establishing authority) release blocking exactly like admitted human
         # clarifications - research first, ask only the residual decision.
@@ -1389,6 +1399,12 @@ class CanonicalTestPlanRuntime:
         )
         promotions_for_trace = list(promotions)
         gates = [contract_gate, completeness_gate, promotion_gate]
+        # A5 host mediation: computed once, consumed by the renderer and the
+        # final envelope status.
+        awaiting_agent_research = any(
+            row.status == ResearchWorkerStatus.AWAITING_HOST
+            for row in research_worker_executions
+        )
         structured_plan, rendered_output = stage(
             CanonicalRuntimeStage.FINAL_QE_PLAN_RENDERER,
             [
@@ -1426,6 +1442,7 @@ class CanonicalTestPlanRuntime:
                 behavior_classifications,
                 clarifications=admitted_clarifications,
                 research_resolved_question_ids=research_resolved_ids,
+                waiting_for_research=awaiting_agent_research,
             ),
         )
         structured_plan_for_trace = structured_plan
@@ -1472,8 +1489,15 @@ class CanonicalTestPlanRuntime:
         blocked = any(
             gate.status in {GateStatus.FAILED, GateStatus.BLOCKED} for gate in gates
         )
+        # P3: a bounded acceptance TBD with at least one promoted AC is
+        # NEEDS_HUMAN_REVIEW, never BLOCKED and never silently COMPLETED.
+        acceptance_tbds = any(
+            row.disposition == CoverageDisposition.ACCEPTANCE_TBD
+            for row in dispositions
+        )
         needs_human_review = not blocked and (
             facts.contract_mode.value != "HUMAN_ACCEPTED_CONTRACT"
+            or acceptance_tbds
             or bool(unresolved_implementation_handoff_ids_for_trace)
             or any(
                 row.status == InvestigationFamilySatisfactionStatus.UNSATISFIED
@@ -1571,13 +1595,18 @@ class CanonicalTestPlanRuntime:
                     ),
                 }
             )
+        # A5 host mediation: when required research is dispatched to the
+        # Copilot host and still unanswered, the run is WAITING for research -
+        # not BLOCKED on a product decision and never silently deterministic.
         result = GenerationResult(
             run_id=run_id,
             request_id=request.request_id,
             evidence_bundle_id=runtime_evidence.bundle_id,
             evidence_bundle=runtime_evidence,
             status=(
-                "blocked"
+                "waiting_for_agent_research"
+                if awaiting_agent_research
+                else "blocked"
                 if blocked
                 else "needs_human_review"
                 if needs_human_review

@@ -313,6 +313,11 @@ class CanonicalMissingQuestionService:
         materiality = (
             family.materiality
             if family is not None
+            # An explicit non-default materiality from the producer (for
+            # example a research-first materiality probe) is honored; only
+            # the P2 default is derived from blocking.
+            else question.materiality
+            if question.materiality != InvestigationMateriality.P2
             else InvestigationMateriality.P1
             if question.blocking
             else InvestigationMateriality.P2

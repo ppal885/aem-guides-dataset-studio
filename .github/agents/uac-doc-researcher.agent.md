@@ -1,3 +1,15 @@
+---
+name: uac-doc-researcher
+description: >
+  Bounded documentation research for one UAC question: answer from authorized product documentation only, with applicability, limitations, and structured findings; never writes ACs.
+deferred-tool-loading: true
+tools:
+  - view
+  - send_session_message
+---
+
+<!-- Generated from skills/test-plan-generation/agents/uac-doc-researcher.md by sync_agent_registrations.py; never edit by hand. -->
+
 ﻿# UAC Doc Researcher
 
 Existing specialized role invoked by the coordinator/main agent through the

@@ -1020,6 +1020,10 @@ class CoverageDisposition(StrEnum):
     NFR_COVERAGE = "NFR_COVERAGE"
     PRODUCT_SCOPE_QUESTION = "PRODUCT_SCOPE_QUESTION"
     OPEN_QUESTION = "OPEN_QUESTION"
+    # P3: acceptance-material but genuinely unresolved after exhausted
+    # research - stays acceptance-lane (never QE_REGRESSION/INVESTIGATION),
+    # never promotes, renders as a bounded TBD.
+    ACCEPTANCE_TBD = "ACCEPTANCE_TBD"
     ENGINEERING_DESIGN_DECISION = "ENGINEERING_DESIGN_DECISION"
     IMPLEMENTATION_ORACLE = "IMPLEMENTATION_ORACLE"
     TECHNICAL_NOTE = "TECHNICAL_NOTE"
@@ -1715,6 +1719,11 @@ class ScopeResolution(BaseModel):
     # or "HUMAN_CLARIFICATION" (P1 materiality + clarification resume).
     dita_ot_resolution_basis: str = ""
     applied_clarification_ids: list[str] = Field(default_factory=list)
+    # Generic dimension materiality decisions (spec: UNKNOWN VALUE is not a
+    # MATERIAL acceptance question).  field -> "MATERIAL" /
+    # "NON_MATERIAL_TO_CURRENT_ACCEPTANCE:<reason code>".  Recorded only when
+    # the gate made an explicit decision; absent means legacy/default.
+    dimension_materiality: dict[str, str] = Field(default_factory=dict)
     aem_sites_implementation: ApplicabilityState = ApplicabilityState.NOT_APPLICABLE
     in_scope: list[str] = Field(default_factory=list)
     out_of_scope: list[str] = Field(default_factory=list)
@@ -2692,6 +2701,10 @@ class ResearchWorkerStatus(StrEnum):
     CONFLICTED = "CONFLICTED"
     FAILED = "FAILED"
     WORKER_UNAVAILABLE = "WORKER_UNAVAILABLE"
+    # A5 host mediation: the request was emitted to the Copilot host and the
+    # runtime is WAITING for the delegated agent's result - this is not a
+    # product decision pending and not a failed research execution.
+    AWAITING_HOST = "AWAITING_HOST"
 
 
 class ResearchFindingEvidenceRole(StrEnum):
@@ -2757,9 +2770,10 @@ class ResearchWorkerResult(BaseModel):
             ResearchWorkerStatus.SOURCE_UNAVAILABLE,
             ResearchWorkerStatus.WORKER_UNAVAILABLE,
             ResearchWorkerStatus.FAILED,
+            ResearchWorkerStatus.AWAITING_HOST,
         } and self.findings:
             raise ValueError(
-                "an unavailable/failed worker cannot report findings"
+                "an unavailable/failed/awaiting worker cannot report findings"
             )
         identity = self.model_dump(
             mode="json",
@@ -2774,9 +2788,43 @@ class ResearchWorkerResult(BaseModel):
         return self
 
 
+class AgentResearchRequest(BaseModel):
+    """A5: the bounded request handed to an agent execution provider.  Never
+    dumps the entire ticket/repository - only the bound context."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: str = ""
+    worker_role: ResearchWorkerRole
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    question_revision: str = ""
+    requested_claim: str = Field(min_length=1, max_length=2000)
+    research_requirement: ResearchRequirement
+    authorized_source_refs: list[str] = Field(default_factory=list)
+    repository_aliases: list[str] = Field(default_factory=list)
+    applicability: str = Field(default="", max_length=500)
+    currentness: str = Field(default="", max_length=200)
+    budget: int = Field(default=1, ge=1, le=10)
+    context_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def identify(self) -> "AgentResearchRequest":
+        self.authorized_source_refs = sorted(set(self.authorized_source_refs))
+        self.repository_aliases = sorted(set(self.repository_aliases))
+        self.context_refs = sorted(set(self.context_refs))
+        identity = self.model_dump(mode="json", exclude={"execution_id"})
+        expected = f"agent-request:{stable_sha256(identity)[:32]}"
+        if self.execution_id and self.execution_id != expected:
+            raise ValueError("execution_id does not match deterministic identity")
+        self.execution_id = expected
+        return self
+
+
 class ResearchWorkerExecution(BaseModel):
     """R2 auditable worker-execution trace row: proves whether a research
-    worker actually ran, for which question, and what it returned."""
+    worker actually ran, for which question, and what it returned.  A5 adds
+    the provider/model-execution truth so a deterministic Python service is
+    never again called an agent."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -2787,6 +2835,38 @@ class ResearchWorkerExecution(BaseModel):
     completed_at: str = ""
     status: ResearchWorkerStatus
     result_ref: str = ""
+    # A5: execution substrate truth.
+    provider: str = "DETERMINISTIC"
+    model_execution: bool = False
+    role_contract: str = ""
+    # The model the host actually ran (reported by the host receipt); empty
+    # for deterministic execution.
+    model: str = ""
+
+
+class HostAgentResultEnvelope(BaseModel):
+    """The host-attached receipt around a leaf agent's ResearchWorkerResult.
+
+    Boundary rule: the leaf returns ONLY the research payload (``result``);
+    the trusted host/coordinator attaches identity and execution receipts
+    (provider, model, role-contract version).  A leaf's self-reported JSON
+    is never the source of receipt fields - the bridge takes identity from
+    the emitted pending request and the model from observed host execution
+    metadata.  Extra top-level fields are forbidden so a leaf cannot smuggle
+    receipt claims into the envelope."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: str = Field(min_length=1)
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    question_revision: str = ""
+    worker_role: ResearchWorkerRole
+    provider: Literal["COPILOT_HOST"]
+    model: str = Field(min_length=1, max_length=200)
+    role_contract_version: str = Field(pattern=r"^[a-z0-9][a-z0-9\-]*@[0-9a-f]{12}$")
+    # The leaf's raw ResearchWorkerResult payload; admitted separately by
+    # validate_agent_result_shape + full resume validation.
+    result: dict
 
 
 class QuestionResearchRecord(BaseModel):
@@ -3790,6 +3870,9 @@ class CoverageDispositionRecord(BaseModel):
         if self.coverage_class == "ACCEPTANCE" and self.disposition not in {
             CoverageDisposition.ACCEPTANCE_CONTRACT,
             CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+            # P3: TBD stays in the acceptance lane; promotion eligibility is
+            # still denied by the resolver/gate (no candidates derive from it).
+            CoverageDisposition.ACCEPTANCE_TBD,
         }:
             raise ValueError(
                 "ACCEPTANCE coverage class requires an acceptance-contract "
@@ -4365,7 +4448,15 @@ class GenerationResult(BaseModel):
     request_id: str
     evidence_bundle_id: str
     evidence_bundle: CanonicalEvidenceBundle
-    status: Literal["completed", "needs_human_review", "blocked", "failed"]
+    status: Literal[
+        "completed",
+        "needs_human_review",
+        "blocked",
+        "failed",
+        # A5 host mediation: waiting for delegated host research - not a
+        # product-decision block.
+        "waiting_for_agent_research",
+    ]
     output_contract: str
     output_kind: Literal["test_plan", "pipeline_compatibility", "packet_compatibility"]
     output_payload: dict[str, Any] = Field(default_factory=dict)
