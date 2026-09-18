@@ -423,7 +423,59 @@ def test_doc_discovered_source_without_provenance_fails_closed() -> None:
     assert results[0].status == ResearchWorkerStatus.FAILED
 
 
-def test_doc_discovered_source_slug_ref_and_pairing_rule() -> None:
+def test_doc_provenance_rejection_names_the_finding_and_missing_fields() -> None:
+    """Rejection stays wholesale - but it must say WHICH finding failed and
+    WHAT was missing.  A real research episode was discarded behind an
+    opaque note, so nothing downstream could tell a starved lane from an
+    unanswered question."""
+
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Documentation describes the report columns.",
+                "source_refs": ["doc:reports-intro"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+                "provenance": {
+                    "locator": "https://experienceleague.adobe.com/reports",
+                    "title": "Reports",
+                    "query": "topic list report columns",
+                    "accessed_at": "2026-09-17",
+                },
+            },
+            {
+                "claim": "Documentation describes the report filters.",
+                "source_refs": ["doc:reports-web-editor"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            },
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+    note = results[0].limitations[0]
+    assert "findings[1]" in note
+    assert "doc:reports-web-editor" in note
+    assert all(field in note for field in ("locator", "title", "query"))
+
+
+def test_doc_contract_return_handoff_requires_provenance() -> None:
+    """The defect that stranded a real research episode was contract text,
+    not host code.  The return-handoff block - the last operative
+    instruction before the agent serializes - said every finding's
+    source_refs "must come from the authorized references in the request",
+    contradicting the discovery block that mints `doc:` slugs, and never
+    named `provenance` among the finding keys.  The agent therefore emitted
+    `doc:` refs with no provenance and the host discarded every finding."""
+
+    _name, _version, text = load_role_contract(ResearchWorkerRole.DOC_RESEARCHER)
+    assert "## Return handoff" in text
+    handoff = text.split("## Return handoff", 1)[1]
+    assert "must come from the authorized references" not in handoff
+    assert "`provenance`" in handoff
+    assert "doc:" in handoff
     doc, question, requirement = _doc_question_setup()
 
     def run(finding):

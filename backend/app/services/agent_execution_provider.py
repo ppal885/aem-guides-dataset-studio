@@ -813,10 +813,32 @@ def _validate_agent_result(
                     if discovered_ok:
                         unknown = []
                 if unknown:
+                    detail = (
+                        f"findings[{index}] cites sources outside the "
+                        f"authorized set: {', '.join(sorted(unknown))}"
+                    )
+                    if request.worker_role == ResearchWorkerRole.DOC_RESEARCHER and all(
+                        re.fullmatch(r"doc:[A-Za-z0-9._~-]{3,80}", ref)
+                        for ref in unknown
+                    ):
+                        prov = item.get("provenance") or {}
+                        missing = [
+                            field
+                            for field in ("locator", "title", "query")
+                            if not (
+                                isinstance(prov, dict)
+                                and str(prov.get(field) or "").strip()
+                            )
+                        ]
+                        detail = (
+                            f"findings[{index}] cites discovered documentation "
+                            f"{', '.join(sorted(unknown))} without complete "
+                            f"provenance (missing: {', '.join(missing)})"
+                        )
                     return _terminal_result(
                         request,
                         ResearchWorkerStatus.FAILED,
-                        ["finding cites sources outside the authorized set"],
+                        [detail],
                     )
             # A discovered-source provenance block must be tied to a doc: ref;
             # provenance without the ref (or vice versa) is malformed.

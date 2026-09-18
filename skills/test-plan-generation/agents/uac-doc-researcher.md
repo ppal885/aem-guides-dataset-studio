@@ -140,8 +140,14 @@ research request:
   `status`, `findings[]`, `source_refs[]`, `applicability`, `limitations[]`,
   `conflicts[]`. `status` is EXACTLY one of `ANSWER_FOUND`, `PARTIAL`,
   `NOT_FOUND`, `SOURCE_UNAVAILABLE`, `CONFLICTED`, `FAILED` - never the
-  `DOC_RESEARCH_*` manifest vocabulary. Every finding's `source_refs` must
-  come from the authorized references in the request. No prose, no markdown
+  `DOC_RESEARCH_*` manifest vocabulary. Every finding carries `claim`,
+  `evidence_role` and `source_refs[]`; a finding that cites a discovered
+  source ALSO carries the `provenance` block defined above. Each
+  `source_refs` entry is EITHER an authorized reference from the request
+  OR a `doc:` slug you minted for a source you discovered. Serializing a
+  `doc:` slug without its `provenance` block - or a `provenance` block
+  without a `doc:` slug - makes the host discard the ENTIRE result, so
+  write the two together or not at all. No prose, no markdown
   fences, no commentary around the JSON.
 - Return it by making the JSON object your ENTIRE final message. You run in
   your own context window; the coordinator reads that final message directly.
