@@ -1163,17 +1163,45 @@ class HostMediatedResearchProvider:
     def _fulfilled_path(store: Path, execution_id: str) -> Path:
         return store / "fulfilled" / f"{execution_id.replace(':', '_')}.json"
 
-    @staticmethod
-    def _logical_execution_key(request: AgentResearchRequest) -> str:
-        """Run-independent identity of the logical research execution: the
-        question, role, claim and evidence binding WITHOUT the run scope.
-        The logical question stays traceable across runs through this key
-        (and question_id); the run scope makes each run's executions
-        distinct."""
+    # The evidence binding is retrieval output, not question identity.
+    # Semantic (embedding/ANN) retrieval is approximate, so two runs over the
+    # same ticket legitimately admit slightly different evidence rows; hashing
+    # those rows into the logical key made every re-run mint a fresh episode
+    # and stranded the host's fulfilled results forever.
+    _EVIDENCE_BINDING_FIELDS = frozenset({"authorized_source_refs", "context_refs"})
 
-        identity = request.model_dump(mode="json", exclude={"execution_id"})
+    @classmethod
+    def _logical_execution_key(cls, request: AgentResearchRequest) -> str:
+        """Run-independent identity of the logical research execution: the
+        question, role, claim and requirement WITHOUT the run scope or the
+        retrieval-dependent evidence binding.  The logical question stays
+        traceable across runs through this key (and question_id); the run
+        scope makes each run's executions distinct."""
+
+        identity = request.model_dump(
+            mode="json",
+            exclude={"execution_id", *cls._EVIDENCE_BINDING_FIELDS},
+        )
         identity["run_scope"] = ""
         return stable_sha256(identity)[:32]
+
+    @staticmethod
+    def _request_from_payload(payload: dict) -> AgentResearchRequest | None:
+        """Rebuild the exact request an episode emitted.  The stored payload
+        also carries host-delegation context (``logical_execution_key``,
+        ``authorized_evidence``, roots, RAG candidates); those are not model
+        fields, so they are dropped before validation."""
+
+        try:
+            return AgentResearchRequest.model_validate(
+                {
+                    field: value
+                    for field, value in payload.items()
+                    if field in AgentResearchRequest.model_fields
+                }
+            )
+        except Exception:
+            return None
 
     def _resolve_run_scope(self, request: AgentResearchRequest) -> AgentResearchRequest:
         """G1: bind this invocation's request to its research episode.
@@ -1201,7 +1229,13 @@ class HostMediatedResearchProvider:
         # episode must never shadow an in-flight episode for the same
         # logical question - with several runs in the store, the oldest
         # matching pending is usually the consumed one.
-        episodes: list[str] = []
+        #
+        # The key is recomputed from each stored request rather than read from
+        # the payload's recorded ``logical_execution_key``, so an episode
+        # emitted under an older key formula still resolves instead of being
+        # silently stranded.
+        episodes: dict[str, AgentResearchRequest] = {}
+        emitted_at: dict[str, float] = {}
         if pending_dir.is_dir():
             for candidate in sorted(pending_dir.glob("agent-request_*.json")):
                 try:
@@ -1210,29 +1244,37 @@ class HostMediatedResearchProvider:
                     )
                 except Exception:
                     continue
-                if payload.get("logical_execution_key") == logical_key:
-                    episodes.append(str(payload.get("run_scope") or ""))
+                stored = self._request_from_payload(payload)
+                if stored is None:
+                    continue
+                if self._logical_execution_key(stored) != logical_key:
+                    continue
+                scope = str(payload.get("run_scope") or "")
+                episodes[scope] = stored
+                try:
+                    emitted_at[scope] = candidate.stat().st_mtime
+                except OSError:
+                    emitted_at[scope] = 0.0
         if not episodes:
             return request
 
-        def _episode_request(scope: str) -> AgentResearchRequest:
-            return AgentResearchRequest.model_validate(
-                {
-                    **request.model_dump(mode="json", exclude={"execution_id"}),
-                    "run_scope": scope,
-                }
-            )
-
+        # Resuming an episode adopts the request that episode actually
+        # emitted.  Rebuilding it from the CURRENT request instead would
+        # recompute a different execution_id whenever retrieval admitted a
+        # different evidence set, so the fulfilled result would never be
+        # found - and the result was produced against the stored evidence
+        # binding, which is what admission must validate it against.
         # Prefer a resumable episode (fulfilled, not yet consumed), then an
         # in-flight one (pending, unfulfilled); only when every matching
-        # episode completed does this invocation become a fresh run.  The
-        # deterministic tiebreak (last scope string) matters only if several
-        # episodes race; normally exactly one qualifies.
+        # episode completed does this invocation become a fresh run.  Several
+        # episodes qualify whenever an earlier run's research was delegated
+        # but never consumed, so the tiebreak is the most recently emitted
+        # episode - that is the delegation the host just answered.  Run-scope
+        # ids are random, so ordering by scope string would pick arbitrarily.
         resumable: list[str] = []
         in_flight: list[str] = []
         completed = False
-        for scope in episodes:
-            episode_request = _episode_request(scope)
+        for scope, episode_request in episodes.items():
             fulfilled = self._fulfilled_path(
                 self._store, episode_request.execution_id
             )
@@ -1243,8 +1285,12 @@ class HostMediatedResearchProvider:
                     resumable.append(scope)
             else:
                 in_flight.append(scope)
+
+        def _newest(scopes: list[str]) -> str:
+            return max(scopes, key=lambda scope: (emitted_at.get(scope, 0.0), scope))
+
         if resumable:
-            return _episode_request(sorted(resumable)[-1])
+            return episodes[_newest(resumable)]
         if completed:
             # A sibling episode already completed this logical question's
             # research: this invocation is a new run and mints fresh
@@ -1254,7 +1300,7 @@ class HostMediatedResearchProvider:
             # every later run forever.
             return request
         if in_flight:
-            return _episode_request(sorted(in_flight)[-1])
+            return episodes[_newest(in_flight)]
         # Every matching episode completed; this top-level invocation is a
         # new run with fresh executions.
         return request

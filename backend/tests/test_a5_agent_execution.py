@@ -1531,6 +1531,222 @@ def test_copilot_host_pending_is_not_rewritten_on_repeat(tmp_path) -> None:
     assert json.loads(first)["authorized_evidence"]
 
 
+def test_copilot_host_resumes_episode_when_retrieval_admits_other_evidence(
+    tmp_path,
+) -> None:
+    """A re-run must consume the host's fulfilled research even when semantic
+    retrieval admitted a different evidence set.
+
+    Retrieval is approximate: two runs over the same ticket legitimately bind
+    different evidence rows to the same logical question.  When the episode
+    identity hashed that binding, every re-run minted a fresh episode, so
+    host-delegated results were emitted, fulfilled, and then stranded forever
+    and the run could never leave ``waiting_for_agent_research``."""
+
+    import json
+
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    first_record = _record(
+        "authorized-a", "excerpt a", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    )
+    second_record = _record(
+        "authorized-b", "excerpt b", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    )
+    question = _question("What does the documentation establish?")
+    requirement = _requirement(
+        question,
+        ResearchRequirement.DOCUMENTATION,
+        [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION],
+    )
+
+    def _request(scope: str, refs: list[str]) -> AgentResearchRequest:
+        return AgentResearchRequest(
+            run_scope=scope,
+            worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+            question_id=question.question_id,
+            question_revision="rev-test",
+            requested_claim="What does the documentation establish?",
+            research_requirement=ResearchRequirement.DOCUMENTATION,
+            authorized_source_refs=refs,
+        )
+
+    provider = HostMediatedResearchProvider(store=tmp_path)
+
+    # Run 1 emits the pending request and the host fulfils it.
+    first = _request("run:aaaaaaaa", [first_record.evidence_id])
+    provider.execute(
+        first,
+        bundle=_bundle(first_record),
+        question=question,
+        requirement=requirement,
+    )
+    pending = tmp_path / "pending" / f"{first.execution_id.replace(':', '_')}.json"
+    assert pending.exists()
+    bound_version = json.loads(pending.read_text(encoding="utf-8"))[
+        "role_contract_version"
+    ]
+    fulfilled = tmp_path / "fulfilled" / pending.name
+    fulfilled.parent.mkdir(parents=True, exist_ok=True)
+    fulfilled.write_text(
+        json.dumps(
+            {
+                "execution_id": first.execution_id,
+                "question_id": first.question_id,
+                "question_revision": "rev-test",
+                "worker_role": "DOC_RESEARCHER",
+                "provider": "COPILOT_HOST",
+                "model": "test-model",
+                "role_contract_version": bound_version,
+                "result": {
+                    "status": "NOT_FOUND",
+                    "findings": [],
+                    "source_refs": [],
+                    "applicability": "",
+                    "limitations": ["authorized evidence has no answer"],
+                    "conflicts": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Run 2: a new canonical run whose retrieval admitted a different row.
+    # The logical question is unchanged, so the fulfilled result is consumed
+    # instead of a second episode being emitted.
+    second = _request("run:bbbbbbbb", [second_record.evidence_id])
+    assert second.execution_id != first.execution_id
+    resumed = provider.execute(
+        second,
+        bundle=_bundle(second_record),
+        question=question,
+        requirement=requirement,
+    )
+    assert resumed.status == ResearchWorkerStatus.NOT_FOUND
+    assert provider.last_model_execution is True
+    assert fulfilled.with_suffix(".consumed").exists()
+    assert not (
+        tmp_path / "pending" / f"{second.execution_id.replace(':', '_')}.json"
+    ).exists()
+
+    # Consume-once survives: a third run delegates fresh research rather than
+    # replaying the consumed result.
+    third = _request("run:cccccccc", [second_record.evidence_id])
+    provider.execute(
+        third,
+        bundle=_bundle(second_record),
+        question=question,
+        requirement=requirement,
+    )
+    assert (
+        tmp_path / "pending" / f"{third.execution_id.replace(':', '_')}.json"
+    ).exists()
+
+
+def test_copilot_host_resume_prefers_the_newest_stranded_episode(tmp_path) -> None:
+    """Several unconsumed episodes can exist for one logical question when an
+    earlier run's research was delegated but never answered.  Run-scope ids
+    are random, so the newest emitted episode wins - not the lexicographically
+    last one, which would replay stale research."""
+
+    import json
+    import os
+
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    record = _record(
+        "authorized", "excerpt", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    )
+    bundle = _bundle(record)
+    question = _question("What does the documentation establish?")
+    requirement = _requirement(
+        question,
+        ResearchRequirement.DOCUMENTATION,
+        [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION],
+    )
+
+    def _request(scope: str) -> AgentResearchRequest:
+        return AgentResearchRequest(
+            run_scope=scope,
+            worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+            question_id=question.question_id,
+            question_revision="rev-test",
+            requested_claim="What does the documentation establish?",
+            research_requirement=ResearchRequirement.DOCUMENTATION,
+            authorized_source_refs=[record.evidence_id],
+        )
+
+    provider = HostMediatedResearchProvider(store=tmp_path)
+
+    def _fulfil(request: AgentResearchRequest, limitation: str) -> None:
+        pending = (
+            tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+        )
+        version = json.loads(pending.read_text(encoding="utf-8"))[
+            "role_contract_version"
+        ]
+        fulfilled = tmp_path / "fulfilled" / pending.name
+        fulfilled.parent.mkdir(parents=True, exist_ok=True)
+        fulfilled.write_text(
+            json.dumps(
+                {
+                    "execution_id": request.execution_id,
+                    "question_id": request.question_id,
+                    "question_revision": "rev-test",
+                    "worker_role": "DOC_RESEARCHER",
+                    "provider": "COPILOT_HOST",
+                    "model": "test-model",
+                    "role_contract_version": version,
+                    "result": {
+                        "status": "NOT_FOUND",
+                        "findings": [],
+                        "source_refs": [],
+                        "applicability": "",
+                        "limitations": [limitation],
+                        "conflicts": [],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return fulfilled
+
+    # "run:zzz" sorts last but is emitted first: stale research.
+    stale = _request("run:zzzzzzzz")
+    provider.execute(stale, bundle=bundle, question=question, requirement=requirement)
+    stale_file = _fulfil(stale, "stale research")
+    stale_pending = (
+        tmp_path / "pending" / f"{stale.execution_id.replace(':', '_')}.json"
+    )
+    older = stale_pending.stat().st_mtime - 60
+    os.utime(stale_pending, (older, older))
+
+    # A later episode for the same logical question, emitted after it.
+    fresh = _request("run:aaaaaaaa")
+    # Same logical question, so a straight execute would resume the stale
+    # episode: write the fresh episode's pending record directly.
+    fresh_pending = (
+        tmp_path / "pending" / f"{fresh.execution_id.replace(':', '_')}.json"
+    )
+    payload = json.loads(stale_pending.read_text(encoding="utf-8"))
+    payload["run_scope"] = fresh.run_scope
+    payload["execution_id"] = fresh.execution_id
+    fresh_pending.write_text(json.dumps(payload), encoding="utf-8")
+    fresh_file = _fulfil(fresh, "fresh research")
+
+    resolved = provider.execute(
+        _request("run:mmmmmmmm"),
+        bundle=bundle,
+        question=question,
+        requirement=requirement,
+    )
+    assert resolved.limitations == ["fresh research"]
+    assert fresh_file.with_suffix(".consumed").exists()
+    assert not stale_file.with_suffix(".consumed").exists()
+
+
 # ---------------------------------------------------------------------------
 # Opt-in REAL agent smoke (spec section 28): never claims execution from a
 # mock - it skips with an explicit reason when no model provider exists.
