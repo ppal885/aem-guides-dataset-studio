@@ -1,0 +1,9 @@
+{
+  "jira_id": "TEXT-c15635b9",
+  "scenario_type": "MIN_REPRO",
+  "generator_recipes": [
+    "reference_topics"
+  ],
+  "created_at": "2026-09-16T09:42:19.335111Z",
+  "evidence": []
+}
