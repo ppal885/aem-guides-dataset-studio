@@ -1494,6 +1494,84 @@ _RAW_FRAGMENT_RE = re.compile(
     r"|\bFeature:\s)"
 )
 
+# D1-d: the most sub-points one criterion may absorb from regression-class
+# coverage.  The contract stays scannable; anything beyond the bound is
+# already represented by the coverage matrix in the trace.
+_MAX_VARIANT_SUB_POINTS = 4
+
+# D1-d: how much subject a regression variant must share with the outcome it
+# qualifies, measured against the smaller of the two subjects.
+_VARIANT_HOST_MIN_OVERLAP = 0.34
+
+
+def _derive_variant_statement(candidate: str) -> str | None:
+    """Reduce a regression-coverage row to a testable variant clause.
+
+    Returns None when the row carries bookkeeping, a raw retrieval fragment,
+    or meta prose instead of behavior a tester can check, so unreadable
+    coverage is never pushed into the acceptance contract.
+    """
+
+    text = " ".join(candidate.split())
+    if not text:
+        return None
+    if (
+        _COVERAGE_FILLER_RE.search(text)
+        or _RAW_FRAGMENT_RE.search(text)
+        or _AC_META_PROSE_RE.search(text)
+    ):
+        return None
+    # "DIMENSION: behavior" rows carry the dimension as an internal axis
+    # label; the tester-facing clause keeps the behavior only.
+    head, separator, tail = text.partition(": ")
+    if separator and head.replace("_", "").isalpha() and head.isupper():
+        text = tail.strip()
+        if not text:
+            return None
+    if _is_request_not_outcome(text):
+        return None
+    # A fragment too short to carry a subject and an outcome is not coverage.
+    if len(text.split()) < 4:
+        return None
+    if not text.endswith((".", "!", "?")):
+        text += "."
+    return text[0].upper() + text[1:]
+
+
+def _closest_variant_host(
+    variant: str, written: list["WrittenAcceptanceCriterion"]
+) -> "WrittenAcceptanceCriterion | None":
+    """Pick the criterion a regression variant qualifies, or None.
+
+    A variant clause is usually longer than the outcome it qualifies, so
+    scoring it against its own token count penalises exactly the detail that
+    makes it useful.  The overlap is therefore normalised against the smaller
+    subject, which keeps the "genuinely shared subject matter" requirement
+    without punishing a specific clause for being specific.  No host means the
+    behavior stays out of the contract - it never invents a parent.
+    """
+
+    variant_tokens = _content_tokens(variant)
+    if not variant_tokens:
+        return None
+    best: WrittenAcceptanceCriterion | None = None
+    best_score = 0.0
+    for criterion in written:
+        if criterion.unresolved:
+            continue
+        outcome_tokens = _content_tokens(criterion.outcome)
+        if not outcome_tokens:
+            continue
+        overlap = variant_tokens & outcome_tokens
+        # One incidental shared noun is coincidence, not shared subject.
+        if len(overlap) < 2:
+            continue
+        score = len(overlap) / min(len(variant_tokens), len(outcome_tokens))
+        if score > best_score:
+            best_score = score
+            best = criterion
+    return best if best_score >= _VARIANT_HOST_MIN_OVERLAP else None
+
 # UX1: human-question quality contract - a user-facing question must be a
 # product behavior decision readable without repository context.  Raw
 # evidence (paths, code symbols, env/constant dumps, arbitrary token lists)
@@ -8088,6 +8166,67 @@ class CanonicalTestPlanReasoningService:
             # Rebuild rather than mutate: criterion_id is a content hash the
             # model derives at validation, so an in-place edit would leave it
             # pointing at the pre-merge content.
+            written[written.index(host)] = WrittenAcceptanceCriterion(
+                outcome=host.outcome,
+                sub_points=[*host.sub_points, sub_point],
+                unresolved=host.unresolved,
+                source_line=host.source_line,
+                source_candidate_ids=list(host.source_candidate_ids),
+                source_fact_ids=[*host.source_fact_ids, *row.source_fact_ids],
+                source_disposition_ids=[
+                    *host.source_disposition_ids,
+                    row.disposition_id,
+                ],
+                evidence_ids=[*host.evidence_ids, *row.evidence_ids],
+            )
+
+        # D1-d: applicable regression-class coverage belongs INSIDE the flat
+        # acceptance contract, as a sub-point of the outcome it qualifies.
+        # Leaving it in a separate QE-regression lane loses it outright,
+        # because the flat contract renders no such lane.  It attaches only to
+        # a criterion it genuinely qualifies and never becomes a criterion of
+        # its own, so C2B-C1 promotion authority is unchanged: regression
+        # coverage still cannot assert an acceptance outcome by itself.
+        for row in dispositions or []:
+            if (
+                row.coverage_class != "QE_REGRESSION"
+                or row.priority != "P1"
+                or row.applicability != "APPLICABLE"
+            ):
+                continue
+            variant = _derive_variant_statement(row.candidate)
+            if variant is None:
+                continue
+            if any(
+                variant.casefold() == existing.outcome.casefold()
+                or any(
+                    variant.casefold() == sub.text.casefold()
+                    for sub in existing.sub_points
+                )
+                for existing in written
+            ):
+                continue
+            host = _closest_variant_host(variant, written)
+            if host is None:
+                # No acceptance outcome this behavior qualifies.  Inventing a
+                # parent would assert coverage the evidence never established.
+                continue
+            if (
+                sum(
+                    1
+                    for sub in host.sub_points
+                    if sub.kind == AcceptanceSubPointKind.CONFIRMED_VARIANT
+                )
+                >= _MAX_VARIANT_SUB_POINTS
+            ):
+                continue
+            sub_point = AcceptanceSubPoint(
+                text=variant,
+                kind=AcceptanceSubPointKind.CONFIRMED_VARIANT,
+                source_fact_ids=list(row.source_fact_ids),
+                source_disposition_ids=[row.disposition_id],
+                evidence_ids=list(row.evidence_ids),
+            )
             written[written.index(host)] = WrittenAcceptanceCriterion(
                 outcome=host.outcome,
                 sub_points=[*host.sub_points, sub_point],
