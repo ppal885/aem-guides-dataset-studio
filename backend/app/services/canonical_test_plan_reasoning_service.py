@@ -613,6 +613,22 @@ def _normalized_desired_claims(
     return normalized[:limit]
 
 
+def _balance_quotes(text: str) -> str:
+    """A documentation finding is mostly quoted source text, so bounding it at
+    a sentence boundary can land inside a quotation and leave a dangling
+    fragment.  Prefer trimming back to the last sentence end whose quotes are
+    balanced; otherwise close the quote so the candidate still reads as a
+    complete statement."""
+
+    if text.count('"') % 2 == 0:
+        return text
+    for match in reversed(list(re.finditer(r'[.!?]"?(?=\s|$)', text))):
+        head = text[: match.end()].rstrip()
+        if head.count('"') % 2 == 0 and len(head) >= 40:
+            return head
+    return text.rstrip() + '"'
+
+
 def _existing_claim_text(claim: str) -> str:
     """Normalize an EXISTING_BEHAVIOR finding into a short observable outcome:
     strip the researcher's documentation framing, drop provenance sentences
@@ -643,6 +659,7 @@ def _existing_claim_text(claim: str) -> str:
     if not kept:
         return ""
     text = _bound_claim_text(" ".join(kept))
+    text = _balance_quotes(text)
     if text:
         text = text[0].upper() + text[1:]
     return text
