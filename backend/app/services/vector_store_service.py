@@ -131,9 +131,20 @@ def get_index_identity() -> dict:
 
 
 def _get_chroma_path() -> Path:
-    """Path for ChromaDB persistent storage."""
-    storage = get_storage()
-    path = storage.base_path / CHROMA_DB_DIR
+    """Path for ChromaDB persistent storage.
+
+    Each checkout otherwise keeps its own embedded store under its own storage
+    directory, so a worktree starts with an empty index and silently falls back
+    to lexical-only retrieval while readiness still reports the corpus present.
+    ``CHROMA_PERSIST_DIR`` lets several checkouts share one already-populated
+    store instead of each needing its own copy.
+    """
+
+    override = os.getenv("CHROMA_PERSIST_DIR", "").strip()
+    if override:
+        path = Path(override).expanduser()
+    else:
+        path = get_storage().base_path / CHROMA_DB_DIR
     path.mkdir(parents=True, exist_ok=True)
     return path
 
