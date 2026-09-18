@@ -287,7 +287,9 @@ def _collect_guides_test_plan_evidence_packet(
         issue["current_uac_contract"] = current_uac_contract
     uac_label_gate = _build_uac_label_gate(issue, skip_gate=skip_uac_label_gate)
     query_text = _issue_query_text(key, issue)
-    docs = _retrieve_aem_docs(query_text, k=evidence_k)
+    docs, aem_platform_docs, non_aem_docs = _retrieve_documentation_by_product(
+        query_text, k=evidence_k
+    )
     learned_behavior = _retrieve_learned_behavior_evidence(query_text, k=evidence_k)
     planning_seeds = _derive_planning_seeds(issue, learned_behavior)
     dita_chunks = _retrieve_dita_chunks(query_text, k=min(5, evidence_k))
@@ -339,6 +341,14 @@ def _collect_guides_test_plan_evidence_packet(
         "uac_label_gate": uac_label_gate,
         "generation_mode": "full_rag" if uac_label_gate["satisfied"] else "blocked",
         "experience_league_evidence": docs,
+        "aem_assets_documentation": aem_platform_docs,
+        "excluded_non_aem_documentation": {
+            "count": len(non_aem_docs),
+            "canonical_urls": [
+                str(row.get("canonical_url") or row.get("source_url") or "")
+                for row in non_aem_docs
+            ],
+        },
         "learned_behavior_evidence": learned_behavior,
         "planning_seeds": planning_seeds,
         "repository_evidence_contract": repo_contract,
@@ -1221,6 +1231,107 @@ def _build_publishing_transform_context(
     except Exception as exc:
         context["error"] = str(exc)
     return context
+
+
+DOC_PRODUCT_AEM_GUIDES = "AEM_GUIDES"
+DOC_PRODUCT_AEM_PLATFORM = "AEM_PLATFORM"
+DOC_PRODUCT_UNRELATED = "UNRELATED_PRODUCT"
+
+_AEM_GUIDES_DOC_PATH_MARKERS = ("/docs/experience-manager-guides",)
+_AEM_PLATFORM_DOC_PATH_MARKERS = (
+    "/docs/experience-manager-cloud-service",
+    "/docs/experience-manager-65",
+    "/docs/experience-manager-64",
+    "/docs/experience-manager-assets-essentials",
+    "/docs/experience-manager-brand-portal",
+    "/docs/experience-manager-cloud-manager",
+    "/docs/experience-manager-core-components",
+    "/docs/experience-manager-desktop-app",
+    "/docs/experience-manager-dispatcher",
+    "/docs/experience-manager-document-security",
+    "/docs/experience-manager-htl",
+    "/docs/experience-manager-learn",
+    "/docs/experience-manager-release-information",
+    "/docs/experience-manager-screens",
+    "/docs/dynamic-media",
+    "/docs/asset-compute",
+)
+
+
+def _documentation_product_path(row: dict[str, Any]) -> str:
+    """Classify a retrieved Experience League row by the product that owns it.
+
+    The crawled Experience League corpus spans every Adobe product on the host,
+    so a host-suffix filter alone admits Workfront, Journey Optimizer, Marketo
+    and AEM platform pages alongside AEM Guides.  A row carries AEM Guides
+    product-contract authority only when its own canonical URL is published
+    under the AEM Guides documentation tree.  AEM platform pages describe the
+    surrounding platform rather than Guides behaviour, and a page belonging to
+    an unrelated Adobe product establishes nothing about Guides at all.
+    """
+
+    url = " ".join(
+        str(row.get(field) or "") for field in ("canonical_url", "source_url", "url")
+    ).casefold()
+    if not url.strip():
+        return DOC_PRODUCT_AEM_GUIDES
+    if any(marker in url for marker in _AEM_GUIDES_DOC_PATH_MARKERS):
+        return DOC_PRODUCT_AEM_GUIDES
+    if any(marker in url for marker in _AEM_PLATFORM_DOC_PATH_MARKERS):
+        return DOC_PRODUCT_AEM_PLATFORM
+    return DOC_PRODUCT_UNRELATED
+
+
+def _is_aem_guides_documentation(row: dict[str, Any]) -> bool:
+    return _documentation_product_path(row) == DOC_PRODUCT_AEM_GUIDES
+
+
+def _split_documentation_by_product(
+    docs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split retrieved documentation by the product contract that owns each row."""
+
+    guides_rows: list[dict[str, Any]] = []
+    platform_rows: list[dict[str, Any]] = []
+    unrelated_rows: list[dict[str, Any]] = []
+    for row in docs or []:
+        if not isinstance(row, dict) or row.get("error"):
+            guides_rows.append(row)
+            continue
+        product = _documentation_product_path(row)
+        if product == DOC_PRODUCT_AEM_GUIDES:
+            guides_rows.append(row)
+        elif product == DOC_PRODUCT_AEM_PLATFORM:
+            platform_rows.append(
+                dict(row, product_contract="AEM_ASSETS_PLATFORM_CONTRACT")
+            )
+        else:
+            unrelated_rows.append(dict(row, product_contract=DOC_PRODUCT_UNRELATED))
+    return guides_rows, platform_rows, unrelated_rows
+
+
+DOC_PRODUCT_OVERFETCH_FACTOR = 8
+DOC_PRODUCT_OVERFETCH_CEILING = 120
+
+
+def _retrieve_documentation_by_product(
+    query: str, *, k: int
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Retrieve documentation and spend the evidence budget on AEM Guides rows.
+
+    Retrieval is scoped only by host suffix, and the Experience League corpus is
+    dominated by other Adobe products.  Requesting exactly ``k`` rows therefore
+    spends most of the budget on pages that cannot establish Guides behaviour and
+    pushes the Guides documentation out of the result entirely.  Over-fetch, then
+    keep the highest-ranked ``k`` rows of each product contract, so the Guides
+    lane carries Guides documentation rather than whatever outranked it.
+    """
+
+    overfetch = min(max(k, 1) * DOC_PRODUCT_OVERFETCH_FACTOR, DOC_PRODUCT_OVERFETCH_CEILING)
+    guides_rows, platform_rows, unrelated_rows = _split_documentation_by_product(
+        _retrieve_aem_docs(query, k=overfetch)
+    )
+    return guides_rows[:k], platform_rows[:k], unrelated_rows
 
 
 def _retrieve_aem_docs(query: str, *, k: int) -> list[dict[str, Any]]:

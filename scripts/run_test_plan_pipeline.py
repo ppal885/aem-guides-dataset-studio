@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -61,8 +62,36 @@ def main() -> int:
         action="store_true",
         help="Call backend HTTP API instead of in-process",
     )
+    parser.add_argument(
+        "--repo-root",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Local clone root authorized for code research (repeatable). "
+        "Required when --http targets a remote backend, because clones live "
+        "on this machine, not on the server. Defaults to this machine's "
+        "configured repository environment variables.",
+    )
     parser.add_argument("--base-url", default="http://127.0.0.1:8001")
     args = parser.parse_args()
+
+    repo_roots = [str(root).strip() for root in (args.repo_root or []) if str(root).strip()]
+    if args.http and not repo_roots:
+        # The backend may run on another machine; send this machine's own
+        # configured roots so the research worker resolves real paths.
+        repo_roots = [
+            os.path.abspath(value)
+            for value in (
+                os.environ.get(name, "").strip()
+                for name in (
+                    "STARLING_REPO_PATH",
+                    "XML_EDITOR_REPO_PATH",
+                    "GUIDES_UI_TESTS_REPO_PATH",
+                    "AEM_STUDIO_REPO",
+                )
+            )
+            if value
+        ]
 
     payload = {
         "jira_key": args.jira_key,
@@ -78,6 +107,7 @@ def main() -> int:
         "starling_repo_path": args.starling_path,
         "publish_to_team_ui": args.publish_ui,
         "human_review_threshold": args.threshold,
+        "research_repository_roots": repo_roots,
     }
     if args.clarifications:
         with open(args.clarifications, encoding="utf-8-sig") as handle:

@@ -39,7 +39,12 @@ reasoning never rests on inference when implementation materially affects it.
 - treat an open/unmerged change as released product behavior;
 - modify any repository (read-only always);
 - treat NOT_FOUND as evidence of the opposite implementation;
-- report a finding without exact repository/revision/path provenance.
+- report a finding without exact repository/revision/path provenance;
+- label code at HEAD, a PR, or a fix comment as "delivered", "shipped",
+  "released", "GA", or "current product behavior": implementation evidence
+  and release/currentness evidence are separate. Say "code at <revision>
+  does X"; a lifecycle state may be named only when the admitted evidence
+  establishes it.
 
 ## Return handoff (Copilot host)
 
@@ -58,10 +63,9 @@ research request:
   line ranges in the claim text and split multi-file support into one
   finding per file. No prose, no markdown fences, no commentary around the
   JSON.
-- Return it by sending exactly one session message back to the coordinator
-  session identified in your kickoff, with the JSON object as the entire
-  message body. If session messaging is not in your toolset, make the JSON
-  object your entire final message instead.
+- Return it by making the JSON object your ENTIRE final message. You run in
+  your own context window; the coordinator reads that final message directly.
+  Emit no preamble, no trailing summary, and no status commentary around it.
 - Return ONLY the research payload. Execution receipts (provider, model,
   role-contract version) are attached by the host/coordinator from its own
   trusted observation - never self-report them, and never claim a model or

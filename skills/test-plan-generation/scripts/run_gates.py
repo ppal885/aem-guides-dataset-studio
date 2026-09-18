@@ -124,6 +124,9 @@ retrieval_admission_mod = _load("retrieval_admission", "retrieval_admission.py")
 evidence_sufficiency_mod = _load("evidence_sufficiency", "evidence_sufficiency.py")
 doc_research_mod = _load("doc_research_routing", "doc_research_routing.py")
 behavior_classification_mod = _load("behavior_classification", "behavior_classification.py")
+behavioral_coverage_expansion_mod = _load(
+    "behavioral_coverage_expansion", "behavioral_coverage_expansion.py"
+)
 scope_applicability_mod = _load("scope_applicability", "scope_applicability.py")
 ac_language_policy_mod = _load("ac_language_policy", "ac_language_policy.py")
 publishing_scope_coverage_mod = _load("publishing_scope_coverage", "publishing_scope_coverage.py")
@@ -161,6 +164,7 @@ def _register_replay_gates() -> None:
         [
             ("question_research", "question-research", question_research_mod, frozenset()),
             ("behavior_classification", "behavior-classification", behavior_classification_mod, frozenset()),
+            ("behavioral_coverage_expansion", "behavioral-coverage-expansion", behavioral_coverage_expansion_mod, frozenset()),
             ("doc_research", "doc-research-routing", doc_research_mod, frozenset()),
             ("question_plan", "question-planner", question_planner_mod, frozenset()),
             ("question_resolutions", "question-resolver", question_resolver_mod, frozenset()),
@@ -1863,6 +1867,15 @@ def check_relationship_traversal(
     failures.extend(
         f"[behavior-classification] {problem}"
         for problem in behavior_classification_mod.validate(data)
+    )
+
+    # Behavioral coverage expansion (optional, backward-compatible). Absent ->
+    # clean pass. When present, discovery must stay requirement-shaped and
+    # bounded, must carry no acceptance authority, and no dimension a material
+    # candidate activated may silently disappear without a disposition.
+    failures.extend(
+        f"[behavioral-coverage-expansion] {problem}"
+        for problem in behavioral_coverage_expansion_mod.validate(data)
     )
 
     # Scope-applicability (UACFIX-03, optional, backward-compatible). Absent -> pass.

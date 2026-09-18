@@ -952,6 +952,13 @@ class CanonicalTestPlanRuntime:
                 domains, scope, surfaces, graph, facts
             ),
         )
+        expansion = stage(
+            CanonicalRuntimeStage.BEHAVIORAL_COVERAGE_EXPANDER,
+            [model, surfaces, facts],
+            lambda: self._reasoning.expand_behavioral_coverage(
+                model, surfaces, facts
+            ),
+        )
         investigation = self._qe_investigation.prepare_qe_investigation(
             request=request,
             facts=facts,
@@ -961,7 +968,7 @@ class CanonicalTestPlanRuntime:
             signals=abstract_signals,
             activations=reasoning_pattern_activations,
             deterministic_dimensions=self._reasoning.applicable_semantic_dimensions(
-                visible, model
+                visible, model, expansion=expansion
             ),
             pattern_lookup=pattern_lookup,
         )
@@ -973,6 +980,7 @@ class CanonicalTestPlanRuntime:
                 abstract_signals,
                 reasoning_pattern_activations,
                 investigation.mandatory_families,
+                expansion,
             ],
             lambda: self._reasoning.explore_semantic_closure(
                 visible,
@@ -980,6 +988,7 @@ class CanonicalTestPlanRuntime:
                 abstract_signals,
                 reasoning_pattern_activations,
                 investigation.mandatory_families,
+                expansion=expansion,
             ),
         )
         investigation_payload = investigation.model_dump(
@@ -1001,6 +1010,7 @@ class CanonicalTestPlanRuntime:
                     scope,
                     facts,
                     investigation,
+                    bundle=visible,
                 )
                 if claude_question_submission is None
                 else []
@@ -1063,7 +1073,16 @@ class CanonicalTestPlanRuntime:
             CanonicalRuntimeStage.RESEARCH_ORCHESTRATOR,
             [questions, research_requirements, visible],
             lambda: RESEARCH_ORCHESTRATOR.execute(
-                questions, research_requirements, visible
+                questions,
+                research_requirements,
+                visible,
+                run_scope=run_id,
+                # Clone-backed research resolves paths on the caller's machine.
+                # Empty means "caller supplied none", which keeps the local-CLI
+                # fallback to this host's configured repository env vars.
+                repository_roots=(
+                    list(request.options.research_repository_roots) or None
+                ),
             ),
         )
 
@@ -1283,6 +1302,16 @@ class CanonicalTestPlanRuntime:
                 for evidence_id in row.evidence_ids
             )
         }
+        # Decision semantics: research that established the customer-stated
+        # desired behavior releases the question's established portion the
+        # same way - a PROPOSED candidate carries it, and only the residual
+        # acceptance-changing decision stays a bounded TBD via convergence.
+        from app.services.canonical_test_plan_reasoning_service import (
+            research_resolved_question_ids as _desired_established_ids,
+        )
+        research_resolved_ids |= _desired_established_ids(
+            questions, question_research, research_worker_results
+        )
         hypotheses_for_trace = list(hypotheses)
         impact_model = pre_verifier_model if semantic_batch is not None else model
         impacts = stage(
@@ -1302,6 +1331,7 @@ class CanonicalTestPlanRuntime:
                 questions,
                 question_research,
                 admitted_clarified_question_ids,
+                worker_results=research_worker_results,
             ),
         )
         dispositions_for_trace = list(dispositions)
@@ -1332,6 +1362,15 @@ class CanonicalTestPlanRuntime:
         # establishing authority) release blocking exactly like admitted human
         # clarifications - research first, ask only the residual decision.
         clarified_resolved_ids |= research_resolved_ids
+        # Convergence evaluation (the virtual refinement team): after mandated
+        # research resolves and before acceptance/coverage finalizes.  It is
+        # deterministic and advisory - it changes no evidence authority and
+        # never invents a product decision.
+        from app.services.convergence_service import CONVERGENCE_SERVICE
+
+        convergence = CONVERGENCE_SERVICE.evaluate(
+            questions, question_research, research_worker_results
+        )
         candidate_resolution = stage(
             CanonicalRuntimeStage.ACCEPTANCE_CONTRACT_RESOLVER,
             [facts, dispositions, questions],
@@ -1360,6 +1399,7 @@ class CanonicalTestPlanRuntime:
                 research_requirements,
                 question_research,
                 behavior_classifications,
+                expansion,
             ],
             lambda: self._reasoning.behavioral_completeness_gate(
                 closure,
@@ -1371,6 +1411,7 @@ class CanonicalTestPlanRuntime:
                 research_requirements,
                 question_research,
                 behavior_classifications,
+                expansion=expansion,
             ),
         )
         def promote_with_lifecycle() -> tuple[
@@ -1399,6 +1440,19 @@ class CanonicalTestPlanRuntime:
         )
         promotions_for_trace = list(promotions)
         gates = [contract_gate, completeness_gate, promotion_gate]
+        # D2 Writer: promotion decides WHAT may be an acceptance criterion;
+        # this stage decides HOW it reads.  It runs before the renderer so the
+        # renderer stays a presenter and never performs synthesis.
+        written_acceptance_criteria = stage(
+            CanonicalRuntimeStage.ACCEPTANCE_CRITERIA_WRITER,
+            [candidates, promotions, facts, dispositions],
+            lambda: self._reasoning.write_acceptance_criteria(
+                candidates,
+                promotions,
+                facts,
+                dispositions,
+            ),
+        )
         # A5 host mediation: computed once, consumed by the renderer and the
         # final envelope status.
         awaiting_agent_research = any(
@@ -1423,6 +1477,7 @@ class CanonicalTestPlanRuntime:
                 candidate_lifecycle,
                 question_research,
                 behavior_classifications,
+                written_acceptance_criteria,
             ],
             lambda: self._reasoning.render_final_plan(
                 request,
@@ -1443,6 +1498,8 @@ class CanonicalTestPlanRuntime:
                 clarifications=admitted_clarifications,
                 research_resolved_question_ids=research_resolved_ids,
                 waiting_for_research=awaiting_agent_research,
+                convergence=convergence,
+                written_acceptance_criteria=written_acceptance_criteria,
             ),
         )
         structured_plan_for_trace = structured_plan
@@ -1529,6 +1586,9 @@ class CanonicalTestPlanRuntime:
             "question_research": [
                 row.model_dump(mode="json") for row in question_research
             ],
+            "convergence": [
+                row.model_dump(mode="json") for row in convergence
+            ],
             "research_worker_executions": [
                 row.model_dump(mode="json", exclude={"started_at", "completed_at"})
                 for row in research_worker_executions
@@ -1538,6 +1598,7 @@ class CanonicalTestPlanRuntime:
                 for row in research_worker_results
             ],
             "behavior_model": model.model_dump(mode="json"),
+            "behavioral_coverage_expansion": expansion.model_dump(mode="json"),
             "semantic_closure": [row.model_dump(mode="json") for row in closure],
             "missing_questions": [row.model_dump(mode="json") for row in questions],
             "directed_retrievals": [row.model_dump(mode="json") for row in retrievals],

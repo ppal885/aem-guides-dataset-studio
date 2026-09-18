@@ -1,4 +1,4 @@
-"""Mandatory research routing for Question-Based UAC generation.
+﻿"""Mandatory research routing for Question-Based UAC generation.
 
 Regression coverage for the Output History purge ticket pattern: material
 questions are identifiable from Jira/configuration, but the Coverage Reasoner
@@ -1091,3 +1091,213 @@ def test_routing_contract_request_identity_is_deterministic() -> None:
         question, research_need=ResearchRequirement.HISTORICAL
     )
     assert other.request_id != first.request_id
+
+
+def test_failed_mandated_worker_is_not_masked_by_retrieval_evidence() -> None:
+    """A mandated DOC_RESEARCHER that could not execute must not be covered
+    by generic retrieval evidence that merely shares its source category.
+
+    Observed on GUIDES-11947: both documentation workers were rejected at
+    admission, yet a deterministic retrieval leg had matched documentation
+    chunks for the same question.  Those chunks marked the DOCUMENTATION
+    category researched, the mandated route's failure never re-entered the
+    unresearched set, and the question reached coverage as ANSWER_FOUND -
+    so the hard gate passed on research that never happened.
+    """
+
+    from app.services.research_workers import (
+        ResearchWorkerResult,
+        ResearchWorkerRole,
+        ResearchWorkerStatus,
+    )
+
+    question = _purge_questions()[0]
+    requirement = QUESTION_RESEARCH_ROUTER.classify(
+        QUESTION_RESEARCH_ROUTER.build_request(
+            question, research_need=ResearchRequirement.DOCUMENTATION
+        ),
+        question=question,
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+    )
+    assert requirement.research_requirement == ResearchRequirement.DOCUMENTATION
+    assert requirement.material is True
+
+    doc_record = _record(
+        source_type=EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+        reference="https://experienceleague.adobe.com/purge",
+        text="The configured period governs the retention of entries.",
+        authority=AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+    )
+    bundle = build_bundle([doc_record], tenant_id=TENANT)
+    retrieval = DirectedRetrievalRecord(
+        question_id=question.question_id,
+        query=question.question,
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+        target_source_types=[EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION],
+        matched_evidence_ids=[doc_record.evidence_id],
+        status=RetrievalStatus.USED,
+        reason="Targeted supplied evidence matched the question.",
+    )
+
+    # Control: retrieval alone, with no mandated worker dispatched at all,
+    # still resolves the documentation category.
+    without_worker = QUESTION_RESEARCH_ROUTER.resolve(
+        requirement, retrievals=[retrieval], evidence=bundle
+    )
+    assert without_worker.research_status != ResearchStatus.PENDING
+
+    # A mandated worker that failed admission cannot be laundered by that
+    # same retrieval evidence.
+    failed = ResearchWorkerResult(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        status=ResearchWorkerStatus.FAILED,
+        limitations=["findings[0] cites discovered documentation"],
+    )
+    resolved = QUESTION_RESEARCH_ROUTER.resolve(
+        requirement,
+        retrievals=[retrieval],
+        evidence=bundle,
+        worker_results=[failed],
+    )
+    assert resolved.research_status == ResearchStatus.SOURCE_UNAVAILABLE
+    assert resolved.research_status not in {
+        ResearchStatus.ANSWER_FOUND,
+        ResearchStatus.PARTIAL,
+        ResearchStatus.NOT_FOUND,
+    }
+
+    # An executed worker still resolves normally through the same path.
+    executed = ResearchWorkerResult(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        status=ResearchWorkerStatus.NOT_FOUND,
+        limitations=["searched the authorized documentation scopes"],
+    )
+    healthy = QUESTION_RESEARCH_ROUTER.resolve(
+        requirement,
+        retrievals=[retrieval],
+        evidence=bundle,
+        worker_results=[executed],
+    )
+    assert healthy.research_status != ResearchStatus.SOURCE_UNAVAILABLE
+
+
+def test_documented_baseline_reaches_the_acceptance_lane_for_linked_questions() -> None:
+    """Documentation a worker actually established must reach the acceptance
+    lane even when its question is already linked to a coverage row.
+
+    Observed on GUIDES-11947: a DOC_RESEARCHER returned documented existing
+    behavior for the Topic List report (columns, filters, sorting, download
+    scoping), the question resolved ANSWER_FOUND, and the resolved question
+    linked to a coverage row.  The documented-baseline pass only ran for
+    UNLINKED questions, so every researched behavior was dropped and the UAC
+    lost its P0/P1 coverage.  Answering a question must not delete its
+    evidence.
+
+    Also pins the two follow-on contracts the same evidence needs:
+      - a research-derived baseline row citing doc: refs classifies as
+        EXISTING behavior, not UNKNOWN (UNKNOWN blocks promotion); and
+      - its Source line credits the documentation that established it,
+        never Jira alone.
+    """
+
+    from app.core.schemas_canonical_test_plan_runtime import (
+        BehaviorChangeClass,
+        ResearchFinding,
+        ResearchFindingEvidenceRole,
+    )
+    from app.services.canonical_test_plan_reasoning_service import (
+        _EXISTING_PROPOSED_RATIONALE,
+        _acceptance_source_line,
+    )
+    from app.services.research_workers import (
+        ResearchWorkerResult,
+        ResearchWorkerRole,
+        ResearchWorkerStatus,
+    )
+
+    question = _purge_questions()[5]
+    closure_row = _closure_row(question, ClosureDisposition.UNRESOLVED_AND_EXPOSED)
+    hypothesis = _confirmed_hypothesis(question)
+    documented = (
+        "A log-only purge of the output history retains the generated "
+        "outputs already published for the map."
+    )
+    worker = ResearchWorkerResult(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        status=ResearchWorkerStatus.PARTIAL,
+        findings=[
+            ResearchFinding(
+                claim=documented,
+                source_refs=["doc:output-history-purge"],
+                evidence_role=ResearchFindingEvidenceRole.EXISTING_BEHAVIOR,
+            )
+        ],
+        limitations=["The retention count is not documented."],
+    )
+    answered = _research_record(
+        question,
+        ResearchStatus.ANSWER_FOUND,
+        request_ids=[worker.research_id] if worker.research_id else ["research:doc-1"],
+        evidence_ids=["ev-doc-1"],
+    )
+
+    rows = CANONICAL_REASONING_SERVICE.classify_coverage(
+        _facts(ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT),
+        [closure_row],
+        [],
+        [hypothesis],
+        ScopeResolution(),
+        [question],
+        [answered],
+        None,
+        [worker],
+    )
+
+    # The question stays linked to its own coverage row ...
+    assert any(
+        row.disposition == CoverageDisposition.GENERATED_OUTPUT_VALIDATION
+        for row in rows
+    )
+    # ... and the documented baseline is additionally carried, not dropped.
+    baseline = [
+        row for row in rows if row.rationale == _EXISTING_PROPOSED_RATIONALE
+    ]
+    assert baseline, "documented existing behavior never reached the acceptance lane"
+    (row,) = baseline
+    assert row.research_derived is True
+    assert row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+    assert question.question_id in row.source_question_ids
+    assert "doc:output-history-purge" in row.evidence_ids
+    # Promotion needs the question's fact bindings; an empty set silently
+    # removes the criterion downstream.
+    assert row.source_fact_ids == list(question.source_fact_ids)
+
+    # A doc: ref is not a bundle evidence id, so without the research-derived
+    # branch this classifies UNKNOWN and blocks the acceptance contract.
+    doc_record = _record(
+        source_type=EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+        reference="https://experienceleague.adobe.com/output-history-purge",
+        text=documented,
+        authority=AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+    )
+    classifications = CANONICAL_REASONING_SERVICE.classify_behavior_changes(
+        _facts(ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT),
+        baseline,
+        build_bundle([doc_record], tenant_id=TENANT),
+    )
+    assert classifications
+    assert all(
+        record.behavior_class != BehaviorChangeClass.UNKNOWN
+        for record in classifications
+    )
+
+    # The Source line must credit the documentation that established it.
+    line = _acceptance_source_line(
+        list(question.source_fact_ids), {}, evidence_refs=row.evidence_ids
+    )
+    assert "Product documentation" in line

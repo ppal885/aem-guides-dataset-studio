@@ -16,6 +16,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     AcceptanceCandidate,
     AcceptanceResolutionBatch,
     AcceptancePromotionDecision,
+    AcceptanceSubPoint,
+    AcceptanceSubPointKind,
     AbstractSignal,
     AbstractSignalKind,
     ApplicabilityState,
@@ -28,6 +30,11 @@ from app.core.schemas_canonical_test_plan_runtime import (
     BehaviorClassificationRecord,
     BehaviorHypothesis,
     BehaviorRelationType,
+    BehavioralCoverageCandidate,
+    BehavioralCoverageExpansion,
+    SemanticDependencyKind,
+    SemanticDependencyRecord,
+    SemanticDependencySlot,
     CanonicalBehaviorModel,
     CanonicalEvidenceBundle,
     CandidateDedupDecision,
@@ -48,6 +55,9 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ContractPreservationState,
     CoverageDisposition,
     CoverageDispositionRecord,
+    CoverageExpansionAxis,
+    CoverageExpansionDisposition,
+    CoverageExpansionTrigger,
     CurrentnessState,
     DirectedRetrievalRecord,
     DitaOtProcessingState,
@@ -86,13 +96,17 @@ from app.core.schemas_canonical_test_plan_runtime import (
     ReasoningPatternActivation,
     ReasoningQuestionFamily,
     RendererProjectionDecision,
+    ResearchFindingEvidenceRole,
     ResearchRequirement,
     ResearchRequirementRecord,
     ResearchStatus,
+    ResearchWorkerStatus,
+    CanonicalRuntimeStage,
     RetrievalStatus,
     ScopeResolution,
     SemanticDimension,
     StructuredQEPlan,
+    WrittenAcceptanceCriterion,
     SufficiencyStatus,
     VerificationState,
     stable_sha256,
@@ -267,6 +281,7 @@ def _acceptance_tbd_eligible(
     question: MissingQuestion,
     research_by_question: dict[str, QuestionResearchRecord],
     clarified_question_ids: set[str],
+    established_question_ids: set[str] | None = None,
 ) -> bool:
     """P3: a blocking acceptance-decision question whose mandated research is
     exhausted (or not required) and that no clarification answered becomes a
@@ -283,7 +298,957 @@ def _acceptance_tbd_eligible(
     if record is None:
         # No research classification at all is never "research exhausted".
         return False
-    return record.research_status in _TBD_EXHAUSTED_RESEARCH_STATUSES
+    if record.research_status in _TBD_EXHAUSTED_RESEARCH_STATUSES:
+        return True
+    # Research that terminated with an answer but established no
+    # customer-stated desired behavior leaves the product decision open.  That
+    # is a bounded TBD, never a generic open question that carries no research
+    # at all - otherwise the terminated research is silently dropped.  Any
+    # documented existing behavior it did find is emitted separately as a
+    # PROPOSED baseline; it informs the decision without making it.
+    return (
+        record.research_status == ResearchStatus.ANSWER_FOUND
+        and question.question_id not in (established_question_ids or set())
+    )
+
+
+# Decision semantics: research that terminated with an answer may establish
+# the acceptance-bearing core of a blocking question.  A customer-stated
+# desired behavior resolves it and grounds a PROPOSED candidate; documented
+# existing behavior grounds a PROPOSED baseline candidate without resolving
+# it.  Either way only the residual acceptance-changing decision (carried by
+# convergence) remains a bounded TBD.  Observed behavior never qualifies here
+# - observation is not a requirement; a QE run records what happened, not
+# what the product owes.
+_DESIRED_ESTABLISHING_RESEARCH_STATUSES = {
+    ResearchStatus.ANSWER_FOUND,
+    ResearchStatus.PARTIAL,
+}
+_DESIRED_ESTABLISHING_WORKER_STATUSES = {
+    ResearchWorkerStatus.ANSWER_FOUND,
+    ResearchWorkerStatus.PARTIAL,
+}
+
+
+# Roles that may ground an acceptance candidate.  A customer-stated desire is
+# the requirement and decides the question; documented existing behavior is
+# the baseline the requirement preserves or changes, so it informs the
+# question without deciding it.  Observed behavior, supporting context and
+# implementation evidence never qualify: observation is not a requirement and
+# code is not a contract.
+_DESIRED_ROLES = frozenset({ResearchFindingEvidenceRole.DESIRED_BEHAVIOR})
+_EXISTING_ROLES = frozenset({ResearchFindingEvidenceRole.EXISTING_BEHAVIOR})
+
+
+def _establishing_claims(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    worker_results: list,
+    roles: frozenset,
+) -> list[tuple[str, list[str]]]:
+    """Claims carrying one of `roles` that admitted research established for
+    this question, as (claim, source_refs) pairs."""
+
+    record = research_by_question.get(question.question_id)
+    if (
+        record is None
+        or record.research_status not in _DESIRED_ESTABLISHING_RESEARCH_STATUSES
+    ):
+        return []
+    claims: list[tuple[str, list[str]]] = []
+    for result in worker_results or []:
+        if result.question_id != question.question_id:
+            continue
+        if (
+            record.research_request_ids
+            and result.research_id not in record.research_request_ids
+        ):
+            continue
+        if result.status not in _DESIRED_ESTABLISHING_WORKER_STATUSES:
+            continue
+        for finding in result.findings:
+            if finding.evidence_role not in roles:
+                continue
+            claim = str(finding.claim).strip()
+            if claim:
+                claims.append((claim, list(finding.source_refs or [])))
+    return claims
+
+
+def desired_behavior_claims(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    worker_results: list,
+) -> list[tuple[str, list[str]]]:
+    """Customer-stated desired-behavior claims established by admitted
+    research for this question, as (claim, source_refs) pairs."""
+
+    return _establishing_claims(
+        question, research_by_question, worker_results, _DESIRED_ROLES
+    )
+
+
+def existing_behavior_claims(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    worker_results: list,
+) -> list[tuple[str, list[str]]]:
+    """Documented existing-behavior claims established by admitted research
+    for this question, as (claim, source_refs) pairs.  Documentation records
+    the product's current contract, so it grounds a PROPOSED candidate - the
+    behavior-classification lane then tags it EXISTING_CONFIRMED, PRESERVED
+    or MODIFIED from the cited evidence source types."""
+
+    return _establishing_claims(
+        question, research_by_question, worker_results, _EXISTING_ROLES
+    )
+
+
+def research_resolved_question_ids(
+    questions: list[MissingQuestion],
+    research_records: list[QuestionResearchRecord] | None,
+    worker_results: list,
+) -> set[str]:
+    """Blocking questions whose acceptance decision was answered by admitted
+    research, i.e. a customer-stated desired behavior was established.  They
+    stop blocking; any residual acceptance-changing decision still surfaces
+    through convergence as a bounded TBD.
+
+    Documented existing behavior deliberately does NOT resolve a question.
+    Documentation records what the product does today, which is the baseline
+    a ticket preserves or changes - it is not the customer's decision about
+    what the product should do.  Treating it as a resolution would suppress
+    the bounded TBD for exactly the questions documentation could not answer
+    (for example a finding that states no ordering rule is documented).  It
+    still grounds a PROPOSED baseline candidate through
+    ``documented_baseline_claims``; the two roles are separate."""
+
+    research_by_question = {
+        row.question_id: row for row in research_records or []
+    }
+    return {
+        question.question_id
+        for question in questions or []
+        if question.blocking
+        and desired_behavior_claims(question, research_by_question, worker_results)
+    }
+
+
+# A leading attribution clause ending in a colon ("The slide text explicitly
+# states the customer position:", "On the same slide the customer (X)
+# states:") is the researcher's framing, not the desired behavior.
+_DESIRED_WRAPPER_RE = re.compile(
+    r"^[^.]{0,120}?\b(?:states|says|reads|notes)\b[^:]{0,40}:\s*",
+    re.IGNORECASE,
+)
+# Researchers sometimes prefix findings with a role tag ("DESIRED: ...",
+# "OBSERVED: ..."): it is framing, not content.
+_ROLE_TAG_RE = re.compile(
+    r"^\s*(?:DESIRED|OBSERVED|CONTEXT|NOTE|BACKGROUND)\s*[:.\-]\s*",
+    re.IGNORECASE,
+)
+# Meta/evidence sentences are provenance, never the contract: they mention
+# the evidence itself instead of product behavior.
+_META_SENTENCE_RE = re.compile(
+    r"\b(?:verbatim|matches the jira|customer-stated|recorded as|"
+    r"not (?:a|an) product requirement|acceptance truth|"
+    r"provenance and prioritization)\b",
+    re.IGNORECASE,
+)
+# "The customer (X) states they want Y" / "the customer wants Y": Y is the
+# requirement; the wanting frame is attribution.
+_WANT_FLIP_RE = re.compile(
+    r"\b(?:the\s+customer\s*(?:\([^)]*\))?|customer|they)\s+"
+    r"(?:explicitly\s+)?(?:states?|says?|notes?)(?:\s+they)?\s*"
+    r"wants?\s+(?:that\s+)?",
+    re.IGNORECASE,
+)
+# "... states on the slide that authors need X" - the need-frame variant of
+# the same attribution pattern.
+_NEED_FLIP_RE = re.compile(
+    r"\b(?:states?|says?|notes?)\b[^.:]{0,60}?\bthat\s+"
+    r"(?:authors?|users?|they|we)\s+"
+    r"(?:need|needs|want|wants|should\s+(?:get|see|have))\s+",
+    re.IGNORECASE,
+)
+_MODAL_RE = re.compile(r"\b(?:must|shall|should|will)\b", re.IGNORECASE)
+_PARTICIPLE_TAIL_RE = re.compile(
+    r",\s*(restored|carried over|added|shown|provided|available|displayed|"
+    r"surfaced|reinstated|aligned|present)\b",
+    re.IGNORECASE,
+)
+
+
+# Documentation findings lead with the researcher's own framing ("Documentation
+# establishes that ...", "Per the documentation, ...").  That framing is
+# provenance, not product behavior, and the Reviewer rejects it outright
+# (_AC_META_PROSE_RE matches "documentation establishes").  Strip it here so
+# only the observable outcome survives; the Reviewer gate stays untouched.
+_EXISTING_WRAPPER_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:the\s+)?(?:product\s+|existing\s+|current\s+)?doc(?:s|umentation)\s+"
+    r"(?:establishes?|states?|records?|confirms?|describes?|documents?|says?|"
+    r"notes?|shows?|indicates?)(?:\s+that)?"
+    r"|(?:per|according\s+to|as\s+per)\s+the\s+doc(?:s|umentation)"
+    r"|documented\s+[^:.]{0,80}:"
+    r"|existing[_\s-]*behaviou?r"
+    r"|current[_\s-]*behaviou?r"
+    r"|documented[_\s-]*behaviou?r"
+    r")\s*[,:.\-]?\s*",
+    re.IGNORECASE,
+)
+
+# A documentation finding often ends by stating what the documentation does
+# NOT establish ("The documentation does not state any ordering rule", "names
+# no default sort field").  That is the absence of a contract, never a
+# contract: it belongs to the bounded TBD's reasoning, never to an AC.
+_DOC_DISCLAIMER_RE = re.compile(
+    r"\b(?:"
+    r"do(?:es)?\s+not\s+(?:state|specify|define|establish|document|mention)"
+    r"|nor\s+does\s+it\s+(?:state|specify|define)"
+    r"|names?\s+no\b"
+    r"|is\s+not\s+(?:stated|specified|documented|established)"
+    r"|not\s+documented\b"
+    r"|no\s+(?:filter|control|option|rule)\s+for\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _drop_meta_sentences(text: str) -> str:
+    """Drop provenance sentences, keeping the product-behavior ones.  If every
+    sentence reads as provenance the original text is returned unchanged - the
+    caller decides whether to keep or drop it."""
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", text)
+        if sentence.strip()
+    ]
+    kept = [
+        sentence
+        for sentence in sentences
+        if not _META_SENTENCE_RE.search(sentence)
+    ]
+    return " ".join(kept) if kept else text
+
+
+def _bound_claim_text(text: str, limit: int = 320) -> str:
+    """Bound a claim at a sentence boundary, never mid-word."""
+
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    for sep in (". ", "? ", "! "):
+        pos = cut.rfind(sep)
+        if pos > 80:
+            return cut[: pos + 1].strip()
+    return cut.rsplit(" ", 1)[0].rstrip() + "."
+
+
+def _desired_claim_text(claim: str) -> str:
+    """Normalize a DESIRED_BEHAVIOR finding into a short observable outcome:
+    strip the attribution wrapper, prefer the researcher's distilled sentence
+    over the verbatim customer quote, drop meta/evidence sentences, flip the
+    wanting frame into a requirement modal, and bound at a sentence boundary
+    (never mid-word)."""
+
+    text = _ROLE_TAG_RE.sub("", str(claim).strip()).strip()
+    text = _DESIRED_WRAPPER_RE.sub("", text).strip()
+    if text.startswith(('"', "'")):
+        quote_char = text[0]
+        close = -1
+        idx = text.find(quote_char, 1)
+        while idx != -1:
+            if idx + 1 >= len(text) or text[idx + 1] in " \t":
+                close = idx
+                break
+            idx = text.find(quote_char, idx + 1)
+        if close > 0:
+            quoted = text[1:close].strip()
+            trailing = text[close + 1 :].strip().lstrip("-–— ").strip()
+            text = trailing or quoted
+    text = _drop_meta_sentences(text)
+    match = _WANT_FLIP_RE.search(text) or _NEED_FLIP_RE.search(text)
+    if match:
+        obj = text[match.end() :].strip().rstrip(".")
+        # A quoted customer sentence trailing the object ("... side: 'The
+        # outputs are ...'") is evidence for the object, never part of it.
+        quote_trail = re.search(r"\s*[:;,\-–—]\s*[\"']", obj)
+        if quote_trail:
+            obj = obj[: quote_trail.start()].strip().rstrip(".")
+        if obj:
+            if _MODAL_RE.search(obj):
+                text = obj[0].upper() + obj[1:] + "."
+            else:
+                tail = _PARTICIPLE_TAIL_RE.search(obj)
+                if tail:
+                    # "X, restored in Y" -> "X must be restored in Y."
+                    head = obj[: tail.start()].strip()
+                    text = (
+                        head[0].upper()
+                        + head[1:]
+                        + " must be "
+                        + tail.group(1).lower()
+                        + obj[tail.end() :]
+                        + "."
+                    )
+                else:
+                    text = obj[0].upper() + obj[1:] + " must be present."
+    return _bound_claim_text(text)
+
+
+def _normalized_desired_claims(
+    claims: list[tuple[str, list[str]]], limit: int = 2
+) -> list[tuple[str, list[str]]]:
+    """Normalize desired-behavior claims and keep the strongest distinct
+    outcomes first (a distilled observable sentence beats a bare quote)."""
+
+    normalized: list[tuple[str, list[str]]] = []
+    for claim, refs in claims:
+        text = _desired_claim_text(claim)
+        if text and all(text != existing for existing, _ in normalized):
+            normalized.append((text, refs))
+    normalized.sort(key=lambda item: -min(len(item[0]), 320))
+    return normalized[:limit]
+
+
+def _balance_quotes(text: str) -> str:
+    """A documentation finding is mostly quoted source text, so bounding it at
+    a sentence boundary can land inside a quotation and leave a dangling
+    fragment.  Prefer trimming back to the last sentence end whose quotes are
+    balanced; otherwise close the quote so the candidate still reads as a
+    complete statement."""
+
+    if text.count('"') % 2 == 0:
+        return text
+    for match in reversed(list(re.finditer(r'[.!?]"?(?=\s|$)', text))):
+        head = text[: match.end()].rstrip()
+        if head.count('"') % 2 == 0 and len(head) >= 40:
+            return head
+    return text.rstrip() + '"'
+
+
+def _existing_claim_text(claim: str) -> str:
+    """Normalize an EXISTING_BEHAVIOR finding into a short observable outcome:
+    strip the researcher's documentation framing, drop provenance sentences
+    and sentences that state what the documentation does NOT establish, then
+    bound at a sentence boundary.
+
+    The customer-attribution flips (_WANT_FLIP_RE / _NEED_FLIP_RE) are
+    deliberately not applied: documentation records what the product does, it
+    never voices a customer want, so rewriting it into a "must" would invent a
+    requirement the documentation does not state."""
+
+    text = _ROLE_TAG_RE.sub("", str(claim).strip()).strip()
+    # A finding can carry both a role tag and the framing sentence ("EXISTING
+    # BEHAVIOR: Docs confirm ..."), so peel repeatedly - bounded, and only
+    # while the substitution actually shortens the text.
+    for _ in range(3):
+        stripped = _EXISTING_WRAPPER_RE.sub("", text).strip()
+        if stripped == text or not stripped:
+            break
+        text = stripped
+    kept = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", text)
+        if sentence.strip()
+        and not _DOC_DISCLAIMER_RE.search(sentence)
+        and not _META_SENTENCE_RE.search(sentence)
+    ]
+    if not kept:
+        return ""
+    text = _bound_claim_text(" ".join(kept))
+    text = _balance_quotes(text)
+    if text:
+        text = text[0].upper() + text[1:]
+    return text
+
+
+def _relevance_tokens(text: str) -> set[str]:
+    """Content words normalized for matching: trailing sentence punctuation
+    removed and a light plural fold, so "publish warnings." matches
+    "warnings?" in the question."""
+
+    tokens: set[str] = set()
+    for token in _ac_content_words(text):
+        token = token.strip(".")
+        if len(token) <= 2:
+            continue
+        tokens.add(token)
+        if len(token) > 4 and token.endswith("s") and not token.endswith("ss"):
+            tokens.add(token[:-1])
+    return tokens
+
+
+def _claim_relevance(text: str, question_tokens: set[str]) -> int:
+    """How many meaningful question terms the claim actually speaks to.
+
+    Documentation research returns everything it found about the feature
+    area, so a report on a sorting question can carry findings about columns,
+    filters and downloads.  Ranking by length (the desired-claim heuristic)
+    would promote the most verbose finding; ranking by question overlap
+    promotes the one that answers what was asked."""
+
+    if not question_tokens:
+        return 0
+    return len(_relevance_tokens(text) & question_tokens)
+
+
+def _normalized_existing_claims(
+    claims: list[tuple[str, list[str]]],
+    limit: int = 2,
+    question_tokens: set[str] | None = None,
+) -> list[tuple[str, list[str]]]:
+    """Normalize documented existing-behavior claims, keeping the ones that
+    actually speak to the question first.
+
+    A claim that still reads as meta/evidence prose after normalization is
+    dropped rather than emitted: the Reviewer gate (_AC_META_PROSE_RE) would
+    fail the whole plan on it, and silently dropping one unusable claim is
+    safer than failing a plan the rest of the research supports."""
+
+    tokens = question_tokens or set()
+    scored: list[tuple[int, int, str, list[str]]] = []
+    for order, (claim, refs) in enumerate(claims):
+        text = _existing_claim_text(claim)
+        if not text or _AC_META_PROSE_RE.search(text):
+            continue
+        if any(text == seen for _, _, seen, _ in scored):
+            continue
+        scored.append((_claim_relevance(text, tokens), order, text, refs))
+    # Most relevant first; ties keep the researcher's own ordering.
+    scored.sort(key=lambda row: (-row[0], row[1]))
+    # When the question shares no term with any finding the research answered
+    # a different question than the one asked: ground nothing rather than
+    # promote an unrelated documented behavior into the acceptance lane.
+    return [(text, refs) for score, _, text, refs in scored if score > 0][:limit]
+
+
+def documented_baseline_claims(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    worker_results: list,
+    limit: int = 2,
+) -> list[tuple[str, list[str]]]:
+    """Documented existing behavior relevant to this question, normalized for
+    the acceptance lane.
+
+    These ground a PROPOSED baseline candidate but never resolve the
+    question: documentation establishes what the product does today, not the
+    decision about what it should do.  Any bounded TBD stays."""
+
+    return _normalized_existing_claims(
+        existing_behavior_claims(question, research_by_question, worker_results),
+        limit=limit,
+        question_tokens=_relevance_tokens(question.question),
+    )
+
+
+_DESIRED_PROPOSED_RATIONALE = (
+    "Customer-stated desired behavior established by admitted research; "
+    "proposed pending the product decision carried by convergence."
+)
+_EXISTING_PROPOSED_RATIONALE = (
+    "Documented existing behavior established by admitted documentation "
+    "research; proposed as the baseline the ticket preserves or changes. "
+    "It does not decide the open acceptance question, which stays bounded."
+)
+
+
+def _normalize_candidate_key(text: str) -> str:
+    """Case/punctuation-insensitive key for deduplicating coverage candidates
+    that say the same thing through different spacing or quoting."""
+
+    return re.sub(r"[^a-z0-9]+", " ", str(text).casefold()).strip()
+
+
+def _establishing_acceptance_claims(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    worker_results: list,
+    limit: int = 2,
+) -> list[tuple[str, list[str], str]]:
+    """Normalized customer-stated desired behavior that answers this question,
+    as (text, source_refs, rationale) triples.  Only a desire is a decision,
+    so only these replace the question's open/TBD disposition."""
+
+    return [
+        (text, refs, _DESIRED_PROPOSED_RATIONALE)
+        for text, refs in _normalized_desired_claims(
+            desired_behavior_claims(
+                question, research_by_question, worker_results
+            ),
+            limit=limit,
+        )
+    ]
+
+
+# Reviewer contract: meta/evidence commentary inside an AC.  These markers
+# describe the evidence, never the product behavior under test.
+_RETRIEVAL_BOILERPLATE_RE = re.compile(
+    r"(?:learning retrieval profile|use this for (?:jira-driven )?qa/test-plan "
+    r"retrieval|high-signal topics and headings|retrieval terms\s*:)",
+    re.IGNORECASE,
+)
+
+_AC_META_PROSE_RE = re.compile(
+    r"\b(?:customer-stated|verbatim|states they want|states:|the slide|"
+    r"the attachment shows|evidence shows|research found|"
+    r"documentation establishes|as per slide)\b",
+    re.IGNORECASE,
+)
+
+# Coverage lanes must report real dispositions.  A line that only says an
+# internal record exists tells a tester nothing and is not coverage.  Match
+# that exact bookkeeping phrasing only - "(see trace)" on its own is a
+# legitimate citation suffix on a real disposition.
+_COVERAGE_FILLER_RE = re.compile(
+    r"internal evidence recorded for\s+\d+\s+closure records",
+    re.IGNORECASE,
+)
+
+
+def _normalize_for_paraphrase(text: str) -> str:
+    """Collapse a statement to compare meaning-bearing words only."""
+
+    return " ".join(re.sub(r"[^a-z0-9\s]", " ", text.lower()).split())
+
+
+# Request grammar describes what someone WANTS, not what the product DOES.
+# "Ability to view the topic list", "Need a way to export" and "Support for
+# COUNT retention" cannot be passed or failed by exercising the product, so
+# they are requests carried through verbatim, never acceptance criteria.
+# Outcome grammar ("the export job writes a completion marker") is testable
+# even when the ticket author happened to phrase the request that way, so this
+# deliberately keys on the asking phrase rather than on text identity.
+_AC_REQUEST_GRAMMAR_RE = re.compile(
+    r"\b(?:ability to|abilities to|need(?:s)? (?:a|the) (?:way|ability|option)|"
+    r"provide (?:a|the) (?:way|ability|option)|"
+    r"there (?:should|must) be (?:a way|an option)|"
+    r"would like (?:to|the)|want(?:s)? (?:a|the) (?:way|ability|option)|"
+    r"request(?:ing)? (?:a|the) (?:way|ability|option)|"
+    r"support for (?:adding|having|providing))\b",
+    re.IGNORECASE,
+)
+
+
+def _is_request_not_outcome(statement: str) -> bool:
+    """True when an AC asks for a capability instead of stating an outcome."""
+
+    return bool(_AC_REQUEST_GRAMMAR_RE.search(statement))
+
+
+# Deterministic request -> outcome reframe.  The canonical runtime has no LLM,
+# so this replaces ONLY the asking phrase and preserves every remaining content
+# word: it can never introduce behavior the evidence does not already carry.
+# "Ability to view the topic list in map order" therefore becomes "A user can
+# view the topic list in map order" - the same claim, stated as an outcome a
+# tester can pass or fail.
+_REQUEST_TO_OUTCOME_RE = re.compile(
+    r"(?:^|\|\s*|[-–—:]\s*)(?:"
+    r"(?:the\s+)?abilit(?:y|ies)\s+to|"
+    r"need(?:s)?\s+(?:a|the)\s+(?:way|ability|option)\s+to|"
+    r"provide\s+(?:a|the)\s+(?:way|ability|option)\s+to|"
+    r"there\s+(?:should|must)\s+be\s+(?:a\s+way|an\s+option)\s+to|"
+    r"would\s+like\s+to|"
+    r"want(?:s)?\s+(?:a|the)\s+(?:way|ability|option)\s+to|"
+    r"request(?:ing)?\s+(?:a|the)\s+(?:way|ability|option)\s+to"
+    r")\s+",
+    re.IGNORECASE,
+)
+
+
+def _derive_outcome_statement(statement: str) -> str | None:
+    """Reframe request grammar as an observable outcome.
+
+    Returns None when the asking phrase cannot be removed without guessing at
+    the intended behavior.  A None result deliberately leaves the candidate
+    non-observable so the promotion gate rejects it, rather than letting the
+    Writer invent an outcome the evidence never established.
+    """
+
+    text = " ".join(statement.split())
+    if not text:
+        return None
+    match = _REQUEST_TO_OUTCOME_RE.search(text)
+    if match is None:
+        return None
+    remainder = text[match.end() :].strip()
+    if not remainder:
+        return None
+    remainder = remainder[0].lower() + remainder[1:]
+    derived = f"A user can {remainder}"
+    if not derived.endswith((".", "!", "?")):
+        derived += "."
+    # A reframe that still reads as a request is not an outcome; fail closed.
+    return None if _is_request_not_outcome(derived) else derived
+
+
+def _as_outcome_sentence(clause: str) -> str:
+    """Normalize an admitted clause into one sentence, content-preserving."""
+
+    text = " ".join((clause or "").split())
+    if not text:
+        return text
+    text = text[0].upper() + text[1:]
+    if not text.endswith((".", "!", "?")):
+        text += "."
+    return text
+
+
+# D2: an independent requirement clause carries its own subject and modal, so
+# "<requirement A> and the <subject B> should <behavior B>" is two separately
+# pass/fail contracts.  Splitting only on a modal-bearing conjunct keeps
+# ordinary descriptive "and" phrases ("topics and maps") intact.
+_INDEPENDENT_REQUIREMENT_RE = re.compile(
+    r"\s+and\s+(?=(?:the|a|an|its|their|each|every|all)?\s*[\w\s,'\"-]{3,80}?"
+    r"\b(?:should|must|shall|will|needs?\s+to|has\s+to|have\s+to)\b)",
+    re.IGNORECASE,
+)
+
+
+def _split_independent_requirements(statement: str) -> list[str]:
+    """Split a compound requirement into independently testable clauses.
+
+    Returns the original statement unchanged when no conjunct carries its own
+    modal requirement, so a descriptive "and" is never split.
+    """
+
+    text = " ".join((statement or "").split())
+    if not text:
+        return []
+    parts = [part.strip(" ,;") for part in _INDEPENDENT_REQUIREMENT_RE.split(text)]
+    parts = [part for part in parts if part]
+    return parts or [text]
+
+
+# D2/D1-c: phrasings that turn an unresolved capability into the decision QE
+# actually needs, without asserting either answer.
+_TBD_LEAD_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:could|can|would|will|may|should)\s+(?:we|you|it)\s+(?:also\s+)?(?:please\s+)?"
+    r"|is\s+it\s+possible\s+to\s+"
+    r"|would\s+it\s+be\s+possible\s+to\s+"
+    r"|any\s+(?:chance|plan|plans)\s+(?:of|to|for)\s+"
+    r"|how\s+about\s+"
+    r")"
+    r"(?:(?:add|have|support|provide|include|show|display|expose|allow|enable|get)"
+    r"(?:ing)?\s+(?:also\s+)?(?:a|an|the)?\s*)?",
+    re.IGNORECASE,
+)
+
+
+def _derive_tbd_question(statement: str) -> str | None:
+    """Phrase unresolved material behavior as a bounded (TBD) question.
+
+    The result always ends with '?' so it reads as the open decision rather
+    than as an asserted outcome.  Returns None when there is nothing to ask.
+    """
+
+    text = " ".join((statement or "").split()).strip()
+    if not text:
+        return None
+    remainder = _TBD_LEAD_RE.sub("", text).strip(" ?.").strip()
+    if not remainder:
+        return None
+    remainder = remainder[0].lower() + remainder[1:]
+    return f"Confirm the expected behavior for {remainder}?"
+
+
+_TBD_HOST_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "can",
+        "confirm",
+        "each",
+        "expected",
+        "for",
+        "from",
+        "in",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "same",
+        "should",
+        "that",
+        "the",
+        "their",
+        "them",
+        "they",
+        "this",
+        "to",
+        "user",
+        "was",
+        "when",
+        "with",
+        "behavior",
+    }
+)
+
+
+def _content_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", (text or "").casefold())
+        if len(token) > 2 and token not in _TBD_HOST_STOPWORDS
+    }
+
+
+def _closest_criterion(
+    question: str, written: list["WrittenAcceptanceCriterion"]
+) -> "WrittenAcceptanceCriterion | None":
+    """Pick the criterion an unresolved question belongs under.
+
+    A TBD attaches only to a criterion it genuinely shares subject matter with;
+    an unrelated question becomes its own criterion rather than being buried
+    under a criterion it does not qualify.
+    """
+
+    question_tokens = _content_tokens(question)
+    if not question_tokens:
+        return None
+    best: WrittenAcceptanceCriterion | None = None
+    best_score = 0.0
+    for criterion in written:
+        if criterion.unresolved:
+            continue
+        overlap = question_tokens & _content_tokens(criterion.outcome)
+        if not overlap:
+            continue
+        score = len(overlap) / len(question_tokens)
+        if score > best_score:
+            best_score = score
+            best = criterion
+    # Require real subject overlap, not one incidental shared noun.
+    return best if best_score >= 0.34 else None
+
+
+# Two acceptance criteria sharing this fraction of content words restate one
+# product outcome.  Kept aligned with scripts/uac_eval/precision.py
+# REDUNDANCY_JACCARD and the skill's AC-redundancy rule.
+_AC_NEAR_DUPLICATE_JACCARD = 0.6
+_AC_CONTENT_STOPWORDS = frozenset(
+    "the a an and or of to in on for is are be that this it with as by from at "
+    "should must will shall verify ensure when then given user able "
+    "not no if into their its each any all both which while".split()
+)
+
+
+def _ac_content_words(statement: str) -> set[str]:
+    """Return the words that actually distinguish one criterion from another."""
+
+    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_.]+", statement.lower())
+    return {
+        token
+        for token in tokens
+        if token not in _AC_CONTENT_STOPWORDS and len(token) > 2
+    }
+
+
+def _absorb_near_duplicate(
+    written: list["WrittenAcceptanceCriterion"],
+    outcome: str,
+    *,
+    unresolved: bool,
+    candidate_ids: list[str],
+    fact_ids: list[str],
+    disposition_ids: list[str],
+    evidence_ids: list[str],
+) -> bool:
+    """Fold an outcome into the criterion it restates; report whether it merged.
+
+    A Jira summary and its description routinely carry the same requirement in
+    different words, so both reach the promotion gate as separate admitted
+    candidates.  Rendering both produces two acceptance criteria a reviewer
+    reads as one requirement written twice.  Merging keeps the wording that
+    carries more of the source detail and unions every source binding, so no
+    record becomes unaddressable and no admitted meaning is lost.
+
+    A resolved outcome and an unresolved question are never folded together:
+    that would silently settle a decision the evidence left open.
+    """
+
+    words = _ac_content_words(outcome)
+    if not words:
+        return False
+    for index, existing in enumerate(written):
+        if existing.unresolved != unresolved:
+            continue
+        existing_words = _ac_content_words(existing.outcome)
+        if not existing_words:
+            continue
+        overlap = len(words & existing_words) / len(words | existing_words)
+        if overlap < _AC_NEAR_DUPLICATE_JACCARD:
+            continue
+        merged = existing.model_dump(exclude={"criterion_id"})
+        # Strictly more content words means strictly more of the source
+        # survives.  On a tie neither wording is demonstrably richer, so the
+        # incumbent is kept - promotion order is deterministic, and guessing
+        # at "better English" would not be.
+        if len(words) > len(existing_words):
+            merged["outcome"] = outcome
+        merged["source_candidate_ids"] = [
+            *merged["source_candidate_ids"],
+            *candidate_ids,
+        ]
+        merged["source_fact_ids"] = [*merged["source_fact_ids"], *fact_ids]
+        merged["source_disposition_ids"] = [
+            *merged["source_disposition_ids"],
+            *disposition_ids,
+        ]
+        merged["evidence_ids"] = [*merged["evidence_ids"], *evidence_ids]
+        written[index] = WrittenAcceptanceCriterion(**merged)
+        return True
+    return False
+
+
+# Terminal-disposition -> render section.  Module-level so the routing contract
+# is directly assertable: a bounded acceptance TBD must stay acceptance-lane
+# rather than being diverted into a sibling "product decisions" section.
+_DISPOSITION_SECTIONS: dict[CoverageDisposition, str] = {
+    CoverageDisposition.SEMANTIC_REGRESSION: "semantic_coverage",
+    CoverageDisposition.STRUCTURAL_REGRESSION: "structural_hierarchy_coverage",
+    CoverageDisposition.REFERENCE_REGRESSION: "referenced_content_coverage",
+    CoverageDisposition.CONFIGURATION_VARIANT: "configuration_state_coverage",
+    CoverageDisposition.GENERATED_OUTPUT_VALIDATION: "generated_output_validation",
+    CoverageDisposition.NEGATIVE_BOUNDARY: "negative_boundary_coverage",
+    CoverageDisposition.FAILURE_RECOVERY: "failure_recovery_coverage",
+    CoverageDisposition.LIFECYCLE_COVERAGE: "lifecycle_coverage",
+    CoverageDisposition.CROSS_MODE_REGRESSION: "cross_mode_regression",
+    CoverageDisposition.NFR_COVERAGE: "nfr_coverage",
+    CoverageDisposition.PRODUCT_SCOPE_QUESTION: "product_decisions",
+    # D1-c: a bounded TBD is acceptance-material.  The Writer renders it inside
+    # the criterion it qualifies, so routing it here as well would duplicate it
+    # into a sibling section - exactly the diversion D1 removes.
+    CoverageDisposition.ACCEPTANCE_TBD: "acceptance_contract",
+    CoverageDisposition.ENGINEERING_DESIGN_DECISION: "product_decisions",
+    CoverageDisposition.OUT_OF_SCOPE: "explicit_out_of_scope",
+    CoverageDisposition.INVESTIGATED_AND_REJECTED: "investigated_and_rejected",
+    CoverageDisposition.IMPLEMENTATION_ORACLE: "transformation_processing_coverage",
+    CoverageDisposition.TECHNICAL_NOTE: "technical_notes",
+    CoverageDisposition.KNOWN_LIMITATION: "known_limitations",
+    CoverageDisposition.OPEN_QUESTION: "evidence_gaps",
+    CoverageDisposition.UNSUPPORTED_INFERENCE: "evidence_gaps",
+}
+
+
+def _convergence_detail_lines(conv: Any) -> list[str]:
+    """Evidence-bearing detail for one product decision.
+
+    Research that ran is only useful if what it established reaches the
+    reader.  Both the blocked render (no criteria yet) and the normal render
+    (criteria produced) show the same three lines, so a decision never loses
+    its evidence merely because the run succeeded.
+    """
+
+    if conv is None:
+        return []
+    detail: list[str] = []
+    shown = conv.pm_view[:1] or conv.dev_view[:1] or conv.qe_view[:1]
+    for claim in shown:
+        detail.append(f"- What the evidence shows: {claim}")
+    for unknown in conv.acceptance_changing_unknowns[:1]:
+        detail.append(f"- Still unknown: {unknown}")
+    # The conflict worth showing is the one that can change the acceptance
+    # contract, not whichever happened to sort first.
+    from app.services.convergence_service import _ACCEPTANCE_CHANGING_CONFLICTS
+
+    classes = list(conv.conflict_classes)
+    if len(classes) != len(conv.conflicts):
+        classes = [""] * len(conv.conflicts)
+    ranked = sorted(
+        zip(conv.conflicts, classes),
+        key=lambda pair: pair[1] not in _ACCEPTANCE_CHANGING_CONFLICTS,
+    )
+    for conflict, _class in ranked[:1]:
+        detail.append(f"- Conflict to resolve: {conflict}")
+    return detail
+
+
+def _render_written_criterion(criterion: "WrittenAcceptanceCriterion") -> str:
+    """Flatten a written criterion into its human-facing contract text.
+
+    Sub-points stay attached to the criterion they qualify instead of being
+    relocated to a sibling section, and an unresolved criterion keeps its
+    (TBD) marker so it is never read as an asserted outcome.
+    """
+
+    outcome = criterion.outcome.strip()
+    if criterion.unresolved and "(TBD)" not in outcome:
+        outcome = f"{outcome} (TBD)"
+    parts = [outcome]
+    for sub_point in criterion.sub_points:
+        text = sub_point.text.strip()
+        if (
+            sub_point.kind == AcceptanceSubPointKind.TBD_QUESTION
+            and "(TBD)" not in text
+        ):
+            text = f"{text} (TBD)"
+        parts.append(f"- {text}")
+    return "\n".join(parts)
+
+
+def _acceptance_source_line(
+    fact_ids: list[str],
+    facts_by_id: Mapping[str, Any],
+    evidence_refs: list[str] | None = None,
+) -> str:
+    """Human-facing Source line for one acceptance criterion.
+
+    Labels are derived only from the facts and admitted evidence refs that
+    actually support THIS criterion, so a documentation source is never
+    credited for behavior it does not establish - and, symmetrically, a
+    documentation-established behavior is never credited to Jira alone.  A
+    criterion with no external supporting source is reported as QE-derived.
+    """
+
+    labels: list[str] = []
+
+    def add(label: str) -> None:
+        if label not in labels:
+            labels.append(label)
+
+    for fact_id in fact_ids:
+        fact = facts_by_id.get(fact_id)
+        if fact is None:
+            continue
+        reference = str(getattr(fact, "source_reference", "") or "")
+        lowered = reference.lower()
+        if "attachment" in lowered:
+            add("Jira attachments")
+        elif lowered.startswith("jira:"):
+            add("Jira")
+        elif "experienceleague.adobe.com" in lowered:
+            add("Experience League")
+        elif lowered.startswith(("doc:", "learned-doc:")):
+            add("Product documentation")
+        elif lowered.startswith(("repo:", "code:", "github:")):
+            add("Implementation evidence")
+    # Admitted research cites its sources as documentation slugs rather than
+    # contract facts, so a criterion grounded by researched documentation must
+    # credit that documentation instead of silently inheriting the Jira label
+    # of the question that triggered the research.
+    for ref in evidence_refs or []:
+        lowered = str(ref).lower()
+        if lowered.startswith(("doc:", "learned-doc:")):
+            add("Product documentation")
+        elif lowered.startswith(("repo:", "code:", "github:")):
+            add("Implementation evidence")
+    if not labels:
+        return "QE-derived coverage."
+    return " + ".join(labels) + "."
+
 
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
     IssueDomain.PUBLISHING: (
@@ -528,6 +1493,84 @@ _RAW_FRAGMENT_RE = re.compile(
     r"|\bclass\s+[A-Z]\w*|\bdef\s+\w+\(|\b[A-Z][\w$]*\.[a-z][\w$]*\s*\("
     r"|\bFeature:\s)"
 )
+
+# D1-d: the most sub-points one criterion may absorb from regression-class
+# coverage.  The contract stays scannable; anything beyond the bound is
+# already represented by the coverage matrix in the trace.
+_MAX_VARIANT_SUB_POINTS = 4
+
+# D1-d: how much subject a regression variant must share with the outcome it
+# qualifies, measured against the smaller of the two subjects.
+_VARIANT_HOST_MIN_OVERLAP = 0.34
+
+
+def _derive_variant_statement(candidate: str) -> str | None:
+    """Reduce a regression-coverage row to a testable variant clause.
+
+    Returns None when the row carries bookkeeping, a raw retrieval fragment,
+    or meta prose instead of behavior a tester can check, so unreadable
+    coverage is never pushed into the acceptance contract.
+    """
+
+    text = " ".join(candidate.split())
+    if not text:
+        return None
+    if (
+        _COVERAGE_FILLER_RE.search(text)
+        or _RAW_FRAGMENT_RE.search(text)
+        or _AC_META_PROSE_RE.search(text)
+    ):
+        return None
+    # "DIMENSION: behavior" rows carry the dimension as an internal axis
+    # label; the tester-facing clause keeps the behavior only.
+    head, separator, tail = text.partition(": ")
+    if separator and head.replace("_", "").isalpha() and head.isupper():
+        text = tail.strip()
+        if not text:
+            return None
+    if _is_request_not_outcome(text):
+        return None
+    # A fragment too short to carry a subject and an outcome is not coverage.
+    if len(text.split()) < 4:
+        return None
+    if not text.endswith((".", "!", "?")):
+        text += "."
+    return text[0].upper() + text[1:]
+
+
+def _closest_variant_host(
+    variant: str, written: list["WrittenAcceptanceCriterion"]
+) -> "WrittenAcceptanceCriterion | None":
+    """Pick the criterion a regression variant qualifies, or None.
+
+    A variant clause is usually longer than the outcome it qualifies, so
+    scoring it against its own token count penalises exactly the detail that
+    makes it useful.  The overlap is therefore normalised against the smaller
+    subject, which keeps the "genuinely shared subject matter" requirement
+    without punishing a specific clause for being specific.  No host means the
+    behavior stays out of the contract - it never invents a parent.
+    """
+
+    variant_tokens = _content_tokens(variant)
+    if not variant_tokens:
+        return None
+    best: WrittenAcceptanceCriterion | None = None
+    best_score = 0.0
+    for criterion in written:
+        if criterion.unresolved:
+            continue
+        outcome_tokens = _content_tokens(criterion.outcome)
+        if not outcome_tokens:
+            continue
+        overlap = variant_tokens & outcome_tokens
+        # One incidental shared noun is coincidence, not shared subject.
+        if len(overlap) < 2:
+            continue
+        score = len(overlap) / min(len(variant_tokens), len(outcome_tokens))
+        if score > best_score:
+            best_score = score
+            best = criterion
+    return best if best_score >= _VARIANT_HOST_MIN_OVERLAP else None
 
 # UX1: human-question quality contract - a user-facing question must be a
 # product behavior decision readable without repository context.  Raw
@@ -878,6 +1921,26 @@ def assess_claim_sufficiency(
     elif clarification_lift:
         authority_basis = "HUMAN_CLARIFICATION"
 
+    # Decision semantics: a research-derived candidate's establishing
+    # evidence is the admitted research finding itself (validated at the
+    # resume boundary: provenance, authority, lifecycle language), not a
+    # contract fact.  The customer-stated desired behavior found by mandated
+    # research is ticket-authority evidence; it establishes the claim the
+    # same way an admitted human clarification does.  Research that is still
+    # pending, conflicted, or found nothing never lifts.
+    research_derived = any(
+        dispositions_by_id[disposition_id].research_derived
+        for disposition_id in candidate.source_disposition_ids
+        if disposition_id in dispositions_by_id
+    )
+    research_lift = bool(
+        research_derived
+        and research_completion in {"COMPLETED", "PARTIAL"}
+        and candidate.evidence_ids
+    )
+    if research_lift and not authority_basis:
+        authority_basis = "ADMITTED_RESEARCH"
+
     # Currentness: only evidence that resolves into the bundle counts.
     currentness_values = {
         evidence_currentness[evidence_id]
@@ -902,9 +1965,13 @@ def assess_claim_sufficiency(
 
     if not candidate.in_scope:
         hard_insufficient.append("the claim is out of the established scope")
-    if not source_facts and not clarification_lift:
+    if not source_facts and not clarification_lift and not research_lift:
         hard_insufficient.append("no evidence is bound to the claim")
-    elif not establishing_facts and not clarification_lift:
+    elif (
+        not establishing_facts
+        and not clarification_lift
+        and not research_lift
+    ):
         if problem_facts:
             hard_insufficient.append(
                 "bound evidence establishes the problem, not a particular "
@@ -916,7 +1983,7 @@ def assess_claim_sufficiency(
                 "bound evidence exists but none of it is establishing for this "
                 "claim (observation/inference/historical authority only)"
             )
-    elif problem_facts and not clarification_lift:
+    elif problem_facts and not clarification_lift and not research_lift:
         # P2 guard: problem evidence plus unrelated establishing evidence must
         # not bleed into a claim whose behavior content nothing establishes.
         covered: set[str] = set()
@@ -974,11 +2041,14 @@ def assess_claim_sufficiency(
         status = SufficiencyStatus.SUFFICIENT
 
     # The established portion is exactly what the establishing evidence says -
-    # never more than the claim, never invented.
+    # never more than the claim, never invented.  For a research-lifted claim
+    # the admitted research finding IS the portion, bounded by the claim.
     portion_literals = sorted({fact.literal for fact in establishing_facts})
     established_portion = ""
     if status == SufficiencyStatus.PARTIAL:
         established_portion = " / ".join(portion_literals)[:2000]
+        if research_lift and not established_portion:
+            established_portion = candidate.statement[:2000]
 
     reason_bits = []
     if status == SufficiencyStatus.SUFFICIENT:
@@ -1142,6 +2212,51 @@ _DIMENSION_KEYWORDS: dict[SemanticDimension, tuple[str, ...]] = {
         "sync",
         "all views",
     ),
+    # C1: value-centric families.  These keywords decide only whether supplied
+    # evidence already resolves the dimension; they never define the dimension.
+    SemanticDimension.VALUE_PROVENANCE: (
+        "provenance",
+        "comes from",
+        "derived from",
+        "populated from",
+        "read from",
+        "computed",
+        "source of truth",
+    ),
+    SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION: (
+        "resolved",
+        "resolution",
+        "indirect",
+        "conref",
+        "conkeyref",
+        "keyref",
+        "key scope",
+        "reused content",
+    ),
+    SemanticDimension.IDENTITY_CHANGE: (
+        "moved",
+        "renamed",
+        "relocated",
+        "path change",
+        "identity",
+        "uuid",
+    ),
+    SemanticDimension.MUTATION_FRESHNESS: (
+        "stale",
+        "up to date",
+        "recompute",
+        "reindex",
+        "cached",
+        "after the source changes",
+    ),
+    SemanticDimension.BROKEN_RESOLUTION: (
+        "unresolved",
+        "broken",
+        "missing target",
+        "undefined key",
+        "cannot be resolved",
+        "dangling",
+    ),
     SemanticDimension.DOWNSTREAM_PROCESSOR: ("processor", "transformer", "downstream"),
     SemanticDimension.GENERATED_OUTPUT: ("generated", "output", "artifact", "page"),
     SemanticDimension.PERSISTED_STATE: ("persist", "repository state", "stored", "cq:"),
@@ -1173,19 +2288,375 @@ _QUESTION_TEXT: dict[SemanticDimension, str] = {
     SemanticDimension.REFERENCED_CONTENT: "Can referenced content reach {entity}?",
     SemanticDimension.NESTED_REFERENCED_CONTENT: "Can nested referenced content reach {entity}?",
     SemanticDimension.ALTERNATE_REPRESENTATION: "Is there another representation of {entity}?",
+    SemanticDimension.VALUE_PROVENANCE: "Where does the value shown for {entity} come from?",
+    SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION: "Can the value for {entity} be resolved indirectly through referenced or reused content?",
+    SemanticDimension.IDENTITY_CHANGE: "What happens to the stored state for {entity} when the underlying item is moved or renamed?",
+    SemanticDimension.MUTATION_FRESHNESS: "Does {entity} read an updated value after its source changes, or can an out-of-date value remain?",
+    SemanticDimension.BROKEN_RESOLUTION: "What is shown for {entity} when the reference cannot be resolved?",
     SemanticDimension.FALLBACK: "What fallback is used for {entity}?",
     SemanticDimension.ABSENT_VALUE: "What happens when the value for {entity} is absent?",
     SemanticDimension.INVALID_VALUE: "What happens when the value for {entity} is invalid?",
     SemanticDimension.POSITIVE_STATE: "What is the expected enabled state for {entity}?",
     SemanticDimension.NEGATIVE_STATE: "What is the expected disabled or failure state for {entity}?",
     SemanticDimension.LIFECYCLE: "Which lifecycle operations affect {entity}?",
-    SemanticDimension.CROSS_SURFACE_SYNC: "Which surfaces must stay synchronized for {entity}?",
+    SemanticDimension.CROSS_SURFACE_SYNC: "Which surfaces stay synchronized for {entity}, and which ones can show a different value?",
     SemanticDimension.DOWNSTREAM_PROCESSOR: "Which downstream processor consumes {entity}?",
     SemanticDimension.GENERATED_OUTPUT: "Which generated output proves {entity} is correct?",
     SemanticDimension.PERSISTED_STATE: "Which persisted state is written or read for {entity}?",
     SemanticDimension.VERSION_APPLICABILITY: "Which product versions support {entity}?",
     SemanticDimension.DEPLOYMENT_APPLICABILITY: "Which deployment modes support {entity}?",
     SemanticDimension.ROLE_PROFILE_APPLICABILITY: "Is {entity} user, role, or profile specific?",
+}
+
+
+# C1 behavioral coverage expansion.
+#
+# A requirement is described by what it *does* (a value is displayed, an order
+# is defined, an identity is referenced), never by the product feature it names.
+# These signals are ordinary requirement-shape English so the same table works
+# for an ordering ticket, a reference-resolution ticket, and a configuration
+# ticket alike.  Product vocabulary stays in `_DIMENSION_KEYWORDS`, which only
+# decides whether supplied evidence already resolves a dimension.
+_EXPANSION_TRIGGER_SIGNALS: dict[CoverageExpansionTrigger, tuple[str, ...]] = {
+    CoverageExpansionTrigger.DISPLAYED_VALUE: (
+        "display",
+        "shown",
+        "show",
+        "listed",
+        "column",
+        "label",
+        "title",
+        "visible",
+    ),
+    CoverageExpansionTrigger.EXPORTED_VALUE: (
+        "export",
+        "download",
+        "report",
+        "generated file",
+        "csv",
+    ),
+    CoverageExpansionTrigger.ORDERING_RULE: (
+        "order",
+        "sort",
+        "sequence",
+        "position",
+        "hierarchy",
+    ),
+    CoverageExpansionTrigger.COMPARED_OR_FILTERED_VALUE: (
+        "filter",
+        "search",
+        "compare",
+        "match",
+        "group",
+    ),
+    CoverageExpansionTrigger.PERSISTED_VALUE: (
+        "persist",
+        "stored",
+        "saved",
+        "metadata",
+        "property",
+    ),
+    CoverageExpansionTrigger.RESOLVED_REFERENCE: (
+        "reference",
+        "referenced",
+        "resolve",
+        "resolved",
+        "reuse",
+        "reused",
+        "link",
+    ),
+    CoverageExpansionTrigger.IDENTITY_REFERENCE: (
+        "move",
+        "moved",
+        "rename",
+        "renamed",
+        "delete",
+        "deleted",
+        "path",
+    ),
+    CoverageExpansionTrigger.STATE_TRANSITION: (
+        "state",
+        "status",
+        "transition",
+        "enable",
+        "disable",
+    ),
+    CoverageExpansionTrigger.CONFIGURATION_DEPENDENCY: (
+        "configuration",
+        "setting",
+        "preset",
+        "profile",
+        "flag",
+    ),
+}
+
+_EXPANSION_TRIGGER_AXES: dict[
+    CoverageExpansionTrigger, tuple[CoverageExpansionAxis, ...]
+] = {
+    CoverageExpansionTrigger.DISPLAYED_VALUE: (
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+        CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+    ),
+    CoverageExpansionTrigger.EXPORTED_VALUE: (
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+    ),
+    CoverageExpansionTrigger.ORDERING_RULE: (
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
+        CoverageExpansionAxis.CONTEXT_AND_SCOPE,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+    ),
+    CoverageExpansionTrigger.COMPARED_OR_FILTERED_VALUE: (
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
+    ),
+    CoverageExpansionTrigger.PERSISTED_VALUE: (
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+    ),
+    CoverageExpansionTrigger.RESOLVED_REFERENCE: (
+        CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION,
+        CoverageExpansionAxis.CONTEXT_AND_SCOPE,
+        CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+    ),
+    CoverageExpansionTrigger.IDENTITY_REFERENCE: (
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+        CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION,
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
+    ),
+    CoverageExpansionTrigger.MULTIPLE_CONSUMER_SURFACES: (
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+    ),
+    CoverageExpansionTrigger.STATE_TRANSITION: (
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+    ),
+    CoverageExpansionTrigger.CONFIGURATION_DEPENDENCY: (
+        CoverageExpansionAxis.CONTEXT_AND_SCOPE,
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
+        CoverageExpansionAxis.VALUE_PROVENANCE,
+    ),
+}
+
+_EXPANSION_AXIS_DIMENSIONS: dict[
+    CoverageExpansionAxis, tuple[SemanticDimension, ...]
+] = {
+    CoverageExpansionAxis.VALUE_PROVENANCE: (SemanticDimension.VALUE_PROVENANCE,),
+    CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
+        SemanticDimension.FALLBACK,
+        SemanticDimension.ABSENT_VALUE,
+    ),
+    CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION: (
+        SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
+        SemanticDimension.REFERENCED_CONTENT,
+        SemanticDimension.NESTED_REFERENCED_CONTENT,
+    ),
+    # Physical identity change and ordinary lifecycle state are separate
+    # contracts: moving an asset is not the same product behavior as reordering
+    # an entry, so they are never collapsed into one dimension.
+    CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE: (
+        SemanticDimension.LIFECYCLE,
+        SemanticDimension.IDENTITY_CHANGE,
+    ),
+    CoverageExpansionAxis.CONTEXT_AND_SCOPE: (
+        SemanticDimension.PARENT_CONTEXT,
+        SemanticDimension.CHILD_CONTEXT,
+        SemanticDimension.HIERARCHY,
+    ),
+    CoverageExpansionAxis.CONSUMER_SURFACE_PARITY: (
+        SemanticDimension.CROSS_SURFACE_SYNC,
+        SemanticDimension.DIRECT_CONSUMERS,
+        SemanticDimension.SIBLING_CONSUMERS,
+        SemanticDimension.ALTERNATE_REPRESENTATION,
+    ),
+    CoverageExpansionAxis.MUTATION_AND_FRESHNESS: (
+        SemanticDimension.MUTATION_FRESHNESS,
+        SemanticDimension.CROSS_SURFACE_SYNC,
+    ),
+    CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION: (
+        SemanticDimension.BROKEN_RESOLUTION,
+        SemanticDimension.INVALID_VALUE,
+        SemanticDimension.NEGATIVE_STATE,
+    ),
+}
+
+_EXPANSION_AXIS_QUESTION: dict[CoverageExpansionAxis, str] = {
+    CoverageExpansionAxis.VALUE_PROVENANCE: (
+        "Where does the value shown for {subject} come from, and does every "
+        "supported way of setting it behave the same?"
+    ),
+    CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
+        "What is shown for {subject} when the expected value is missing or empty?"
+    ),
+    CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION: (
+        "Can the value for {subject} be supplied indirectly through referenced "
+        "or reused content, and is it resolved the same way?"
+    ),
+    CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE: (
+        "How does {subject} behave after the underlying item is added, moved, "
+        "renamed, reordered, or removed?"
+    ),
+    CoverageExpansionAxis.CONTEXT_AND_SCOPE: (
+        "Does the behavior of {subject} change with the surrounding context, "
+        "scope, or configuration it is used in?"
+    ),
+    CoverageExpansionAxis.CONSUMER_SURFACE_PARITY: (
+        "Do all supported surfaces present the same set, order, and resolved "
+        "value for {subject}?"
+    ),
+    CoverageExpansionAxis.MUTATION_AND_FRESHNESS: (
+        "Does {subject} stay up to date after its source value changes?"
+    ),
+    CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION: (
+        "What does {subject} show when the expected source or reference cannot "
+        "be resolved?"
+    ),
+}
+
+_EXPANSION_AXIS_RATIONALE: dict[CoverageExpansionAxis, str] = {
+    CoverageExpansionAxis.VALUE_PROVENANCE: (
+        "A named value is not atomic until every channel that can set it is known."
+    ),
+    CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
+        "Absence behavior is a separate product contract from the populated case."
+    ),
+    CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION: (
+        "An indirectly supplied value can reach the same surface through a "
+        "different resolution path."
+    ),
+    CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE: (
+        "Changing an item's identity or lifecycle state can regress behavior "
+        "that looked correct at creation time."
+    ),
+    CoverageExpansionAxis.CONTEXT_AND_SCOPE: (
+        "The same value can behave differently depending on the context it is "
+        "resolved in."
+    ),
+    CoverageExpansionAxis.CONSUMER_SURFACE_PARITY: (
+        "Every surface that presents the behavior can diverge from the others."
+    ),
+    CoverageExpansionAxis.MUTATION_AND_FRESHNESS: (
+        "A value that is correct once can go out of date after its source changes."
+    ),
+    CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION: (
+        "Broken and invalid inputs are a distinct contract from the positive path."
+    ),
+}
+
+
+# Each dependency kind is decided by exactly one discovery axis, so a record is
+# total by construction and an axis can never silently cover two dependencies.
+_DEPENDENCY_KIND_AXIS: dict[SemanticDependencyKind, CoverageExpansionAxis] = {
+    SemanticDependencyKind.PROVENANCE: CoverageExpansionAxis.VALUE_PROVENANCE,
+    SemanticDependencyKind.PRECEDENCE_AND_FALLBACK: (
+        CoverageExpansionAxis.FALLBACK_AND_ABSENCE
+    ),
+    SemanticDependencyKind.INDIRECTION_AND_RESOLUTION: (
+        CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION
+    ),
+    SemanticDependencyKind.CONTEXT_DEPENDENCY: (
+        CoverageExpansionAxis.CONTEXT_AND_SCOPE
+    ),
+    SemanticDependencyKind.IDENTITY: CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
+    SemanticDependencyKind.LIFECYCLE_MUTATION: (
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE
+    ),
+    SemanticDependencyKind.FRESHNESS_AND_STALENESS: (
+        CoverageExpansionAxis.MUTATION_AND_FRESHNESS
+    ),
+    SemanticDependencyKind.CONSUMER_PARITY: (
+        CoverageExpansionAxis.CONSUMER_SURFACE_PARITY
+    ),
+    SemanticDependencyKind.UNRESOLVED_OR_NEGATIVE_BRANCH: (
+        CoverageExpansionAxis.NEGATIVE_AND_BROKEN_RESOLUTION
+    ),
+}
+
+_DEPENDENCY_KIND_RESEARCH_REASON: dict[SemanticDependencyKind, str] = {
+    SemanticDependencyKind.PROVENANCE: (
+        "Discovery raised this dependency; the channels that can set the value "
+        "must be established from evidence before coverage decides it."
+    ),
+    SemanticDependencyKind.PRECEDENCE_AND_FALLBACK: (
+        "Discovery raised this dependency; the precedence order and the value "
+        "used when the preferred source is absent must be established."
+    ),
+    SemanticDependencyKind.INDIRECTION_AND_RESOLUTION: (
+        "Discovery raised this dependency; whether the value can arrive through "
+        "an indirect resolution path must be established."
+    ),
+    SemanticDependencyKind.CONTEXT_DEPENDENCY: (
+        "Discovery raised this dependency; whether the resolved value depends "
+        "on the context it is read in must be established."
+    ),
+    SemanticDependencyKind.IDENTITY: (
+        "Discovery raised this dependency; whether the behavior survives a "
+        "change to the underlying item's identity must be established."
+    ),
+    SemanticDependencyKind.LIFECYCLE_MUTATION: (
+        "Discovery raised this dependency; the lifecycle operations that can "
+        "change the stored state must be established."
+    ),
+    SemanticDependencyKind.FRESHNESS_AND_STALENESS: (
+        "Discovery raised this dependency; whether an out-of-date value can "
+        "survive an upstream change must be established."
+    ),
+    SemanticDependencyKind.CONSUMER_PARITY: (
+        "Discovery raised this dependency; whether every consuming surface "
+        "reports the same behavior must be established."
+    ),
+    SemanticDependencyKind.UNRESOLVED_OR_NEGATIVE_BRANCH: (
+        "Discovery raised this dependency; the behavior when the value is "
+        "invalid or cannot be resolved must be established."
+    ),
+}
+
+_DEPENDENCY_KIND_NOT_APPLICABLE_REASON: dict[SemanticDependencyKind, str] = {
+    SemanticDependencyKind.PROVENANCE: (
+        "No evidence describes this subject carrying a value that is displayed, "
+        "exported, ordered, compared or persisted, so it has no provenance to "
+        "disposition."
+    ),
+    SemanticDependencyKind.PRECEDENCE_AND_FALLBACK: (
+        "No evidence describes a preferred source that can be absent for this "
+        "subject, so no precedence or fallback rule applies."
+    ),
+    SemanticDependencyKind.INDIRECTION_AND_RESOLUTION: (
+        "No evidence describes this subject resolving a reference, so there is "
+        "no indirect resolution path to disposition."
+    ),
+    SemanticDependencyKind.CONTEXT_DEPENDENCY: (
+        "No evidence describes this subject being read in more than one "
+        "context or scope, so context cannot change its behavior."
+    ),
+    SemanticDependencyKind.IDENTITY: (
+        "No evidence describes this subject referencing an item by identity, "
+        "so an identity change cannot affect it."
+    ),
+    SemanticDependencyKind.LIFECYCLE_MUTATION: (
+        "No evidence describes a lifecycle operation acting on this subject's "
+        "stored state, so no lifecycle mutation applies."
+    ),
+    SemanticDependencyKind.FRESHNESS_AND_STALENESS: (
+        "No evidence describes this subject reading a value that another "
+        "source can change afterwards, so it cannot go stale."
+    ),
+    SemanticDependencyKind.CONSUMER_PARITY: (
+        "Evidence describes a single consuming surface for this subject, so "
+        "there is no second surface that can diverge."
+    ),
+    SemanticDependencyKind.UNRESOLVED_OR_NEGATIVE_BRANCH: (
+        "No evidence describes this subject accepting an input that can be "
+        "invalid or unresolvable, so it has no negative branch."
+    ),
 }
 
 
@@ -1202,6 +2673,46 @@ def _flatten_strings(value: Any, path: str = "$") -> list[tuple[str, str]]:
         if text:
             rows.append((path, text))
     return rows
+
+
+_MAX_CODE_ENTITY_CHARS = 120
+_CODE_FILE_SUFFIX_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,9}$")
+_CODE_SYMBOL_RE = re.compile(
+    r"^[A-Za-z_$][A-Za-z0-9_$]*(?:[.:#][A-Za-z_$][A-Za-z0-9_$]*)*$"
+)
+_CAMEL_HUMP_RE = re.compile(r"[a-z0-9][A-Z]")
+_NON_PATH_CHARS = frozenset("\"'`{}()[];,=<>|*?")
+
+
+def _is_code_entity_literal(value: str) -> bool:
+    """Return True when a literal names a file or code symbol rather than prose.
+
+    Implementation evidence nests snippets, matched source lines, and test
+    titles beneath keys such as ``matches`` or ``file``.  ``_flatten_strings``
+    propagates an ancestor key into every descendant path, so an admitting path
+    says nothing about the leaf itself.  A changed *entity* is therefore
+    identified by the shape of its own value.
+    """
+
+    text = value.strip()
+    if not text or len(text) > _MAX_CODE_ENTITY_CHARS:
+        return False
+    if any(char in text for char in "\r\n\t"):
+        return False
+
+    if "/" in text or "\\" in text:
+        if _NON_PATH_CHARS & set(text):
+            return False
+        tail = re.split(r"[\\/]", text)[-1].strip()
+        return bool(tail) and bool(_CODE_FILE_SUFFIX_RE.search(tail))
+
+    if not _CODE_SYMBOL_RE.match(text):
+        return False
+    if any(separator in text for separator in "._:#$"):
+        return True
+    # A bare single token is only an entity when its own casing or digits mark
+    # it as an identifier; otherwise it is an ordinary word such as "model".
+    return bool(_CAMEL_HUMP_RE.search(text)) or any(char.isdigit() for char in text)
 
 
 def _words(value: str) -> set[str]:
@@ -1564,6 +3075,78 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
     )
 
 
+# Terminology facts exist to clarify the TICKET AUTHOR's words.  Retrieved
+# documentation, specs, code, diffs, and automation text are evidence, not a
+# human asking anything - quoted sentences inside them must never become
+# "human term" clarification questions.
+_TICKET_UNDERSTANDING_AUTHORITIES = frozenset(
+    {
+        AuthorityClass.CUSTOMER_REQUEST,
+        AuthorityClass.USER_EXPECTATION,
+        AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
+        AuthorityClass.CONFIRMED_PRODUCT_DECISION,
+    }
+)
+
+_NON_HUMAN_TERMINOLOGY_SOURCES = frozenset(
+    {
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+        EvidenceSourceType.DITA_SPECIFICATION,
+        EvidenceSourceType.DITA_OT_DOCUMENTATION,
+        EvidenceSourceType.AEM_ASSETS_PLATFORM_DOCUMENTATION,
+        EvidenceSourceType.CURRENT_CODE,
+        EvidenceSourceType.CURRENT_PR,
+        EvidenceSourceType.EXISTING_AUTOMATION,
+        EvidenceSourceType.HISTORICAL_JIRA,
+        EvidenceSourceType.EVIDENCE_GRAPH_LEAF,
+        EvidenceSourceType.MODEL_INFERENCE,
+        EvidenceSourceType.IMPLEMENTATION_DIFF,
+        EvidenceSourceType.CODE_DIFF,
+        EvidenceSourceType.BENCHMARK_PUBLIC_INPUT,
+        EvidenceSourceType.CODEX_MANIFEST,
+        EvidenceSourceType.UNKNOWN,
+    }
+)
+
+_TERMINOLOGY_FACT_TYPES = frozenset(
+    {
+        ContractFactType.HUMAN_TERMINOLOGY,
+        ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+    }
+)
+
+
+# D1-a: a requested capability is still a requirement when the reporter phrases
+# it politely as a question ("Could we add a where-used for each topic?").
+# Classifying it as a human open question on the strength of the "?" alone
+# removes a requested product capability from the acceptance contract entirely.
+# These ask the PRODUCT to do something; a genuine open question asks the TEAM
+# to decide something.
+_REQUESTED_CAPABILITY_QUESTION_RE = re.compile(
+    r"\b(?:"
+    r"(?:could|can|would|will|may)\s+(?:we|you|it|the\s+\w+)\s+"
+    r"(?:also\s+)?(?:please\s+)?"
+    r"(?:add|have|support|provide|include|show|display|expose|allow|enable|get)"
+    r"|is\s+it\s+possible\s+to"
+    r"|would\s+it\s+be\s+possible\s+to"
+    r"|any\s+(?:chance|plan|plans)\s+(?:of|to|for)"
+    r"|how\s+about\s+(?:adding|having|supporting)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_requested_capability(literal: str) -> bool:
+    """True when a '?' sentence asks the product for a capability.
+
+    Such a literal keeps its requirement character: it stays in the acceptance
+    lane (as a bounded TBD when its semantics are unresolved) instead of being
+    diverted to the human-open-question lane by punctuation alone.
+    """
+
+    return bool(_REQUESTED_CAPABILITY_QUESTION_RE.search(literal or ""))
+
+
 def _fact_types(path: str, literal: str) -> list[ContractFactType]:
     key = path.casefold()
     text = literal.casefold()
@@ -1621,6 +3204,23 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
     for fact_type, signals in mappings:
         if any(signal in combined for signal in signals):
             found.append(fact_type)
+    # D1-a: a "?" alone must not convert a requested product capability into a
+    # human open question.  The explicit open-question path keys (and an
+    # explicit design question) still classify; bare punctuation does not.
+    if (
+        ContractFactType.HUMAN_OPEN_QUESTIONS in found
+        and _is_requested_capability(literal)
+        and not any(
+            signal in combined for signal in ("open_question", "open question")
+        )
+    ):
+        found = [
+            fact_type
+            for fact_type in found
+            if fact_type != ContractFactType.HUMAN_OPEN_QUESTIONS
+        ]
+        if ContractFactType.DIRECT_EXPECTED_BEHAVIOR not in found:
+            found.append(ContractFactType.DIRECT_EXPECTED_BEHAVIOR)
     if re.search(r"(?:\b\d+(?:\.\d+)?\b|#[0-9a-f]{3,8}\b)", literal, re.IGNORECASE):
         found.append(ContractFactType.EXACT_VALUES)
     if re.search(r"['\"“”][^'\"“”]{2,80}['\"“”]", literal):
@@ -1840,6 +3440,16 @@ def _subject_for_dimension(dimension: SemanticDimension) -> AuthoritySubject:
         SemanticDimension.SIBLING_CONSUMERS,
         SemanticDimension.DOWNSTREAM_PROCESSOR,
         SemanticDimension.PERSISTED_STATE,
+        # C1: how a value is actually produced, resolved, re-resolved, kept
+        # fresh, or left dangling is established by reading the implementation,
+        # not by asking for a product decision.  Without these entries the
+        # dimensions fall through to the PRODUCT_CONTRACT default below and
+        # their mandatory research misroutes to documentation.
+        SemanticDimension.VALUE_PROVENANCE,
+        SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
+        SemanticDimension.BROKEN_RESOLUTION,
+        SemanticDimension.IDENTITY_CHANGE,
+        SemanticDimension.MUTATION_FRESHNESS,
     }:
         return AuthoritySubject.ACTUAL_IMPLEMENTATION
     return AuthoritySubject.PRODUCT_CONTRACT
@@ -2447,6 +4057,14 @@ class CanonicalTestPlanReasoningService:
                         # an authoritative fact with empty literal fails ContractIntegrityGate
                         # and hard-blocks the whole plan (no output). Skip it here.
                         continue
+                    if _RETRIEVAL_BOILERPLATE_RE.search(literal):
+                        # Corpus retrieval-metadata boilerplate ("Learning retrieval
+                        # profile for ...", "Use this for QA/test-plan retrieval
+                        # when ...", "High-signal topics and headings: ...") is text
+                        # synthesized to make a chunk findable.  It is not a product
+                        # statement and must never be presented to a reader as
+                        # configuration, scope, or coverage evidence.
+                        continue
                     if _is_contract_metadata(path, literal):
                         continue
                     if _is_structural_noise_literal(literal):
@@ -2472,6 +4090,20 @@ class CanonicalTestPlanReasoningService:
                     if len(literal) > 2000:
                         literal = literal[:2000]
                     fact_types = _fact_types(path, literal)
+                    if record.source_type in _NON_HUMAN_TERMINOLOGY_SOURCES:
+                        fact_types = [
+                            fact_type
+                            for fact_type in fact_types
+                            if fact_type not in _TERMINOLOGY_FACT_TYPES
+                            # Retrieved documentation/spec/code is research
+                            # evidence; its sentences are never the ticket's
+                            # own expected behavior or narrative context.
+                            and fact_type
+                            not in {
+                                ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                                ContractFactType.CONTEXT_STATEMENT,
+                            }
+                        ]
                     if (
                         record.source_type
                         in {
@@ -2640,7 +4272,24 @@ class CanonicalTestPlanReasoningService:
         clarifications: list[dict[str, Any]] | None = None,
     ) -> ScopeResolution:
         by_type: dict[ContractFactType, list[ContractFact]] = defaultdict(list)
+        # Scope is a TICKET decision, never a documentation statement.  Retrieved
+        # product documentation legitimately says things like "Applies to folders
+        # under Experience Manager DAM"; that sentence describes the doc's own
+        # subject, not this ticket's scope.  Admitting it made an unrelated
+        # Experience League page define in-scope/deployment for the run.  Docs
+        # still establish existing behavior everywhere else - they just cannot
+        # declare what this ticket covers.
+        _SCOPE_DEFINING_TYPES = {
+            ContractFactType.IN_SCOPE,
+            ContractFactType.OUT_OF_SCOPE,
+            ContractFactType.DEPLOYMENT_MODE,
+        }
         for fact in facts.facts:
+            if (
+                fact.fact_type in _SCOPE_DEFINING_TYPES
+                and fact.authority_class not in _TICKET_UNDERSTANDING_AUTHORITIES
+            ):
+                continue
             by_type[fact.fact_type].append(fact)
         publishing = any(row.domain == IssueDomain.PUBLISHING for row in domains)
         active_domains = {row.domain for row in domains}
@@ -2906,9 +4555,18 @@ class CanonicalTestPlanReasoningService:
                     token in path.casefold() for token in ("match", "file", "source")
                 ):
                     continue
+                resolved_kind = kind or ChangeSurfaceKind.CHANGED_ENTITY
+                if (
+                    resolved_kind == ChangeSurfaceKind.CHANGED_ENTITY
+                    and not _is_code_entity_literal(literal)
+                ):
+                    # Snippets, matched lines, and test titles inherit an
+                    # admitting path from their parent key.  Admitting them as
+                    # entities floods directed retrieval with non-entity terms.
+                    continue
                 surfaces.append(
                     ChangeSurface(
-                        kind=kind or ChangeSurfaceKind.CHANGED_ENTITY,
+                        kind=resolved_kind,
                         entity=literal[:500],
                         source_evidence_ids=[record.evidence_id],
                         confidence=record.evidence_confidence,
@@ -3250,6 +4908,153 @@ class CanonicalTestPlanReasoningService:
             lifecycle_operations=lifecycle,
         )
 
+    def expand_behavioral_coverage(
+        self,
+        model: CanonicalBehaviorModel,
+        surfaces: list[ChangeSurface],
+        facts: ContractFactSet,
+    ) -> BehavioralCoverageExpansion:
+        """Widen *discovery* to the behaviors that depend on the stated ask.
+
+        The literal requirement is never the whole product contract: a named
+        field is not atomic until its provenance, absence, indirect resolution,
+        identity changes, contexts and consumer surfaces have been considered.
+        This stage derives those dependent behaviors from requirement shape
+        alone, so the same reasoning applies to any feature family.
+
+        Discovery is not acceptance.  Nothing here promotes an acceptance
+        criterion; it only makes a dependent behavior material so the existing
+        closure, research and promotion pipeline must dispose of it explicitly.
+        """
+
+        entities = list(dict.fromkeys(row.entity for row in surfaces))[:12]
+        units = _semantic_text_units(
+            [
+                fact.literal
+                for fact in facts.facts
+                if fact.fact_type != ContractFactType.OUT_OF_SCOPE
+            ]
+            + entities
+            + list(model.primary_entities or [])
+        )
+        triggers: set[CoverageExpansionTrigger] = {
+            trigger
+            for trigger, signals in _EXPANSION_TRIGGER_SIGNALS.items()
+            if _units_contain_any(units, signals)
+        }
+        consumer_surfaces = {
+            row.entity
+            for row in surfaces
+            if row.kind
+            in {
+                ChangeSurfaceKind.CONSUMERS,
+                ChangeSurfaceKind.DOWNSTREAM_DECISION_CONSUMERS,
+            }
+        }
+        # Two independent readings of the same behavior can diverge, whether the
+        # second surface is declared structurally or implied by the requirement
+        # describing both a displayed and an exported form of one value.
+        if len(consumer_surfaces) > 1 or {
+            CoverageExpansionTrigger.DISPLAYED_VALUE,
+            CoverageExpansionTrigger.EXPORTED_VALUE,
+        } <= triggers:
+            triggers.add(CoverageExpansionTrigger.MULTIPLE_CONSUMER_SURFACES)
+
+        subjects = list(dict.fromkeys((model.primary_entities or []) + entities))[:4]
+        if not subjects:
+            subjects = ["the requested behavior"]
+
+        axis_triggers: dict[CoverageExpansionAxis, CoverageExpansionTrigger] = {}
+        for trigger in sorted(triggers, key=lambda row: row.value):
+            for axis in _EXPANSION_TRIGGER_AXES[trigger]:
+                axis_triggers.setdefault(axis, trigger)
+
+        candidates: list[BehavioralCoverageCandidate] = []
+        for axis, trigger in sorted(
+            axis_triggers.items(), key=lambda item: item[0].value
+        ):
+            for subject in subjects:
+                candidates.append(
+                    BehavioralCoverageCandidate(
+                        axis=axis,
+                        subject=subject,
+                        trigger=trigger,
+                        dimensions=list(_EXPANSION_AXIS_DIMENSIONS[axis]),
+                        question=_EXPANSION_AXIS_QUESTION[axis].format(subject=subject),
+                        rationale=_EXPANSION_AXIS_RATIONALE[axis],
+                    )
+                )
+        return BehavioralCoverageExpansion(
+            candidates=candidates,
+            triggers=sorted(triggers, key=lambda row: row.value),
+            dependency_records=self._record_semantic_dependencies(
+                candidates, activated_axes=set(axis_triggers)
+            ),
+        )
+
+    def _record_semantic_dependencies(
+        self,
+        candidates: list[BehavioralCoverageCandidate],
+        *,
+        activated_axes: set[CoverageExpansionAxis],
+    ) -> list[SemanticDependencyRecord]:
+        """Give every material subject an explicit, total dependency record.
+
+        Completeness here means *decided*, not *covered*: a dependency whose
+        axis evidence never fired is recorded ``NOT_APPLICABLE`` with the
+        concrete reason, and a dependency discovery did raise is recorded
+        ``RESEARCH_REQUIRED`` and handed to the existing question/research
+        pipeline.  Nothing is promoted, and no dependency can be dropped by
+        staying silent.
+        """
+
+        by_subject: dict[str, list[BehavioralCoverageCandidate]] = defaultdict(list)
+        for candidate in candidates:
+            if candidate.material:
+                by_subject[candidate.subject].append(candidate)
+
+        records: list[SemanticDependencyRecord] = []
+        for subject, subject_candidates in sorted(by_subject.items()):
+            candidates_by_axis: dict[
+                CoverageExpansionAxis, list[BehavioralCoverageCandidate]
+            ] = defaultdict(list)
+            for candidate in subject_candidates:
+                candidates_by_axis[candidate.axis].append(candidate)
+
+            slots: list[SemanticDependencySlot] = []
+            for kind in SemanticDependencyKind:
+                axis = _DEPENDENCY_KIND_AXIS[kind]
+                matched = candidates_by_axis.get(axis, [])
+                if matched:
+                    slots.append(
+                        SemanticDependencySlot(
+                            kind=kind,
+                            disposition=(
+                                CoverageExpansionDisposition.RESEARCH_REQUIRED
+                            ),
+                            reason=_DEPENDENCY_KIND_RESEARCH_REASON[kind],
+                            dimensions=sorted(
+                                {
+                                    dimension
+                                    for candidate in matched
+                                    for dimension in candidate.dimensions
+                                },
+                                key=lambda row: row.value,
+                            ),
+                            candidate_ids=[row.candidate_id for row in matched],
+                        )
+                    )
+                    continue
+                slots.append(
+                    SemanticDependencySlot(
+                        kind=kind,
+                        disposition=CoverageExpansionDisposition.NOT_APPLICABLE,
+                        reason=_DEPENDENCY_KIND_NOT_APPLICABLE_REASON[kind],
+                    )
+                )
+            records.append(SemanticDependencyRecord(subject=subject, slots=slots))
+        return records
+
     def explore_semantic_closure(
         self,
         bundle: CanonicalEvidenceBundle,
@@ -3257,11 +5062,14 @@ class CanonicalTestPlanReasoningService:
         signals: list[AbstractSignal] | None = None,
         activations: list[ReasoningPatternActivation] | None = None,
         mandatory_families: list[MandatoryInvestigationFamily] | None = None,
+        expansion: BehavioralCoverageExpansion | None = None,
     ) -> list[ClosureDimensionResult]:
         signals = signals or []
         activations = activations or []
         mandatory_families = mandatory_families or []
-        applicable = self.applicable_semantic_dimensions(bundle, model)
+        applicable = self.applicable_semantic_dimensions(
+            bundle, model, expansion=expansion
+        )
         applicable.update(
             row.family_id
             for row in mandatory_families
@@ -3347,6 +5155,7 @@ class CanonicalTestPlanReasoningService:
         self,
         bundle: CanonicalEvidenceBundle,
         model: CanonicalBehaviorModel,
+        expansion: BehavioralCoverageExpansion | None = None,
     ) -> set[SemanticDimension]:
         """Return the existing deterministic domain/model family set."""
 
@@ -3417,6 +5226,10 @@ class CanonicalTestPlanReasoningService:
                     SemanticDimension.PERSISTED_STATE,
                 }
             )
+        if expansion is not None:
+            # Behavioral coverage expansion only widens what must be decided.
+            # It never marks a dimension covered and never promotes anything.
+            applicable.update(expansion.activated_dimensions)
         return applicable
 
     def generate_missing_questions(
@@ -3425,6 +5238,7 @@ class CanonicalTestPlanReasoningService:
         scope: ScopeResolution,
         facts: ContractFactSet,
         investigation: QeInvestigationPreparation | None = None,
+        bundle: CanonicalEvidenceBundle | None = None,
     ) -> list[MissingQuestion]:
         questions: list[MissingQuestion] = []
         families = {
@@ -3452,11 +5266,24 @@ class CanonicalTestPlanReasoningService:
             # never reach human question text.  When every entity is raw, the
             # question is projected to its typed behavior dimension; the raw
             # evidence stays in the trace via source_closure_ids.
-            entity_text = (
-                ", ".join(clean_entities)
-                if clean_entities
-                else "the affected behavior"
-            )
+            #
+            # #51: the per-entity check is not enough - joining many
+            # individually clean tokens reconstitutes a comma dump
+            # ("skip_feature_if_flag, before_feature, 2688, ...").  More than
+            # two joined entities is an enumeration dump, so the question
+            # names the typed behavior dimension instead; the final question
+            # text is re-validated as a fail-safe either way.
+            if len(clean_entities) > 2:
+                entity_text = "the affected behavior"
+            elif clean_entities:
+                entity_text = ", ".join(clean_entities)
+            else:
+                entity_text = "the affected behavior"
+            question_text = _QUESTION_TEXT[dimension].format(entity=entity_text)
+            if not _human_question_safe(question_text):
+                question_text = _QUESTION_TEXT[dimension].format(
+                    entity="the affected behavior"
+                )
             family = families.get(dimension)
             target_sources = list(_target_sources(subject))
             if family is not None:
@@ -3465,7 +5292,7 @@ class CanonicalTestPlanReasoningService:
                         target_sources.append(source)
             questions.append(
                 MissingQuestion(
-                    question=_QUESTION_TEXT[dimension].format(entity=entity_text),
+                    question=question_text,
                     dimension=dimension,
                     authority_subject=subject,
                     target_source_types=target_sources,
@@ -3558,6 +5385,38 @@ class CanonicalTestPlanReasoningService:
             if fact.fact_type == ContractFactType.PROBLEM_STATEMENT
             and fact.authoritative
         ]
+        # The gap anchor is the ticket's own problem statement, chosen
+        # deterministically: description/current-ticket sources before
+        # comments before attachments before anything else, then fact id.
+        # Extraction order must never pick the anchor (run-to-run identity
+        # stability), and a quoted implementation step inside a comment is
+        # not the customer problem.
+        _ANCHOR_SOURCE_RANK = {
+            EvidenceSourceType.JIRA_DESCRIPTION: 0,
+            EvidenceSourceType.CURRENT_JIRA: 0,
+            EvidenceSourceType.CUSTOMER_REQUEST: 0,
+            EvidenceSourceType.BUSINESS_IMPACT: 0,
+            EvidenceSourceType.JIRA_COMMENT: 2,
+            EvidenceSourceType.LINKED_JIRA: 2,
+            EvidenceSourceType.JIRA_ATTACHMENT: 3,
+            EvidenceSourceType.SCREENSHOT_REPRODUCTION: 3,
+        }
+        if bundle is not None and problem_facts:
+            record_type_by_id = {
+                record.evidence_id: record.source_type
+                for record in bundle.records
+            }
+
+            def _anchor_rank(fact) -> tuple[int, str]:
+                ranks = [
+                    _ANCHOR_SOURCE_RANK.get(
+                        record_type_by_id.get(evidence_id), 1
+                    )
+                    for evidence_id in fact.source_evidence_ids
+                ]
+                return (min(ranks, default=1), fact.fact_id)
+
+            problem_facts = sorted(problem_facts, key=_anchor_rank)
         if (
             problem_facts
             and facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT
@@ -3571,10 +5430,34 @@ class CanonicalTestPlanReasoningService:
                 AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
                 AuthorityClass.SPECIFICATION_AUTHORITY,
             }
+            # A retrieved documentation/spec record carries specification-grade
+            # authority for WHAT IT DOCUMENTS, but it is not the ticket's
+            # answer: only facts sourced from the ticket's own accepted
+            # records (accepted UAC / product or engineering decision) may
+            # establish that the reported gap is already addressed.
+            accepted_evidence_ids: set[str] | None = None
+            if bundle is not None:
+                accepted_evidence_ids = {
+                    record.evidence_id
+                    for record in bundle.records
+                    if record.source_type
+                    in {
+                        EvidenceSourceType.ACCEPTED_UAC,
+                        EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+                        EvidenceSourceType.PRODUCT_DECISION,
+                        EvidenceSourceType.ENGINEERING_DECISION,
+                    }
+                }
             solution_established = any(
                 fact.authority_class in solution_authorities
                 and fact.fact_type != ContractFactType.PROBLEM_STATEMENT
                 and not _content_tokens(fact.literal) <= problem_tokens
+                and (
+                    accepted_evidence_ids is None
+                    or bool(
+                        set(fact.source_evidence_ids) & accepted_evidence_ids
+                    )
+                )
                 for fact in facts.facts
             )
             if not solution_established:
@@ -4393,11 +6276,19 @@ class CanonicalTestPlanReasoningService:
         questions: list[MissingQuestion],
         research_records: list[QuestionResearchRecord] | None = None,
         clarified_question_ids: set[str] | None = None,
+        worker_results: list | None = None,
     ) -> list[CoverageDispositionRecord]:
         clarified_question_ids = clarified_question_ids or set()
         research_by_question = {
             row.question_id: row for row in research_records or []
         }
+        # Decision semantics: a blocking question whose admitted research
+        # established the customer-stated desired behavior no longer blocks
+        # the established portion - it grounds a PROPOSED candidate and only
+        # its residual acceptance-changing decision stays a bounded TBD.
+        desired_resolved_ids = research_resolved_question_ids(
+            questions, research_records, worker_results or []
+        )
         rows: list[CoverageDispositionRecord] = []
         out_scope_values = [_scope_clause_value(value) for value in scope.out_of_scope]
         for fact in facts.facts:
@@ -4557,7 +6448,10 @@ class CanonicalTestPlanReasoningService:
                     # bounded ACCEPTANCE_TBD, not a generic open question.
                     if any(
                         _acceptance_tbd_eligible(
-                            row, research_by_question, clarified_question_ids
+                            row,
+                            research_by_question,
+                            clarified_question_ids,
+                            desired_resolved_ids,
                         )
                         for row in related_questions
                     ):
@@ -4568,7 +6462,10 @@ class CanonicalTestPlanReasoningService:
                         rationale = research_override
             elif disposition == CoverageDisposition.OPEN_QUESTION and any(
                 _acceptance_tbd_eligible(
-                    row, research_by_question, clarified_question_ids
+                    row,
+                    research_by_question,
+                    clarified_question_ids,
+                    desired_resolved_ids,
                 )
                 for row in related_questions
             ):
@@ -4692,7 +6589,10 @@ class CanonicalTestPlanReasoningService:
                 )
                 if research_override is not None:
                     if _acceptance_tbd_eligible(
-                        question, research_by_question, clarified_question_ids
+                        question,
+                        research_by_question,
+                        clarified_question_ids,
+                        desired_resolved_ids,
                     ):
                         disposition = CoverageDisposition.ACCEPTANCE_TBD
                     else:
@@ -4702,7 +6602,10 @@ class CanonicalTestPlanReasoningService:
                 disposition == CoverageDisposition.OPEN_QUESTION
                 and question is not None
                 and _acceptance_tbd_eligible(
-                    question, research_by_question, clarified_question_ids
+                    question,
+                    research_by_question,
+                    clarified_question_ids,
+                    desired_resolved_ids,
                 )
             ):
                 # P3: an already-open row for a blocking product decision with
@@ -4714,6 +6617,52 @@ class CanonicalTestPlanReasoningService:
                     "mandatory research terminated; the missing value is "
                     "never invented."
                 )
+            if (
+                disposition == CoverageDisposition.OPEN_QUESTION
+                and question is not None
+                and question.question_id in desired_resolved_ids
+            ):
+                # Decision semantics: admitted research established this
+                # question's acceptance-bearing core - the customer's stated
+                # desired behavior.  The hypothesis is answered by it, so its
+                # one terminal disposition is the PROPOSED candidate, not an
+                # open question.  Only the residual acceptance-changing
+                # decision (carried by the convergence record) may stay a
+                # bounded TBD.
+                established = _establishing_acceptance_claims(
+                    question,
+                    research_by_question,
+                    worker_results or [],
+                    limit=1,
+                )
+                if established:
+                    proposed_text, refs, proposed_rationale = established[0]
+                    p_class, p_priority, p_impact = _derive_c1(
+                        CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                        has_direct_evidence=True,
+                    )
+                    rows.append(
+                        CoverageDispositionRecord(
+                            candidate=proposed_text,
+                            disposition=(
+                                CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                            ),
+                            source_question_ids=[question.question_id],
+                            source_hypothesis_ids=[hypothesis.hypothesis_id],
+                            source_fact_ids=list(question.source_fact_ids),
+                            evidence_ids=[
+                                ref for ref in refs if str(ref).strip()
+                            ],
+                            rationale=proposed_rationale,
+                            coverage_class=p_class,
+                            priority=p_priority,
+                            acceptance_impact=p_impact,
+                            contract_type="POSITIVE",
+                            applicability="APPLICABLE",
+                            research_derived=True,
+                        )
+                    )
+                    continue
             c1_class, c1_priority, c1_impact = _derive_c1(
                 disposition,
                 has_direct_evidence=hypothesis.state == HypothesisState.CONFIRMED,
@@ -4753,8 +6702,95 @@ class CanonicalTestPlanReasoningService:
         for question in questions:
             if question.question_id in linked_question_ids:
                 continue
+            if question.question_id in desired_resolved_ids:
+                # Decision semantics: research established this blocking
+                # question's acceptance-bearing core - the customer's stated
+                # desired behavior.  That established portion grounds a
+                # PROPOSED candidate (never Confirmed); any residual
+                # acceptance-changing decision stays visible through the
+                # convergence record's bounded TBD.
+                established = _establishing_acceptance_claims(
+                    question,
+                    research_by_question,
+                    worker_results or [],
+                    limit=2,
+                )
+                for proposed_text, refs, proposed_rationale in established:
+                    candidate = proposed_text
+                    if len(candidate) > 400:
+                        candidate = (
+                            candidate[:400].rsplit(" ", 1)[0].rstrip() + "."
+                        )
+                    c1_class, c1_priority, c1_impact = _derive_c1(
+                        CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                        has_direct_evidence=True,
+                    )
+                    rows.append(
+                        CoverageDispositionRecord(
+                            candidate=candidate,
+                            disposition=(
+                                CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                            ),
+                            source_question_ids=[question.question_id],
+                            source_fact_ids=list(question.source_fact_ids),
+                            evidence_ids=[
+                                ref for ref in refs if str(ref).strip()
+                            ],
+                            rationale=proposed_rationale,
+                            coverage_class=c1_class,
+                            priority=c1_priority,
+                            acceptance_impact=c1_impact,
+                            contract_type="POSITIVE",
+                            applicability="APPLICABLE",
+                            research_derived=True,
+                        )
+                    )
+                if established:
+                    continue
+                # Every establishing claim normalized away (for example a
+                # documentation finding that stayed meta prose).  Falling
+                # through keeps the question in the acceptance lane as a
+                # bounded TBD rather than dropping it from coverage entirely.
+            # Documented existing behavior relevant to this question grounds a
+            # PROPOSED baseline candidate so documentation research reaches
+            # the acceptance lane instead of being dropped.  These rows are
+            # additive: the question is NOT resolved by them, so its bounded
+            # TBD is still emitted below and the product decision stays open.
+            for baseline_text, baseline_refs in documented_baseline_claims(
+                question,
+                research_by_question,
+                worker_results or [],
+                limit=2,
+            ):
+                b_class, b_priority, b_impact = _derive_c1(
+                    CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                    has_direct_evidence=True,
+                )
+                rows.append(
+                    CoverageDispositionRecord(
+                        candidate=baseline_text,
+                        disposition=(
+                            CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                        ),
+                        source_question_ids=[question.question_id],
+                        source_fact_ids=list(question.source_fact_ids),
+                        evidence_ids=[
+                            ref for ref in baseline_refs if str(ref).strip()
+                        ],
+                        rationale=_EXISTING_PROPOSED_RATIONALE,
+                        coverage_class=b_class,
+                        priority=b_priority,
+                        acceptance_impact=b_impact,
+                        contract_type="POSITIVE",
+                        applicability="APPLICABLE",
+                        research_derived=True,
+                    )
+                )
             if not _acceptance_tbd_eligible(
-                question, research_by_question, clarified_question_ids
+                question,
+                research_by_question,
+                clarified_question_ids,
+                desired_resolved_ids,
             ):
                 continue
             c1_class, c1_priority, c1_impact = _derive_c1(
@@ -4779,6 +6815,53 @@ class CanonicalTestPlanReasoningService:
                     applicability="APPLICABLE",
                 )
             )
+        # Admitted documentation research must reach the acceptance lane even
+        # when its question already carries hypothesis/closure linkage.  The
+        # baseline emission above lives inside the P3 unlinked-question loop,
+        # so a question that documentation research actually ANSWERED was
+        # skipped by the `linked_question_ids` guard and its documented
+        # behavior - the columns, filters, sort and download scoping a tester
+        # must re-verify - never became coverage.  This pass is additive and
+        # deduplicated by candidate text: it resolves nothing and changes no
+        # existing row's disposition.
+        already_covered = {
+            _normalize_candidate_key(row.candidate) for row in rows
+        }
+        for question in questions:
+            for baseline_text, baseline_refs in documented_baseline_claims(
+                question,
+                research_by_question,
+                worker_results or [],
+                limit=6,
+            ):
+                key = _normalize_candidate_key(baseline_text)
+                if key in already_covered:
+                    continue
+                already_covered.add(key)
+                b_class, b_priority, b_impact = _derive_c1(
+                    CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                    has_direct_evidence=True,
+                )
+                rows.append(
+                    CoverageDispositionRecord(
+                        candidate=baseline_text,
+                        disposition=(
+                            CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                        ),
+                        source_question_ids=[question.question_id],
+                        source_fact_ids=list(question.source_fact_ids),
+                        evidence_ids=[
+                            ref for ref in baseline_refs if str(ref).strip()
+                        ],
+                        rationale=_EXISTING_PROPOSED_RATIONALE,
+                        coverage_class=b_class,
+                        priority=b_priority,
+                        acceptance_impact=b_impact,
+                        contract_type="POSITIVE",
+                        applicability="APPLICABLE",
+                        research_derived=True,
+                    )
+                )
         return sorted(
             {row.disposition_id: row for row in rows}.values(),
             key=lambda row: row.disposition_id,
@@ -4823,6 +6906,23 @@ class CanonicalTestPlanReasoningService:
                 for row in linked
                 if row.source_type in _EXISTING_BEHAVIOR_SOURCES
             )
+            # A documented-baseline row is grounded by an admitted
+            # DOC_RESEARCHER EXISTING_BEHAVIOR finding, whose source_refs are
+            # documentation slugs (`doc:<slug>`) rather than bundle evidence
+            # ids, so they never resolve through `records_by_id`.  Without
+            # this, documentation that genuinely establishes current product
+            # behavior would classify UNKNOWN and could never ground the
+            # baseline the ticket preserves or changes.
+            if (
+                not existing_ids
+                and disposition.research_derived
+                and disposition.rationale == _EXISTING_PROPOSED_RATIONALE
+            ):
+                existing_ids = sorted(
+                    str(ref)
+                    for ref in disposition.evidence_ids
+                    if str(ref).startswith("doc:")
+                )
             requested_ids = sorted(
                 row.evidence_id
                 for row in linked
@@ -4906,8 +7006,7 @@ class CanonicalTestPlanReasoningService:
             row.question_id
             for row in questions
             if row.blocking and row.question_id not in resolved_question_ids
-        ]
-        # P3: claim-level dependency.  A candidate is blocked only by
+        ]        # P3: claim-level dependency.  A candidate is blocked only by
         # unresolved blocking questions actually linked to its source coverage
         # dispositions; independent sufficiently-established claims must not
         # inherit ticket-wide blocking.  The disposition linkage IS the
@@ -4958,16 +7057,29 @@ class CanonicalTestPlanReasoningService:
                 or bool(supporting_exact_facts)
                 and all(fact.authoritative for fact in supporting_exact_facts)
             )
+            # Stage 18 owns the requirement -> acceptance transition.  Copying
+            # the ticket's request text verbatim loses the observable outcome,
+            # so request grammar is reframed here.  When it cannot be reframed
+            # the candidate stays non-observable and the promotion gate - whose
+            # observability check is otherwise unreachable - correctly stops it.
+            candidate_statement = row.candidate
+            if _is_request_not_outcome(candidate_statement):
+                derived = _derive_outcome_statement(candidate_statement)
+                if derived is not None:
+                    candidate_statement = derived
+            candidate_observable = bool(
+                candidate_statement.strip()
+            ) and not _is_request_not_outcome(candidate_statement)
             discovered_candidates.append(
                 AcceptanceCandidate(
-                    statement=row.candidate,
+                    statement=candidate_statement,
                     contract_mode=facts.contract_mode,
                     accepted_human_contract=accepted_human_contract,
                     source_fact_ids=row.source_fact_ids,
                     source_disposition_ids=[row.disposition_id],
                     evidence_ids=row.evidence_ids,
                     in_scope=True,
-                    observable=bool(row.candidate.strip()),
+                    observable=candidate_observable,
                     regression_only=bool(_REGRESSION_ONLY_RE.search(row.candidate)),
                     implementation_mechanics_only=bool(
                         _IMPLEMENTATION_MECHANICS_RE.search(row.candidate)
@@ -5175,6 +7287,7 @@ class CanonicalTestPlanReasoningService:
         research_requirements: list[ResearchRequirementRecord] | None = None,
         research_records: list[QuestionResearchRecord] | None = None,
         behavior_classifications: list[BehaviorClassificationRecord] | None = None,
+        expansion: BehavioralCoverageExpansion | None = None,
     ) -> GateDecision:
         questions_by_id = {row.question_id: row for row in questions}
         question_closure_ids = {
@@ -5194,6 +7307,51 @@ class CanonicalTestPlanReasoningService:
             for hypothesis_id in disposition.source_hypothesis_ids:
                 dispositions_by_hypothesis_id[hypothesis_id].append(disposition)
         failures: list[str] = []
+        if expansion is not None:
+            # Invariant: no silent candidate loss.  Expansion declaring a
+            # behavior material while closure answers NOT_APPLICABLE for every
+            # entity is exactly the silent drop this stage exists to prevent.
+            decided_dimensions = {
+                row.dimension
+                for row in closure
+                if row.applicability != ApplicabilityState.NOT_APPLICABLE
+            }
+            for dimension in sorted(
+                expansion.activated_dimensions, key=lambda row: row.value
+            ):
+                if dimension not in decided_dimensions:
+                    failures.append(
+                        "Behavioral coverage expansion marked a dependent behavior "
+                        "material but closure dropped it without a disposition: "
+                        f"{dimension.value}"
+                    )
+            # Silence is never coverage: a subject discovery proved material
+            # must carry an explicit decision for every dependency kind.
+            for subject in expansion.undispositioned_subjects:
+                failures.append(
+                    "Behavioral coverage expansion marked a subject material but "
+                    "no semantic dependency record dispositions it: "
+                    f"{subject}"
+                )
+            for record in expansion.dependency_records:
+                for slot in record.slots:
+                    if (
+                        slot.disposition
+                        != CoverageExpansionDisposition.RESEARCH_REQUIRED
+                    ):
+                        continue
+                    undecided = [
+                        dimension
+                        for dimension in slot.dimensions
+                        if dimension not in decided_dimensions
+                    ]
+                    if undecided:
+                        failures.append(
+                            "A semantic dependency requires research but closure "
+                            "never decided its behavior: "
+                            f"{record.subject} / {slot.kind.value} "
+                            f"({', '.join(row.value for row in undecided)})"
+                        )
         if research_requirements is not None:
             research_by_question = {
                 row.question_id: row for row in research_records or []
@@ -5638,10 +7796,21 @@ class CanonicalTestPlanReasoningService:
                 unresolved = True
             # P2 defense in depth: a candidate resting only on problem/gap
             # statements can never promote (Reviewer failure class
-            # PROBLEM_TO_SOLUTION_PROMOTION).
-            if source_facts and all(
-                fact.fact_type == ContractFactType.PROBLEM_STATEMENT
-                for fact in source_facts
+            # PROBLEM_TO_SOLUTION_PROMOTION).  A research-derived candidate
+            # is exempt: the admitted research finding IS the establishing
+            # evidence for the desired behavior, so the solution does not
+            # rest on the problem statement alone.
+            research_backed = any(
+                row.research_derived
+                for row in source_dispositions
+            )
+            if (
+                source_facts
+                and all(
+                    fact.fact_type == ContractFactType.PROBLEM_STATEMENT
+                    for fact in source_facts
+                )
+                and not research_backed
             ):
                 reasons.append(
                     "PROBLEM_TO_SOLUTION_PROMOTION: an established problem does "
@@ -5806,6 +7975,288 @@ class CanonicalTestPlanReasoningService:
             )
         return sorted(rows, key=lambda row: row.lifecycle_id)
 
+    def _bind_acceptance_records(
+        self,
+        section_items: dict[str, list[tuple[str, str]]],
+        statement: str,
+        candidate: AcceptanceCandidate,
+        classification_by_disposition: Mapping[str, Any],
+        lifecycle_by_canonical: Mapping[str, list[Any]],
+    ) -> None:
+        """Attach every record id that justifies a criterion to its text.
+
+        A criterion the Writer split into two statements keeps the same
+        bindings on each part, so completeness projection stays exhaustive and
+        no supporting record becomes unaddressable.
+        """
+
+        items = section_items["acceptance_contract"]
+        items.append((statement, candidate.candidate_id))
+        items.extend(
+            (statement, disposition_id)
+            for disposition_id in candidate.source_disposition_ids
+        )
+        items.extend(
+            (statement, classification_by_disposition[disposition_id].classification_id)
+            for disposition_id in candidate.source_disposition_ids
+            if disposition_id in classification_by_disposition
+        )
+        items.extend((statement, fact_id) for fact_id in candidate.source_fact_ids)
+        for lifecycle_row in lifecycle_by_canonical[candidate.candidate_id]:
+            items.append((statement, lifecycle_row.discovered_candidate_id))
+            items.append((statement, lifecycle_row.lifecycle_id))
+            if lifecycle_row.dedup_decision_id:
+                items.append((statement, lifecycle_row.dedup_decision_id))
+
+    def write_acceptance_criteria(
+        self,
+        candidates: list[AcceptanceCandidate],
+        promotions: list[AcceptancePromotionDecision],
+        facts: ContractFactSet,
+        dispositions: list[CoverageDispositionRecord] | None = None,
+    ) -> list[WrittenAcceptanceCriterion]:
+        """D2 Writer: turn admitted candidates into testable acceptance criteria.
+
+        The promotion gate decides WHAT may be an acceptance criterion; this
+        stage decides HOW it reads.  It is deterministic by design - the
+        canonical runtime has no LLM - so every transformation preserves the
+        admitted content words and can only restructure them:
+
+        * a compound request carrying two independent requirements is split so
+          each observable outcome is separately pass/fail;
+        * request grammar is reframed as an outcome;
+        * a requested capability whose expected behavior is not established by
+          authoritative evidence is kept in the contract as a bounded (TBD)
+          question instead of being relocated or asserted;
+        * applicable same-outcome variants attach as sub-points.
+
+        It never admits a candidate the promotion gate rejected, and never
+        invents behavior absent from the admitted statement.
+        """
+
+        facts_by_id = {row.fact_id: row for row in facts.facts}
+        candidate_by_id = {row.candidate_id: row for row in candidates}
+        dispositions_by_id = {
+            row.disposition_id: row for row in (dispositions or [])
+        }
+        written: list[WrittenAcceptanceCriterion] = []
+        seen_outcomes: set[str] = set()
+
+        for decision in promotions:
+            if decision.status != PromotionStatus.PROMOTED:
+                continue
+            candidate = candidate_by_id.get(decision.candidate_id)
+            if candidate is None:
+                continue
+            source_line = _acceptance_source_line(
+                list(candidate.source_fact_ids),
+                facts_by_id,
+                list(candidate.evidence_ids),
+            )
+            proposed = (
+                facts.contract_mode == ContractMode.HUMAN_ACCEPTED_CONTRACT
+                and decision.resulting_disposition
+                == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+            )
+            # An unresolved requested capability stays acceptance-lane, phrased
+            # as the decision QE still needs.  Splitting it would fabricate
+            # resolved sub-requirements the evidence never established.
+            if _is_requested_capability(candidate.statement):
+                question = _derive_tbd_question(candidate.statement)
+                if question is None:
+                    continue
+                key = question.casefold()
+                if key in seen_outcomes:
+                    continue
+                if _absorb_near_duplicate(
+                    written,
+                    question,
+                    unresolved=True,
+                    candidate_ids=[candidate.candidate_id],
+                    fact_ids=list(candidate.source_fact_ids),
+                    disposition_ids=list(candidate.source_disposition_ids),
+                    evidence_ids=list(candidate.evidence_ids),
+                ):
+                    continue
+                seen_outcomes.add(key)
+                written.append(
+                    WrittenAcceptanceCriterion(
+                        outcome=question,
+                        unresolved=True,
+                        source_line=source_line,
+                        source_candidate_ids=[candidate.candidate_id],
+                        source_fact_ids=list(candidate.source_fact_ids),
+                        source_disposition_ids=list(candidate.source_disposition_ids),
+                        evidence_ids=list(candidate.evidence_ids),
+                    )
+                )
+                continue
+
+            for clause in _split_independent_requirements(candidate.statement):
+                outcome = _derive_outcome_statement(clause) or _as_outcome_sentence(
+                    clause
+                )
+                if proposed and not outcome.startswith("Proposed: "):
+                    outcome = f"Proposed: {outcome}"
+                key = outcome.casefold()
+                if key in seen_outcomes:
+                    continue
+                if _absorb_near_duplicate(
+                    written,
+                    outcome,
+                    unresolved=False,
+                    candidate_ids=[candidate.candidate_id],
+                    fact_ids=list(candidate.source_fact_ids),
+                    disposition_ids=list(candidate.source_disposition_ids),
+                    evidence_ids=list(candidate.evidence_ids),
+                ):
+                    continue
+                seen_outcomes.add(key)
+                written.append(
+                    WrittenAcceptanceCriterion(
+                        outcome=outcome,
+                        source_line=source_line,
+                        source_candidate_ids=[candidate.candidate_id],
+                        source_fact_ids=list(candidate.source_fact_ids),
+                        source_disposition_ids=list(candidate.source_disposition_ids),
+                        evidence_ids=list(candidate.evidence_ids),
+                    )
+                )
+
+        # D1-c: acceptance-material but unresolved coverage renders as a (TBD)
+        # question INSIDE the contract.  It is attached to the criterion it
+        # relates to, and only becomes its own criterion when nothing relates.
+        for row in dispositions or []:
+            if row.disposition != CoverageDisposition.ACCEPTANCE_TBD:
+                continue
+            question = _derive_tbd_question(row.candidate)
+            if question is None:
+                continue
+            if any(
+                question.casefold() == existing.outcome.casefold()
+                or any(
+                    question.casefold() == sub.text.casefold()
+                    for sub in existing.sub_points
+                )
+                for existing in written
+            ):
+                continue
+            host = _closest_criterion(question, written)
+            sub_point = AcceptanceSubPoint(
+                text=question,
+                kind=AcceptanceSubPointKind.TBD_QUESTION,
+                source_fact_ids=list(row.source_fact_ids),
+                source_disposition_ids=[row.disposition_id],
+                evidence_ids=list(row.evidence_ids),
+            )
+            if host is None:
+                written.append(
+                    WrittenAcceptanceCriterion(
+                        outcome=question,
+                        unresolved=True,
+                        source_line=_acceptance_source_line(
+                            list(row.source_fact_ids), facts_by_id
+                        ),
+                        source_fact_ids=list(row.source_fact_ids),
+                        source_disposition_ids=[row.disposition_id],
+                        evidence_ids=list(row.evidence_ids),
+                    )
+                )
+                continue
+            # Rebuild rather than mutate: criterion_id is a content hash the
+            # model derives at validation, so an in-place edit would leave it
+            # pointing at the pre-merge content.
+            written[written.index(host)] = WrittenAcceptanceCriterion(
+                outcome=host.outcome,
+                sub_points=[*host.sub_points, sub_point],
+                unresolved=host.unresolved,
+                source_line=host.source_line,
+                source_candidate_ids=list(host.source_candidate_ids),
+                source_fact_ids=[*host.source_fact_ids, *row.source_fact_ids],
+                source_disposition_ids=[
+                    *host.source_disposition_ids,
+                    row.disposition_id,
+                ],
+                evidence_ids=[*host.evidence_ids, *row.evidence_ids],
+            )
+
+        # D1-d: applicable regression-class coverage belongs INSIDE the flat
+        # acceptance contract, as a sub-point of the outcome it qualifies.
+        # Leaving it in a separate QE-regression lane loses it outright,
+        # because the flat contract renders no such lane.  It attaches only to
+        # a criterion it genuinely qualifies and never becomes a criterion of
+        # its own, so C2B-C1 promotion authority is unchanged: regression
+        # coverage still cannot assert an acceptance outcome by itself.
+        for row in dispositions or []:
+            if (
+                row.coverage_class != "QE_REGRESSION"
+                or row.priority != "P1"
+                or row.applicability != "APPLICABLE"
+            ):
+                continue
+            variant = _derive_variant_statement(row.candidate)
+            if variant is None:
+                continue
+            if any(
+                variant.casefold() == existing.outcome.casefold()
+                or any(
+                    variant.casefold() == sub.text.casefold()
+                    for sub in existing.sub_points
+                )
+                for existing in written
+            ):
+                continue
+            host = _closest_variant_host(variant, written)
+            if host is None:
+                # No acceptance outcome this behavior qualifies.  Inventing a
+                # parent would assert coverage the evidence never established.
+                continue
+            if (
+                sum(
+                    1
+                    for sub in host.sub_points
+                    if sub.kind == AcceptanceSubPointKind.CONFIRMED_VARIANT
+                )
+                >= _MAX_VARIANT_SUB_POINTS
+            ):
+                continue
+            sub_point = AcceptanceSubPoint(
+                text=variant,
+                kind=AcceptanceSubPointKind.CONFIRMED_VARIANT,
+                source_fact_ids=list(row.source_fact_ids),
+                source_disposition_ids=[row.disposition_id],
+                evidence_ids=list(row.evidence_ids),
+            )
+            written[written.index(host)] = WrittenAcceptanceCriterion(
+                outcome=host.outcome,
+                sub_points=[*host.sub_points, sub_point],
+                unresolved=host.unresolved,
+                source_line=host.source_line,
+                source_candidate_ids=list(host.source_candidate_ids),
+                source_fact_ids=[*host.source_fact_ids, *row.source_fact_ids],
+                source_disposition_ids=[
+                    *host.source_disposition_ids,
+                    row.disposition_id,
+                ],
+                evidence_ids=[*host.evidence_ids, *row.evidence_ids],
+            )
+        # Merging and TBD attachment both widen a criterion's fact set, so the
+        # Source line is recomputed from the final bindings.  A criterion must
+        # never credit fewer - or more - sources than it actually rests on.
+        for index, criterion in enumerate(written):
+            recomputed = _acceptance_source_line(
+                list(criterion.source_fact_ids),
+                facts_by_id,
+                list(criterion.evidence_ids),
+            )
+            if not recomputed or recomputed == criterion.source_line:
+                continue
+            written[index] = criterion.model_copy(
+                update={"source_line": recomputed}
+            )
+        _ = dispositions_by_id
+        return written
+
     def render_final_plan(
         self,
         request: GenerationRequest,
@@ -5826,6 +8277,8 @@ class CanonicalTestPlanReasoningService:
         clarifications: list[HumanClarification] | None = None,
         research_resolved_question_ids: set[str] | None = None,
         waiting_for_research: bool = False,
+        convergence: list | None = None,
+        written_acceptance_criteria: list[WrittenAcceptanceCriterion] | None = None,
     ) -> tuple[StructuredQEPlan, str]:
         if research_records is not None:
             incomplete_research_question_ids = {
@@ -5916,30 +8369,11 @@ class CanonicalTestPlanReasoningService:
             lifecycle_by_canonical[lifecycle_row.canonical_candidate_id].append(
                 lifecycle_row
             )
-        disposition_sections: dict[CoverageDisposition, str] = {
-            CoverageDisposition.SEMANTIC_REGRESSION: "semantic_coverage",
-            CoverageDisposition.STRUCTURAL_REGRESSION: "structural_hierarchy_coverage",
-            CoverageDisposition.REFERENCE_REGRESSION: "referenced_content_coverage",
-            CoverageDisposition.CONFIGURATION_VARIANT: "configuration_state_coverage",
-            CoverageDisposition.GENERATED_OUTPUT_VALIDATION: "generated_output_validation",
-            CoverageDisposition.NEGATIVE_BOUNDARY: "negative_boundary_coverage",
-            CoverageDisposition.FAILURE_RECOVERY: "failure_recovery_coverage",
-            CoverageDisposition.LIFECYCLE_COVERAGE: "lifecycle_coverage",
-            CoverageDisposition.CROSS_MODE_REGRESSION: "cross_mode_regression",
-            CoverageDisposition.NFR_COVERAGE: "nfr_coverage",
-            CoverageDisposition.PRODUCT_SCOPE_QUESTION: "product_decisions",
-            CoverageDisposition.ACCEPTANCE_TBD: "product_decisions",
-            CoverageDisposition.ENGINEERING_DESIGN_DECISION: "product_decisions",
-            CoverageDisposition.OUT_OF_SCOPE: "explicit_out_of_scope",
-            CoverageDisposition.INVESTIGATED_AND_REJECTED: "investigated_and_rejected",
-            CoverageDisposition.IMPLEMENTATION_ORACLE: "transformation_processing_coverage",
-            CoverageDisposition.TECHNICAL_NOTE: "technical_notes",
-            CoverageDisposition.KNOWN_LIMITATION: "known_limitations",
-            CoverageDisposition.OPEN_QUESTION: "evidence_gaps",
-            CoverageDisposition.UNSUPPORTED_INFERENCE: "evidence_gaps",
-        }
+        disposition_sections: dict[CoverageDisposition, str] = dict(
+            _DISPOSITION_SECTIONS
+        )
         titles = {
-            "issue_understanding": "Issue understanding",
+            "issue_understanding": "Summary",
             "product_scope": "Publishing / product scope",
             "acceptance_contract": (
                 "Acceptance contract"
@@ -5968,6 +8402,14 @@ class CanonicalTestPlanReasoningService:
             "coverage_gate_result": "Coverage gate result",
         }
         section_items: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        # Dispositions suppressed from the human-facing evidence-gaps lane
+        # (settled research or planner boilerplate with no evidence linkage)
+        # remain in the trace; the render invariant exempts them explicitly.
+        skipped_open_dispositions: set[str] = set()
+        # Issue understanding is WHAT THE TICKET STATES: only facts carrying
+        # a ticket/human authority class belong.  Retrieved documentation may
+        # establish existing product behavior downstream, but a doc-chunk
+        # sentence is never the issue's own understanding.
         understanding = [
             row
             for row in facts.facts
@@ -5978,6 +8420,7 @@ class CanonicalTestPlanReasoningService:
                 # source for thin tickets (no requirement signal, no promotion).
                 ContractFactType.CONTEXT_STATEMENT,
             }
+            and row.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
         ]
         for fact in understanding:
             section_items["issue_understanding"].append((fact.literal, fact.fact_id))
@@ -5999,6 +8442,37 @@ class CanonicalTestPlanReasoningService:
                 )
             )
         promoted_ids: list[str] = []
+        acceptance_sources: dict[str, str] = {}
+        facts_by_id = {row.fact_id: row for row in facts.facts}
+        # D2: the Writer owns the human-facing wording.  The renderer stays a
+        # presenter - it substitutes the written outcome for the raw candidate
+        # statement and keeps every record-id binding, so a split criterion is
+        # still fully addressable in the completeness projection.
+        written_by_candidate: dict[str, list[WrittenAcceptanceCriterion]] = {}
+        for criterion in written_acceptance_criteria or []:
+            for candidate_id in criterion.source_candidate_ids:
+                written_by_candidate.setdefault(candidate_id, []).append(criterion)
+        # D1-c: a bounded TBD now renders inside the acceptance contract, so its
+        # own records must be addressable there instead of in a sibling section.
+        for criterion in written_acceptance_criteria or []:
+            rendered = _render_written_criterion(criterion)
+            acceptance_sources.setdefault(rendered.strip(), criterion.source_line)
+            tbd_records = [
+                record_id
+                for sub_point in criterion.sub_points
+                if sub_point.kind == AcceptanceSubPointKind.TBD_QUESTION
+                for record_id in (
+                    *sub_point.source_disposition_ids,
+                    *sub_point.source_fact_ids,
+                )
+            ]
+            if criterion.unresolved and not criterion.source_candidate_ids:
+                tbd_records.extend(criterion.source_disposition_ids)
+                tbd_records.extend(criterion.source_fact_ids)
+                section_items["acceptance_contract"].append((rendered, ""))
+            for record_id in tbd_records:
+                if record_id:
+                    section_items["acceptance_contract"].append((rendered, record_id))
         for decision in promotions:
             if decision.status == PromotionStatus.PROMOTED:
                 candidate = candidate_by_id[decision.candidate_id]
@@ -6010,35 +8484,28 @@ class CanonicalTestPlanReasoningService:
                     == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
                 ):
                     statement = f"Proposed: {statement}"
-                section_items["acceptance_contract"].append(
-                    (statement, candidate.candidate_id)
-                )
-                section_items["acceptance_contract"].extend(
-                    (statement, disposition_id)
-                    for disposition_id in candidate.source_disposition_ids
-                )
-                section_items["acceptance_contract"].extend(
-                    (
+                authored = written_by_candidate.get(candidate.candidate_id) or []
+                statements = [
+                    _render_written_criterion(criterion) for criterion in authored
+                ] or [statement]
+                for rendered in statements:
+                    acceptance_sources.setdefault(
+                        rendered.strip(),
+                        _acceptance_source_line(
+                            list(candidate.source_fact_ids),
+                            facts_by_id,
+                            list(candidate.evidence_ids),
+                        ),
+                    )
+                for statement in statements:
+                    self._bind_acceptance_records(
+                        section_items,
                         statement,
-                        classification_by_disposition[disposition_id].classification_id,
+                        candidate,
+                        classification_by_disposition,
+                        lifecycle_by_canonical,
                     )
-                    for disposition_id in candidate.source_disposition_ids
-                    if disposition_id in classification_by_disposition
-                )
-                section_items["acceptance_contract"].extend(
-                    (statement, fact_id) for fact_id in candidate.source_fact_ids
-                )
-                for lifecycle_row in lifecycle_by_canonical[candidate.candidate_id]:
-                    section_items["acceptance_contract"].append(
-                        (statement, lifecycle_row.discovered_candidate_id)
-                    )
-                    section_items["acceptance_contract"].append(
-                        (statement, lifecycle_row.lifecycle_id)
-                    )
-                    if lifecycle_row.dedup_decision_id:
-                        section_items["acceptance_contract"].append(
-                            (statement, lifecycle_row.dedup_decision_id)
-                        )
+                statement = statements[0]
             else:
                 candidate = candidate_by_id[decision.candidate_id]
                 reason = "; ".join(decision.reasons) or "Not promoted."
@@ -6094,10 +8561,83 @@ class CanonicalTestPlanReasoningService:
         # R2: research-resolved questions are handled in the loop below: when
         # their research answer promoted acceptance coverage they are released;
         # when nothing promoted, the acceptance decision still needs the human.
+        #
+        # Decision-quality product questions: convergence converts each
+        # residual acceptance-changing uncertainty into one concrete product
+        # decision (established behavior + undecided point + what QE must
+        # decide).  The raw Jira problem prose is never the human question,
+        # and lifecycle/currentness or evidence-quality conflicts never
+        # become a product-decision question by themselves.
+        convergence_by_question = {
+            row.question_id: row for row in (convergence or [])
+        }
+        decision_question_ids: set[str] = set()
+        # A decision-quality line represents its question's TBD disposition;
+        # the disposition id rides on the decision line so the render
+        # invariant (every disposition lands in a section) still holds.
+        tbd_disposition_by_question: dict[str, str] = {}
+        for disposition in dispositions:
+            if disposition.disposition == CoverageDisposition.ACCEPTANCE_TBD:
+                for question_id in disposition.source_question_ids:
+                    tbd_disposition_by_question.setdefault(
+                        question_id, disposition.disposition_id
+                    )
+        represented_tbd_disposition_ids: set[str] = set()
+        for conv in convergence or []:
+            if not conv.decision:
+                continue
+            if (
+                conv.question_id in resolved_question_ids
+                or conv.question_id in clarified_question_ids
+            ):
+                # A question whose coverage was resolved is never reopened by
+                # a research unknown alone; only a live evidence conflict
+                # (product-contract or implementation) stays visible.
+                from app.services.convergence_service import (
+                    _ACCEPTANCE_CHANGING_CONFLICTS,
+                )
+                if not any(
+                    conflict_class in _ACCEPTANCE_CHANGING_CONFLICTS
+                    for conflict_class in conv.conflict_classes
+                ):
+                    continue
+            record_id = tbd_disposition_by_question.get(
+                conv.question_id, conv.question_id
+            )
+            if record_id in tbd_disposition_by_question.values():
+                represented_tbd_disposition_ids.add(record_id)
+            section_items["product_decisions"].append(
+                ("\n".join([conv.decision, *_convergence_detail_lines(conv)]), record_id)
+            )
+            decision_question_ids.add(conv.question_id)
+        # Developer-perspective findings: implementation-lane conflicts
+        # (code-internal contradictions, requirement-vs-code mismatches) are
+        # recorded as technical notes - never as product decisions.
+        for conv in convergence or []:
+            for finding in getattr(conv, "implementation_findings", None) or []:
+                section_items["technical_notes"].append(
+                    (f"Implementation finding: {finding}", conv.convergence_id)
+                )
+        research_by_question = {
+            row.question_id: row for row in research_records or []
+        }
+        dimension_by_question = {
+            row.question_id: row.dimension for row in questions
+        }
         for question in questions:
             if question.question_id in resolved_question_ids:
                 continue
             if question.question_id in clarified_question_ids:
+                continue
+            if question.question_id in decision_question_ids:
+                # The decision-quality line already represents this question.
+                continue
+            conv = convergence_by_question.get(question.question_id)
+            if question.blocking and conv is not None and not conv.decision:
+                # G2: convergence is the authoritative TBD/clarification
+                # eligibility gate.  A research-answered question, a
+                # lifecycle/currentness-only conflict, or an evidence-quality
+                # limitation never surfaces as a product-decision TBD.
                 continue
             # R2 release nuance: a research-resolved question whose answer
             # could not promote (e.g. documented but not yet accepted product
@@ -6109,6 +8649,29 @@ class CanonicalTestPlanReasoningService:
             ):
                 continue
             key = "product_decisions" if question.blocking else "evidence_gaps"
+            if key == "evidence_gaps":
+                # Generic planner boilerplate is not an evidence gap: a
+                # non-blocking question surfaces only when material evidence
+                # shows it can change acceptance behavior.  A question whose
+                # mandated research terminated with an answer (or a bounded
+                # negative) is settled; a planner-family question (no
+                # dimension) with not-applicable research is boilerplate.
+                research = research_by_question.get(question.question_id)
+                if research is not None and research.research_status in {
+                    ResearchStatus.ANSWER_FOUND,
+                    ResearchStatus.PARTIAL,
+                }:
+                    continue
+                if (
+                    research is not None
+                    and research.research_status
+                    in {
+                        ResearchStatus.NOT_APPLICABLE,
+                        ResearchStatus.NOT_REQUIRED,
+                    }
+                    and question.dimension is None
+                ):
+                    continue
             section_items[key].append((question.question, question.question_id))
         # P1: clarification audit - stale/rejected clarifications stay visible;
         # admitted ones live in the trace (L1 lineage), never in AC source lines.
@@ -6131,12 +8694,53 @@ class CanonicalTestPlanReasoningService:
                 CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
             }:
                 continue
+            if (
+                disposition.disposition == CoverageDisposition.ACCEPTANCE_TBD
+                and disposition.disposition_id in represented_tbd_disposition_ids
+            ):
+                # Represented by the decision-quality line built from the
+                # convergence record - the raw question prose is never the
+                # human-facing product decision.
+                continue
             key = disposition_sections.get(disposition.disposition)
             if key is None:
                 raise RuntimeError(
                     "FinalQEPlanRenderer has no section for disposition: "
                     f"{disposition.disposition.value}"
                 )
+            if key == "evidence_gaps" and disposition.source_question_ids:
+                # Same rule as the question loop: settled or boilerplate
+                # planner questions are not evidence gaps.  Boilerplate =
+                # planner-family question (no dimension) whose research is
+                # not applicable/required; dimension-linked questions carry
+                # real investigation linkage and stay visible.
+                settled = False
+                boilerplate = False
+                for question_id in disposition.source_question_ids:
+                    research = research_by_question.get(question_id)
+                    if research is None:
+                        continue
+                    if research.research_status in {
+                        ResearchStatus.ANSWER_FOUND,
+                        ResearchStatus.PARTIAL,
+                    }:
+                        settled = True
+                    elif (
+                        research.research_status
+                        in {
+                            ResearchStatus.NOT_APPLICABLE,
+                            ResearchStatus.NOT_REQUIRED,
+                        }
+                        and dimension_by_question.get(question_id) is None
+                    ):
+                        boilerplate = True
+                if settled or boilerplate:
+                    # Settled questions are answered, not gaps; boilerplate
+                    # rows without any evidence linkage are planner noise.
+                    # The disposition still lands in the trace (the render
+                    # invariant counts it via the plan's disposition list).
+                    skipped_open_dispositions.add(disposition.disposition_id)
+                    continue
             disposition_text = _plain_candidate(disposition.candidate)
             section_items[key].append((disposition_text, disposition.disposition_id))
             classification = classification_by_disposition.get(
@@ -6221,6 +8825,44 @@ class CanonicalTestPlanReasoningService:
                 (f"AcceptanceContractLint: {lint_problem}", "acceptance_contract_lint")
             )
 
+        # Reviewer contract (deterministic): a promoted AC that still carries
+        # meta/evidence commentary or the customer's raw problem prose is not
+        # an observable outcome - the final UAC is rejected, never repaired
+        # in place.  This appends a FAILED gate before the branch below reads
+        # the gate list.
+        reviewer_failures = [
+            "Acceptance criterion is meta/evidence commentary, not an "
+            f"observable product outcome: {statement[:120]}"
+            for statement in promoted_statements
+            if _AC_META_PROSE_RE.search(statement)
+        ]
+
+        # An accepted human contract IS the ticket text, and UAC fidelity
+        # requires preserving it exactly.  Only a contract the runtime
+        # proposed itself can be rejected for asking instead of asserting.
+        if facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT:
+            reviewer_failures.extend(
+                "Acceptance criterion requests a capability instead of "
+                f"stating a testable product outcome: {statement[:120]}"
+                for statement in promoted_statements
+                if _is_request_not_outcome(statement)
+            )
+
+        # Coverage lanes that only announce an internal record are not
+        # coverage.  They are suppressed from the human-facing markdown at
+        # render time rather than failing the plan: the closure records stay
+        # in the structured plan and the trace, so nothing is lost, but a
+        # content-free bullet never reaches the tester.
+        if reviewer_failures:
+            gates.append(
+                GateDecision(
+                    gate=CanonicalRuntimeStage.FINAL_QE_PLAN_RENDERER,
+                    status=GateStatus.FAILED,
+                    failures=reviewer_failures,
+                    checked_ids=sorted(seen_promoted),
+                )
+            )
+
         order = list(titles)
         sections: list[PlanSection] = []
         for key in order:
@@ -6230,6 +8872,13 @@ class CanonicalTestPlanReasoningService:
             deduped: dict[str, set[str]] = {}
             for text, record_id in items:
                 normalized_text = text.strip()
+                if key == "product_decisions" and not normalized_text.startswith(
+                    "(TBD)"
+                ):
+                    # The final UAC distinguishes established behavior from
+                    # unresolved decisions: every open product decision is
+                    # marked (TBD) in both render paths.
+                    normalized_text = f"(TBD) {normalized_text}"
                 deduped.setdefault(normalized_text, set())
                 if record_id:
                     deduped[normalized_text].add(record_id)
@@ -6320,7 +8969,24 @@ class CanonicalTestPlanReasoningService:
                 )
                 lines.append("")
             lines.extend(["## Generation status", ""])
-            if waiting_for_research:
+            reviewer_failures = [
+                failure
+                for gate in gates
+                if gate.gate == CanonicalRuntimeStage.FINAL_QE_PLAN_RENDERER
+                and gate.status == GateStatus.FAILED
+                for failure in gate.failures
+            ]
+            if reviewer_failures:
+                # The reviewer rejected the drafted UAC (meta/evidence prose
+                # in the contract, or an implementation finding promoted to a
+                # product decision): say so plainly, never mimic success.
+                lines.append(
+                    "- The drafted UAC failed review and was rejected."
+                )
+                for failure in reviewer_failures[:4]:
+                    lines.append(f"- Review finding: {failure}")
+                lines.append("")
+            elif waiting_for_research:
                 # A5 host mediation: required research is dispatched to the
                 # host and unanswered - this is research in progress, never a
                 # product-decision request and never a plan-shaped document.
@@ -6341,17 +9007,36 @@ class CanonicalTestPlanReasoningService:
                 )
                 lines.append("")
             decision_texts: list[str] = []
-            for text, _record_id in section_items.get("product_decisions", []):
+            decision_entries: list[tuple[str, str]] = []
+            for text, record_id in section_items.get("product_decisions", []):
                 normalized = " ".join(text.split())
                 if normalized and normalized.casefold() not in {
-                    seen.casefold() for seen in decision_texts
+                    seen.casefold() for seen, _rid in decision_entries
                 }:
-                    decision_texts.append(normalized)
+                    decision_entries.append((normalized, record_id))
+            decision_texts = [text for text, _rid in decision_entries]
             # While waiting for host research, product decisions are not yet
             # presented as user asks - research may resolve them.
             if decision_texts and not waiting_for_research:
+                convergence_by_question = {
+                    row.question_id: row for row in (convergence or [])
+                }
+                # Entries whose text IS the convergence decision already
+                # carry the established/undecided lines inside them.
+                decision_record_ids = {
+                    row.question_id for row in (convergence or []) if row.decision
+                }
                 lines.extend(["## Open product decisions", ""])
-                lines.extend(f"- (TBD) {text}" for text in decision_texts)
+                for normalized, record_id in decision_entries:
+                    lines.append(f"- (TBD) {normalized}")
+                    if record_id in decision_record_ids:
+                        continue
+                    # Conversational, evidence-bearing clarification: attach
+                    # what research established and any conflict, so QE can
+                    # answer in context instead of reading raw tickets.
+                    conv = convergence_by_question.get(record_id)
+                    for detail in _convergence_detail_lines(conv):
+                        lines.append(f"  {detail}")
                 lines.append("")
             lines.extend(["## Acceptance criteria", ""])
             lines.append(
@@ -6362,8 +9047,64 @@ class CanonicalTestPlanReasoningService:
             lines.append("")
         else:
             for section in sections:
+                # Bookkeeping lines announce that an internal record exists
+                # without dispositioning anything, so they are not shown to
+                # the tester.  The closure records remain in the structured
+                # plan and the trace.
+                visible_items = [
+                    item
+                    for item in section.items
+                    if not _COVERAGE_FILLER_RE.search(item)
+                ]
+                if not visible_items:
+                    continue
                 lines.extend([f"## {section.title}", ""])
-                lines.extend(f"- {item}" for item in section.items)
+                if section.section_key == "acceptance_contract":
+                    # Human-facing acceptance contract: a flat, individually
+                    # referenceable criterion followed by the sources that
+                    # actually support it.  Capped at ten points - a longer
+                    # list is not readable as a sign-off contract, and the
+                    # full set stays in the structured plan and the trace.
+                    for index, item in enumerate(visible_items[:10], start=1):
+                        source_line = acceptance_sources.get(
+                            item.strip(), "QE-derived coverage."
+                        )
+                        # D1: sub-points render under the criterion they
+                        # qualify, so a material (TBD) question stays inside
+                        # the acceptance contract instead of moving to a
+                        # sibling section.
+                        outcome, _, sub_block = item.partition("\n")
+                        lines.append(f"Acceptance Criteria-{index:02d}: {outcome}")
+                        for sub_line in sub_block.splitlines():
+                            if sub_line.strip():
+                                lines.append(f"  {sub_line.strip()}")
+                        lines.append(f"*Source*: {source_line}")
+                        lines.append("")
+                    if len(visible_items) > 10:
+                        lines.append(
+                            f"- {len(visible_items) - 10} further criteria are "
+                            "retained in the structured plan."
+                        )
+                else:
+                    if section.section_key == "issue_understanding":
+                        # The summary reads as prose, not as a bullet dump of
+                        # the raw ticket sentences.
+                        lines.extend(visible_items)
+                        lines.append("")
+                        continue
+                    if section.section_key == "product_decisions":
+                        # A decision carries its evidence as sub-points, so the
+                        # reader sees what research established next to the
+                        # decision it still has to make.
+                        for item in visible_items:
+                            head, _, sub_block = item.partition("\n")
+                            lines.append(f"- {head}")
+                            for sub_line in sub_block.splitlines():
+                                if sub_line.strip():
+                                    lines.append(f"  {sub_line.strip()}")
+                        lines.append("")
+                        continue
+                    lines.extend(f"- {item}" for item in visible_items)
                 lines.append("")
         rendered = "\n".join(lines).rstrip() + "\n"
         rendered_source_ids = {
@@ -6373,6 +9114,7 @@ class CanonicalTestPlanReasoningService:
             row.disposition_id
             for row in dispositions
             if row.disposition_id not in rendered_source_ids
+            and row.disposition_id not in skipped_open_dispositions
         )
         if missing_disposition_ids:
             raise RuntimeError(

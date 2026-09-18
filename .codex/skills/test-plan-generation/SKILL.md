@@ -105,6 +105,7 @@ clones, or retrieve unrelated RAG before saving the selected Human correction.
 - Read `references/open-questions-catalog.md` before writing the `Open Questions` section.
 - Read `references/clarification-gate.md` after behavior/coverage discovery and before authoring acceptance criteria. Enumerate every material dimension, resolve it from evidence or ask the user, and stop while a blocking question is unanswered.
 - Read `references/v3-reasoning-authoring.md` and `references/discovery-disposition.md` before authoring any behavioral plan or revising its coverage. Build the real evidence-grounded model, run `v3_scaffold.py --manifest <manifest.json>` to create editable graph/closure/question/file-binding records, then run `dimension_synthesizer.py --manifest <manifest.scaffold.json> --json`. Replace every author-review placeholder with an inspected decision and carry each exact discovery through directed retrieval, verification, disposition, and promotion. An axis/feature tag or copied candidate without this chain leaves DISCOVERY REVIEW non-postable. Repeat discovery for a reported omission or scope/behavior change; a wording-only edit is not a fresh completeness run. Scaffold success is not gate success. Do not start from a v2 fixture or generate blanket waivers.
+- Read `references/behavioral-coverage-expansion.md` before authoring coverage for any plan whose requirement displays, exports, orders, filters, persists, resolves a reference, moves or renames an item, changes state, or depends on configuration. Populate `behavioral_coverage_expansion` so discovery widens past the literal ask to the behaviors that regress with it, and disposition every activated dimension explicitly. Discovery is not acceptance: an expansion candidate carries no acceptance authority and must not block an explicitly accepted Human contract.
 - Read `references/manifest-completeness.md` before finalizing the evidence manifest. Behavioral `behavior_model`, `coverage_hypotheses`, and `verifications` cannot use ordinary author waivers. Every reasoning waiver emits REVIEW and makes the receipt non-postable, including a genuinely reviewed escape.
 - Read `references/qe-completeness-coverage.md` before finalizing any plan with Open Questions, regression items, or QE/reviewer checks. Checkable reviewer requirements belong in ACs, not a separate QE-checks section; genuine undecided product outcomes remain Open Questions. Map every requested check to its AC or unresolved question before responding. For UAC-only output, omit a separate QE-checks section. Classify retained full-plan checklist items explicitly in `qe_completeness`.
 - Read `references/root-cause-fix-driven.md` whenever current evidence supplies a root cause, linked PR/commit/fix branch/diff, or a positive merged/fixed/verified claim. Populate `root_cause_fix` before authoring so the fix contract, preserved invariants, newly introduced risks, added tests, and verification gaps drive the plan instead of appearing only as citations.
@@ -139,14 +140,18 @@ When the canonical runtime returns `status=waiting_for_agent_research`, required
 Loop until the run leaves `waiting_for_agent_research` (bounded: at most 3 passes, then report honestly):
 
 1. List pending research: `python scripts/agent_research_bridge.py pending --store <store>`.
-2. For each unfulfilled request, delegate to the registered custom agent matching its `worker_role` (`uac-doc-researcher`, `uac-code-researcher`, `uac-attachment-researcher` - registered via `.github/agents/*.agent.md` and the user-level Copilot agent directory): create a child session with `kickoff.agent` set to that agent name and `workspace_type: "branch"` (read-only research; no new worktree). Keep the default creator coordination so the kickoff is tagged with your identity and the reply instruction. The kickoff prompt carries ONLY the bounded request context: `execution_id`, `question_id`, `question_revision`, `worker_role`, `requested_claim`, `research_requirement`, applicability - plus the FULL `authorized_evidence` rows from the pending request (each `source_ref` with its `source_type` and `excerpt` text; the leaf's bounded toolset cannot resolve bare evidence IDs, so never send IDs without their content) and, for `CODE_RESEARCHER`, the `authorized_repository_roots` paths the leaf may inspect plus each root's current HEAD (compute it yourself with `git -C <root> rev-parse HEAD`; the leaf has no shell and verifies code by reading files, so it cannot resolve HEAD on its own). Close with the instruction to follow its role contract's `Return handoff` section (exactly one reply whose entire body is the strict result JSON). Agent chat prose is not a result.
-3. Collect each agent's actual response: prefer its cross-session reply; if none arrives, read the child session's final assistant message from its host session-state events. NEVER write, paraphrase, or repair the result yourself - if the reply is not one strict JSON object (`status`, `findings[]`, `source_refs[]`, `applicability`, `limitations[]`, `conflicts[]`), ask the child once to resend only the JSON; if it still cannot, record that execution as failed rather than fabricating compliance.
-4. Submit each collected result through `python scripts/agent_research_bridge.py fulfill-agent --store <store> --execution-id <id> --result <file.json> --model <model>`, where `<model>` is the model recorded in the child session's actual execution metadata (never an assumption). The bridge takes every identity field from the emitted pending request and stamps `provider=COPILOT_HOST` plus the canonical role-contract version itself. A validation failure is final for that execution - never edit the result to force acceptance.
+2. For each unfulfilled request, delegate to the registered custom agent matching its `worker_role` (`uac-doc-researcher`, `uac-code-researcher`, `uac-attachment-researcher` - registered via `.github/agents/*.agent.md` and the user-level Copilot agent directory): call the `task` tool with `agent_type` set to that agent name and `mode: "background"`, launching the whole batch BEFORE reading any result so the researchers execute in parallel. Delegation is INTERNAL - `task` runs each researcher in its own context window and creates NO user-visible conversation. NEVER use `create_session` (or any `open_*_session` tool) to run research: those create one user-visible sidebar session per leaf and break the one-conversation invariant. The task prompt carries ONLY the bounded request context: `execution_id`, `question_id`, `question_revision`, `worker_role`, `requested_claim`, `research_requirement`, applicability - plus the FULL `authorized_evidence` rows from the pending request (each `source_ref` with its `source_type` and `excerpt` text; the leaf's bounded toolset cannot resolve bare evidence IDs, so never send IDs without their content) and, for `CODE_RESEARCHER`, the `authorized_repository_roots` paths the leaf may inspect plus each root's current HEAD (compute it yourself with `git -C <root> rev-parse HEAD`; the leaf has no shell and verifies code by reading files, so it cannot resolve HEAD on its own). For `ATTACHMENT_RESEARCHER`, pass the `attachment_files[]` rows verbatim (each `source_ref` with its local `path` or its exact `error`) so the leaf opens real attachment content. For `DOC_RESEARCHER`, pass the `documentation_roots[]` verbatim - they are the leaf's approved local documentation scopes. Close with the instruction to follow its role contract's `Return handoff` section (exactly one reply whose entire body is the strict result JSON). Agent chat prose is not a result.
+3. Collect each agent's actual response with `read_agent` - one read per `agent_id` after its completion notification arrives; never poll a running agent. NEVER write, paraphrase, or repair the result yourself - if the reply is not one strict JSON object (`status`, `findings[]`, `source_refs[]`, `applicability`, `limitations[]`, `conflicts[]`), ask that agent once via `write_agent` to resend only the JSON; if it still cannot, record that execution as failed rather than fabricating compliance.
+4. Submit each collected result through `python scripts/agent_research_bridge.py fulfill-agent --store <store> --execution-id <id> --result <file.json> --model <model>`, where `<model>` is the model recorded in the delegated agent's actual execution metadata (never an assumption). The bridge takes every identity field from the emitted pending request and stamps `provider=COPILOT_HOST` plus the canonical role-contract version itself. A validation failure is final for that execution - never edit the result to force acceptance.
 5. Re-run the same canonical command with the same store. Fulfilled results are consumed exactly once; the trace records `provider=COPILOT_HOST`, `model_execution=true`, and the agent's model.
+6. Terminal-event discipline (one user-visible conversation per UAC request): researcher lifecycle events - completion notifications, failures, cleanup acknowledgements - are INTERNAL TERMINAL EVENTS, never new work items. They must not trigger orchestration (no new delegation, no resume pass, no UAC state change) and must never recursively trigger another response cycle; the parent performs at most one internal completion transition per execution, and a finished researcher is never re-entered. Normal research results and error results still arrive exactly once through `read_agent` and are consumed exactly once - that channel is unaffected. Because research runs through the `task` tool, no leaf session is created and there is nothing to archive; emit NO user-visible message for any of these events. If a leaf session from an older run still reports in, treat its message as evidence only, never answer it, and never re-enter orchestration for it.
+7. Debug mode is the only exception: when the user explicitly asks for diagnostics/audit, or `AGENT_RESEARCH_DEBUG=1` is set in the environment, the parent may surface leaf execution IDs, agent IDs, receipts, and logs. Normal UAC generation never shows them.
 
-Output hygiene: research results, execution IDs, bridge operations, provider/model receipts, and intermediate runtime states are INTERNAL. Present only the final canonical `rendered_output` (or the one genuinely blocking clarification). Surface receipts/internals only when the user explicitly asks for debug or audit detail.
+Output hygiene: research results, execution IDs, bridge operations, provider/model receipts, and intermediate runtime states are INTERNAL. Present only the final canonical `rendered_output` (or the one genuinely blocking clarification). Surface receipts/internals only when the user explicitly asks for debug or audit detail. While research runs, post exactly one status line ("Researching relevant Jira evidence, documentation, attachments and implementation..."); never narrate per-leaf progress.
 
 Only after research resolves may clarification/TBD logic surface a question to the user. If the host cannot delegate (agent not registered, no response), the run stays waiting and you say so plainly - never silently substitute deterministic research or self-research when host research was configured, and never substitute a general-purpose agent for the registered role agent.
+
+Convergence and conversational clarification: after mandated research resolves, the runtime evaluates the collected evidence per material question across three perspectives - Product/PM (intended contract), Developer (implementation reality), QE (observable/negative/regression) - recorded in the payload `convergence` block with agreements, conflicts, and acceptance-changing unknowns. The runtime never invents a missing product decision. When the final output lists Open product decisions, each carries its evidence and any conflict: present them conversationally and product-specifically, like a real refinement discussion. When the user answers, feed the answer back as an explicit human clarification (the CLI `--clarifications` file) and re-run the same command to reconverge before generating the UAC.
 - Return only canonical `rendered_output` / `plan_markdown` when `status` is `completed` or `needs_human_review`, `validation_status=passed`, and ContractIntegrityGate, BehavioralCompletenessGate, and AcceptancePromotionGate all passed. `needs_human_review` is a valid fresh-Jira result but is never postable or Jira-write authority. Do not run `render_compact_view.py` as a second final renderer. It remains a compatibility preview for old stored records only.
 - Before handing acceptance criteria to an AI automation-draft agent, run `python scripts/extract_acs.py <full-plan.md> --out <acceptance-criteria.json>`. A nonzero exit blocks handoff. The automation agent consumes this JSON and must not re-parse chat prose or invent setup, actions, assertions, or evidence outside its fields.
 - Jira mutation is a separate, explicit human-authorized step. A compatibility receipt alone is not enough to authorize a write: the posting boundary must also verify the completed canonical runtime envelope and post only canonically promoted acceptance records. Until a posting client supports that binding, stop rather than use the legacy compact or eleven-section draft as authority.
@@ -520,6 +525,62 @@ NOT_APPLICABLE with a one-line reason — the gate fails closed if any is missin
 Only when every dimension above is dispositioned may you proceed to Phase 7. If the sweep
 surfaces a blocking unknown, resolve it from evidence or raise it as an Open Question FIRST
 — do not author around it.
+
+### Phase 6.5.5 — Behavioral Coverage Expansion (widen discovery, never acceptance)
+
+The sweep above catches the dimensions you thought to look for. This stage catches the
+ones the ticket never mentions. A named value is not atomic: before it can be treated as
+covered, the plan must also have considered where it comes from, what is shown when it is
+absent, whether it can be supplied indirectly through referenced or reused content, what a
+move or rename does to it, whether it can go stale, and whether every consumer surface
+agrees. Read `references/behavioral-coverage-expansion.md` and record the result in the
+manifest `behavioral_coverage_expansion` block, validated by
+`scripts/behavioral_coverage_expansion.py`. The canonical runtime enforces the same
+contract in its `BehavioralCoverageExpander` stage, which runs between
+`BehaviorModelBuilder` and `SemanticBehavioralClosureExplorer`.
+
+- **Derive triggers from requirement shape, never from a feature name.** A trigger fires on
+  what the requirement does — display, export, order, filter, persist, resolve a reference,
+  move or rename, change state, depend on configuration — so the same reasoning applies to
+  any product family. `MULTIPLE_CONSUMER_SURFACES` is derived, not matched: either two or
+  more consumer surfaces exist structurally, or the requirement describes both a displayed
+  and an exported form of one value.
+- **Map triggers to axes and axes to dimensions**, then treat every activated dimension as a
+  question you must answer from evidence. Activation is not coverage.
+- **Keep distinct contracts distinct.** Moving or renaming an item is not the same behavior
+  as an entry changing lifecycle state, and neither is the same as reordering. They get
+  separate dimensions, separate questions, and separate dispositions; never collapse them
+  to shorten the list.
+- **Discovery is not acceptance.** An expansion candidate carries no acceptance authority.
+  It lives in its own `covexp:` identifier namespace, can never be cited as the source for
+  an AC, and must not block an explicitly accepted Human contract. Promotion rules,
+  source authority, evidence roles, and the existing-vs-new behavior classification are
+  all unchanged.
+- **Nothing discovered may silently disappear.** Disposition every activated dimension
+  explicitly — covered, investigated and rejected, exposed as unresolved, routed to
+  research, or not applicable with a concrete reason. Omission is not a disposition, and
+  `NOT_APPLICABLE` or `INVESTIGATED_AND_REJECTED` without a reason fails the gate. An
+  unresolved activated dimension flows into the existing missing-question and mandatory
+  research path unchanged; `NOT_FOUND` still never asserts the opposite behavior.
+- **Every material subject decides all nine dependency dimensions.** Dispositioning
+  activated dimensions only proves nothing was lost after discovery; it cannot prove
+  discovery asked about everything, because a dependency that never triggered is never
+  activated and so never has to be answered. Record one `dependency_records` entry per
+  material subject deciding `PROVENANCE`, `PRECEDENCE_AND_FALLBACK`,
+  `INDIRECTION_AND_RESOLUTION`, `CONTEXT_DEPENDENCY`, `IDENTITY`, `LIFECYCLE_MUTATION`,
+  `FRESHNESS_AND_STALENESS`, `CONSUMER_PARITY`, and `UNRESOLVED_OR_NEGATIVE_BRANCH`. A
+  record that omits a kind fails; `NOT_APPLICABLE` with `n/a`, `none`, `tbd`, or an
+  equivalent empty assertion fails; `RESEARCH_REQUIRED` must name the question or
+  candidate carrying that research; and a material subject with no record fails. Records
+  are built only for material subjects, so discovery stays bounded rather than becoming a
+  Cartesian expansion.
+- **Route each dependency by where its answer actually lives.** A question about how the
+  product behaves today is an implementation read, not a product decision; a question
+  about governing rules or documented fallback is a documentation read. Declare that in
+  the dimension's evidence path so mandatory research routes correctly — misrouting a
+  code question to documentation silently converts it into a human decision. A dependency
+  record carries no acceptance authority and can never be promoted or cited as an AC
+  source.
 
 ### Phase 6.6 — Question-Based Reasoning (Planner → Research Router → Resolver)
 

@@ -349,6 +349,766 @@ def test_code_result_path_grammar_fails_closed(finding) -> None:
     assert rejection is not None
 
 
+# ---------------------------------------------------------------------------
+# Researcher capability: discovered documentation provenance + attachment
+# content materialization + NO_RELEVANT_EVIDENCE semantics.
+# ---------------------------------------------------------------------------
+
+
+def _doc_orchestrator(payload):
+    return _orchestrator_with(
+        RoutedResearchProvider(
+            DeterministicResearchProvider({}),
+            _FakeModelProvider(payload),
+            mode="backend_model",
+        )
+    )
+
+
+def _doc_question_setup():
+    doc = _record(
+        "doc-scope",
+        "The configured period governs the retention of entries.",
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+    )
+    question = _question("What does documentation establish for retention?")
+    requirement = _requirement(
+        question,
+        ResearchRequirement.DOCUMENTATION,
+        [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION],
+    )
+    return doc, question, requirement
+
+
+def test_doc_discovered_source_with_provenance_is_admitted() -> None:
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Experience League documents the retention behavior.",
+                "source_refs": ["doc:1a2b3c4d5e6f"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+                "provenance": {
+                    "locator": "https://experienceleague.adobe.com/some/page",
+                    "title": "Some page",
+                    "query": "output history retention",
+                    "accessed_at": "2026-09-17",
+                },
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.ANSWER_FOUND
+    assert results[0].findings[0].provenance["locator"].startswith("https://")
+
+
+def test_doc_discovered_source_without_provenance_fails_closed() -> None:
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "x",
+                "source_refs": ["doc:1a2b3c4d5e6f"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+
+
+def test_doc_provenance_rejection_names_the_finding_and_missing_fields() -> None:
+    """Rejection stays wholesale - but it must say WHICH finding failed and
+    WHAT was missing.  A real research episode was discarded behind an
+    opaque note, so nothing downstream could tell a starved lane from an
+    unanswered question."""
+
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Documentation describes the report columns.",
+                "source_refs": ["doc:reports-intro"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+                "provenance": {
+                    "locator": "https://experienceleague.adobe.com/reports",
+                    "title": "Reports",
+                    "query": "topic list report columns",
+                    "accessed_at": "2026-09-17",
+                },
+            },
+            {
+                "claim": "Documentation describes the report filters.",
+                "source_refs": ["doc:reports-web-editor"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            },
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+    note = results[0].limitations[0]
+    assert "findings[1]" in note
+    assert "doc:reports-web-editor" in note
+    assert all(field in note for field in ("locator", "title", "query"))
+
+
+def test_doc_provenance_may_be_declared_once_in_the_source_registry() -> None:
+    """A discovered page's provenance is its identity, not a per-finding
+    decoration.  Two independent researchers both declared it once in the
+    result-level ``source_refs`` registry beside the ``doc:`` slug and
+    repeated only the slug on each finding; admission discarded both
+    episodes wholesale.  Provenance resolves from the finding first and
+    then from the registry entry naming the same slug."""
+
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Documentation describes the report columns.",
+                "source_refs": ["doc:reports-web-editor"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            },
+            {
+                "claim": "Documentation describes the report filters.",
+                "source_refs": ["doc:reports-web-editor"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            },
+        ],
+        "source_refs": [
+            {
+                "source_ref": "doc:reports-web-editor",
+                "provenance": {
+                    "locator": "https://experienceleague.adobe.com/reports",
+                    "title": "Reports in the Web Editor",
+                    "query": "topic list report columns filters",
+                    "accessed_at": "2026-09-18",
+                },
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.ANSWER_FOUND
+    assert len(results[0].findings) == 2
+    for finding in results[0].findings:
+        assert finding.provenance["title"] == "Reports in the Web Editor"
+
+
+def test_doc_registry_provenance_does_not_cover_a_different_slug() -> None:
+    """The registry fallback resolves provenance for the slug it names and
+    no other.  A finding citing an undeclared slug is still rejected, so
+    the fallback cannot launder an unprovenanced discovered source."""
+
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Documentation describes the report filters.",
+                "source_refs": ["doc:reports-undeclared"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            }
+        ],
+        "source_refs": [
+            {
+                "source_ref": "doc:reports-web-editor",
+                "provenance": {
+                    "locator": "https://experienceleague.adobe.com/reports",
+                    "title": "Reports in the Web Editor",
+                    "query": "topic list report columns",
+                },
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+    assert "doc:reports-undeclared" in results[0].limitations[0]
+
+
+def test_doc_contract_return_handoff_requires_provenance() -> None:
+    """The defect that stranded a real research episode was contract text,
+    not host code.  The return-handoff block - the last operative
+    instruction before the agent serializes - said every finding's
+    source_refs "must come from the authorized references in the request",
+    contradicting the discovery block that mints `doc:` slugs, and never
+    named `provenance` among the finding keys.  The agent therefore emitted
+    `doc:` refs with no provenance and the host discarded every finding."""
+
+    _name, _version, text = load_role_contract(ResearchWorkerRole.DOC_RESEARCHER)
+    assert "## Return handoff" in text
+    handoff = text.split("## Return handoff", 1)[1]
+    assert "must come from the authorized references" not in handoff
+    assert "`provenance`" in handoff
+    assert "doc:" in handoff
+    doc, question, requirement = _doc_question_setup()
+
+    def run(finding):
+        results, _ = (
+            _doc_orchestrator({"status": "ANSWER_FOUND", "findings": [finding]})
+            .execute([question], [requirement], _bundle(doc), repository_roots=[])
+        )
+        return results[0]
+
+    prov = {
+        "locator": "https://experienceleague.adobe.com/en/docs/x",
+        "title": "X",
+        "query": "q",
+    }
+    # Slug-style ref (no hash capability needed) with provenance: admitted.
+    ok = run(
+        {
+            "claim": "Documented behavior.",
+            "source_refs": ["doc:manage-digital-assets"],
+            "evidence_role": "EXISTING_BEHAVIOR",
+            "provenance": prov,
+        }
+    )
+    assert ok.status == ResearchWorkerStatus.ANSWER_FOUND
+    # Provenance block without the doc: ref is malformed.
+    bad = run(
+        {
+            "claim": "Documented behavior.",
+            "source_refs": [],
+            "evidence_role": "SUPPORTING_CONTEXT",
+            "provenance": prov,
+        }
+    )
+    assert bad.status == ResearchWorkerStatus.FAILED
+    assert "together" in bad.limitations[0]
+
+
+def test_doc_refs_are_not_valid_for_attachment_research() -> None:
+    attachment = _record(
+        "att1", "metadata only", EvidenceSourceType.JIRA_ATTACHMENT
+    )
+    question = _question("What does the screenshot show?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.JIRA_ATTACHMENT]
+    )
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "x",
+                "source_refs": ["doc:1a2b3c4d5e6f"],
+                "evidence_role": "OBSERVED_BEHAVIOR",
+                "provenance": {"locator": "p", "title": "t", "query": "q"},
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(attachment), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+
+
+def test_no_relevant_evidence_requires_searched_scopes() -> None:
+    doc, question, requirement = _doc_question_setup()
+    payload = {"status": "NO_RELEVANT_EVIDENCE", "findings": [], "limitations": []}
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    # Schema rule: NO_RELEVANT_EVIDENCE must name what was actually searched.
+    assert results[0].status == ResearchWorkerStatus.FAILED
+    payload["limitations"] = ["searched references pack and Experience League: nothing relevant"]
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.NO_RELEVANT_EVIDENCE
+
+
+def test_attachment_files_materialize_content_or_exact_error(tmp_path) -> None:
+    import json
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    attachment = EvidenceRecord(
+        source_type=EvidenceSourceType.JIRA_ATTACHMENT,
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+        source_reference="test:att-content",
+        tenant_id="tenant_a5",
+        visibility=SourceVisibility(tenant_id="tenant_a5"),
+        requirement_authority=AuthorityClass.SPECIFICATION_AUTHORITY,
+        # Attachment metadata WITHOUT a content URL: the exact reason must be
+        # recorded, never a fabricated path.
+        content={"id": "1", "filename": "shot.png", "mime_type": "image/png"},
+    )
+    bundle = _bundle(attachment)
+    question = _question("What does the screenshot show?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.JIRA_ATTACHMENT]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.ATTACHMENT_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the screenshot show?",
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        authorized_source_refs=[attachment.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(request, bundle=bundle, question=question, requirement=requirement)
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    files = payload["attachment_files"]
+    assert len(files) == 1
+    assert files[0]["source_ref"] == attachment.evidence_id
+    # No content URL -> exact reason recorded, no fabricated path.
+    assert files[0]["path"] == ""
+    assert "no content URL" in files[0]["error"]
+
+
+def _fake_retrieve_factory(monkeypatch, rows_by_substring):
+    """A plan-aware fake of the pipeline doc retriever: returns the mapped
+    rows only when the query contains the mapped substring."""
+
+    import app.services.doc_retriever_service as docs_mod
+
+    def fake(query, k=5, max_snippet_chars=400, allowed_host_suffixes=None):
+        # Longest key first so precise keys ("equations") win over prefixes
+        # ("equation").
+        for substring, rows in sorted(
+            rows_by_substring.items(), key=lambda item: -len(item[0])
+        ):
+            if substring in query.lower():
+                return {"query": query, "retrieval_mode": "semantic", "results": rows}
+        return {"query": query, "retrieval_mode": "semantic", "results": []}
+
+    monkeypatch.setattr(
+        docs_mod, "retrieve_relevant_docs_with_diagnostics", fake
+    )
+    return docs_mod
+
+
+def _doc_pending_payload(tmp_path, monkeypatch, claim, rows_by_substring):
+    import json
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    _fake_retrieve_factory(monkeypatch, rows_by_substring)
+    record = _record("doc-rag", "baseline", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION)
+    question = _question(claim)
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim=claim,
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        authorized_source_refs=[record.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(request, bundle=_bundle(record), question=question, requirement=requirement)
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    return json.loads(pending.read_text(encoding="utf-8"))
+
+
+# The regression fixture family: an output-history / publishing-warning
+# question whose indexed documentation uses output-generation / map
+# dashboard terminology.  Production logic stays ticket-agnostic; only this
+# fixture uses these terms.
+_OUTPUT_CLAIM = (
+    "Does the Output History on the outputs panel show publishing "
+    "warnings from the publish log?"
+)
+_OUTPUT_DOC_ROW = {
+    "url": "https://docs.example.test/output-generation",
+    "title": "Output generation troubleshooting",
+    "snippet": "The Map dashboard Generated Outputs list shows each run's status and its log.",
+    "corpus": "aem_guides",
+    "chunk_id": "chunk-out-1",
+}
+
+
+def test_query_plan_always_retains_the_original_query_first(tmp_path, monkeypatch) -> None:
+    payload = _doc_pending_payload(tmp_path, monkeypatch, _OUTPUT_CLAIM, {})
+    assert payload["documentation_queries"][0] == _OUTPUT_CLAIM
+    assert len(payload["documentation_queries"]) <= 4
+
+
+def test_vocabulary_expansion_improves_recall_across_terminology(tmp_path, monkeypatch) -> None:
+    # The doc only surfaces when the query carries documentation-side
+    # terminology ("generated outputs" / "map dashboard"), which the claim's
+    # own words ("output history") never contain.
+    payload = _doc_pending_payload(
+        tmp_path, monkeypatch, _OUTPUT_CLAIM, {"generated outputs": [_OUTPUT_DOC_ROW]}
+    )
+    candidates = payload["rag_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["url"] == _OUTPUT_DOC_ROW["url"]
+    assert any(
+        "generated outputs" in query.lower()
+        for query in candidates[0]["matched_queries"]
+    )
+    assert "generated outputs" in payload["rag_expansion_terms"]
+
+
+def test_duplicate_candidates_across_expansions_collapse(tmp_path, monkeypatch) -> None:
+    # Same URL surfaced by both the original claim and the expansion: one
+    # candidate, both queries recorded as provenance.
+    payload = _doc_pending_payload(
+        tmp_path,
+        monkeypatch,
+        _OUTPUT_CLAIM,
+        {"output history": [_OUTPUT_DOC_ROW], "generated outputs": [_OUTPUT_DOC_ROW]},
+    )
+    candidates = payload["rag_candidates"]
+    assert len(candidates) == 1
+    assert set(candidates[0]["matched_queries"]) >= {
+        _OUTPUT_CLAIM,
+        next(
+            query
+            for query in payload["documentation_queries"]
+            if "generated outputs" in query.lower()
+        ),
+    }
+
+
+def test_expansion_terms_never_become_evidence(tmp_path, monkeypatch) -> None:
+    payload = _doc_pending_payload(
+        tmp_path, monkeypatch, _OUTPUT_CLAIM, {"generated outputs": [_OUTPUT_DOC_ROW]}
+    )
+    assert payload["rag_expansion_terms"]
+    # Expansion terms are retrieval hints: candidates are marked as discovery
+    # leads and carry no evidence authority of their own.
+    assert all(
+        candidate.get("discovery_lead") is True
+        for candidate in payload["rag_candidates"]
+    )
+
+
+def test_irrelevant_expansion_cannot_override_original_query(tmp_path, monkeypatch) -> None:
+    strong_original = {
+        "url": "https://docs.example.test/original-strong",
+        "title": "Output History warnings",
+        "snippet": "Output History shows publishing warnings from the publish log.",
+        "corpus": "aem_guides",
+        "chunk_id": "chunk-orig",
+    }
+    weak_expansion = {
+        "url": "https://docs.example.test/expansion-weak",
+        "title": "Unrelated page",
+        "snippet": "Completely unrelated content.",
+        "corpus": "aem_guides",
+        "chunk_id": "chunk-weak",
+    }
+    payload = _doc_pending_payload(
+        tmp_path,
+        monkeypatch,
+        _OUTPUT_CLAIM,
+        {
+            "output history": [strong_original],
+            "generated outputs": [weak_expansion],
+        },
+    )
+    candidates = payload["rag_candidates"]
+    assert candidates[0]["url"] == strong_original["url"]
+    assert candidates[0]["score"] > candidates[1]["score"]
+
+
+import pytest
+
+@pytest.mark.parametrize(
+    "claim, stage1_row, target_row, corpus_term",
+    [
+        # Authoring: Jira wording never names the documentation phrasing.
+        (
+            "the mathml equation renders blank in the authoring canvas",
+            {
+                "url": "https://docs.example.test/authoring-mathml-intro",
+                "title": "MathML equations in the Web Editor",
+                "snippet": "How equations render inside the editor canvas.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-auth-1",
+            },
+            {
+                "url": "https://docs.example.test/authoring-equations-troubleshoot",
+                "title": "Troubleshoot blank equations in the Web Editor",
+                "snippet": "When equations render blank in the editor, check the MathML support.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-auth-2",
+            },
+            "equations",
+        ),
+        # Publishing: no bootstrap-map entry for this claim's wording.
+        (
+            "the rollout queue never drains overnight",
+            {
+                "url": "https://docs.example.test/publishing-queue-intro",
+                "title": "Publishing queue and deferred jobs",
+                "snippet": "Deferred jobs wait in the publishing queue.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-pub-1",
+            },
+            {
+                "url": "https://docs.example.test/publishing-queue-monitor",
+                "title": "Monitoring the publishing queue",
+                "snippet": "Watch deferred jobs and drain the publishing queue.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-pub-2",
+            },
+            "deferred",
+        ),
+        # Review: ticket slang vs documented term.
+        (
+            "review remarks vanish after a page reload",
+            {
+                "url": "https://docs.example.test/review-tasks-intro",
+                "title": "Review tasks in the Editor",
+                "snippet": "A review task collects review comments.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-rev-1",
+            },
+            {
+                "url": "https://docs.example.test/review-tasks-manage",
+                "title": "Managing review tasks and comments",
+                "snippet": "Review tasks persist comments across sessions.",
+                "corpus": "aem_guides",
+                "chunk_id": "chunk-rev-2",
+            },
+            "tasks",
+        ),
+    ],
+)
+def test_corpus_observed_terminology_bridges_jira_and_doc_wording(
+    tmp_path, monkeypatch, claim, stage1_row, target_row, corpus_term
+) -> None:
+    """Authoring/Publishing/Review fixtures: the Jira wording never matches
+    the documentation wording and no dictionary entry covers it - the
+    generic pseudo-relevance pass harvests the corpus's own phrasing from
+    the first-pass candidate and the reformulated query finds the target
+    documentation."""
+
+    # The corpus term must not come from any dictionary: it is absent from
+    # the claim, the vocabulary, and the bootstrap map.
+    assert corpus_term not in claim.lower()
+    payload = _doc_pending_payload(
+        tmp_path,
+        monkeypatch,
+        claim,
+        {
+            claim.lower().split()[2]: [stage1_row],
+            corpus_term: [target_row],
+        },
+    )
+    candidates = payload["rag_candidates"]
+    urls = {candidate["url"] for candidate in candidates}
+    assert target_row["url"] in urls
+    target = next(c for c in candidates if c["url"] == target_row["url"])
+    # The target was surfaced by a corpus-phrasing query, not the original
+    # claim (which never contained the documentation's term).
+    assert claim not in target["matched_queries"]
+    assert any(corpus_term in query.lower() for query in target["matched_queries"])
+    # And that term was harvested from the corpus, not from a dictionary:
+    assert corpus_term not in payload["rag_expansion_terms"]
+
+
+def test_domain_classification_boosts_but_never_filters(tmp_path, monkeypatch) -> None:
+    # "publish" maps to the taxonomy's publishing domain.  The same
+    # candidate must score exactly +0.1 with the matching area metadata and
+    # never be dropped when the metadata is absent.
+    base_row = {
+        "url": "https://docs.example.test/pub-area",
+        "title": "Publishing warnings",
+        "snippet": "Output History publish log warnings.",
+        "corpus": "aem_guides",
+        "chunk_id": "chunk-area-yes",
+        "area": "publishing",
+    }
+    payload = _doc_pending_payload(
+        tmp_path, monkeypatch, _OUTPUT_CLAIM, {"output history": [base_row]}
+    )
+    boosted = next(
+        c for c in payload["rag_candidates"] if c["url"] == base_row["url"]
+    )
+
+    no_area = dict(base_row)
+    no_area["area"] = ""
+    payload2 = _doc_pending_payload(
+        tmp_path / "second", monkeypatch, _OUTPUT_CLAIM, {"output history": [no_area]}
+    )
+    unboosted = next(
+        c for c in payload2["rag_candidates"] if c["url"] == base_row["url"]
+    )
+    assert round(boosted["score"] - unboosted["score"], 4) == 0.1
+    # No filtering either way: the candidate is present in both runs.
+    assert boosted["url"] == unboosted["url"] == base_row["url"]
+
+
+def test_doc_request_receives_rag_candidates_before_live_verification(
+    tmp_path, monkeypatch
+) -> None:
+    """An output-history / publishing-warning claim reaches the DOC
+    researcher WITH merged, provenance-carrying retrieval candidates -
+    before any live document verification the leaf performs."""
+
+    payload = _doc_pending_payload(
+        tmp_path, monkeypatch, _OUTPUT_CLAIM, {"output history": [_OUTPUT_DOC_ROW]}
+    )
+    assert payload["rag_status"].startswith("ok:")
+    candidates = payload["rag_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["title"] == _OUTPUT_DOC_ROW["title"]
+    assert _OUTPUT_CLAIM in candidates[0]["matched_queries"]
+    assert "semantic" in candidates[0]["retrieval_modes"]
+    assert candidates[0]["score"] is not None
+    assert "generated outputs" in candidates[0]["snippet"].lower()
+    # Vocabulary routing stays away from generic overview queries.
+    queries = [q.lower() for q in payload["documentation_queries"]]
+    assert queries[0] == _OUTPUT_CLAIM.lower()
+    assert all("overview" not in q for q in queries)
+
+
+def test_lifecycle_language_requires_documented_existing_behavior() -> None:
+    """A fix comment / code finding must never be labeled delivered/shipped/
+    current product behavior unless documentation establishes that state."""
+
+    from app.services.agent_execution_provider import validate_agent_result_shape
+
+    impl_claim = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "The fix was delivered and adds the indicator.",
+                "source_refs": [],
+                "repository": "repo",
+                "revision": "f" * 40,
+                "path": "src/app.java",
+                "evidence_role": "IMPLEMENTATION_EVIDENCE",
+            }
+        ],
+    }
+    rejection = validate_agent_result_shape(
+        impl_claim, ResearchWorkerRole.CODE_RESEARCHER
+    )
+    assert rejection is not None and "release/current-behavior" in rejection
+
+    # A negated, disciplined use of the phrase is not a lifecycle claim.
+    negated = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "The linked fix is In Progress; this is not established as current product behavior.",
+                "source_refs": [],
+                "evidence_role": "REQUIREMENT_CLARIFICATION",
+            }
+        ],
+    }
+    assert (
+        validate_agent_result_shape(negated, ResearchWorkerRole.DOC_RESEARCHER)
+        is None
+    )
+    # Sentence-scoped: the negation may sit far before the phrase.
+    negated_long = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": (
+                    "No consulted product documentation establishes this as "
+                    "delivered or current product behavior."
+                ),
+                "source_refs": [],
+                "evidence_role": "REQUIREMENT_CLARIFICATION",
+            }
+        ],
+    }
+    assert (
+        validate_agent_result_shape(
+            negated_long, ResearchWorkerRole.DOC_RESEARCHER
+        )
+        is None
+    )
+    # A later affirmative sentence still trips even after a negated one.
+    mixed = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": (
+                    "No comment establishes release state. The indicator is "
+                    "delivered in the current build."
+                ),
+                "source_refs": [],
+                "evidence_role": "REQUIREMENT_CLARIFICATION",
+            }
+        ],
+    }
+    assert (
+        validate_agent_result_shape(mixed, ResearchWorkerRole.DOC_RESEARCHER)
+        is not None
+    )
+
+    # EXISTING_BEHAVIOR role but only a Jira comment behind it: provider
+    # rejects (no documentation basis for current-behavior language).
+    comment = _record(
+        "fix-comment", "Fixed by: added the indicator.", EvidenceSourceType.JIRA_COMMENT
+    )
+    doc = _record(
+        "doc-lc",
+        "The documented behavior today.",
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+    )
+    question = _question("What is the current documented behavior?")
+    requirement = _requirement(
+        question, ResearchRequirement.DOCUMENTATION, [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION]
+    )
+
+    def payload_with(ref_id):
+        return {
+            "status": "ANSWER_FOUND",
+            "findings": [
+                {
+                    "claim": "This is the current product behavior.",
+                    "source_refs": [ref_id],
+                    "evidence_role": "EXISTING_BEHAVIOR",
+                }
+            ],
+        }
+
+    orchestrator = _orchestrator_with(
+        RoutedResearchProvider(
+            DeterministicResearchProvider({}),
+            _FakeModelProvider(payload_with(comment.evidence_id)),
+            mode="backend_model",
+        )
+    )
+    results, _ = orchestrator.execute(
+        [question], [requirement], _bundle(doc, comment), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+    assert "documentation source" in results[0].limitations[0]
+
+    orchestrator = _orchestrator_with(
+        RoutedResearchProvider(
+            DeterministicResearchProvider({}),
+            _FakeModelProvider(payload_with(doc.evidence_id)),
+            mode="backend_model",
+        )
+    )
+    results, _ = orchestrator.execute(
+        [question], [requirement], _bundle(doc, comment), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.ANSWER_FOUND
+
+
 def test_shadow_mode_keeps_deterministic_authoritative() -> None:
     doc = _record(
         "doc4",
@@ -648,6 +1408,94 @@ def test_copilot_host_envelope_rejects_smuggled_fields(tmp_path) -> None:
     assert not fulfilled.with_suffix(".consumed").exists()
 
 
+def test_copilot_host_pending_falls_back_to_env_repository_roots(
+    tmp_path, monkeypatch
+) -> None:
+    """When the caller passes no roots, the pending payload resolves the same
+    configured env vars the deterministic code worker uses."""
+
+    import json
+    import os
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    monkeypatch.setenv("STARLING_REPO_PATH", str(tmp_path / "starling"))
+    monkeypatch.delenv("XML_EDITOR_REPO_PATH", raising=False)
+    monkeypatch.delenv("GUIDES_UI_TESTS_REPO_PATH", raising=False)
+    monkeypatch.delenv("AEM_STUDIO_REPO", raising=False)
+
+    record = _record("authorized", "excerpt", EvidenceSourceType.CURRENT_CODE)
+    bundle = _bundle(record)
+    question = _question("What does the implementation do today?")
+    requirement = _requirement(
+        question, ResearchRequirement.IMPLEMENTATION, [EvidenceSourceType.CURRENT_CODE]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.CODE_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the implementation do today?",
+        research_requirement=ResearchRequirement.IMPLEMENTATION,
+        authorized_source_refs=[record.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(
+        request, bundle=bundle, question=question, requirement=requirement
+    )
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    assert payload["authorized_repository_roots"] == [
+        os.path.abspath(str(tmp_path / "starling"))
+    ]
+
+
+def test_copilot_host_pending_keeps_caller_supplied_roots_verbatim(
+    tmp_path, monkeypatch
+) -> None:
+    """A caller that supplies roots owns them.  Clones live on the caller's
+    machine, so the runtime host must pass the paths through untouched instead
+    of normalizing them against its own filesystem or substituting its env."""
+
+    import json
+
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    monkeypatch.setenv("STARLING_REPO_PATH", str(tmp_path / "vm-starling"))
+    monkeypatch.delenv("XML_EDITOR_REPO_PATH", raising=False)
+    monkeypatch.delenv("GUIDES_UI_TESTS_REPO_PATH", raising=False)
+    monkeypatch.delenv("AEM_STUDIO_REPO", raising=False)
+
+    record = _record("authorized", "excerpt", EvidenceSourceType.CURRENT_CODE)
+    bundle = _bundle(record)
+    question = _question("What does the implementation do today?")
+    requirement = _requirement(
+        question, ResearchRequirement.IMPLEMENTATION, [EvidenceSourceType.CURRENT_CODE]
+    )
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.CODE_RESEARCHER,
+        question_id=question.question_id,
+        question_revision="rev-test",
+        requested_claim="What does the implementation do today?",
+        research_requirement=ResearchRequirement.IMPLEMENTATION,
+        authorized_source_refs=[record.evidence_id],
+    )
+    provider = HostMediatedResearchProvider(store=tmp_path)
+    provider.execute(
+        request,
+        bundle=bundle,
+        question=question,
+        requirement=requirement,
+        repository_roots=["C:\\UI TEST\\guides-ui-tests", "  ", ""],
+    )
+    pending = tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    assert payload["authorized_repository_roots"] == ["C:\\UI TEST\\guides-ui-tests"]
+
+
 def test_copilot_host_pending_is_not_rewritten_on_repeat(tmp_path) -> None:
     import json
 
@@ -681,6 +1529,222 @@ def test_copilot_host_pending_is_not_rewritten_on_repeat(tmp_path) -> None:
     )
     assert pending.read_text(encoding="utf-8") == first
     assert json.loads(first)["authorized_evidence"]
+
+
+def test_copilot_host_resumes_episode_when_retrieval_admits_other_evidence(
+    tmp_path,
+) -> None:
+    """A re-run must consume the host's fulfilled research even when semantic
+    retrieval admitted a different evidence set.
+
+    Retrieval is approximate: two runs over the same ticket legitimately bind
+    different evidence rows to the same logical question.  When the episode
+    identity hashed that binding, every re-run minted a fresh episode, so
+    host-delegated results were emitted, fulfilled, and then stranded forever
+    and the run could never leave ``waiting_for_agent_research``."""
+
+    import json
+
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    first_record = _record(
+        "authorized-a", "excerpt a", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    )
+    second_record = _record(
+        "authorized-b", "excerpt b", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    )
+    question = _question("What does the documentation establish?")
+    requirement = _requirement(
+        question,
+        ResearchRequirement.DOCUMENTATION,
+        [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION],
+    )
+
+    def _request(scope: str, refs: list[str]) -> AgentResearchRequest:
+        return AgentResearchRequest(
+            run_scope=scope,
+            worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+            question_id=question.question_id,
+            question_revision="rev-test",
+            requested_claim="What does the documentation establish?",
+            research_requirement=ResearchRequirement.DOCUMENTATION,
+            authorized_source_refs=refs,
+        )
+
+    provider = HostMediatedResearchProvider(store=tmp_path)
+
+    # Run 1 emits the pending request and the host fulfils it.
+    first = _request("run:aaaaaaaa", [first_record.evidence_id])
+    provider.execute(
+        first,
+        bundle=_bundle(first_record),
+        question=question,
+        requirement=requirement,
+    )
+    pending = tmp_path / "pending" / f"{first.execution_id.replace(':', '_')}.json"
+    assert pending.exists()
+    bound_version = json.loads(pending.read_text(encoding="utf-8"))[
+        "role_contract_version"
+    ]
+    fulfilled = tmp_path / "fulfilled" / pending.name
+    fulfilled.parent.mkdir(parents=True, exist_ok=True)
+    fulfilled.write_text(
+        json.dumps(
+            {
+                "execution_id": first.execution_id,
+                "question_id": first.question_id,
+                "question_revision": "rev-test",
+                "worker_role": "DOC_RESEARCHER",
+                "provider": "COPILOT_HOST",
+                "model": "test-model",
+                "role_contract_version": bound_version,
+                "result": {
+                    "status": "NOT_FOUND",
+                    "findings": [],
+                    "source_refs": [],
+                    "applicability": "",
+                    "limitations": ["authorized evidence has no answer"],
+                    "conflicts": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Run 2: a new canonical run whose retrieval admitted a different row.
+    # The logical question is unchanged, so the fulfilled result is consumed
+    # instead of a second episode being emitted.
+    second = _request("run:bbbbbbbb", [second_record.evidence_id])
+    assert second.execution_id != first.execution_id
+    resumed = provider.execute(
+        second,
+        bundle=_bundle(second_record),
+        question=question,
+        requirement=requirement,
+    )
+    assert resumed.status == ResearchWorkerStatus.NOT_FOUND
+    assert provider.last_model_execution is True
+    assert fulfilled.with_suffix(".consumed").exists()
+    assert not (
+        tmp_path / "pending" / f"{second.execution_id.replace(':', '_')}.json"
+    ).exists()
+
+    # Consume-once survives: a third run delegates fresh research rather than
+    # replaying the consumed result.
+    third = _request("run:cccccccc", [second_record.evidence_id])
+    provider.execute(
+        third,
+        bundle=_bundle(second_record),
+        question=question,
+        requirement=requirement,
+    )
+    assert (
+        tmp_path / "pending" / f"{third.execution_id.replace(':', '_')}.json"
+    ).exists()
+
+
+def test_copilot_host_resume_prefers_the_newest_stranded_episode(tmp_path) -> None:
+    """Several unconsumed episodes can exist for one logical question when an
+    earlier run's research was delegated but never answered.  Run-scope ids
+    are random, so the newest emitted episode wins - not the lexicographically
+    last one, which would replay stale research."""
+
+    import json
+    import os
+
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+    from app.services.agent_execution_provider import HostMediatedResearchProvider
+
+    record = _record(
+        "authorized", "excerpt", EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    )
+    bundle = _bundle(record)
+    question = _question("What does the documentation establish?")
+    requirement = _requirement(
+        question,
+        ResearchRequirement.DOCUMENTATION,
+        [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION],
+    )
+
+    def _request(scope: str) -> AgentResearchRequest:
+        return AgentResearchRequest(
+            run_scope=scope,
+            worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+            question_id=question.question_id,
+            question_revision="rev-test",
+            requested_claim="What does the documentation establish?",
+            research_requirement=ResearchRequirement.DOCUMENTATION,
+            authorized_source_refs=[record.evidence_id],
+        )
+
+    provider = HostMediatedResearchProvider(store=tmp_path)
+
+    def _fulfil(request: AgentResearchRequest, limitation: str) -> None:
+        pending = (
+            tmp_path / "pending" / f"{request.execution_id.replace(':', '_')}.json"
+        )
+        version = json.loads(pending.read_text(encoding="utf-8"))[
+            "role_contract_version"
+        ]
+        fulfilled = tmp_path / "fulfilled" / pending.name
+        fulfilled.parent.mkdir(parents=True, exist_ok=True)
+        fulfilled.write_text(
+            json.dumps(
+                {
+                    "execution_id": request.execution_id,
+                    "question_id": request.question_id,
+                    "question_revision": "rev-test",
+                    "worker_role": "DOC_RESEARCHER",
+                    "provider": "COPILOT_HOST",
+                    "model": "test-model",
+                    "role_contract_version": version,
+                    "result": {
+                        "status": "NOT_FOUND",
+                        "findings": [],
+                        "source_refs": [],
+                        "applicability": "",
+                        "limitations": [limitation],
+                        "conflicts": [],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return fulfilled
+
+    # "run:zzz" sorts last but is emitted first: stale research.
+    stale = _request("run:zzzzzzzz")
+    provider.execute(stale, bundle=bundle, question=question, requirement=requirement)
+    stale_file = _fulfil(stale, "stale research")
+    stale_pending = (
+        tmp_path / "pending" / f"{stale.execution_id.replace(':', '_')}.json"
+    )
+    older = stale_pending.stat().st_mtime - 60
+    os.utime(stale_pending, (older, older))
+
+    # A later episode for the same logical question, emitted after it.
+    fresh = _request("run:aaaaaaaa")
+    # Same logical question, so a straight execute would resume the stale
+    # episode: write the fresh episode's pending record directly.
+    fresh_pending = (
+        tmp_path / "pending" / f"{fresh.execution_id.replace(':', '_')}.json"
+    )
+    payload = json.loads(stale_pending.read_text(encoding="utf-8"))
+    payload["run_scope"] = fresh.run_scope
+    payload["execution_id"] = fresh.execution_id
+    fresh_pending.write_text(json.dumps(payload), encoding="utf-8")
+    fresh_file = _fulfil(fresh, "fresh research")
+
+    resolved = provider.execute(
+        _request("run:mmmmmmmm"),
+        bundle=bundle,
+        question=question,
+        requirement=requirement,
+    )
+    assert resolved.limitations == ["fresh research"]
+    assert fresh_file.with_suffix(".consumed").exists()
+    assert not stale_file.with_suffix(".consumed").exists()
 
 
 # ---------------------------------------------------------------------------

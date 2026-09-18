@@ -446,6 +446,11 @@ class CanonicalRuntimeStage(StrEnum):
     CHANGE_SURFACE_EXTRACTOR = "ChangeSurfaceExtractor"
     EVIDENCE_BACKED_BEHAVIOR_GRAPH_BUILDER = "EvidenceBackedBehaviorGraphBuilder"
     BEHAVIOR_MODEL_BUILDER = "BehaviorModelBuilder"
+    # C1: broad behavioral discovery runs after the normalized behavior model and
+    # before closure, so dependent product semantics that can regress become
+    # material closure dimensions instead of being missed.  Discovery only; the
+    # acceptance gates downstream still decide what may become an AC.
+    BEHAVIORAL_COVERAGE_EXPANDER = "BehavioralCoverageExpander"
     SEMANTIC_BEHAVIORAL_CLOSURE_EXPLORER = "SemanticBehavioralClosureExplorer"
     MISSING_QUESTION_GENERATOR = "MissingQuestionGenerator"
     RESEARCH_REQUIREMENT_CLASSIFIER = "ResearchRequirementClassifier"
@@ -461,6 +466,12 @@ class CanonicalRuntimeStage(StrEnum):
     ACCEPTANCE_CONTRACT_RESOLVER = "AcceptanceContractResolver"
     BEHAVIORAL_COMPLETENESS_GATE = "BehavioralCompletenessGate"
     ACCEPTANCE_PROMOTION_GATE = "AcceptancePromotionGate"
+    # D2: the synthesis stage.  Promotion decides WHAT may be an AC; the Writer
+    # decides HOW it reads as a testable outcome - splitting compound requests,
+    # grouping same-outcome variants as sub-points, and attaching unresolved
+    # material behavior as a bounded (TBD) question inside the applicable AC.
+    # It never admits behavior the promotion gate did not already admit.
+    ACCEPTANCE_CRITERIA_WRITER = "AcceptanceCriteriaWriter"
     FINAL_QE_PLAN_RENDERER = "FinalQEPlanRenderer"
 
 
@@ -860,6 +871,9 @@ class SemanticDimension(StrEnum):
     GOVERNING_SEMANTICS = "GOVERNING_SEMANTICS"
     CONTROLLING_ATTRIBUTES = "CONTROLLING_ATTRIBUTES"
     GOVERNING_CONFIGURATION = "GOVERNING_CONFIGURATION"
+    # C1: where a displayed/exported/sorted/compared value actually comes from.
+    # A field named in a requirement is not atomic until this is considered.
+    VALUE_PROVENANCE = "VALUE_PROVENANCE"
     DIRECT_CONSUMERS = "DIRECT_CONSUMERS"
     SIBLING_CONSUMERS = "SIBLING_CONSUMERS"
     ALTERNATE_MECHANISMS = "ALTERNATE_MECHANISMS"
@@ -869,13 +883,26 @@ class SemanticDimension(StrEnum):
     SPECIALIZATIONS = "SPECIALIZATIONS"
     REFERENCED_CONTENT = "REFERENCED_CONTENT"
     NESTED_REFERENCED_CONTENT = "NESTED_REFERENCED_CONTENT"
+    # C1: feature-neutral indirection family.  Concrete product mechanisms
+    # (conref, conkeyref, keyref, key scope, mapref) are populated from evidence
+    # and vocabulary, never hardcoded as the definition of the dimension.
+    VALUE_RESOLUTION_OR_INDIRECTION = "VALUE_RESOLUTION_OR_INDIRECTION"
     ALTERNATE_REPRESENTATION = "ALTERNATE_REPRESENTATION"
     FALLBACK = "FALLBACK"
     ABSENT_VALUE = "ABSENT_VALUE"
     INVALID_VALUE = "INVALID_VALUE"
+    # C1: unresolved/broken target, undefined key, partial resolution.  Distinct
+    # from INVALID_VALUE: the value is well formed but cannot be resolved.
+    BROKEN_RESOLUTION = "BROKEN_RESOLUTION"
     POSITIVE_STATE = "POSITIVE_STATE"
     NEGATIVE_STATE = "NEGATIVE_STATE"
     LIFECYCLE = "LIFECYCLE"
+    # C1: identity/path movement kept separate from LIFECYCLE so a physical
+    # asset move/rename is never merged with a logical reorder.
+    IDENTITY_CHANGE = "IDENTITY_CHANGE"
+    # C1: does a derived/resolved/indexed value refresh when its source mutates,
+    # or can a stale result survive?
+    MUTATION_FRESHNESS = "MUTATION_FRESHNESS"
     CROSS_SURFACE_SYNC = "CROSS_SURFACE_SYNC"
     DOWNSTREAM_PROCESSOR = "DOWNSTREAM_PROCESSOR"
     GENERATED_OUTPUT = "GENERATED_OUTPUT"
@@ -939,6 +966,82 @@ class ClosureDisposition(StrEnum):
     INVESTIGATED_AND_REJECTED = "INVESTIGATED_AND_REJECTED"
     UNRESOLVED_AND_EXPOSED = "UNRESOLVED_AND_EXPOSED"
     NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class CoverageExpansionAxis(StrEnum):
+    """C1: reusable behavioral-coverage-expansion axes.
+
+    Feature-neutral by construction: an axis describes a *kind* of dependent
+    product semantics that can regress, never an AEM Guides feature.  Concrete
+    variants are populated from evidence and product vocabulary.
+    """
+
+    VALUE_PROVENANCE = "VALUE_PROVENANCE"
+    FALLBACK_AND_ABSENCE = "FALLBACK_AND_ABSENCE"
+    VALUE_RESOLUTION_OR_INDIRECTION = "VALUE_RESOLUTION_OR_INDIRECTION"
+    IDENTITY_AND_LIFECYCLE = "IDENTITY_AND_LIFECYCLE"
+    CONTEXT_AND_SCOPE = "CONTEXT_AND_SCOPE"
+    CONSUMER_SURFACE_PARITY = "CONSUMER_SURFACE_PARITY"
+    MUTATION_AND_FRESHNESS = "MUTATION_AND_FRESHNESS"
+    NEGATIVE_AND_BROKEN_RESOLUTION = "NEGATIVE_AND_BROKEN_RESOLUTION"
+
+
+class CoverageExpansionTrigger(StrEnum):
+    """What in the normalized requirement made an axis material.
+
+    These are requirement *shapes* (a value is displayed, an order is defined,
+    an identity is referenced), not product names, so the same triggers apply
+    across feature families.
+    """
+
+    DISPLAYED_VALUE = "DISPLAYED_VALUE"
+    EXPORTED_VALUE = "EXPORTED_VALUE"
+    ORDERING_RULE = "ORDERING_RULE"
+    COMPARED_OR_FILTERED_VALUE = "COMPARED_OR_FILTERED_VALUE"
+    PERSISTED_VALUE = "PERSISTED_VALUE"
+    RESOLVED_REFERENCE = "RESOLVED_REFERENCE"
+    IDENTITY_REFERENCE = "IDENTITY_REFERENCE"
+    MULTIPLE_CONSUMER_SURFACES = "MULTIPLE_CONSUMER_SURFACES"
+    STATE_TRANSITION = "STATE_TRANSITION"
+    CONFIGURATION_DEPENDENCY = "CONFIGURATION_DEPENDENCY"
+
+
+class CoverageExpansionDisposition(StrEnum):
+    """C1 Invariant 3: discovery is not acceptance.
+
+    An expansion candidate is routed to one of these; ``AC_CANDIDATE`` only
+    records that the downstream acceptance pipeline *may* consider it, never
+    that it has been promoted.  Promotion remains owned by
+    ``AcceptancePromotionGate``.
+    """
+
+    AC_CANDIDATE = "AC_CANDIDATE"
+    QE_REGRESSION = "QE_REGRESSION"
+    RESEARCH_REQUIRED = "RESEARCH_REQUIRED"
+    OPEN_QUESTION = "OPEN_QUESTION"
+    OUT_OF_SCOPE = "OUT_OF_SCOPE"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class SemanticDependencyKind(StrEnum):
+    """The dependency axes a materially affected subject must disposition.
+
+    These are *semantic* dependencies of a value or behavior, not product
+    features: every entry describes a way a value can be produced, chosen,
+    resolved, scoped, identified, changed, staled, or consumed.  A subject is
+    covered only when every kind below is explicitly dispositioned; silence is
+    never coverage.
+    """
+
+    PROVENANCE = "PROVENANCE"
+    PRECEDENCE_AND_FALLBACK = "PRECEDENCE_AND_FALLBACK"
+    INDIRECTION_AND_RESOLUTION = "INDIRECTION_AND_RESOLUTION"
+    CONTEXT_DEPENDENCY = "CONTEXT_DEPENDENCY"
+    IDENTITY = "IDENTITY"
+    LIFECYCLE_MUTATION = "LIFECYCLE_MUTATION"
+    FRESHNESS_AND_STALENESS = "FRESHNESS_AND_STALENESS"
+    CONSUMER_PARITY = "CONSUMER_PARITY"
+    UNRESOLVED_OR_NEGATIVE_BRANCH = "UNRESOLVED_OR_NEGATIVE_BRANCH"
 
 
 class HypothesisState(StrEnum):
@@ -1571,6 +1674,16 @@ class PipelineCompatibilityOptions(BaseModel):
     starling_repo_path: str | None = None
     publish_to_team_ui: bool = False
     human_review_threshold: int = Field(default=50, ge=0, le=100)
+    # Clone-backed code research runs where the clones actually live - the
+    # caller's machine - not where this runtime process happens to run.  A
+    # remote caller (MCP/REST against the VM) sends its own local roots here;
+    # the runtime only stamps them into the research request and never reads
+    # them, so the bounded worker on the caller's machine resolves real paths.
+    # Empty keeps the local-CLI behaviour of falling back to this host's
+    # configured repository environment variables.
+    research_repository_roots: list[str] = Field(
+        default_factory=list, max_length=20
+    )
     # P1: human clarifications bound to exact unresolved questions from a
     # previous run; each entry validates as HumanClarification.
     human_clarifications: list[dict[str, Any]] = Field(
@@ -2279,6 +2392,224 @@ class CanonicalBehaviorModel(BaseModel):
     lifecycle_operations: list[LifecycleOperation] = Field(default_factory=list)
 
 
+class BehavioralCoverageCandidate(BaseModel):
+    """One discovered dependent behavior that could regress.
+
+    A candidate is *discovery only*.  It carries no acceptance authority: it
+    exists so the dimension it names becomes material to closure, and so it can
+    be proven to have received an explicit disposition (Invariant 4).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str = ""
+    axis: CoverageExpansionAxis
+    subject: str
+    trigger: CoverageExpansionTrigger
+    dimensions: list[SemanticDimension] = Field(default_factory=list)
+    question: str
+    rationale: str
+    material: bool = True
+
+    @model_validator(mode="after")
+    def identify(self) -> "BehavioralCoverageCandidate":
+        if not self.subject.strip():
+            raise ValueError("a coverage candidate requires a subject")
+        if not self.dimensions:
+            raise ValueError("a coverage candidate must name at least one dimension")
+        self.dimensions = sorted(set(self.dimensions), key=lambda row: row.value)
+        identity = self.model_dump(mode="json", exclude={"candidate_id"})
+        expected = f"covexp:{stable_sha256(identity)[:32]}"
+        if self.candidate_id and self.candidate_id != expected:
+            raise ValueError("candidate_id does not match deterministic identity")
+        self.candidate_id = expected
+        return self
+
+
+# A NOT_APPLICABLE dependency must say why.  These collapse to the same empty
+# assertion and would restore the silence the record exists to prevent.
+_PLACEHOLDER_NOT_APPLICABLE_REASONS = frozenset(
+    {
+        "",
+        "na",
+        "n/a",
+        "none",
+        "nonapplicable",
+        "notapplicable",
+        "notrelevant",
+        "notneeded",
+        "notrequired",
+        "unknown",
+        "tbd",
+    }
+)
+
+
+class SemanticDependencySlot(BaseModel):
+    """One dependency kind's explicit disposition for one subject.
+
+    Invariant: silence is never coverage.  A slot always states *what was
+    decided* and *why*, and a ``NOT_APPLICABLE`` decision needs a concrete
+    reason rather than a placeholder, so a dependency can never be dropped by
+    omission.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: SemanticDependencyKind
+    disposition: CoverageExpansionDisposition
+    reason: str = ""
+    dimensions: list[SemanticDimension] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    question_ids: list[str] = Field(default_factory=list)
+    candidate_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def enforce_explicit_decision(self) -> "SemanticDependencySlot":
+        self.reason = self.reason.strip()
+        if not self.reason:
+            raise ValueError(
+                f"dependency {self.kind.value} needs a concrete reason for its "
+                f"{self.disposition.value} disposition"
+            )
+        if self.disposition == CoverageExpansionDisposition.NOT_APPLICABLE:
+            # A bare "n/a" restores the silence this record exists to prevent.
+            collapsed = "".join(
+                character
+                for character in self.reason.casefold()
+                if character.isalnum()
+            )
+            if collapsed in _PLACEHOLDER_NOT_APPLICABLE_REASONS:
+                raise ValueError(
+                    f"dependency {self.kind.value} was marked NOT_APPLICABLE "
+                    "with a placeholder reason; state why this subject cannot "
+                    "exercise the dependency"
+                )
+        if self.disposition == CoverageExpansionDisposition.RESEARCH_REQUIRED and not (
+            self.question_ids or self.candidate_ids
+        ):
+            raise ValueError(
+                f"dependency {self.kind.value} requires research but names no "
+                "question or candidate to carry it"
+            )
+        self.dimensions = sorted(set(self.dimensions), key=lambda row: row.value)
+        self.evidence_ids = sorted(set(self.evidence_ids))
+        self.question_ids = sorted(set(self.question_ids))
+        self.candidate_ids = sorted(set(self.candidate_ids))
+        return self
+
+
+class SemanticDependencyRecord(BaseModel):
+    """Every dependency kind explicitly dispositioned for one subject.
+
+    This is the completeness unit: a materially affected subject is covered
+    only when it carries a record and that record decides all of
+    ``SemanticDependencyKind``.  The record is discovery/traceability only and
+    grants no acceptance authority.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str = ""
+    subject: str
+    slots: list[SemanticDependencySlot] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def enforce_totality(self) -> "SemanticDependencyRecord":
+        self.subject = self.subject.strip()
+        if not self.subject:
+            raise ValueError("a semantic dependency record requires a subject")
+        seen: dict[SemanticDependencyKind, SemanticDependencySlot] = {}
+        for slot in self.slots:
+            if slot.kind in seen:
+                raise ValueError(
+                    f"dependency {slot.kind.value} is dispositioned twice for "
+                    f"subject {self.subject}"
+                )
+            seen[slot.kind] = slot
+        missing = [kind for kind in SemanticDependencyKind if kind not in seen]
+        if missing:
+            raise ValueError(
+                "semantic dependency record for "
+                f"{self.subject} is silent about: "
+                + ", ".join(kind.value for kind in missing)
+            )
+        self.slots = [seen[kind] for kind in SemanticDependencyKind]
+        self.record_id = f"semdep:{stable_sha256(self.subject)[:32]}"
+        return self
+
+    @property
+    def researched_kinds(self) -> set[SemanticDependencyKind]:
+        return {
+            slot.kind
+            for slot in self.slots
+            if slot.disposition == CoverageExpansionDisposition.RESEARCH_REQUIRED
+        }
+
+
+class BehavioralCoverageExpansion(BaseModel):
+    """Output of the BehavioralCoverageExpander stage.
+
+    Broad discovery, strict promotion: this record widens what closure must
+    disposition, and changes nothing about evidence authority or acceptance
+    promotion.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["aem-guides-behavioral-coverage-expansion-v1"] = (
+        "aem-guides-behavioral-coverage-expansion-v1"
+    )
+    candidates: list[BehavioralCoverageCandidate] = Field(default_factory=list)
+    triggers: list[CoverageExpansionTrigger] = Field(default_factory=list)
+    dependency_records: list[SemanticDependencyRecord] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "BehavioralCoverageExpansion":
+        self.triggers = sorted(set(self.triggers), key=lambda row: row.value)
+        seen: set[str] = set()
+        unique: list[BehavioralCoverageCandidate] = []
+        for candidate in self.candidates:
+            if candidate.candidate_id in seen:
+                continue
+            seen.add(candidate.candidate_id)
+            unique.append(candidate)
+        self.candidates = unique
+        by_subject: dict[str, SemanticDependencyRecord] = {}
+        for record in self.dependency_records:
+            by_subject[record.subject] = record
+        self.dependency_records = [
+            by_subject[subject] for subject in sorted(by_subject)
+        ]
+        return self
+
+    @property
+    def material_subjects(self) -> set[str]:
+        """Subjects discovery proved material, which must carry a record."""
+
+        return {
+            candidate.subject for candidate in self.candidates if candidate.material
+        }
+
+    @property
+    def undispositioned_subjects(self) -> list[str]:
+        """Material subjects with no dependency record: the silence check."""
+
+        covered = {record.subject for record in self.dependency_records}
+        return sorted(self.material_subjects - covered)
+
+    @property
+    def activated_dimensions(self) -> set[SemanticDimension]:
+        """Dimensions that discovery proved material and closure must decide."""
+
+        return {
+            dimension
+            for candidate in self.candidates
+            if candidate.material
+            for dimension in candidate.dimensions
+        }
+
+
 class ClosureDimensionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -2697,6 +3028,10 @@ class ResearchWorkerStatus(StrEnum):
     ANSWER_FOUND = "ANSWER_FOUND"
     PARTIAL = "PARTIAL"
     NOT_FOUND = "NOT_FOUND"
+    # The worker actually searched/read its authorized sources and none were
+    # relevant to the question - distinct from NOT_FOUND (no answer found) and
+    # never reportable merely because sources were not supplied to the worker.
+    NO_RELEVANT_EVIDENCE = "NO_RELEVANT_EVIDENCE"
     SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
     CONFLICTED = "CONFLICTED"
     FAILED = "FAILED"
@@ -2733,6 +3068,11 @@ class ResearchFinding(BaseModel):
     repository: str = Field(default="", max_length=500)
     revision: str = Field(default="", max_length=200)
     path: str = Field(default="", max_length=1000)
+    # For documentation sources the worker discovered itself inside the
+    # authorized scopes (ref form doc:<sha12>): provenance carries at least
+    # locator (URL or file path), title, and the query that found it.  Empty
+    # for bundle-cited evidence.
+    provenance: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def normalize(self) -> "ResearchFinding":
@@ -2771,9 +3111,17 @@ class ResearchWorkerResult(BaseModel):
             ResearchWorkerStatus.WORKER_UNAVAILABLE,
             ResearchWorkerStatus.FAILED,
             ResearchWorkerStatus.AWAITING_HOST,
+            ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
         } and self.findings:
             raise ValueError(
                 "an unavailable/failed/awaiting worker cannot report findings"
+            )
+        if (
+            self.status == ResearchWorkerStatus.NO_RELEVANT_EVIDENCE
+            and not self.limitations
+        ):
+            raise ValueError(
+                "NO_RELEVANT_EVIDENCE requires limitations naming the sources actually searched"
             )
         identity = self.model_dump(
             mode="json",
@@ -2795,6 +3143,16 @@ class AgentResearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     execution_id: str = ""
+    # G1: run-scoped execution identity.  Every top-level Generate-UAC
+    # invocation carries a distinct canonical run id; scoping the request to
+    # it makes the deterministic execution_id (and therefore the
+    # pending/fulfilled/consumed handoff state) unique per run while the
+    # logical question identity (question_id / revision / claim) stays
+    # stable and traceable across runs.  A repeated run of the same Jira
+    # creates fresh executions; a duplicate result for an already-consumed
+    # execution within one run still fails closed.  Empty only for legacy
+    # pre-G1 artifacts.
+    run_scope: str = ""
     worker_role: ResearchWorkerRole
     question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
     question_revision: str = ""
@@ -2842,6 +3200,65 @@ class ResearchWorkerExecution(BaseModel):
     # The model the host actually ran (reported by the host receipt); empty
     # for deterministic execution.
     model: str = ""
+
+
+class ConvergenceStatus(StrEnum):
+    """The virtual refinement team's per-question convergence state."""
+
+    CONVERGED = "CONVERGED"
+    CONVERGED_WITH_LIMITS = "CONVERGED_WITH_LIMITS"
+    CONFLICTED = "CONFLICTED"
+    UNRESOLVED = "UNRESOLVED"
+
+
+class ConvergenceRecord(BaseModel):
+    """Three-perspective evidence evaluation for one material question,
+    computed after research and before coverage finalizes: the Product/PM
+    view (intended product contract), the Developer view (what the code
+    establishes), and the QE view (observable behavior, negative cases,
+    regression implications).  It names agreements, conflicts, and
+    acceptance-changing unknowns; it never invents a product decision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    convergence_id: str = ""
+    question_id: str = Field(pattern=r"^question:[a-f0-9]{32}$")
+    pm_view: list[str] = Field(default_factory=list)
+    dev_view: list[str] = Field(default_factory=list)
+    qe_view: list[str] = Field(default_factory=list)
+    agreements: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    # Parallel to ``conflicts``: each entry's classification -
+    # PRODUCT_CONTRACT / IMPLEMENTATION /
+    # REQUIREMENT_IMPLEMENTATION_MISMATCH / LIFECYCLE_CURRENTNESS /
+    # EVIDENCE_QUALITY.  Only PRODUCT_CONTRACT conflicts are
+    # acceptance-changing; a requirement-vs-code mismatch stays an
+    # implementation finding, lifecycle/currentness conflicts cap
+    # shipped/current claims only, and evidence-quality conflicts cap
+    # confidence only.
+    conflict_classes: list[str] = Field(default_factory=list)
+    # Implementation-lane conflicts (IMPLEMENTATION and
+    # REQUIREMENT_IMPLEMENTATION_MISMATCH), recorded for the Developer
+    # perspective; they never produce a human product-decision TBD.
+    implementation_findings: list[str] = Field(default_factory=list)
+    acceptance_changing_unknowns: list[str] = Field(default_factory=list)
+    # True only when an unresolved conflict/unknown can change the acceptance
+    # contract itself.  When False, this record never produces a TBD.
+    acceptance_changing: bool = False
+    # The decision-quality clarification: established behavior + the
+    # undecided point + what QE must decide.  Never the raw Jira problem
+    # prose; empty when no acceptance-changing decision remains.
+    decision: str = ""
+    status: ConvergenceStatus
+
+    @model_validator(mode="after")
+    def identify(self) -> "ConvergenceRecord":
+        identity = self.model_dump(mode="json", exclude={"convergence_id"})
+        expected = f"convergence:{stable_sha256(identity)[:32]}"
+        if self.convergence_id and self.convergence_id != expected:
+            raise ValueError("convergence_id does not match deterministic identity")
+        self.convergence_id = expected
+        return self
 
 
 class HostAgentResultEnvelope(BaseModel):
@@ -3856,6 +4273,12 @@ class CoverageDispositionRecord(BaseModel):
     configuration: str = ""
     variants: list[str] = Field(default_factory=list)
     revision: str = ""
+    # True when the candidate text was established by admitted research
+    # findings (for example a customer-stated DESIRED_BEHAVIOR) rather than
+    # by the question's triggering facts alone.  Research-derived candidates
+    # are exempt from the PROBLEM_TO_SOLUTION promotion guard because the
+    # desired behavior carries its own research evidence.
+    research_derived: bool = False
 
     @model_validator(mode="after")
     def identify(self) -> "CoverageDispositionRecord":
@@ -4139,6 +4562,72 @@ class AcceptancePromotionDecision(BaseModel):
     # artifacts that predate sufficiency).
     sufficiency_ref: str = ""
     reasons: list[str] = Field(default_factory=list)
+
+
+class AcceptanceSubPointKind(StrEnum):
+    """Why a sub-point hangs under an acceptance criterion."""
+
+    # An applicable, evidence-supported variant of the parent outcome.
+    CONFIRMED_VARIANT = "CONFIRMED_VARIANT"
+    # Material behavior whose expected product outcome could not be concluded
+    # from authoritative evidence.  It stays inside the acceptance contract as
+    # a question rather than being relocated or dropped.
+    TBD_QUESTION = "TBD_QUESTION"
+
+
+class AcceptanceSubPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    kind: AcceptanceSubPointKind
+    source_fact_ids: list[str] = Field(default_factory=list)
+    source_disposition_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "AcceptanceSubPoint":
+        self.text = " ".join(self.text.split())
+        if not self.text:
+            raise ValueError("acceptance sub-point text must not be empty")
+        if self.kind == AcceptanceSubPointKind.TBD_QUESTION and not self.text.endswith(
+            "?"
+        ):
+            raise ValueError("a TBD sub-point must be phrased as a question")
+        self.source_fact_ids = sorted(set(self.source_fact_ids))
+        self.source_disposition_ids = sorted(set(self.source_disposition_ids))
+        self.evidence_ids = sorted(set(self.evidence_ids))
+        return self
+
+
+class WrittenAcceptanceCriterion(BaseModel):
+    """One human-facing acceptance criterion produced by the Writer stage."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    criterion_id: str = ""
+    outcome: str
+    sub_points: list[AcceptanceSubPoint] = Field(default_factory=list)
+    source_line: str = ""
+    source_candidate_ids: list[str] = Field(default_factory=list)
+    source_fact_ids: list[str] = Field(default_factory=list)
+    source_disposition_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    # True when the parent outcome itself is unresolved, so the whole criterion
+    # renders as a (TBD).  The criterion still belongs to the contract.
+    unresolved: bool = False
+
+    @model_validator(mode="after")
+    def identify(self) -> "WrittenAcceptanceCriterion":
+        self.outcome = " ".join(self.outcome.split())
+        if not self.outcome:
+            raise ValueError("acceptance criterion outcome must not be empty")
+        self.source_candidate_ids = sorted(set(self.source_candidate_ids))
+        self.source_fact_ids = sorted(set(self.source_fact_ids))
+        self.source_disposition_ids = sorted(set(self.source_disposition_ids))
+        self.evidence_ids = sorted(set(self.evidence_ids))
+        identity = self.model_dump(mode="json", exclude={"criterion_id"})
+        self.criterion_id = f"written-ac:{stable_sha256(identity)[:32]}"
+        return self
 
 
 class CandidateLifecycleRecord(BaseModel):
@@ -4532,6 +5021,11 @@ __all__ = [
     "CandidateTerminalDisposition",
     "ChangeSurface",
     "ChangeSurfaceKind",
+    "BehavioralCoverageCandidate",
+    "SemanticDependencyKind",
+    "SemanticDependencyRecord",
+    "SemanticDependencySlot",
+    "BehavioralCoverageExpansion",
     "ClosureDimensionResult",
     "CompatibilityProjectionLink",
     "ContractFact",
@@ -4612,6 +5106,9 @@ __all__ = [
     "RuntimeStageTrace",
     "RuntimeTrace",
     "ScopeResolution",
+    "CoverageExpansionAxis",
+    "CoverageExpansionDisposition",
+    "CoverageExpansionTrigger",
     "SemanticDimension",
     "ClosureDisposition",
     "MissingQuestion",

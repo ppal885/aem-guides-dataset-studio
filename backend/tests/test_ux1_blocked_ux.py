@@ -221,6 +221,63 @@ def test_equivalent_blocking_questions_deduplicate() -> None:
     assert len(consumer_questions[0].source_closure_ids) == 2
 
 
+def test_many_clean_entities_never_reconstitute_a_comma_dump() -> None:
+    """#51: the per-entity safety check is not sufficient - joining many
+    individually clean tokens rebuilds a grep/retrieval dump in the
+    human-facing question.  More than two entities project to the typed
+    behavior dimension instead."""
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [
+            _unresolved_closure("skip_feature_if_flag"),
+            _unresolved_closure("before_feature"),
+            _unresolved_closure("2688"),
+            _unresolved_closure("explicit_wait"),
+        ],
+        ScopeResolution(),
+        _facts("Export jobs must write a completion marker."),
+    )
+    assert questions
+    for question in questions:
+        assert _human_question_safe(question.question)
+        assert "the affected behavior" in question.question
+        assert "skip_feature_if_flag" not in question.question
+        assert question.question.count(",") == 0
+
+    # Two genuinely clean entities still name the actual subjects.
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [
+            _unresolved_closure("output history"),
+            _unresolved_closure("publish log"),
+        ],
+        ScopeResolution(),
+        _facts("Export jobs must write a completion marker."),
+    )
+    assert questions
+    assert "output history, publish log" in questions[0].question
+
+
+def test_emitted_question_is_the_fail_safe_validated_text() -> None:
+    """#51: two entities pass the >2 projection and each passes the
+    per-entity check, yet their join still reconstitutes a retrieval dump
+    ("935, c, 9, 1837").  The fail-safe that re-validates the assembled
+    question must govern the EMITTED question, not a discarded local."""
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [
+            _unresolved_closure("935, c"),
+            _unresolved_closure("9, 1837"),
+        ],
+        ScopeResolution(),
+        _facts("Export jobs must write a completion marker."),
+    )
+    assert questions
+    for question in questions:
+        assert _human_question_safe(question.question), question.question
+        assert "1837" not in question.question
+        # The raw entities stay bound to the trace, never lost.
+        assert question.investigation_terms == ["935, c", "9, 1837"]
+        assert question.source_closure_ids
+
+
 # ---------------------------------------------------------------------------
 # Domain-bound NFR activation (spec sections 10, 11, 12)
 # ---------------------------------------------------------------------------
@@ -457,8 +514,21 @@ def test_blocked_questions_keep_canonical_identity_for_resume() -> None:
     # canonical question text (no presentation rewrite), so its ID/revision
     # stays bound for clarification resume.
     decisions_section = rendered.split("## Open product decisions")[-1]
+    convergence_rows = {
+        row["question_id"]: row
+        for row in result.output_payload.get("convergence", [])
+    }
     for question in questions:
-        if question["blocking"]:
+        if not question["blocking"]:
+            continue
+        conv = convergence_rows.get(question["question_id"])
+        if conv and conv.get("decision"):
+            # Decision-quality clarification: convergence converted the
+            # residual uncertainty into one concrete product decision; the
+            # raw problem prose is no longer the human question.  Identity
+            # for resume stays bound through the payload below.
+            assert conv["decision"] in decisions_section
+        else:
             assert question["question"] in decisions_section
     # P1 admission binds the same canonical question id.
     from app.core.schemas_canonical_test_plan_runtime import MissingQuestion

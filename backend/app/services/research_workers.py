@@ -491,6 +491,7 @@ class ResearchOrchestrator:
         bundle: CanonicalEvidenceBundle,
         *,
         repository_roots: list[str] | None = None,
+        run_scope: str = "",
     ) -> tuple[list[ResearchWorkerResult], list]:
         from app.core.schemas_canonical_test_plan_runtime import (
             AgentResearchRequest,
@@ -516,6 +517,7 @@ class ResearchOrchestrator:
             roles = self._roles_for(requirement, has_attachments)
             for role in roles:
                 request = AgentResearchRequest(
+                    run_scope=run_scope,
                     worker_role=role,
                     question_id=question.question_id,
                     question_revision=question.question_revision,

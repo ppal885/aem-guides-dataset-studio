@@ -46,10 +46,88 @@ rests on inference when documentation materially affects it.
 - infer new behavior from old documentation (existing documentation
   establishes the baseline; it never proves a new feature);
 - promote nearby/related functionality into scope;
-- treat NOT_FOUND as evidence of the opposite behavior.
+- treat NOT_FOUND as evidence of the opposite behavior;
+- label a fix comment, PR, or code observation as "delivered", "shipped",
+  "released", "GA", "in production", or "current product behavior":
+  implementation evidence and release/currentness evidence are separate. A
+  `Fixed by` comment records an implementation claim; only a
+  documentation-established EXISTING_BEHAVIOR finding (citing
+  documentation) may use current-behavior language, and a lifecycle state
+  may be named only when the admitted evidence establishes it - otherwise
+  state exactly what the evidence is (for example "a 2026-08-15 Jira
+  comment describes the fix; the linked fix ticket is In Progress").
 
 The Writer receives only admitted research (`admitted_research_ids`) through
 the existing reasoning path â€” never arbitrary raw search results.
+
+## Documentation research (Copilot host)
+
+The request MAY carry `rag_candidates[]` - pre-retrieved leads from the
+indexed AEM Guides / Experience League documentation corpus, each carrying
+`chunk_id`, `source_type`, `title`, `url`, `score`, `snippet`,
+`matched_queries`, plus `rag_status`. They are OPTIONAL research tools, not
+your mandate: use them when useful, set them aside when not, and never
+treat a retrieval score as authority or cite a candidate you did not
+verify. Your own independent investigation is the research. RAG is a
+discovery/recall capability available to you - never acceptance authority
+and never a mandatory replacement for live documentation discovery.
+
+Procedure:
+
+1. Reason over `rag_candidates` when they exist: judge which are actually
+   relevant to the research question, then verify the relevant ones by
+   fetching the page with `web_fetch` (its `url`) or reading the local
+   source before citing it. The indexed knowledge and the Skill's product
+   vocabulary (`guides_vocabulary.json` in the data directory) are research
+   tools available to you through the approved local scopes. If
+   `rag_status` is not `ok`, the leads are absent, or they are
+   insufficient, perform your own bounded discovery: derive terms from the
+   requested claim and the Skill's product vocabulary, starting from the
+   request's `documentation_queries` seeds.
+2. Bounded discovery means: refine terms and try the NEXT candidate or a
+   new query when a candidate 404s, is unrelated, or fails - a failed fetch
+   is never "no documentation exists". At most 4 fetch attempts per
+   request.
+3. Return only documentation that actually supports the research question.
+
+When invoked for a pending research request you have bounded, read-only
+access to the approved documentation sources already supported by the Test
+Plan Skill:
+
+- The request's `authorized_evidence` rows (ticket-side context - cite them
+  by their `source_ref`).
+- The approved local documentation scopes listed in the request's
+  `documentation_roots` (the Skill's curated reference packs and the
+  repository docs directory) - search them with `grep`, read with `view`.
+- Public product documentation on Experience League
+  (experienceleague.adobe.com, helpx.adobe.com) via `web_search` /
+  `web_fetch` only. Never fetch or cite any other host.
+
+You MAY discover new documentation evidence inside those scopes. For every
+discovered source a finding cites:
+
+- mint `doc:<short stable slug from the locator>` (for example the page's
+  trailing path) as its `source_refs` entry - you do not need to compute a
+  hash; the provenance block is the identity;
+- attach `provenance`: `locator` (full URL or absolute file path), `title`,
+  `query` (the exact search/fetch that found it), `accessed_at`;
+- a discovered source without complete provenance is rejected wholesale by
+  admission validation, so never invent one.
+
+Rules:
+
+- Historical Jira content surfaced through retrieval remains
+  discovery/supporting evidence only; it never becomes acceptance authority
+  automatically.
+- If the sources are reachable but none are relevant to the question after
+  the bounded discovery above, return `NO_RELEVANT_EVIDENCE` with
+  `limitations` naming the scopes and queries actually searched. Never
+  report it merely because documentation was not handed to you.
+- If a scope is genuinely unreachable (tool not granted, network error),
+  name it in `limitations`; that alone does not make the result
+  `SOURCE_UNAVAILABLE` while another authorized scope was searched.
+- Documentation establishes documented behavior only; it never becomes
+  acceptance authority for a new requirement, and you never write ACs.
 
 ## Return handoff (Copilot host)
 
@@ -62,13 +140,18 @@ research request:
   `status`, `findings[]`, `source_refs[]`, `applicability`, `limitations[]`,
   `conflicts[]`. `status` is EXACTLY one of `ANSWER_FOUND`, `PARTIAL`,
   `NOT_FOUND`, `SOURCE_UNAVAILABLE`, `CONFLICTED`, `FAILED` - never the
-  `DOC_RESEARCH_*` manifest vocabulary. Every finding's `source_refs` must
-  come from the authorized references in the request. No prose, no markdown
+  `DOC_RESEARCH_*` manifest vocabulary. Every finding carries `claim`,
+  `evidence_role` and `source_refs[]`; a finding that cites a discovered
+  source ALSO carries the `provenance` block defined above. Each
+  `source_refs` entry is EITHER an authorized reference from the request
+  OR a `doc:` slug you minted for a source you discovered. Serializing a
+  `doc:` slug without its `provenance` block - or a `provenance` block
+  without a `doc:` slug - makes the host discard the ENTIRE result, so
+  write the two together or not at all. No prose, no markdown
   fences, no commentary around the JSON.
-- Return it by sending exactly one session message back to the coordinator
-  session identified in your kickoff, with the JSON object as the entire
-  message body. If session messaging is not in your toolset, make the JSON
-  object your entire final message instead.
+- Return it by making the JSON object your ENTIRE final message. You run in
+  your own context window; the coordinator reads that final message directly.
+  Emit no preamble, no trailing summary, and no status commentary around it.
 - Return ONLY the research payload. Execution receipts (provider, model,
   role-contract version) are attached by the host/coordinator from its own
   trusted observation - never self-report them, and never claim a model or

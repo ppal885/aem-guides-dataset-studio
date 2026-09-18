@@ -2188,10 +2188,22 @@ def test_fj16_resolved_questions_leave_open_question_sections_but_unresolved_rem
     open_ids = section_ids.get("product_decisions", set()) | section_ids.get(
         "evidence_gaps", set()
     )
+    # Decision semantics: when convergence produced the decision-quality
+    # clarification, the open section addresses the question through its
+    # ACCEPTANCE_TBD disposition id instead of the raw question id.
+    tbd_by_question: dict[str, set[str]] = {}
+    for row in result.output_payload["coverage_dispositions"]:
+        if row["disposition"] == CoverageDisposition.ACCEPTANCE_TBD.value:
+            for question_id in row["source_question_ids"]:
+                tbd_by_question.setdefault(question_id, set()).add(
+                    row["disposition_id"]
+                )
     for hypothesis in hypotheses:
         question = questions[hypothesis["derived_from_question_id"]]
         if hypothesis["state"] == HypothesisState.UNRESOLVED.value:
-            assert question["question_id"] in open_ids
+            assert question["question_id"] in open_ids or (
+                tbd_by_question.get(question["question_id"], set()) & open_ids
+            )
         elif question["dimension"] is not None:
             assert question["question_id"] not in open_ids
 
@@ -2209,6 +2221,36 @@ def test_fj16_every_terminal_disposition_is_addressable_in_one_section() -> (
         row["disposition_id"]
         for row in result.output_payload["coverage_dispositions"]
     }
+    # Settled (research-answered) and dimension-less boilerplate
+    # planner questions are intentionally suppressed from the
+    # human-facing evidence-gaps lane; they stay in the trace.
+    payload = result.output_payload
+    research_by_q = {
+        row["question_id"]: row for row in payload.get("question_research", [])
+    }
+    question_by_id = {
+        row["question_id"]: row for row in payload.get("missing_questions", [])
+    }
+    suppressed: set[str] = set()
+    for row in payload["coverage_dispositions"]:
+        if row["disposition"] != CoverageDisposition.OPEN_QUESTION.value:
+            continue
+        settled = False
+        boilerplate = False
+        for question_id in row["source_question_ids"]:
+            research = research_by_q.get(question_id)
+            if research is None:
+                continue
+            if research["research_status"] in {"ANSWER_FOUND", "PARTIAL"}:
+                settled = True
+            elif research["research_status"] in {
+                "NOT_APPLICABLE",
+                "NOT_REQUIRED",
+            } and question_by_id.get(question_id, {}).get("dimension") is None:
+                boilerplate = True
+        if settled or boilerplate:
+            suppressed.add(row["disposition_id"])
+    expected_ids -= suppressed
     assert set(visible_counts) == expected_ids
     assert set(visible_counts.values()) == {1}
     all_source_ids = {

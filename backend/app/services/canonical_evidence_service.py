@@ -1269,12 +1269,20 @@ def normalize_legacy_packet(
     publishing = packet.get("publishing_transform_context")
     publishing_rows: Any = publishing
     if isinstance(publishing, dict):
-        publishing_rows = (
-            publishing.get("evidence")
-            or publishing.get("results")
-            or publishing.get("sources")
-            or ([publishing] if publishing else [])
-        )
+        if "dita_ot_evidence" in publishing:
+            # The envelope built by _build_publishing_transform_context carries its
+            # retrieved rows under this key.  Falling through to the generic chain
+            # would wrap the envelope itself as one record, collapsing every
+            # retrieved issue into a single opaque row and admitting the gate-off
+            # message or retrieval error prose as DITA-OT evidence.
+            publishing_rows = publishing.get("dita_ot_evidence") or []
+        else:
+            publishing_rows = (
+                publishing.get("evidence")
+                or publishing.get("results")
+                or publishing.get("sources")
+                or ([publishing] if publishing else [])
+            )
     records.extend(
         _record_rows(
             publishing_rows,
@@ -1291,7 +1299,7 @@ def normalize_legacy_packet(
                 layer="backend",
                 contract_ownership=ProductContractOwnership.DITA_OT_PROCESSING_BEHAVIOR,
             ),
-            fields=("canonical_url", "source_url", "path", "source_hash"),
+            fields=("canonical_url", "source_url", "url", "path", "source_hash"),
             public=True,
         )
     )

@@ -77,6 +77,10 @@ class TestPlanPipelineBridgeRequest(BaseModel):
     starling_repo_path: str | None = None
     publish_to_team_ui: bool = False
     human_review_threshold: int = 50
+    # Caller-resolved clone paths for code research.  The backend passes these
+    # through untouched; it never resolves or reads them, because the research
+    # worker runs on the caller's machine where the clones actually exist.
+    research_repository_roots: list[str] = []
     claude_question_submission: ClaudeMissingQuestionSubmission | None = None
 
 
@@ -383,6 +387,7 @@ def test_plan_pipeline(
         starling_repo_path=body.starling_repo_path,
         publish_to_team_ui=body.publish_to_team_ui,
         human_review_threshold=max(0, min(body.human_review_threshold, 100)),
+        research_repository_roots=list(body.research_repository_roots),
         claude_question_submission=body.claude_question_submission,
     )
     return run_test_plan_pipeline(request, user=user, entry_point="rest_bridge")

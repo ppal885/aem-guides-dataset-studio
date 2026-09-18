@@ -438,6 +438,7 @@ class QuestionResearchRouter:
                 ResearchWorkerStatus.ANSWER_FOUND,
                 ResearchWorkerStatus.PARTIAL,
                 ResearchWorkerStatus.NOT_FOUND,
+                ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
                 ResearchWorkerStatus.CONFLICTED,
             }
             for row in question_worker_results
@@ -504,6 +505,7 @@ class QuestionResearchRouter:
                 ResearchWorkerStatus.ANSWER_FOUND,
                 ResearchWorkerStatus.PARTIAL,
                 ResearchWorkerStatus.NOT_FOUND,
+                ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
                 ResearchWorkerStatus.CONFLICTED,
             }:
                 executed_worker_categories.add(category)
@@ -513,6 +515,12 @@ class QuestionResearchRouter:
         unresolved_worker_categories = (
             unavailable_worker_categories - executed_worker_categories
         )
+        # R2 hard gate: a mandated worker route that could not execute is
+        # never covered by generic retrieval evidence that merely shares its
+        # source category.  Without this, a failed DOC_RESEARCHER would be
+        # masked by any documentation chunk the retriever happened to match
+        # and the question would reach coverage as ANSWER_FOUND.
+        researched_categories -= unresolved_worker_categories
         resolved_handoffs = [
             row
             for row in question_handoffs
@@ -528,13 +536,19 @@ class QuestionResearchRouter:
         # R2: workers executed and found nothing, with no other evidence or
         # hypothesis: that is a true NOT_FOUND (executed, no answer), never a
         # PARTIAL upgrade and never evidence of the opposite behavior.
+        # NO_RELEVANT_EVIDENCE (searched the authorized scopes, none relevant)
+        # is the same terminal no-answer outcome.
         if (
             question_worker_results
             and not evidence_ids
             and not question_hypotheses
             and not unresearched
             and all(
-                row.status == ResearchWorkerStatus.NOT_FOUND
+                row.status
+                in {
+                    ResearchWorkerStatus.NOT_FOUND,
+                    ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
+                }
                 for row in question_worker_results
             )
         ):
@@ -571,6 +585,18 @@ class QuestionResearchRouter:
                 ResearchStatus.CONFLICTED,
                 "A research worker returned conflicting findings; a Human "
                 "must settle the conflict before coverage finalizes.",
+                request_ids,
+                evidence_ids,
+            )
+        # R2: infrastructure failure is never disguised as a clean answer.
+        # This check precedes the terminal/partial branches: retrieval
+        # evidence gathered alongside a failed mandated route must not
+        # upgrade the question to ANSWER_FOUND or PARTIAL.
+        if unresearched & unresolved_worker_categories:
+            return build(
+                ResearchStatus.SOURCE_UNAVAILABLE,
+                "A mandated research worker could not execute; the question "
+                "remains open and sufficiency stays bounded.",
                 request_ids,
                 evidence_ids,
             )
@@ -623,15 +649,6 @@ class QuestionResearchRouter:
                 ResearchStatus.SOURCE_UNAVAILABLE,
                 "The mandated historical source could not be inspected; "
                 "the question remains open.",
-                request_ids,
-                evidence_ids,
-            )
-        # R2: infrastructure failure is never disguised as a clean NOT_FOUND.
-        if unresearched & unresolved_worker_categories:
-            return build(
-                ResearchStatus.SOURCE_UNAVAILABLE,
-                "A mandated research worker could not execute; the question "
-                "remains open and sufficiency stays bounded.",
                 request_ids,
                 evidence_ids,
             )
