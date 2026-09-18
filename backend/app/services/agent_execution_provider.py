@@ -725,6 +725,36 @@ def _validate_agent_result(
     allowed_refs = (
         set(request.authorized_source_refs) | set(request.context_refs) | bundle_ids
     )
+    # A discovered source's provenance is its identity, but the role contract
+    # lets a result declare that identity once in the result-level
+    # ``source_refs`` registry instead of repeating it on every finding that
+    # cites the same page.  Both shapes carry the same locator/title/query, so
+    # admission resolves a finding's provenance from the finding first and
+    # falls back to the registry entry naming the same ``doc:`` slug.  A slug
+    # with provenance in neither place is still rejected wholesale.
+    registry_provenance: dict[str, dict] = {}
+    for entry in raw.get("source_refs") or []:
+        if not isinstance(entry, dict):
+            continue
+        entry_ref = str(entry.get("source_ref") or "").strip()
+        entry_prov = entry.get("provenance")
+        if (
+            re.fullmatch(r"doc:[A-Za-z0-9._~-]{3,80}", entry_ref)
+            and isinstance(entry_prov, dict)
+            and entry_prov
+        ):
+            registry_provenance[entry_ref] = entry_prov
+
+    def _resolved_provenance(finding: dict, finding_refs: list[str]) -> dict:
+        own = finding.get("provenance")
+        if isinstance(own, dict) and own:
+            return own
+        for finding_ref in finding_refs:
+            inherited = registry_provenance.get(finding_ref)
+            if inherited:
+                return inherited
+        return {}
+
     findings = []
     for index, item in enumerate(raw.get("findings") or []):
         if not isinstance(item, dict) or not str(item.get("claim") or "").strip():
@@ -799,7 +829,7 @@ def _validate_agent_result(
                 # itself inside the authorized documentation scopes, which
                 # must carry full provenance instead of a bundle id.
                 if request.worker_role == ResearchWorkerRole.DOC_RESEARCHER:
-                    prov = item.get("provenance") or {}
+                    prov = _resolved_provenance(item, refs)
                     discovered_ok = (
                         isinstance(prov, dict)
                         and all(
@@ -821,7 +851,7 @@ def _validate_agent_result(
                         re.fullmatch(r"doc:[A-Za-z0-9._~-]{3,80}", ref)
                         for ref in unknown
                     ):
-                        prov = item.get("provenance") or {}
+                        prov = _resolved_provenance(item, refs)
                         missing = [
                             field
                             for field in ("locator", "title", "query")
@@ -847,7 +877,7 @@ def _validate_agent_result(
                     re.fullmatch(r"doc:[A-Za-z0-9._~-]{3,80}", ref)
                     for ref in refs
                 )
-                has_prov = bool(item.get("provenance"))
+                has_prov = bool(_resolved_provenance(item, refs))
                 if has_doc_ref != has_prov:
                     return _terminal_result(
                         request,
@@ -896,11 +926,7 @@ def _validate_agent_result(
                 source_refs=refs,
                 evidence_role=role,
                 applicability=str(item.get("applicability") or "")[:500],
-                provenance=(
-                    item.get("provenance")
-                    if isinstance(item.get("provenance"), dict)
-                    else {}
-                ),
+                provenance=_resolved_provenance(item, refs),
                 repository=(
                     str(item.get("repository") or "")[:500]
                     if request.worker_role == ResearchWorkerRole.CODE_RESEARCHER

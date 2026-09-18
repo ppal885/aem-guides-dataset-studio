@@ -461,6 +461,83 @@ def test_doc_provenance_rejection_names_the_finding_and_missing_fields() -> None
     assert all(field in note for field in ("locator", "title", "query"))
 
 
+def test_doc_provenance_may_be_declared_once_in_the_source_registry() -> None:
+    """A discovered page's provenance is its identity, not a per-finding
+    decoration.  Two independent researchers both declared it once in the
+    result-level ``source_refs`` registry beside the ``doc:`` slug and
+    repeated only the slug on each finding; admission discarded both
+    episodes wholesale.  Provenance resolves from the finding first and
+    then from the registry entry naming the same slug."""
+
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Documentation describes the report columns.",
+                "source_refs": ["doc:reports-web-editor"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            },
+            {
+                "claim": "Documentation describes the report filters.",
+                "source_refs": ["doc:reports-web-editor"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            },
+        ],
+        "source_refs": [
+            {
+                "source_ref": "doc:reports-web-editor",
+                "provenance": {
+                    "locator": "https://experienceleague.adobe.com/reports",
+                    "title": "Reports in the Web Editor",
+                    "query": "topic list report columns filters",
+                    "accessed_at": "2026-09-18",
+                },
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.ANSWER_FOUND
+    assert len(results[0].findings) == 2
+    for finding in results[0].findings:
+        assert finding.provenance["title"] == "Reports in the Web Editor"
+
+
+def test_doc_registry_provenance_does_not_cover_a_different_slug() -> None:
+    """The registry fallback resolves provenance for the slug it names and
+    no other.  A finding citing an undeclared slug is still rejected, so
+    the fallback cannot launder an unprovenanced discovered source."""
+
+    doc, question, requirement = _doc_question_setup()
+    payload = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Documentation describes the report filters.",
+                "source_refs": ["doc:reports-undeclared"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+            }
+        ],
+        "source_refs": [
+            {
+                "source_ref": "doc:reports-web-editor",
+                "provenance": {
+                    "locator": "https://experienceleague.adobe.com/reports",
+                    "title": "Reports in the Web Editor",
+                    "query": "topic list report columns",
+                },
+            }
+        ],
+    }
+    results, _ = _doc_orchestrator(payload).execute(
+        [question], [requirement], _bundle(doc), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.FAILED
+    assert "doc:reports-undeclared" in results[0].limitations[0]
+
+
 def test_doc_contract_return_handoff_requires_provenance() -> None:
     """The defect that stranded a real research episode was contract text,
     not host code.  The return-handoff block - the last operative

@@ -756,6 +756,13 @@ _EXISTING_PROPOSED_RATIONALE = (
 )
 
 
+def _normalize_candidate_key(text: str) -> str:
+    """Case/punctuation-insensitive key for deduplicating coverage candidates
+    that say the same thing through different spacing or quoting."""
+
+    return re.sub(r"[^a-z0-9]+", " ", str(text).casefold()).strip()
+
+
 def _establishing_acceptance_claims(
     question: MissingQuestion,
     research_by_question: dict[str, QuestionResearchRecord],
@@ -1192,13 +1199,18 @@ def _render_written_criterion(criterion: "WrittenAcceptanceCriterion") -> str:
     return "\n".join(parts)
 
 
-def _acceptance_source_line(fact_ids: list[str], facts_by_id: Mapping[str, Any]) -> str:
+def _acceptance_source_line(
+    fact_ids: list[str],
+    facts_by_id: Mapping[str, Any],
+    evidence_refs: list[str] | None = None,
+) -> str:
     """Human-facing Source line for one acceptance criterion.
 
-    Labels are derived only from the facts that actually support THIS
-    criterion, so a documentation source is never credited for behavior it
-    does not establish.  A criterion with no external supporting fact is
-    reported as QE-derived rather than being attributed to a source.
+    Labels are derived only from the facts and admitted evidence refs that
+    actually support THIS criterion, so a documentation source is never
+    credited for behavior it does not establish - and, symmetrically, a
+    documentation-established behavior is never credited to Jira alone.  A
+    criterion with no external supporting source is reported as QE-derived.
     """
 
     labels: list[str] = []
@@ -1220,6 +1232,16 @@ def _acceptance_source_line(fact_ids: list[str], facts_by_id: Mapping[str, Any])
         elif "experienceleague.adobe.com" in lowered:
             add("Experience League")
         elif lowered.startswith(("doc:", "learned-doc:")):
+            add("Product documentation")
+        elif lowered.startswith(("repo:", "code:", "github:")):
+            add("Implementation evidence")
+    # Admitted research cites its sources as documentation slugs rather than
+    # contract facts, so a criterion grounded by researched documentation must
+    # credit that documentation instead of silently inheriting the Jira label
+    # of the question that triggered the research.
+    for ref in evidence_refs or []:
+        lowered = str(ref).lower()
+        if lowered.startswith(("doc:", "learned-doc:")):
             add("Product documentation")
         elif lowered.startswith(("repo:", "code:", "github:")):
             add("Implementation evidence")
@@ -6715,6 +6737,53 @@ class CanonicalTestPlanReasoningService:
                     applicability="APPLICABLE",
                 )
             )
+        # Admitted documentation research must reach the acceptance lane even
+        # when its question already carries hypothesis/closure linkage.  The
+        # baseline emission above lives inside the P3 unlinked-question loop,
+        # so a question that documentation research actually ANSWERED was
+        # skipped by the `linked_question_ids` guard and its documented
+        # behavior - the columns, filters, sort and download scoping a tester
+        # must re-verify - never became coverage.  This pass is additive and
+        # deduplicated by candidate text: it resolves nothing and changes no
+        # existing row's disposition.
+        already_covered = {
+            _normalize_candidate_key(row.candidate) for row in rows
+        }
+        for question in questions:
+            for baseline_text, baseline_refs in documented_baseline_claims(
+                question,
+                research_by_question,
+                worker_results or [],
+                limit=6,
+            ):
+                key = _normalize_candidate_key(baseline_text)
+                if key in already_covered:
+                    continue
+                already_covered.add(key)
+                b_class, b_priority, b_impact = _derive_c1(
+                    CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+                    has_direct_evidence=True,
+                )
+                rows.append(
+                    CoverageDispositionRecord(
+                        candidate=baseline_text,
+                        disposition=(
+                            CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                        ),
+                        source_question_ids=[question.question_id],
+                        source_fact_ids=list(question.source_fact_ids),
+                        evidence_ids=[
+                            ref for ref in baseline_refs if str(ref).strip()
+                        ],
+                        rationale=_EXISTING_PROPOSED_RATIONALE,
+                        coverage_class=b_class,
+                        priority=b_priority,
+                        acceptance_impact=b_impact,
+                        contract_type="POSITIVE",
+                        applicability="APPLICABLE",
+                        research_derived=True,
+                    )
+                )
         return sorted(
             {row.disposition_id: row for row in rows}.values(),
             key=lambda row: row.disposition_id,
@@ -6759,6 +6828,23 @@ class CanonicalTestPlanReasoningService:
                 for row in linked
                 if row.source_type in _EXISTING_BEHAVIOR_SOURCES
             )
+            # A documented-baseline row is grounded by an admitted
+            # DOC_RESEARCHER EXISTING_BEHAVIOR finding, whose source_refs are
+            # documentation slugs (`doc:<slug>`) rather than bundle evidence
+            # ids, so they never resolve through `records_by_id`.  Without
+            # this, documentation that genuinely establishes current product
+            # behavior would classify UNKNOWN and could never ground the
+            # baseline the ticket preserves or changes.
+            if (
+                not existing_ids
+                and disposition.research_derived
+                and disposition.rationale == _EXISTING_PROPOSED_RATIONALE
+            ):
+                existing_ids = sorted(
+                    str(ref)
+                    for ref in disposition.evidence_ids
+                    if str(ref).startswith("doc:")
+                )
             requested_ids = sorted(
                 row.evidence_id
                 for row in linked
@@ -7885,7 +7971,9 @@ class CanonicalTestPlanReasoningService:
             if candidate is None:
                 continue
             source_line = _acceptance_source_line(
-                list(candidate.source_fact_ids), facts_by_id
+                list(candidate.source_fact_ids),
+                facts_by_id,
+                list(candidate.evidence_ids),
             )
             proposed = (
                 facts.contract_mode == ContractMode.HUMAN_ACCEPTED_CONTRACT
@@ -8018,7 +8106,9 @@ class CanonicalTestPlanReasoningService:
         # never credit fewer - or more - sources than it actually rests on.
         for index, criterion in enumerate(written):
             recomputed = _acceptance_source_line(
-                list(criterion.source_fact_ids), facts_by_id
+                list(criterion.source_fact_ids),
+                facts_by_id,
+                list(criterion.evidence_ids),
             )
             if not recomputed or recomputed == criterion.source_line:
                 continue
@@ -8263,7 +8353,9 @@ class CanonicalTestPlanReasoningService:
                     acceptance_sources.setdefault(
                         rendered.strip(),
                         _acceptance_source_line(
-                            list(candidate.source_fact_ids), facts_by_id
+                            list(candidate.source_fact_ids),
+                            facts_by_id,
+                            list(candidate.evidence_ids),
                         ),
                     )
                 for statement in statements:
