@@ -144,6 +144,12 @@ backend/tmp*/
 # under backend/storage/corpus_snapshots remain intentionally versionable.
 backend/storage/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*/
 
+# Local pipeline run output: per-run traces, generated DITA bundles and export zips.
+# Reproducible from a rerun; keeping them tracked bloats every branch diff.
+backend/storage/ai_runs/
+backend/storage/zips/
+backend/storage/TEXT-*_bundle/
+
 # Local plan execution memory and downloaded customer evidence can contain large
 # recordings or internal material; keep them on disk, never in source control.
 output/test-plans/.pipeline-memory/
