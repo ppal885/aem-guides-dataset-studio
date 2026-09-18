@@ -1073,7 +1073,16 @@ class CanonicalTestPlanRuntime:
             CanonicalRuntimeStage.RESEARCH_ORCHESTRATOR,
             [questions, research_requirements, visible],
             lambda: RESEARCH_ORCHESTRATOR.execute(
-                questions, research_requirements, visible, run_scope=run_id
+                questions,
+                research_requirements,
+                visible,
+                run_scope=run_id,
+                # Clone-backed research resolves paths on the caller's machine.
+                # Empty means "caller supplied none", which keeps the local-CLI
+                # fallback to this host's configured repository env vars.
+                repository_roots=(
+                    list(request.options.research_repository_roots) or None
+                ),
             ),
         )
 
@@ -1431,6 +1440,19 @@ class CanonicalTestPlanRuntime:
         )
         promotions_for_trace = list(promotions)
         gates = [contract_gate, completeness_gate, promotion_gate]
+        # D2 Writer: promotion decides WHAT may be an acceptance criterion;
+        # this stage decides HOW it reads.  It runs before the renderer so the
+        # renderer stays a presenter and never performs synthesis.
+        written_acceptance_criteria = stage(
+            CanonicalRuntimeStage.ACCEPTANCE_CRITERIA_WRITER,
+            [candidates, promotions, facts, dispositions],
+            lambda: self._reasoning.write_acceptance_criteria(
+                candidates,
+                promotions,
+                facts,
+                dispositions,
+            ),
+        )
         # A5 host mediation: computed once, consumed by the renderer and the
         # final envelope status.
         awaiting_agent_research = any(
@@ -1455,6 +1477,7 @@ class CanonicalTestPlanRuntime:
                 candidate_lifecycle,
                 question_research,
                 behavior_classifications,
+                written_acceptance_criteria,
             ],
             lambda: self._reasoning.render_final_plan(
                 request,
@@ -1476,6 +1499,7 @@ class CanonicalTestPlanRuntime:
                 research_resolved_question_ids=research_resolved_ids,
                 waiting_for_research=awaiting_agent_research,
                 convergence=convergence,
+                written_acceptance_criteria=written_acceptance_criteria,
             ),
         )
         structured_plan_for_trace = structured_plan

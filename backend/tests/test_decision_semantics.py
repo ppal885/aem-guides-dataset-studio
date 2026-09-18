@@ -47,7 +47,10 @@ from app.core.schemas_canonical_test_plan_runtime import (
 )
 from app.services.canonical_test_plan_reasoning_service import (
     CANONICAL_REASONING_SERVICE,
+    _AC_META_PROSE_RE,
+    _existing_claim_text,
     desired_behavior_claims,
+    existing_behavior_claims,
     research_resolved_question_ids,
 )
 from app.services.canonical_test_plan_runtime import CANONICAL_TEST_PLAN_RUNTIME
@@ -722,3 +725,234 @@ def test_zero_ac_blocked_only_when_no_safe_contract_exists() -> None:
     )
     assert "None generated until the blocking decisions are resolved" in rendered
     assert "(TBD) Which behavior is the acceptance contract?" in rendered
+
+
+# ---------------------------------------------------------------------------
+# C-root: documented existing behavior must reach the acceptance lane.
+#
+# Locked rule, in two halves:
+#   1. Documented existing behavior GROUNDS a PROPOSED baseline candidate, so
+#      documentation research is never dropped from the acceptance lane.
+#   2. It does NOT RESOLVE the question.  Documentation records what the
+#      product does today; the decision about what it should do stays open,
+#      so the bounded ACCEPTANCE_TBD is still emitted alongside.
+#
+# Collapsing the two halves is the regression these tests exist to catch: if
+# documented behavior resolved the question, a finding that explicitly states
+# "the documentation does not specify an ordering rule" would silently close
+# the very decision it failed to answer.
+# ---------------------------------------------------------------------------
+
+_EXISTING_CLAIM = (
+    "Documentation establishes that Output History shows a warning status "
+    "for an output that completed with publish warnings."
+)
+_EXISTING_OUTCOME = (
+    "Output History shows a warning status for an output that completed "
+    "with publish warnings."
+)
+
+
+def _existing_case(claim=_EXISTING_CLAIM, role="EXISTING_BEHAVIOR"):
+    facts = _facts()
+    question = _question(_RAW_GAP_QUESTION, fact_ids=(facts.facts[0].fact_id,))
+    worker = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(_finding(claim, role),),
+    )
+    return facts, question, worker, _research_record(question, worker=worker)
+
+
+def test_documented_existing_behavior_grounds_a_proposed_candidate() -> None:
+    """C-root: an EXISTING_BEHAVIOR finding from documentation research must
+    ground a PROPOSED candidate, never be silently dropped."""
+    facts, question, worker, research = _existing_case()
+
+    claims = existing_behavior_claims(
+        question, {question.question_id: research}, [worker]
+    )
+    assert claims and claims[0][0] == _EXISTING_CLAIM
+
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    proposed = [
+        row
+        for row in dispositions
+        if row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+    ]
+    assert proposed, "documented existing behavior must ground a candidate"
+    row = proposed[0]
+    assert row.research_derived
+    # The researcher's documentation framing is stripped; the observable
+    # product outcome survives.
+    assert row.candidate == _EXISTING_OUTCOME
+    # Provenance is carried so the behavior-classification lane can tag it.
+    assert row.evidence_ids == ["ev-1"]
+    assert "Documented existing behavior" in row.rationale
+
+
+def test_documented_existing_behavior_never_resolves_the_question() -> None:
+    """The decision half of the locked rule: documentation is the baseline,
+    not the decision.  The question stays unresolved and keeps its bounded
+    TBD, so the Human still owns the acceptance call."""
+    facts, question, worker, research = _existing_case()
+
+    assert not research_resolved_question_ids([question], [research], [worker])
+
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    linked = [
+        row
+        for row in dispositions
+        if question.question_id in row.source_question_ids
+    ]
+    assert any(
+        row.disposition == CoverageDisposition.ACCEPTANCE_TBD for row in linked
+    ), "documented behavior must not suppress the open acceptance decision"
+    assert any(
+        row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+        for row in linked
+    ), "the documented baseline must still be carried alongside the TBD"
+
+
+def test_documentation_that_disclaims_an_answer_grounds_nothing() -> None:
+    """A finding whose substance is what the documentation does NOT establish
+    is the absence of a contract.  It must never become an AC - that is the
+    exact shape that would otherwise close a decision it never answered."""
+    facts, question, worker, research = _existing_case(
+        claim=(
+            "Documentation establishes the Output History list; it does not "
+            "specify any warning status for completed outputs."
+        ),
+    )
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    for row in dispositions:
+        if row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT:
+            assert "does not specify" not in row.candidate
+    assert any(
+        row.disposition == CoverageDisposition.ACCEPTANCE_TBD
+        for row in dispositions
+        if question.question_id in row.source_question_ids
+    )
+
+
+def test_documented_behavior_unrelated_to_the_question_is_not_promoted() -> None:
+    """Documentation research returns everything it found about a feature
+    area.  A finding that shares no term with the question answered a
+    different question, so it must not enter the acceptance lane."""
+    facts, question, worker, research = _existing_case(
+        claim=(
+            "Documentation establishes that the baseline comparison panel "
+            "supports side-by-side revision selection."
+        ),
+    )
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    assert not [
+        row
+        for row in dispositions
+        if row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+    ]
+
+
+def test_existing_behavior_candidate_clears_the_reviewer_meta_prose_gate() -> None:
+    """The Reviewer rejects "documentation establishes ..." as meta prose, so
+    the framing must be stripped before the candidate is emitted - the gate
+    itself is never weakened."""
+    # The gate still rejects the raw finding.
+    assert _AC_META_PROSE_RE.search(_EXISTING_CLAIM)
+    # The normalized candidate passes it.
+    assert not _AC_META_PROSE_RE.search(_existing_claim_text(_EXISTING_CLAIM))
+
+    facts, question, worker, research = _existing_case()
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    for row in dispositions:
+        if row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT:
+            assert not _AC_META_PROSE_RE.search(row.candidate)
+
+
+def test_observed_behavior_alone_never_grounds_a_candidate() -> None:
+    """Guard: observation is not a requirement.  Widening the admitted roles
+    to documentation must not let a QE run become an acceptance contract."""
+    facts, question, worker, research = _existing_case(
+        claim="The indicator did not appear on the run under test.",
+        role="OBSERVED_BEHAVIOR",
+    )
+    assert not research_resolved_question_ids([question], [research], [worker])
+    assert not existing_behavior_claims(
+        question, {question.question_id: research}, [worker]
+    )
+    assert not desired_behavior_claims(
+        question, {question.question_id: research}, [worker]
+    )
+
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    assert not [
+        row
+        for row in dispositions
+        if row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+    ]
+
+
+def test_terminated_research_without_establishing_claim_stays_acceptance_lane() -> None:
+    """C-root residual: research that terminated ANSWER_FOUND but established
+    no acceptance-bearing claim is a bounded TBD, never a generic open
+    question that carries no research at all."""
+    facts, question, worker, research = _existing_case(
+        claim="The feature area is covered by the publishing guide.",
+        role="SUPPORTING_CONTEXT",
+    )
+    assert not research_resolved_question_ids([question], [research], [worker])
+
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    linked = [
+        row
+        for row in dispositions
+        if question.question_id in row.source_question_ids
+    ]
+    assert linked, "a terminated blocking question must stay in coverage"
+    assert any(
+        row.disposition == CoverageDisposition.ACCEPTANCE_TBD for row in linked
+    )
+
+
+def test_lanes_stay_consistent_on_documented_existing_behavior() -> None:
+    """convergence_service caps the *unknown* when documentation was found
+    (``answered = EXISTING or DESIRED``).  The reasoning lane must then carry
+    that documentation as a candidate - otherwise the research is suppressed
+    in one lane and unrepresented in the other, which is the C-root drop."""
+    facts, question, worker, research = _existing_case()
+
+    # Convergence lane: documented existing behavior counts as answered.
+    row = CONVERGENCE_SERVICE.evaluate([question], [research], [worker])[0]
+    assert not row.acceptance_changing
+
+    # Reasoning lane: the same finding grounds a candidate.
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    assert [
+        r
+        for r in dispositions
+        if r.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+    ]

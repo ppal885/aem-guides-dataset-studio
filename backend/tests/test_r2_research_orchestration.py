@@ -774,3 +774,69 @@ def test_removing_worker_result_flips_finalized_coverage_to_open() -> None:
     assert reopened.disposition.value == "OPEN_QUESTION"
     assert reopened.coverage_class == "INVESTIGATION"
     assert finalized.coverage_class != reopened.coverage_class
+
+
+# ---------------------------------------------------------------------------
+# Clone-path ownership: clone-backed research resolves paths on the caller's
+# machine, so the caller's roots must survive intact from request to worker.
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_request_carries_caller_repository_roots_losslessly() -> None:
+    """The caller's local clone roots must survive the typed projection in
+    both directions, and default to empty so a same-machine CLI run keeps
+    falling back to this host's configured repository env vars."""
+
+    from app.core.schemas_test_plan_pipeline import TestPlanPipelineRequest
+    from app.services.test_plan_runtime_adapters import (
+        generation_request_from_pipeline_request,
+        pipeline_request_from_generation_request,
+    )
+
+    roots = ["C:\\UI TEST\\guides-ui-tests", "C:\\repos\\starling"]
+    request = TestPlanPipelineRequest(
+        jira_key="GUIDES-00000", research_repository_roots=roots
+    )
+    generation = generation_request_from_pipeline_request(
+        request, entry_point="rest_bridge"
+    )
+    assert generation.options.research_repository_roots == roots
+    assert (
+        pipeline_request_from_generation_request(
+            generation
+        ).research_repository_roots
+        == roots
+    )
+
+    default = generation_request_from_pipeline_request(
+        TestPlanPipelineRequest(jira_key="GUIDES-00000"), entry_point="cli"
+    )
+    assert default.options.research_repository_roots == []
+
+
+def test_runtime_threads_caller_repository_roots_into_research_orchestrator() -> None:
+    """The runtime must hand the caller's roots to the orchestrator.  Omitting
+    the argument silently re-resolved clone paths against the runtime host,
+    which is the wrong machine whenever the caller is remote."""
+
+    import ast
+    import inspect
+
+    from app.services import canonical_test_plan_runtime as runtime_module
+
+    tree = ast.parse(inspect.getsource(runtime_module.CanonicalTestPlanRuntime))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "RESEARCH_ORCHESTRATOR"
+    ]
+    assert calls, "runtime no longer dispatches research through the orchestrator"
+    for call in calls:
+        keywords = {keyword.arg for keyword in call.keywords}
+        assert "repository_roots" in keywords
+        source = ast.unparse(call)
+        assert "research_repository_roots" in source

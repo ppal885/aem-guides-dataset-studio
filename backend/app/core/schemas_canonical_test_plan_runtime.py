@@ -466,6 +466,12 @@ class CanonicalRuntimeStage(StrEnum):
     ACCEPTANCE_CONTRACT_RESOLVER = "AcceptanceContractResolver"
     BEHAVIORAL_COMPLETENESS_GATE = "BehavioralCompletenessGate"
     ACCEPTANCE_PROMOTION_GATE = "AcceptancePromotionGate"
+    # D2: the synthesis stage.  Promotion decides WHAT may be an AC; the Writer
+    # decides HOW it reads as a testable outcome - splitting compound requests,
+    # grouping same-outcome variants as sub-points, and attaching unresolved
+    # material behavior as a bounded (TBD) question inside the applicable AC.
+    # It never admits behavior the promotion gate did not already admit.
+    ACCEPTANCE_CRITERIA_WRITER = "AcceptanceCriteriaWriter"
     FINAL_QE_PLAN_RENDERER = "FinalQEPlanRenderer"
 
 
@@ -1668,6 +1674,16 @@ class PipelineCompatibilityOptions(BaseModel):
     starling_repo_path: str | None = None
     publish_to_team_ui: bool = False
     human_review_threshold: int = Field(default=50, ge=0, le=100)
+    # Clone-backed code research runs where the clones actually live - the
+    # caller's machine - not where this runtime process happens to run.  A
+    # remote caller (MCP/REST against the VM) sends its own local roots here;
+    # the runtime only stamps them into the research request and never reads
+    # them, so the bounded worker on the caller's machine resolves real paths.
+    # Empty keeps the local-CLI behaviour of falling back to this host's
+    # configured repository environment variables.
+    research_repository_roots: list[str] = Field(
+        default_factory=list, max_length=20
+    )
     # P1: human clarifications bound to exact unresolved questions from a
     # previous run; each entry validates as HumanClarification.
     human_clarifications: list[dict[str, Any]] = Field(
@@ -4546,6 +4562,72 @@ class AcceptancePromotionDecision(BaseModel):
     # artifacts that predate sufficiency).
     sufficiency_ref: str = ""
     reasons: list[str] = Field(default_factory=list)
+
+
+class AcceptanceSubPointKind(StrEnum):
+    """Why a sub-point hangs under an acceptance criterion."""
+
+    # An applicable, evidence-supported variant of the parent outcome.
+    CONFIRMED_VARIANT = "CONFIRMED_VARIANT"
+    # Material behavior whose expected product outcome could not be concluded
+    # from authoritative evidence.  It stays inside the acceptance contract as
+    # a question rather than being relocated or dropped.
+    TBD_QUESTION = "TBD_QUESTION"
+
+
+class AcceptanceSubPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    kind: AcceptanceSubPointKind
+    source_fact_ids: list[str] = Field(default_factory=list)
+    source_disposition_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize(self) -> "AcceptanceSubPoint":
+        self.text = " ".join(self.text.split())
+        if not self.text:
+            raise ValueError("acceptance sub-point text must not be empty")
+        if self.kind == AcceptanceSubPointKind.TBD_QUESTION and not self.text.endswith(
+            "?"
+        ):
+            raise ValueError("a TBD sub-point must be phrased as a question")
+        self.source_fact_ids = sorted(set(self.source_fact_ids))
+        self.source_disposition_ids = sorted(set(self.source_disposition_ids))
+        self.evidence_ids = sorted(set(self.evidence_ids))
+        return self
+
+
+class WrittenAcceptanceCriterion(BaseModel):
+    """One human-facing acceptance criterion produced by the Writer stage."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    criterion_id: str = ""
+    outcome: str
+    sub_points: list[AcceptanceSubPoint] = Field(default_factory=list)
+    source_line: str = ""
+    source_candidate_ids: list[str] = Field(default_factory=list)
+    source_fact_ids: list[str] = Field(default_factory=list)
+    source_disposition_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    # True when the parent outcome itself is unresolved, so the whole criterion
+    # renders as a (TBD).  The criterion still belongs to the contract.
+    unresolved: bool = False
+
+    @model_validator(mode="after")
+    def identify(self) -> "WrittenAcceptanceCriterion":
+        self.outcome = " ".join(self.outcome.split())
+        if not self.outcome:
+            raise ValueError("acceptance criterion outcome must not be empty")
+        self.source_candidate_ids = sorted(set(self.source_candidate_ids))
+        self.source_fact_ids = sorted(set(self.source_fact_ids))
+        self.source_disposition_ids = sorted(set(self.source_disposition_ids))
+        self.evidence_ids = sorted(set(self.evidence_ids))
+        identity = self.model_dump(mode="json", exclude={"criterion_id"})
+        self.criterion_id = f"written-ac:{stable_sha256(identity)[:32]}"
+        return self
 
 
 class CandidateLifecycleRecord(BaseModel):

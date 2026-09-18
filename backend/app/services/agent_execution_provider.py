@@ -567,6 +567,37 @@ def _extract_pdf_text(entry: dict, target: Path) -> None:
         )[:300]
 
 
+def _conflict_text(conflict: object) -> str:
+    """Human-facing text for one worker-reported conflict.
+
+    A researcher role contract reports a conflict as ``topic`` plus the
+    disagreeing ``claims`` and an optional ``resolution``.  Reading only
+    ``description``/``text`` collapsed every such conflict to an empty
+    string, so a real disagreement that research found was discarded before
+    convergence ever saw it.  The structured shape is flattened here instead.
+    """
+
+    if not isinstance(conflict, dict):
+        return str(conflict).strip()
+    direct = str(conflict.get("description") or conflict.get("text") or "").strip()
+    if direct:
+        return direct
+    topic = str(conflict.get("topic") or "").strip()
+    sides: list[str] = []
+    for side in conflict.get("claims") or []:
+        if isinstance(side, dict):
+            claim = str(side.get("claim") or "").strip()
+            authority = str(side.get("authority") or "").strip()
+        else:
+            claim, authority = str(side).strip(), ""
+        if not claim:
+            continue
+        sides.append(f"{claim} ({authority})" if authority else claim)
+    resolution = str(conflict.get("resolution") or "").strip()
+    parts = [part for part in (topic, " vs ".join(sides), resolution) if part]
+    return " - ".join(parts)
+
+
 def _terminal_result(
     request: AgentResearchRequest, status: ResearchWorkerStatus, notes
 ) -> ResearchWorkerResult:
@@ -894,12 +925,9 @@ def _validate_agent_result(
             currentness=str(raw.get("currentness") or "")[:200],
             limitations=[str(item)[:500] for item in (raw.get("limitations") or [])],
             conflicts=[
-                (
-                    str(item.get("description") or item.get("text") or "")[:500]
-                    if isinstance(item, dict)
-                    else str(item)[:500]
-                )
+                _conflict_text(item)[:500]
                 for item in (raw.get("conflicts") or [])
+                if _conflict_text(item)
             ],
         )
     except Exception as exc:
@@ -1256,19 +1284,27 @@ class HostMediatedResearchProvider:
             payload["authorized_evidence"] = _authorized_evidence_rows(
                 request, bundle
             )
-            # Same root resolution as the deterministic code worker: when the
-            # caller did not pass roots, fall back to the configured env vars.
-            effective_roots = (
-                repository_roots
-                if repository_roots is not None
-                else [
-                    os.environ.get(name, "").strip()
-                    for name in RESEARCH_REPOSITORY_ENV_VARS
+            # Clone-backed research runs where the clones actually live.  When
+            # the caller supplies roots it owns them: pass them through
+            # verbatim, because normalizing a remote caller's path against this
+            # host's filesystem yields a path the caller's worker cannot read.
+            # Only this host's env-configured roots are resolved locally, which
+            # keeps the same-machine CLI behaviour unchanged.
+            if repository_roots is not None:
+                payload["authorized_repository_roots"] = [
+                    root.strip()
+                    for root in repository_roots
+                    if root and root.strip()
                 ]
-            )
-            payload["authorized_repository_roots"] = [
-                os.path.abspath(root) for root in effective_roots if root
-            ]
+            else:
+                payload["authorized_repository_roots"] = [
+                    os.path.abspath(root)
+                    for root in (
+                        os.environ.get(name, "").strip()
+                        for name in RESEARCH_REPOSITORY_ENV_VARS
+                    )
+                    if root
+                ]
             # Attachment researchers read real content: materialize authorized
             # attachments into the store (exact failure reasons recorded).
             payload["attachment_files"] = _attachment_files(

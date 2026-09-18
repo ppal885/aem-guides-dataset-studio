@@ -29,6 +29,12 @@ class TestPlanPipelineRequest(BaseModel):
     starling_repo_path: str | None = None
     publish_to_team_ui: bool = False
     human_review_threshold: int = Field(default=50, ge=0, le=100)
+    # Repository roots for clone-backed code research, resolved on the caller's
+    # machine.  Empty falls back to this host's configured repository
+    # environment variables (the local-CLI case).
+    research_repository_roots: list[str] = Field(
+        default_factory=list, max_length=20
+    )
     # P1: human clarifications bound to exact unresolved questions from a
     # previous run; each entry validates as HumanClarification downstream.
     human_clarifications: list[dict[str, Any]] = Field(

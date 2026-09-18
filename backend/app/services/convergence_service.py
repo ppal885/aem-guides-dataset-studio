@@ -99,6 +99,33 @@ _TICKET_AUTHORITY_SIGNALS = (
 )
 
 
+def _compile_signals(signals: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
+    """Word-boundary matchers for one signal family.
+
+    Naive substring matching let a short anchor fire inside an unrelated
+    word: "repo" matched "Topic List report", so a pure
+    documentation-versus-ticket conflict was classified as a code mismatch
+    and routed to the implementation lane, where the reader never saw it.
+    """
+
+    compiled: list[re.Pattern[str]] = []
+    for signal in signals:
+        token = signal.strip()
+        if not token:
+            continue
+        prefix = r"\b" if token[:1].isalnum() else ""
+        suffix = r"\b" if token[-1:].isalnum() else ""
+        compiled.append(re.compile(prefix + re.escape(token) + suffix))
+    return tuple(compiled)
+
+
+_EVIDENCE_QUALITY_RE = _compile_signals(_EVIDENCE_QUALITY_SIGNALS)
+_LIFECYCLE_RE = _compile_signals(_LIFECYCLE_SIGNALS)
+_IMPLEMENTATION_ANCHORS_RE = _compile_signals(_IMPLEMENTATION_ANCHORS)
+_IMPLEMENTATION_BEHAVIOR_VERBS_RE = _compile_signals(_IMPLEMENTATION_BEHAVIOR_VERBS)
+_TICKET_AUTHORITY_RE = _compile_signals(_TICKET_AUTHORITY_SIGNALS)
+
+
 def _classify_conflict(text: str) -> str:
     """Classify one conflict statement.  Generic signal matching only - the
     class decides whether the conflict can change the acceptance contract,
@@ -106,24 +133,24 @@ def _classify_conflict(text: str) -> str:
 
     lowered = (text or "").casefold()
 
-    def _hits(signals: tuple[str, ...]) -> int:
-        return sum(1 for signal in signals if signal in lowered)
+    def _hits(patterns: tuple[re.Pattern[str], ...]) -> int:
+        return sum(1 for pattern in patterns if pattern.search(lowered))
 
     # A strong implementation conflict (code anchor + behavior verb) wins
     # over an incidental evidence-quality mention inside the same sentence
     # (for example "code sets the flag only on Error ... excerpt truncated").
-    strong_impl = _hits(_IMPLEMENTATION_ANCHORS) and _hits(
-        _IMPLEMENTATION_BEHAVIOR_VERBS
+    strong_impl = _hits(_IMPLEMENTATION_ANCHORS_RE) and _hits(
+        _IMPLEMENTATION_BEHAVIOR_VERBS_RE
     )
     if strong_impl:
-        if _hits(_TICKET_AUTHORITY_SIGNALS):
+        if _hits(_TICKET_AUTHORITY_RE):
             return CONFLICT_REQUIREMENT_IMPLEMENTATION_MISMATCH
         return CONFLICT_IMPLEMENTATION
-    if _hits(_EVIDENCE_QUALITY_SIGNALS):
+    if _hits(_EVIDENCE_QUALITY_RE):
         return CONFLICT_EVIDENCE_QUALITY
-    if _hits(_LIFECYCLE_SIGNALS):
+    if _hits(_LIFECYCLE_RE):
         return CONFLICT_LIFECYCLE_CURRENTNESS
-    if _hits(_IMPLEMENTATION_ANCHORS):
+    if _hits(_IMPLEMENTATION_ANCHORS_RE):
         return CONFLICT_IMPLEMENTATION
     return CONFLICT_PRODUCT_CONTRACT
 
@@ -221,16 +248,7 @@ class ConvergenceService:
                     elif finding.evidence_role in _QE_ROLES and len(qe_view) < _MAX_VIEW_ITEMS:
                         qe_view.append(claim)
                 for conflict in result.conflicts:
-                    # Workers may return structured conflicts; the human-facing
-                    # text is the description, never a stringified dict.
-                    if isinstance(conflict, dict):
-                        text = str(
-                            conflict.get("description")
-                            or conflict.get("text")
-                            or ""
-                        ).strip()
-                    else:
-                        text = str(conflict).strip()
+                    text = str(conflict).strip()
                     if text:
                         conflicts.append(text[:500])
                 if result.status == ResearchWorkerStatus.CONFLICTED:
