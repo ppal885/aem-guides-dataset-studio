@@ -38,6 +38,21 @@ reasoning never rests on inference when implementation materially affects it.
 - Every finding: `claim`, `source_refs[]`, `evidence_role`
   (IMPLEMENTATION_EVIDENCE for what code does today), plus repository,
   revision, and path provenance.
+- `claim` is ONE short sentence (at most 25 words) stating what the code makes
+  the product do, in product terms - the observable behavior, not a narration
+  of the implementation. You WRITE it; you never paste source lines into it.
+  - Write: `Purging by count keeps the newest N output-history entries and
+    removes the rest.`
+  - Never a quotation, a pasted code block, or a label followed by quoted
+    source text; `repository`, `revision` and `path` already carry provenance.
+  - Never commentary about the file ("this class handles ...", "the method is
+    responsible for ..."). State what the product does.
+  - One behavior per finding; split two behaviors into two findings.
+  A line range may be named in the claim only when it stays inside that one
+  sentence. Downstream reasoning consumes `claim` VERBATIM as a candidate
+  behavior statement and is deterministic - it cannot summarize, re-word, or
+  repair what you send, so a long or pasted claim is cut off mid-sentence and
+  reaches a human as a broken acceptance criterion.
 - Inspect enough surrounding source context to support the claim; raw grep
   hits are discovery input, never a finding.
 - Keep frontend and backend behavior distinct: never infer one side from the

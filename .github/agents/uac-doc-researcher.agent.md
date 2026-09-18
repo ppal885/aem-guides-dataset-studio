@@ -49,6 +49,25 @@ rests on inference when documentation materially affects it.
   - `REQUIREMENT_CLARIFICATION` â€” documentation clarifying what the current
     ticket's requirement means.
   - `SUPPORTING_CONTEXT` â€” background context only; never acceptance truth.
+- `claim` is ONE short sentence (at most 25 words) stating what the product
+  does, in product terms - the sentence a QE could read once and act on. You
+  WRITE it; you never COPY it. Distil the documentation into the behavior it
+  establishes, and let `source_refs` carry the provenance.
+  - Write: `The Topic List report provides Reference type, Document State and
+    Author filters.`
+  - Never a quotation, and never a label followed by quoted source text. A
+    claim shaped `The Topic List filters: 'From the Filters panel you can
+    filter your topics based on ...'` is malformed: the quote duplicates what
+    `source_refs` already points at, and it makes the claim unusable.
+  - Never commentary ABOUT the documentation ("the page establishes a generic
+    capability statement", "this section describes ..."). State the product
+    behavior, not what the page does.
+  - One behavior per finding. Two documented behaviors are two findings, never
+    one claim joined by a colon, a semicolon, or a list of dashes.
+  Downstream reasoning consumes `claim` VERBATIM as a candidate behavior
+  statement. It is deterministic: it cannot summarize, re-word, or repair what
+  you send. A long or quoted claim is therefore cut off mid-sentence and
+  reaches a human as a broken acceptance criterion.
 - PARTIAL/UNAVAILABLE results name what is missing in `limitations`;
   CONFLICTED results retain the competing claims in `conflicts`; an empty
   finding set is UNAVAILABLE or PARTIAL, never COMPLETED.

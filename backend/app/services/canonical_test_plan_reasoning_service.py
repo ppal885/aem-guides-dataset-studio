@@ -927,14 +927,20 @@ def _split_independent_requirements(statement: str) -> list[str]:
 # actually needs, without asserting either answer.
 _TBD_LEAD_RE = re.compile(
     r"^\s*(?:"
-    r"(?:could|can|would|will|may|should)\s+(?:we|you|it)\s+(?:also\s+)?(?:please\s+)?"
+    # Longest-first: Python alternation is first-match-wins, so the generic
+    # modal form below would otherwise consume "Would it " and strand
+    # "be possible to ..." in the rewritten question.
+    r"would\s+it\s+be\s+possible\s+to\s+"
     r"|is\s+it\s+possible\s+to\s+"
-    r"|would\s+it\s+be\s+possible\s+to\s+"
+    r"|(?:could|can|would|will|may|should)\s+(?:we|you|it)\s+(?:also\s+)?(?:please\s+)?"
     r"|any\s+(?:chance|plan|plans)\s+(?:of|to|for)\s+"
     r"|how\s+about\s+"
     r")"
     r"(?:(?:add|have|support|provide|include|show|display|expose|allow|enable|get)"
-    r"(?:ing)?\s+(?:also\s+)?(?:a|an|the)?\s*)?",
+    # "an" before "a", and the article must be followed by whitespace:
+    # otherwise "an export" loses its "a" ("n export") and "add assets"
+    # loses its first letter ("ssets").
+    r"(?:ing)?\s+(?:also\s+)?(?:(?:an|a|the)\s+)?)?",
     re.IGNORECASE,
 )
 
@@ -949,12 +955,29 @@ def _derive_tbd_question(statement: str) -> str | None:
     text = " ".join((statement or "").split()).strip()
     if not text:
         return None
-    remainder = _TBD_LEAD_RE.sub("", text).strip(" ?.").strip()
+    stripped = _TBD_LEAD_RE.sub("", text)
+    if stripped == text and text.endswith("?"):
+        # Already phrased as the open decision - a planner question reaches
+        # this lane verbatim.  Re-wrapping it would produce double-question
+        # grammar ("Confirm the expected behavior for what ... mean?") and,
+        # worse, a variant that no longer matches its own source, so the
+        # dedup guard below misses it and the same question surfaces twice.
+        return text[0].upper() + text[1:]
+    remainder = stripped.strip(" ?.").strip()
     if not remainder:
         return None
-    remainder = remainder[0].lower() + remainder[1:]
+    # Ordinary sentence capitalization is safe to fold, but a product name is
+    # not: blindly lowercasing turns "COUNT-based retention" into "cOUNT-based"
+    # and the "Generated Outputs" tab into "generated Outputs".  A further
+    # capital later in the fragment marks it as a proper product term.
+    if (
+        len(remainder) > 1
+        and remainder[0].isupper()
+        and remainder[1].islower()
+        and not any(word[:1].isupper() for word in remainder.split()[1:])
+    ):
+        remainder = remainder[0].lower() + remainder[1:]
     return f"Confirm the expected behavior for {remainder}?"
-
 
 _TBD_HOST_STOPWORDS = frozenset(
     {

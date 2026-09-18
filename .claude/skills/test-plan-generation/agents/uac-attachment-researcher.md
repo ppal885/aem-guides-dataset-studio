@@ -26,6 +26,20 @@ reasoning distinguishes observation from requirement.
   - `OBSERVED_BEHAVIOR` - what the attachment demonstrably shows.
   - `DESIRED_BEHAVIOR` - what the customer explicitly states they want.
   - `SUPPORTING_CONTEXT` - background only; never acceptance truth.
+- `claim` is ONE short sentence (at most 25 words) stating what the attachment
+  shows, in product terms - the sentence a QE could read once and act on. You
+  WRITE it; you never transcribe the attachment into it.
+  - Write: `The Output History list shows entries older than the configured
+    age alongside current ones.`
+  - Never a quotation, a pasted log block, or a label followed by quoted
+    content; `source_refs` already points at the attachment.
+  - Never commentary about the file ("the screenshot shows a page where ...",
+    "this log contains ..."). State what is observed.
+  - One observation per finding; split two observations into two findings.
+  Downstream reasoning consumes `claim` VERBATIM as a candidate behavior
+  statement and is deterministic - it cannot summarize, re-word, or repair
+  what you send, so a long or transcribed claim is cut off mid-sentence and
+  reaches a human as a broken acceptance criterion.
 - Customer statements are recorded separately from interpretation; an
   observation is never restated as a product requirement.
 - Content the platform cannot actually interpret (unreadable image, video
