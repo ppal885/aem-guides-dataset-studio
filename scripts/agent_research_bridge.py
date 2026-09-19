@@ -160,6 +160,70 @@ def cmd_fulfill(store: Path, envelope_path: Path) -> int:
     return 0
 
 
+def _admission_rejection(request: dict, result: dict) -> str | None:
+    """Run the provider's consumption-time admission against an emitted
+    request, so fulfilment fails on exactly what consumption would reject.
+
+    The emitted request already carries everything admission reads from the
+    canonical bundle - the authorized evidence ids and their source types -
+    so it is reconstructed here instead of re-deriving the bundle.  Returns a
+    rejection reason, or None when the result is admissible.
+    """
+
+    from app.core.schemas_canonical_test_plan_runtime import (
+        AgentResearchRequest,
+        ResearchWorkerStatus,
+    )
+    from app.services.agent_execution_provider import _validate_agent_result
+
+    class _Record:
+        def __init__(self, evidence_id: str, source_type: object) -> None:
+            self.evidence_id = evidence_id
+            self.source_type = source_type
+
+    class _Bundle:
+        def __init__(self, records: list) -> None:
+            self.records = records
+
+    from app.core.schemas_canonical_test_plan_runtime import EvidenceSourceType
+
+    records = []
+    for row in request.get("authorized_evidence") or []:
+        if not isinstance(row, dict):
+            continue
+        evidence_id = str(row.get("source_ref") or "").strip()
+        if not evidence_id:
+            continue
+        try:
+            source_type = EvidenceSourceType(str(row.get("source_type") or ""))
+        except ValueError:
+            continue
+        records.append(_Record(evidence_id, source_type))
+
+    request_fields = set(AgentResearchRequest.model_fields)
+    try:
+        typed_request = AgentResearchRequest(
+            **{k: v for k, v in request.items() if k in request_fields}
+        )
+    except Exception as exc:  # pragma: no cover - malformed pending payload
+        return f"emitted request is not readable: {exc}"
+
+    roots = [
+        str(root).strip()
+        for root in (request.get("authorized_repository_roots") or [])
+        if str(root).strip()
+    ]
+    verdict = _validate_agent_result(
+        typed_request,
+        result,
+        _Bundle(records),
+        repository_roots=roots or None,
+    )
+    if verdict.status == ResearchWorkerStatus.FAILED:
+        return "; ".join(verdict.limitations) or "admission rejected the result"
+    return None
+
+
 def cmd_fulfill_agent(
     store: Path, execution_id: str, result_path: Path, model: str
 ) -> int:
@@ -209,6 +273,18 @@ def cmd_fulfill_agent(
     )
     if shape_rejection is not None:
         print(f"ERROR: result failed canonical shape validation: {shape_rejection}")
+        return 1
+    # Shape alone is not what the runtime admits on.  Consumption additionally
+    # checks source membership, discovered-source provenance and (for code)
+    # repository/path/revision.  Running only the shape subset here let a
+    # result be recorded FULFILLED and then be discarded wholesale at
+    # consumption, where the loss surfaces as SOURCE_UNAVAILABLE on the
+    # question rather than as a fixable complaint about the result - so the
+    # coordinator never learned there was anything to resend.  Run the same
+    # admission now, reconstructed from the emitted request.
+    admission_rejection = _admission_rejection(request, result)
+    if admission_rejection is not None:
+        print(f"ERROR: result failed canonical admission: {admission_rejection}")
         return 1
     # Same identity rule as the provider: the contract version is the one
     # bound into the emitted request (fall back to the current canonical

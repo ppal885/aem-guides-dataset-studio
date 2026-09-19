@@ -26,6 +26,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     InvestigationFamilySatisfaction,
     InvestigationFamilySatisfactionStatus,
     InvestigationMateriality,
+    MandatoryInvestigationFamily,
     MissingQuestion,
     MissingQuestionOrigin,
     MissingQuestionQualityDecision,
@@ -43,6 +44,13 @@ from app.core.schemas_canonical_test_plan_runtime import (
 
 
 _WORD_RE = re.compile(r"[a-z0-9][a-z0-9_.:@/-]{1,}", re.IGNORECASE)
+# Lower rank is more material, so the strongest signal is the minimum.
+_MATERIALITY_ORDER = {
+    InvestigationMateriality.P0: 0,
+    InvestigationMateriality.P1: 1,
+    InvestigationMateriality.P2: 2,
+    InvestigationMateriality.P3: 3,
+}
 _STOP_WORDS = {
     "about",
     "after",
@@ -220,6 +228,36 @@ def _preferred_provider(
     return QuestionEvidenceProvider.UNSPECIFIED
 
 
+def _resolved_materiality(
+    question: MissingQuestion,
+    family: MandatoryInvestigationFamily | None,
+) -> InvestigationMateriality:
+    """Decide a question's materiality without ever weakening its producer.
+
+    An explicit non-default materiality from the producer (for example a
+    research-first probe, or a dimension the semantic closure left exposed) is
+    honored; only the P2 default is derived from ``blocking``.  A mandatory
+    family is an additional activation signal, not a ceiling: it may raise the
+    result but must never lower it.  Letting the family win unconditionally
+    re-marked closure-exposed dimension questions P2, which the research router
+    then classified NOT_APPLICABLE, so the research a question was planned for
+    never ran and coverage silently lost the dimension.
+    """
+    materiality = (
+        question.materiality
+        if question.materiality != InvestigationMateriality.P2
+        else InvestigationMateriality.P1
+        if question.blocking
+        else InvestigationMateriality.P2
+    )
+    if family is None:
+        return materiality
+    return min(
+        (materiality, family.materiality),
+        key=_MATERIALITY_ORDER.__getitem__,
+    )
+
+
 def _semantic_key(question: MissingQuestion) -> str:
     return stable_sha256(
         {
@@ -315,18 +353,7 @@ class CanonicalMissingQuestionService:
             if family is not None
             else "The unresolved current-case dimension must remain visible until evidence resolves it."
         )
-        materiality = (
-            family.materiality
-            if family is not None
-            # An explicit non-default materiality from the producer (for
-            # example a research-first materiality probe) is honored; only
-            # the P2 default is derived from blocking.
-            else question.materiality
-            if question.materiality != InvestigationMateriality.P2
-            else InvestigationMateriality.P1
-            if question.blocking
-            else InvestigationMateriality.P2
-        )
+        materiality = _resolved_materiality(question, family)
         payload = question.model_dump(
             mode="python",
             exclude={"question_id"},

@@ -577,7 +577,8 @@ def test_doc_contract_return_handoff_requires_provenance() -> None:
         }
     )
     assert ok.status == ResearchWorkerStatus.ANSWER_FOUND
-    # Provenance block without the doc: ref is malformed.
+    # Provenance with NO source at all is malformed: the finding rests on
+    # nothing.
     bad = run(
         {
             "claim": "Documented behavior.",
@@ -588,6 +589,47 @@ def test_doc_contract_return_handoff_requires_provenance() -> None:
     )
     assert bad.status == ResearchWorkerStatus.FAILED
     assert "together" in bad.limitations[0]
+    # Provenance alongside authorized bundle refs is redundant, not
+    # malformed: the finding already rests on admitted evidence.  Discarding
+    # the whole result there reached the coordinator as an unresearched
+    # question, so admission keeps the finding and drops the unbound
+    # provenance instead - nothing may credit a page the finding never cited.
+    redundant = run(
+        {
+            "claim": "Documented behavior.",
+            "source_refs": [doc.evidence_id],
+            "evidence_role": "EXISTING_BEHAVIOR",
+            "provenance": prov,
+        }
+    )
+    assert redundant.status == ResearchWorkerStatus.ANSWER_FOUND
+    assert not redundant.findings[0].model_dump().get("provenance")
+    # The anti-fabrication half is unchanged: a discovered doc: slug with no
+    # provenance anywhere still fails the whole result.
+    unproven = run(
+        {
+            "claim": "Documented behavior.",
+            "source_refs": ["doc:manage-digital-assets"],
+            "evidence_role": "EXISTING_BEHAVIOR",
+        }
+    )
+    assert unproven.status == ResearchWorkerStatus.FAILED
+    # Provenance serialized flat on the result-level registry entry is the
+    # same identity as a nested block: shape must not decide admission.
+    flat_registry = _doc_orchestrator(
+        {
+            "status": "ANSWER_FOUND",
+            "source_refs": [{"source_ref": "doc:manage-digital-assets", **prov}],
+            "findings": [
+                {
+                    "claim": "Documented behavior.",
+                    "source_refs": ["doc:manage-digital-assets"],
+                    "evidence_role": "EXISTING_BEHAVIOR",
+                }
+            ],
+        }
+    ).execute([question], [requirement], _bundle(doc), repository_roots=[])[0][0]
+    assert flat_registry.status == ResearchWorkerStatus.ANSWER_FOUND
 
 
 def test_doc_refs_are_not_valid_for_attachment_research() -> None:
@@ -1055,6 +1097,70 @@ def test_lifecycle_language_requires_documented_existing_behavior() -> None:
         validate_agent_result_shape(mixed, ResearchWorkerRole.DOC_RESEARCHER)
         is not None
     )
+
+    # Artifact provenance is not a lifecycle claim: "shipped"/"delivered"
+    # describing WHERE AN INSPECTED FILE LIVES says nothing about what the
+    # product released.  A code researcher citing a DTD that sits in the
+    # repository must be able to say so in ordinary English.
+    for provenance_claim in (
+        "The DITA 1.3 bookmap DTD shipped in this repository assigns class "
+        "strings that make booktitle match the topic/title selector.",
+        "The shipped DITA 1.3 bookmap DTD module assigns class values to "
+        "mainbooktitle and booktitlealt.",
+        "DITA class values shipped in the repository determine which element "
+        "the selectors match.",
+        "The catalog delivered with the toolkit resolves the public id.",
+        "The shipped default metadata name list contains four entries.",
+    ):
+        provenance = {
+            "status": "ANSWER_FOUND",
+            "findings": [
+                {
+                    "claim": provenance_claim,
+                    "source_refs": [],
+                    "repository": "repo",
+                    "revision": "f" * 40,
+                    "path": "dtd/bookmap.mod",
+                    "evidence_role": "IMPLEMENTATION_EVIDENCE",
+                }
+            ],
+        }
+        assert (
+            validate_agent_result_shape(
+                provenance, ResearchWorkerRole.CODE_RESEARCHER
+            )
+            is None
+        ), provenance_claim
+
+    # ...but the exemption never covers a release-state noun, so a genuine
+    # lifecycle claim in the same grammatical shape still fails.
+    for lifecycle_claim in (
+        "The indicator is delivered in the current build.",
+        "The retention option shipped in release 4.5.",
+        "The purge action is delivered with the next version.",
+        "The option is delivered in the current build, per the schema.",
+        "The behavior shipped and is documented in the schema.",
+        "The shipped feature changes the generated output.",
+    ):
+        lifecycle = {
+            "status": "ANSWER_FOUND",
+            "findings": [
+                {
+                    "claim": lifecycle_claim,
+                    "source_refs": [],
+                    "repository": "repo",
+                    "revision": "f" * 40,
+                    "path": "src/app.java",
+                    "evidence_role": "IMPLEMENTATION_EVIDENCE",
+                }
+            ],
+        }
+        assert (
+            validate_agent_result_shape(
+                lifecycle, ResearchWorkerRole.CODE_RESEARCHER
+            )
+            is not None
+        ), lifecycle_claim
 
     # EXISTING_BEHAVIOR role but only a Jira comment behind it: provider
     # rejects (no documentation basis for current-behavior language).

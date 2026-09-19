@@ -7,7 +7,7 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 ## Required Style
 
 - Use the canonical one-line format `AC-## [Confirmed|Proposed]: (<Sphere>) <plain-English criterion>. Evidence: <source>.` in the validated record. Never use Given/When/Then labels or pipes anywhere - not in the record, chat, Jira, or the linked markdown.
-- Lead with the concrete product outcome in a short sentence. Include only the condition needed to understand it; do not squeeze a setup procedure, action sequence, and result into one sentence. Use short indented sub-points for required cases.
+- In the human-facing UAC, lead with `Verify that` followed by the named product item and its observable result. Keep the underlying record as a product outcome; do not squeeze a setup procedure, action sequence, and result into one sentence.
 - Never show sphere, status, or Evidence in human-facing AC text. Chat and Jira show `AC-##: <criterion>` plus optional sub-points. Keep `[Proposed]` / `[Confirmed]` and evidence in the validated record only.
 - Consolidate to at most ten AC points in the presented UAC, but consolidation is LOSS-LESS: it reorganizes coverage, it never removes a checkable point. List every distinct point first; after merging, each one must survive as a clause of a merged AC, a sub-point under it, or an entry in the linked full-record markdown. If you synthesized more (say twenty), merge related criteria into a single AC the way a senior human QA does and express the merged detail as sub-points. Never drop a point to hit the cap, and never split one idea into many thin ACs to pad the list.
 - Give each AC one purpose.
@@ -27,7 +27,7 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 - Keep long examples, extension lists, implementation explanations, and parenthetical exceptions outside the tester sentence. Put them in Test data, a scenario, or a `Note for developer:` bullet.
 - Name the exact screen. Move code, file paths, implementation jargon, and performance internals to a `Note for developer:` bullet in an existing technical section instead of tester-facing AC text. Preserve a source-mandated exact identifier when fidelity requires it, and expose the readability tradeoff for review.
 - Preserve human reviewer wording as the semantic baseline. Simplify its sentence structure without changing the actor, scope, UI label, timing, fallback, exact path, or product outcome.
-- Use familiar QE verbs such as show, use, keep, and remove when they describe the result precisely. Keep documented product names such as Language Variable; do not replace them with invented technical synonyms or unnecessary qualifiers. Do not substitute a DITA element name for a visible label or CSS-generated text unless it really is that DITA element.
+- Use familiar QE verbs such as verify, show, use, keep, and remove when they describe the result precisely. `Verify that` is valid only with a named screen, property, construct, or artifact and an observable result; never write `Verify that the system...`. Keep documented product names such as Language Variable; do not replace them with invented technical synonyms or unnecessary qualifiers. Do not substitute a DITA element name for a visible label or CSS-generated text unless it really is that DITA element.
 - Check negative wording against the allowed fallback and configuration cases. "Do not use X" is valid only under the stated condition; it must not reject X when the approved fallback legitimately selects it.
 - If inspected code conflicts with human feedback, keep the requested meaning and add an Open Question that states the conflict. Do not silently replace the requirement with current implementation.
 - Do not refer to another criterion such as AC-04 inside the criterion text. State the required fallback or result directly so each criterion stands alone.
@@ -36,16 +36,19 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 
 ## Human-Facing Format
 
-The renderer and Jira poster produce this deterministic view from the record - one plain-English line per AC, with optional short sub-points:
+The renderer and Jira poster produce this deterministic view from the record - one plain-English line per AC, its source on its own line, and any still-open product decision attached to the AC it governs:
 
 ```text
-- AC-01: A DITA-OT publish that returns a generation log records exactly one generation-log payload in the application logger.
-- AC-02: Condition changes in a Folder Profile are reflected in the DITAVAL editor dropdowns.
-  - Adding a condition to the profile makes it appear in the Attribute dropdown.
-  - Deleting a condition removes it from the dropdown.
+- AC-01: Verify that a DITA-OT publish that returns a generation log records exactly one generation-log payload in the application logger.
+  **Source:** the Jira description.
+- AC-02: Verify that adding a Folder Profile condition makes it appear in the DITAVAL Attribute dropdown and deleting it removes it.
+  **Source:** Experience League Folder Profile condition documentation.
+  **TBD:** are custom user-defined conditions in scope for the same dropdown refresh?
 ```
 
-Do not manually paraphrase this view. Keep the criterion text verbatim so technical terms are preserved exactly, and use sub-points only to break a genuinely long criterion into scannable clauses.
+The delivered chat view is a flat list: no section headings, no ticket title line, no content sub-points, and no separate Open Questions section. A criterion that covers several cases keeps them as a compact clause list inside its single line. Do not manually paraphrase this view. Render each concrete outcome with the `Verify that` QE prefix, keep the underlying terms unchanged, keep the criterion body free of bold, backticks and links so it pastes cleanly into Jira, and strip the `**Source:**` / `**TBD:**` emphasis to plain labels before any Jira write.
+
+Once a user has confirmed this shape, reuse it verbatim on every later revision of the same UAC. Re-deriving a different layout - adding headings back, splitting clauses into sub-bullets, or restoring an Open Questions section - is a format defect, not an improvement.
 
 ## Quick Review
 

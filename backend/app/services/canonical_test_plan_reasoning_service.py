@@ -193,6 +193,17 @@ _CHANGE_SET_SOURCES = {
     EvidenceSourceType.IMPLEMENTATION_DIFF,
     EvidenceSourceType.CODE_DIFF,
 }
+# Evidence bound to the change under test, as opposed to the retrieved corpus.
+# Documentation and specification chunks describe the product in general, so
+# sharing vocabulary with one establishes topic relevance only; such a
+# dimension reaches its answer through mandated research rather than by being
+# declared resolved.
+_CHANGE_BOUND_SOURCES = (
+    _CURRENT_ISSUE_BEHAVIOR_SOURCES
+    | _HUMAN_CONTRACT_SOURCES
+    | _IMPLEMENTATION_SOURCES
+    | _UI_SOURCES
+)
 
 # Dispositions that do not assert a resolved behavior and are not classified.
 _UNRESOLVED_BEHAVIOR_DISPOSITIONS = {
@@ -338,6 +349,13 @@ _DESIRED_ESTABLISHING_WORKER_STATUSES = {
 # code is not a contract.
 _DESIRED_ROLES = frozenset({ResearchFindingEvidenceRole.DESIRED_BEHAVIOR})
 _EXISTING_ROLES = frozenset({ResearchFindingEvidenceRole.EXISTING_BEHAVIOR})
+# Code is not a contract, so implementation evidence stays out of the
+# acceptance lane above.  It is still the only source that establishes what
+# the product does today on the changed path - the baseline a tester must
+# re-verify - so it grounds INVESTIGATION coverage instead of being dropped.
+_IMPLEMENTATION_ROLES = frozenset(
+    {ResearchFindingEvidenceRole.IMPLEMENTATION_EVIDENCE}
+)
 
 
 def _establishing_claims(
@@ -401,6 +419,23 @@ def existing_behavior_claims(
 
     return _establishing_claims(
         question, research_by_question, worker_results, _EXISTING_ROLES
+    )
+
+
+def implementation_behavior_claims(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    worker_results: list,
+) -> list[tuple[str, list[str]]]:
+    """Implementation-evidence claims established by admitted code research
+    for this question, as (claim, source_refs) pairs.
+
+    These never reach the acceptance lane: inspected code proves what the
+    product does, not what it owes.  They ground INVESTIGATION coverage so
+    the current behavior on the changed path stays visible to the tester."""
+
+    return _establishing_claims(
+        question, research_by_question, worker_results, _IMPLEMENTATION_ROLES
     )
 
 
@@ -699,14 +734,25 @@ def _normalized_existing_claims(
     claims: list[tuple[str, list[str]]],
     limit: int = 2,
     question_tokens: set[str] | None = None,
+    require_relevance: bool = True,
 ) -> list[tuple[str, list[str]]]:
-    """Normalize documented existing-behavior claims, keeping the ones that
-    actually speak to the question first.
+    """Normalize established-behavior claims, keeping the ones that actually
+    speak to the question first.
 
     A claim that still reads as meta/evidence prose after normalization is
     dropped rather than emitted: the Reviewer gate (_AC_META_PROSE_RE) would
     fail the whole plan on it, and silently dropping one unusable claim is
-    safer than failing a plan the rest of the research supports."""
+    safer than failing a plan the rest of the research supports.
+
+    `require_relevance` guards the acceptance lane only.  There, a claim that
+    shares no term with the question means the research answered a different
+    question, and grounding a contract on it would be wrong.  The
+    investigation lane sets it False: those claims never become a contract,
+    the research is already bound to this question's admitted request, and
+    requiring the finding to echo the question's own phrasing discards
+    exactly the current-behavior detail a tester needs - the code that
+    answers "does X change this?" with "no" is the same code that establishes
+    what the product actually does instead."""
 
     tokens = question_tokens or set()
     scored: list[tuple[int, int, str, list[str]]] = []
@@ -719,10 +765,11 @@ def _normalized_existing_claims(
         scored.append((_claim_relevance(text, tokens), order, text, refs))
     # Most relevant first; ties keep the researcher's own ordering.
     scored.sort(key=lambda row: (-row[0], row[1]))
-    # When the question shares no term with any finding the research answered
-    # a different question than the one asked: ground nothing rather than
-    # promote an unrelated documented behavior into the acceptance lane.
-    return [(text, refs) for score, _, text, refs in scored if score > 0][:limit]
+    return [
+        (text, refs)
+        for score, _, text, refs in scored
+        if score > 0 or not require_relevance
+    ][:limit]
 
 
 def documented_baseline_claims(
@@ -745,6 +792,31 @@ def documented_baseline_claims(
     )
 
 
+def verified_implementation_claims(
+    question: MissingQuestion,
+    research_by_question: dict[str, QuestionResearchRecord],
+    worker_results: list,
+    limit: int = 2,
+) -> list[tuple[str, list[str]]]:
+    """Current implementation behavior relevant to this question, normalized
+    for the investigation lane.
+
+    Code research answers "what does the product do today on this path".
+    That is the baseline a tester re-verifies and the compatibility anchor a
+    change must not break, so it must reach coverage.  It is never acceptance
+    authority and never resolves the question: only a human decision or a
+    customer-stated desire can do that, so any bounded TBD stays."""
+
+    return _normalized_existing_claims(
+        implementation_behavior_claims(
+            question, research_by_question, worker_results
+        ),
+        limit=limit,
+        question_tokens=_relevance_tokens(question.question),
+        require_relevance=False,
+    )
+
+
 _DESIRED_PROPOSED_RATIONALE = (
     "Customer-stated desired behavior established by admitted research; "
     "proposed pending the product decision carried by convergence."
@@ -753,6 +825,12 @@ _EXISTING_PROPOSED_RATIONALE = (
     "Documented existing behavior established by admitted documentation "
     "research; proposed as the baseline the ticket preserves or changes. "
     "It does not decide the open acceptance question, which stays bounded."
+)
+_IMPLEMENTATION_ORACLE_RATIONALE = (
+    "Current implementation behavior established by admitted code research; "
+    "recorded as the baseline a tester re-verifies on the changed path. "
+    "Code is not a product contract, so it never becomes acceptance "
+    "coverage and never resolves the open acceptance question."
 )
 
 
@@ -1199,8 +1277,35 @@ def _convergence_detail_lines(conv: Any) -> list[str]:
     return detail
 
 
+_QE_CHECK_LEAD_RE = re.compile(r"^(?:verify|confirm|check)\b", re.I)
+_QE_STATUS_PREFIX_RE = re.compile(r"^(?:proposed|confirmed):\s*", re.I)
+_QE_ARTICLE_PREFIX_RE = re.compile(r"^(?:A|An|The|No|Each)\b")
+_QE_TBD_QUESTION_RE = re.compile(r"\?\s*(?:\(TBD\))?\.?\s*$", re.I)
+
+
+def _as_manual_qe_check(text: str) -> str:
+    """Present an outcome as a concrete manual-QE verification check.
+
+    The Writer retains the underlying product outcome.  This presentation-only
+    wrapper gives testers the requested ``Verify that <named item> ...`` voice
+    without admitting generic ``Verify that the system ...`` wording.
+    """
+
+    value = _QE_STATUS_PREFIX_RE.sub("", text.strip())
+    if (
+        not value
+        or _QE_CHECK_LEAD_RE.match(value)
+        or _QE_TBD_QUESTION_RE.search(value)
+    ):
+        return value
+    article = _QE_ARTICLE_PREFIX_RE.match(value)
+    if article:
+        value = article.group(0).lower() + value[article.end():]
+    return f"Verify that {value}"
+
+
 def _render_written_criterion(criterion: "WrittenAcceptanceCriterion") -> str:
-    """Flatten a written criterion into its human-facing contract text.
+    """Flatten a written criterion into its human-facing QE check text.
 
     Sub-points stay attached to the criterion they qualify instead of being
     relocated to a sibling section, and an unresolved criterion keeps its
@@ -1210,7 +1315,7 @@ def _render_written_criterion(criterion: "WrittenAcceptanceCriterion") -> str:
     outcome = criterion.outcome.strip()
     if criterion.unresolved and "(TBD)" not in outcome:
         outcome = f"{outcome} (TBD)"
-    parts = [outcome]
+    parts = [_as_manual_qe_check(outcome)]
     for sub_point in criterion.sub_points:
         text = sub_point.text.strip()
         if (
@@ -1218,7 +1323,7 @@ def _render_written_criterion(criterion: "WrittenAcceptanceCriterion") -> str:
             and "(TBD)" not in text
         ):
             text = f"{text} (TBD)"
-        parts.append(f"- {text}")
+        parts.append(f"- {_as_manual_qe_check(text)}")
     return "\n".join(parts)
 
 
@@ -1667,6 +1772,122 @@ def _human_question_safe(text: str) -> bool:
     if len([part for part in value.split(",") if part.strip()]) > 2:
         return False
     return True
+
+
+# The question subject is the noun a researcher is asked about, so it must be
+# product language.  `_human_question_safe` only rejects obvious raw fragments;
+# retrieval bleed still admits test fixtures ("3_post_upgrade_scenarios.feature")
+# and test-method identifiers ("RO1_shouldCorrectly_ReadAll_DitaProfiles") as if
+# they named the behavior under acceptance.  A question built on one of those is
+# unanswerable and comes back NOT_APPLICABLE, so it is rejected as a subject.
+#
+# The snake_case forms above are only half the bleed.  Java and TypeScript name
+# test methods and accessors in camelCase, so
+# "shouldThrowExceptionWhenInvalidPresetTypeInUpdateExistingPresets" and "getId"
+# passed every check and became the subject of an entire planned question set.
+# A camelCase test-method prefix and a bare accessor identifier are code
+# artifacts in every codebase and never name a product behavior.
+_PRODUCT_SUBJECT_REJECT_RE = re.compile(
+    r"(?:\\"
+    r"|\.(?:py|ts|tsx|jsx|java|json|xml|dita|ditamap|yml|yaml|toml|feature|md)\b"
+    r"|^[A-Za-z]{1,4}\d+_"
+    r"|\b(?:should|test|spec|scenario|fixture)_"
+    r"|_(?:test|spec)\b"
+    r"|[A-Za-z]_[A-Za-z]"
+    r"|\b(?:should|test|it|when|given|verify|assert)[A-Z]"
+    r"|\b(?:get|set|is|has)[A-Z][A-Za-z0-9]*\b"
+    r"|\(\))"
+)
+
+# A subject is the noun a researcher looks up, not a sentence.  Contract facts
+# are captured as whole source sentences ("Map title/dc:title shows entire
+# booktitle element."), and substituting one into a question template produces a
+# sentence nested inside a sentence that no worker can act on.  Cutting at the
+# first finite verb leaves the subject noun phrase ("Map title/dc:title").
+#
+# The pattern is deliberately case-SENSITIVE and lowercase-only: a capitalized
+# word inside a phrase belongs to a product name, not to a predicate, so
+# "Topic List report" keeps its "List" while "TopicList report lists the topics"
+# is cut at "lists".  It is also separate from `_REQUIREMENT_SHAPE_RE`, which
+# classifies requirement shape elsewhere; widening that pattern would change
+# promotion behavior rather than question wording.
+_SUBJECT_FINITE_VERB_RE = re.compile(
+    r"\b(?:is|are|was|were|has|have|had|does|do|did|can|cannot|will|would|"
+    r"shall|should|must|shows?|displays?|lists?|sorts?|contains?|includes?|"
+    r"returns?|renders?|generates?|creates?|removes?|deletes?|retains?|"
+    r"writes?|reads?|appears?|becomes?|remains?|occurs?|happens?|throws?)\b"
+)
+
+# A leading adverbial clause is scene-setting, not the subject itself.
+_SUBJECT_LEADING_PREPOSITION_RE = re.compile(
+    r"^(?:in|on|at|under|for|with|within|during|when|while|after|before|"
+    r"currently|presently|today)\s+",
+    re.IGNORECASE,
+)
+
+
+def _subject_noun_phrase(value: str) -> str:
+    """Reduce a source-authored sentence to the noun phrase it is about."""
+
+    normalized = value.strip().rstrip(" .;:,")
+    match = _SUBJECT_FINITE_VERB_RE.search(normalized)
+    if match is not None and match.start() > 0:
+        head = normalized[: match.start()].strip().rstrip(" .;:,-")
+        # A one-or-two character head is an article or fragment left behind by
+        # an unusual sentence shape; keeping the original is more informative.
+        if len(head) >= 3:
+            normalized = head
+    stripped = _SUBJECT_LEADING_PREPOSITION_RE.sub("", normalized).strip()
+    if len(stripped) >= 3:
+        normalized = stripped
+    return normalized
+
+
+def _product_subject_safe(text: str) -> bool:
+    """True when text can name the behavior a research question is asked about."""
+
+    value = text.strip()
+    if not _human_question_safe(value):
+        return False
+    if _PRODUCT_SUBJECT_REJECT_RE.search(value):
+        return False
+    # A single forward slash is ordinary product wording that a reporter writes
+    # as an alternation ("Map title/dc:title"); a leading slash or two or more
+    # slashes is a repository or file path and never a behavior name.
+    if value.startswith("/") or value.count("/") >= 2:
+        return False
+    return True
+
+
+def _behavior_subject_from_facts(facts: ContractFactSet) -> str:
+    """Return the ticket's own product subject for a human research question.
+
+    Closure entities come from retrieval and are frequently unusable as a
+    subject.  The issue itself always names what it is about, so the contract
+    facts - never a feature taxonomy - supply the fallback subject.  An empty
+    result means the caller keeps its own generic wording.
+    """
+
+    for fact_type in (
+        ContractFactType.PRIMARY_PRODUCT_AREA,
+        ContractFactType.HUMAN_TERMINOLOGY,
+    ):
+        for fact in facts.facts:
+            if fact.fact_type != fact_type:
+                continue
+            candidate = _subject_noun_phrase(
+                _bounded_behavior_subject(fact.literal, limit=80)
+            )
+            if candidate and _product_subject_safe(candidate):
+                return candidate
+    behavior_fact = _material_behavior_fact(facts)
+    if behavior_fact is not None:
+        candidate = _subject_noun_phrase(
+            _bounded_behavior_subject(behavior_fact.literal, limit=80)
+        )
+        if candidate and _product_subject_safe(candidate):
+            return candidate
+    return ""
 
 
 # P2: statement-shape signals for extractor classification (a statement of
@@ -2256,13 +2477,18 @@ _DIMENSION_KEYWORDS: dict[SemanticDimension, tuple[str, ...]] = {
         "key scope",
         "reused content",
     ),
+    # A bare "identity"/"uuid" token is ordinary AEM Guides vocabulary: every
+    # asset carries a UUID, so matching it marked this dimension resolved from
+    # incidental wording instead of from evidence about an identity change.
+    # Only wording that denotes the change event itself may resolve it.
     SemanticDimension.IDENTITY_CHANGE: (
         "moved",
         "renamed",
         "relocated",
         "path change",
-        "identity",
-        "uuid",
+        "identity change",
+        "uuid change",
+        "re-parent",
     ),
     SemanticDimension.MUTATION_FRESHNESS: (
         "stale",
@@ -3135,6 +3361,18 @@ _TERMINOLOGY_FACT_TYPES = frozenset(
     {
         ContractFactType.HUMAN_TERMINOLOGY,
         ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+    }
+)
+
+_SCALAR_SCOPE_FACT_TYPES = frozenset(
+    {
+        ContractFactType.PRIMARY_PRODUCT_AREA,
+        ContractFactType.PRIMARY_OUTPUT_TYPE,
+        ContractFactType.PRESET_TYPE,
+        ContractFactType.DITA_OT_PROCESSING_STATE,
+        ContractFactType.DEPLOYMENT_MODE,
+        ContractFactType.PRODUCT_VERSION,
+        ContractFactType.FEATURE_STATE,
     }
 )
 
@@ -4090,7 +4328,14 @@ class CanonicalTestPlanReasoningService:
                         continue
                     if _is_contract_metadata(path, literal):
                         continue
-                    if _is_structural_noise_literal(literal):
+                    fact_types = _fact_types(path, literal)
+                    is_scalar_scope_fact = bool(
+                        _SCALAR_SCOPE_FACT_TYPES.intersection(fact_types)
+                    )
+                    if (
+                        _is_structural_noise_literal(literal)
+                        and not is_scalar_scope_fact
+                    ):
                         # A traceability anchor ID or a bare dimension tag is never an
                         # acceptance sentence. Filter it from EVERY source (including
                         # accepted UAC) so it cannot become a fact -> candidate ->
@@ -4103,7 +4348,11 @@ class CanonicalTestPlanReasoningService:
                         EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
                         EvidenceSourceType.PRODUCT_DECISION,
                     }
-                    if not _accepted_source and not _is_behavioural_literal(literal):
+                    if (
+                        not _accepted_source
+                        and not is_scalar_scope_fact
+                        and not _is_behavioural_literal(literal)
+                    ):
                         # An evidence-noise span from a lower-authority record (a
                         # screenshot ref, doc-chunk lead-in, bare number, code line,
                         # config-PID) must not become a contract fact; it renders as an
@@ -4112,7 +4361,6 @@ class CanonicalTestPlanReasoningService:
                         continue
                     if len(literal) > 2000:
                         literal = literal[:2000]
-                    fact_types = _fact_types(path, literal)
                     if record.source_type in _NON_HUMAN_TERMINOLOGY_SOURCES:
                         fact_types = [
                             fact_type
@@ -5131,14 +5379,24 @@ class CanonicalTestPlanReasoningService:
                         == ApplicabilityState.UNRESOLVED
                     )
                 )
-                evidence_ids = [
-                    record.evidence_id
-                    for record in bundle.records
-                    if any(
-                        keyword in _record_text(record).casefold()
+                # A keyword hit proves the record shares vocabulary with the
+                # dimension, not that it answers it for the change under test.
+                # Most of a bundle is retrieved documentation, so treating any
+                # hit as resolution marked nearly every dimension covered and
+                # the question was never asked.  Corpus hits stay attached as
+                # topic evidence; only change-bound evidence resolves.
+                evidence_ids: list[str] = []
+                resolving_ids: list[str] = []
+                for record in bundle.records:
+                    text = _record_text(record).casefold()
+                    if not any(
+                        keyword in text
                         for keyword in _DIMENSION_KEYWORDS[dimension]
-                    )
-                ]
+                    ):
+                        continue
+                    evidence_ids.append(record.evidence_id)
+                    if record.source_type in _CHANGE_BOUND_SOURCES:
+                        resolving_ids.append(record.evidence_id)
                 if applicability_unresolved:
                     disposition = ClosureDisposition.UNRESOLVED_AND_EXPOSED
                     rationale = (
@@ -5150,9 +5408,15 @@ class CanonicalTestPlanReasoningService:
                     rationale = (
                         "The activated domains do not make this dimension material."
                     )
-                elif evidence_ids:
+                elif resolving_ids:
                     disposition = ClosureDisposition.COVERED
                     rationale = "Direct supplied evidence addresses this dimension."
+                elif evidence_ids:
+                    disposition = ClosureDisposition.UNRESOLVED_AND_EXPOSED
+                    rationale = (
+                        "Retrieved documentation shares this dimension's vocabulary "
+                        "but no evidence bound to the change under test resolves it."
+                    )
                 else:
                     disposition = ClosureDisposition.UNRESOLVED_AND_EXPOSED
                     rationale = "The dimension is applicable but the supplied evidence does not resolve it."
@@ -5296,29 +5560,62 @@ class CanonicalTestPlanReasoningService:
             # two joined entities is an enumeration dump, so the question
             # names the typed behavior dimension instead; the final question
             # text is re-validated as a fail-safe either way.
-            if len(clean_entities) > 2:
-                entity_text = "the affected behavior"
-            elif clean_entities:
-                entity_text = ", ".join(clean_entities)
+            #
+            # A subject-less question cannot be researched: a worker asked
+            # "where does the value shown for the affected behavior come from"
+            # has nothing to look up and returns NOT_APPLICABLE, so the
+            # mandated research never happens.  Entities that survive the raw
+            # check but still name a test fixture or test method are the same
+            # defect with a misleading subject.  Both cases fall back to the
+            # subject the issue itself states, and only an issue that names no
+            # subject at all keeps the generic wording.
+            subject_entities = [
+                entity for entity in clean_entities if _product_subject_safe(entity)
+            ]
+            if 1 <= len(subject_entities) <= 2:
+                entity_text = ", ".join(subject_entities)
             else:
-                entity_text = "the affected behavior"
+                entity_text = (
+                    _behavior_subject_from_facts(facts) or "the affected behavior"
+                )
             question_text = _QUESTION_TEXT[dimension].format(entity=entity_text)
             if not _human_question_safe(question_text):
-                question_text = _QUESTION_TEXT[dimension].format(
-                    entity="the affected behavior"
+                fallback_subject = (
+                    _behavior_subject_from_facts(facts) or "the affected behavior"
                 )
+                question_text = _QUESTION_TEXT[dimension].format(
+                    entity=fallback_subject
+                )
+                if not _human_question_safe(question_text):
+                    question_text = _QUESTION_TEXT[dimension].format(
+                        entity="the affected behavior"
+                    )
             family = families.get(dimension)
             target_sources = list(_target_sources(subject))
             if family is not None:
                 for source in family.preferred_evidence_sources:
                     if source not in target_sources:
                         target_sources.append(source)
+            # Closure already decided this dimension is applicable and left it
+            # unresolved for a material entity; that decision is the materiality
+            # judgement.  Falling back to the schema's P2 default re-decides it
+            # here as immaterial, which classifies the mandated research
+            # NOT_APPLICABLE and means the question is never researched at all.
+            family_materiality = (
+                family.materiality if family is not None else None
+            )
+            dimension_materiality = (
+                family_materiality
+                if family_materiality is InvestigationMateriality.P0
+                else InvestigationMateriality.P1
+            )
             questions.append(
                 MissingQuestion(
                     question=question_text,
                     dimension=dimension,
                     authority_subject=subject,
                     target_source_types=target_sources,
+                    materiality=dimension_materiality,
                     blocking=(
                         family.activation_decision
                         == FamilyActivationDecision.ACTIVATE_BLOCKING
@@ -6885,6 +7182,49 @@ class CanonicalTestPlanReasoningService:
                         research_derived=True,
                     )
                 )
+        # Admitted code research must reach coverage for the same reason the
+        # documentation pass above exists: research that runs and then never
+        # surfaces is wasted.  IMPLEMENTATION_EVIDENCE findings are excluded
+        # from both acceptance grounding paths by design (code is not a
+        # contract), which previously left them with no disposition at all -
+        # so the current sort, the existing columns and filters, and the
+        # surfaces a change must keep compatible silently vanished from the
+        # plan.  These rows land in the INVESTIGATION lane
+        # (IMPLEMENTATION_ORACLE), are deduplicated by candidate text, resolve
+        # no question and change no existing row's disposition.
+        for question in questions:
+            for impl_text, impl_refs in verified_implementation_claims(
+                question,
+                research_by_question,
+                worker_results or [],
+                limit=20,
+            ):
+                key = _normalize_candidate_key(impl_text)
+                if key in already_covered:
+                    continue
+                already_covered.add(key)
+                i_class, i_priority, i_impact = _derive_c1(
+                    CoverageDisposition.IMPLEMENTATION_ORACLE,
+                    has_direct_evidence=True,
+                )
+                rows.append(
+                    CoverageDispositionRecord(
+                        candidate=impl_text,
+                        disposition=CoverageDisposition.IMPLEMENTATION_ORACLE,
+                        source_question_ids=[question.question_id],
+                        source_fact_ids=list(question.source_fact_ids),
+                        evidence_ids=[
+                            ref for ref in impl_refs if str(ref).strip()
+                        ],
+                        rationale=_IMPLEMENTATION_ORACLE_RATIONALE,
+                        coverage_class=i_class,
+                        priority=i_priority,
+                        acceptance_impact=i_impact,
+                        contract_type="POSITIVE",
+                        applicability="APPLICABLE",
+                        research_derived=True,
+                    )
+                )
         return sorted(
             {row.disposition_id: row for row in rows}.values(),
             key=lambda row: row.disposition_id,
@@ -8322,6 +8662,16 @@ class CanonicalTestPlanReasoningService:
                 for disposition in dispositions:
                     if disposition.disposition in open_states:
                         continue
+                    # An INVESTIGATION-lane row is not a finalization either:
+                    # it carries no acceptance or regression claim, can never
+                    # be promoted to an AC, and is precisely how research that
+                    # ran but could not settle the question stays visible.
+                    # Suppressing it would discard the completed half of a
+                    # multi-source question and re-hide exactly what the
+                    # mandated research found.  Acceptance- and
+                    # regression-bearing dispositions stay fail-closed.
+                    if disposition.coverage_class == "INVESTIGATION":
+                        continue
                     offending = sorted(
                         set(disposition.source_question_ids)
                         & incomplete_research_question_ids
@@ -8510,7 +8860,7 @@ class CanonicalTestPlanReasoningService:
                 authored = written_by_candidate.get(candidate.candidate_id) or []
                 statements = [
                     _render_written_criterion(criterion) for criterion in authored
-                ] or [statement]
+                ] or [_as_manual_qe_check(statement)]
                 for rendered in statements:
                     acceptance_sources.setdefault(
                         rendered.strip(),
@@ -8676,14 +9026,15 @@ class CanonicalTestPlanReasoningService:
                 # Generic planner boilerplate is not an evidence gap: a
                 # non-blocking question surfaces only when material evidence
                 # shows it can change acceptance behavior.  A question whose
-                # mandated research terminated with an answer (or a bounded
-                # negative) is settled; a planner-family question (no
-                # dimension) with not-applicable research is boilerplate.
+                # mandated research terminated with an answer is settled only
+                # after its coverage question resolved. A research answer can
+                # establish a baseline yet still leave a material product
+                # decision unanswered, which must remain visible.
                 research = research_by_question.get(question.question_id)
                 if research is not None and research.research_status in {
                     ResearchStatus.ANSWER_FOUND,
                     ResearchStatus.PARTIAL,
-                }:
+                } and question.question_id not in open_question_ids:
                     continue
                 if (
                     research is not None
@@ -8717,6 +9068,12 @@ class CanonicalTestPlanReasoningService:
                 CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
             }:
                 continue
+            is_open_disposition = disposition.disposition in {
+                CoverageDisposition.OPEN_QUESTION,
+                CoverageDisposition.PRODUCT_SCOPE_QUESTION,
+                CoverageDisposition.ENGINEERING_DESIGN_DECISION,
+                CoverageDisposition.ACCEPTANCE_TBD,
+            }
             if (
                 disposition.disposition == CoverageDisposition.ACCEPTANCE_TBD
                 and disposition.disposition_id in represented_tbd_disposition_ids
@@ -8757,7 +9114,7 @@ class CanonicalTestPlanReasoningService:
                         and dimension_by_question.get(question_id) is None
                     ):
                         boilerplate = True
-                if settled or boilerplate:
+                if (settled and not is_open_disposition) or boilerplate:
                     # Settled questions are answered, not gaps; boilerplate
                     # rows without any evidence linkage are planner noise.
                     # The disposition still lands in the trace (the render
@@ -9097,11 +9454,11 @@ class CanonicalTestPlanReasoningService:
                         # the acceptance contract instead of moving to a
                         # sibling section.
                         outcome, _, sub_block = item.partition("\n")
-                        lines.append(f"Acceptance Criteria-{index:02d}: {outcome}")
+                        lines.append(f"- AC-{index:02d}: {outcome}")
                         for sub_line in sub_block.splitlines():
                             if sub_line.strip():
                                 lines.append(f"  {sub_line.strip()}")
-                        lines.append(f"*Source*: {source_line}")
+                        lines.append(f"  **Source:** {source_line}")
                         lines.append("")
                     if len(visible_items) > 10:
                         lines.append(

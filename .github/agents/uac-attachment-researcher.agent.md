@@ -104,9 +104,28 @@ research request:
   `NOT_FOUND`, `SOURCE_UNAVAILABLE`, `CONFLICTED`, `FAILED`. Every finding's
   `source_refs` must come from the authorized references in the request. No
   prose, no markdown fences, no commentary around the JSON.
+- `conflicts[]` is ONLY for two competing answers to THIS question's
+  acceptance expectation - two sources that would make a QE test different
+  outcomes. A defect in a source (a page that misnames something or
+  contradicts itself), a label that differs between surfaces, a divergence
+  you judged non-determinative, or anything recorded merely for completeness
+  is NOT a conflict: put it in `limitations[]`, or state it as a finding with
+  `evidence_role: SUPPORTING_CONTEXT`. Every `conflicts[]` entry is read
+  downstream as a product decision a human must settle BEFORE any acceptance
+  criterion can be written, so a completeness log there blocks the whole UAC.
 - Return it by making the JSON object your ENTIRE final message. You run in
   your own context window; the coordinator reads that final message directly.
   Emit no preamble, no trailing summary, and no status commentary around it.
+- Your reply has a hard output-size budget, and a result that runs past it is
+  cut mid-JSON and discarded WHOLESALE - every finding you gathered is lost,
+  and the coordinator may not repair a truncated reply. Budget for it BEFORE
+  you serialize: keep the whole JSON body under 30,000 characters and at most
+  25 findings. If your research exceeds that, never truncate and never pad -
+  rank findings by materiality to the requested claim, emit the most material
+  ones within the budget, set `status` to `PARTIAL`, and record in
+  `limitations[]` how many findings were dropped and what they covered. Cut
+  explanatory prose, background and restatement first; keep every `claim`
+  down to the observed fact with its exact attachment reference.
 - Return ONLY the research payload. Execution receipts (provider, model,
   role-contract version) are attached by the host/coordinator from its own
   trusted observation - never self-report them, and never claim a model or
