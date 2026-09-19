@@ -13,7 +13,9 @@ rules, including the merge-safety invariant.
 - One AC = one clearly testable customer behavior. Prefer observable product behavior.
 - Clear **must / must-not** statements. Do not force Given/When/Then.
 - Keep negative behavior next to the positive behavior it protects.
-- No vague phrases: "works correctly", "should work", "verify that", "behaves as expected".
+- A concrete manual-QE lead is valid: "Verify that the Native PDF output preset
+  keeps the saved dc:title value." Never write a generic subject such as "Verify
+  that the system..." or a vague result such as "works correctly".
 - Keep implementation names out of the AC unless the technical artifact **is** the
   acceptance contract (e.g. a required `metadata.xml`) — then set
   `technical_artifact_is_requirement: true` on that AC.

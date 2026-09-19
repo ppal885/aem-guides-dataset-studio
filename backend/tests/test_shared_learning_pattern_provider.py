@@ -74,6 +74,23 @@ def test_disabled_untrusted_or_benchmark_context_never_reads_storage(context):
     assert response.matched_patterns == []
 
 
+def test_benchmark_isolation_matches_the_no_access_envelope():
+    def forbidden_loader(**kwargs):
+        pytest.fail("storage must not be queried")
+
+    benchmark = resolve_shared_learning(
+        _request(),
+        _context(benchmark_isolation=True),
+        loader=forbidden_loader,
+    )
+    untrusted = resolve_shared_learning(
+        _request(),
+        _context(authenticated=False),
+        loader=forbidden_loader,
+    )
+    assert benchmark == untrusted
+
+
 def test_default_mode_is_shadow():
     assert SharedLearningContext(tenant_id="tenant-a", principal_id="reader").mode == SharedLearningMode.SHADOW
 

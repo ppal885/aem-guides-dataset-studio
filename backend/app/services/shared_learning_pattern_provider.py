@@ -208,8 +208,15 @@ def resolve_shared_learning(request: ResolveQePatternsRequest, context: SharedLe
         # A redundant benchmark reason must not perturb preparation/output IDs.
         return SharedLearningEnvelope(mode=SharedLearningMode.DISABLED, status="DISABLED")
     if context.benchmark_isolation:
-        return SharedLearningEnvelope(mode=SharedLearningMode.DISABLED, status="DISABLED",
-            warnings=["SHARED_LEARNING_BENCHMARK_ISOLATION"])
+        # Benchmark isolation is a transport boundary, not plan evidence.
+        # Project the same no-access envelope as an unauthenticated request so
+        # entry-point metadata cannot alter canonical plan output.
+        return SharedLearningEnvelope(
+            mode=context.mode,
+            status="UNAVAILABLE",
+            warnings=["SHARED_LEARNING_AUTHENTICATED_TENANT_REQUIRED"],
+            error_code="SHARED_LEARNING_AUTHENTICATED_TENANT_REQUIRED",
+        )
     if not context.authenticated:
         return SharedLearningEnvelope(mode=context.mode, status="UNAVAILABLE",
             warnings=["SHARED_LEARNING_AUTHENTICATED_TENANT_REQUIRED"],

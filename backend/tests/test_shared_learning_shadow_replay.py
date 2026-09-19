@@ -125,7 +125,7 @@ def collect_runtime_shadow_proof(monkeypatch):
         assert blind_calls["shared_loader"] == 0
         blind_lookup = blind.output_payload["qe_investigation"]["pattern_lookup"]
         assert not blind_lookup["matched_human_patterns"]
-        assert "SHARED_LEARNING_BENCHMARK_ISOLATION" in blind_lookup["warning_codes"]
+        assert "SHARED_LEARNING_BENCHMARK_ISOLATION" not in blind_lookup["warning_codes"]
         assert _projection(blind) == disabled_projection, case["case"]
         shadow_lookup = shadow.output_payload["qe_investigation"]["pattern_lookup"]
         shadow_ids = sorted({pattern_id for call in shadow_lookup["calls"]

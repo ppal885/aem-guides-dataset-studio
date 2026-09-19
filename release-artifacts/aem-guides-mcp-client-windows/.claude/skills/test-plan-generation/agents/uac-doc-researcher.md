@@ -35,6 +35,25 @@ rests on inference when documentation materially affects it.
   - `REQUIREMENT_CLARIFICATION` â€” documentation clarifying what the current
     ticket's requirement means.
   - `SUPPORTING_CONTEXT` â€” background context only; never acceptance truth.
+- `claim` is ONE short sentence (at most 25 words) stating what the product
+  does, in product terms - the sentence a QE could read once and act on. You
+  WRITE it; you never COPY it. Distil the documentation into the behavior it
+  establishes, and let `source_refs` carry the provenance.
+  - Write: `The Topic List report provides Reference type, Document State and
+    Author filters.`
+  - Never a quotation, and never a label followed by quoted source text. A
+    claim shaped `The Topic List filters: 'From the Filters panel you can
+    filter your topics based on ...'` is malformed: the quote duplicates what
+    `source_refs` already points at, and it makes the claim unusable.
+  - Never commentary ABOUT the documentation ("the page establishes a generic
+    capability statement", "this section describes ..."). State the product
+    behavior, not what the page does.
+  - One behavior per finding. Two documented behaviors are two findings, never
+    one claim joined by a colon, a semicolon, or a list of dashes.
+  Downstream reasoning consumes `claim` VERBATIM as a candidate behavior
+  statement. It is deterministic: it cannot summarize, re-word, or repair what
+  you send. A long or quoted claim is therefore cut off mid-sentence and
+  reaches a human as a broken acceptance criterion.
 - PARTIAL/UNAVAILABLE results name what is missing in `limitations`;
   CONFLICTED results retain the competing claims in `conflicts`; an empty
   finding set is UNAVAILABLE or PARTIAL, never COMPLETED.
@@ -149,9 +168,29 @@ research request:
   without a `doc:` slug - makes the host discard the ENTIRE result, so
   write the two together or not at all. No prose, no markdown
   fences, no commentary around the JSON.
+- `conflicts[]` is ONLY for two competing answers to THIS question's
+  acceptance expectation - two sources that would make a QE test different
+  outcomes. A defect in a source (a page that misnames something or
+  contradicts itself), a label that differs between surfaces, a divergence
+  you judged non-determinative, or anything recorded merely for completeness
+  is NOT a conflict: put it in `limitations[]`, or state it as a finding with
+  `evidence_role: SUPPORTING_CONTEXT`. Every `conflicts[]` entry is read
+  downstream as a product decision a human must settle BEFORE any acceptance
+  criterion can be written, so a completeness log there blocks the whole UAC.
 - Return it by making the JSON object your ENTIRE final message. You run in
   your own context window; the coordinator reads that final message directly.
   Emit no preamble, no trailing summary, and no status commentary around it.
+- Your reply has a hard output-size budget, and a result that runs past it is
+  cut mid-JSON and discarded WHOLESALE - every finding you gathered is lost,
+  and the coordinator may not repair a truncated reply. Budget for it BEFORE
+  you serialize: keep the whole JSON body under 30,000 characters and at most
+  25 findings. If your research exceeds that, never truncate and never pad -
+  rank findings by materiality to the requested claim, emit the most material
+  ones within the budget, set `status` to `PARTIAL`, and record in
+  `limitations[]` how many findings were dropped and what they covered. Cut
+  explanatory prose, background and restatement first; keep every `claim` to
+  the one short sentence this contract already requires, with its source ids
+  and provenance intact.
 - Return ONLY the research payload. Execution receipts (provider, model,
   role-contract version) are attached by the host/coordinator from its own
   trusted observation - never self-report them, and never claim a model or

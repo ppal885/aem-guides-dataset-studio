@@ -619,6 +619,51 @@ _RESEARCHER_NEGATION_RE = re.compile(
     r"[^.]{0,60}$",
     re.IGNORECASE,
 )
+# An inspectable artifact that physically sits in a repository or toolkit.
+# Deliberately excludes release-state nouns ("build", "release", "version"),
+# so "delivered in the current build" remains a lifecycle claim.
+_ARTIFACT_NOUN = (
+    r"repositor(?:y|ies)|repo|codebase|checkout|clone|worktree|source\s+tree"
+    r"|toolkit|plugin|module|package|bundle|distribution|jar|dtd|xsd|schema"
+    r"|stylesheet|catalog|librar(?:y|ies)|specification|grammar|file"
+    r"|list|configuration|config|mapping|descriptor|manifest|template"
+    r"|definition(?:s)?|declaration(?:s)?"
+)
+# A plain noun-phrase gap: bare tokens only, and never a verb, conjunction or
+# attribution word.  This keeps the exemption to "<lifecycle verb> <noun
+# phrase naming an artifact>" and stops it reaching across a clause into an
+# unrelated artifact noun ("delivered in the current build, per the schema").
+_NP_GAP = (
+    r"(?:(?!\b(?:and|or|but|is|are|was|were|be|been|being|has|have|had|will"
+    r"|shall|per|according|that|which|when|because)\b)[\w.\-/]+\s+){0,6}"
+)
+_ARTIFACT_PROVENANCE_RE = re.compile(
+    # Reduced relative clause: "the DTD shipped in this repository",
+    # "the catalog delivered with the toolkit", "the list shipped as a
+    # repository config".  The connector may be bare ("as"), because the
+    # exemption is decided by the ARTIFACT NOUN that follows, not by the
+    # preposition.
+    r"\b(?:shipped|delivered)\b\s+(?:in|with|inside|under|as)\s+"
+    r"(?:part\s+of\s+)?"
+    rf"(?:this|the|a|an|its|our)?\s*{_NP_GAP}\b(?:{_ARTIFACT_NOUN})\b"
+    # Attributive: a determiner immediately before the participle makes it
+    # modify the artifact ("the shipped bookmap DTD module"), not assert that
+    # a behavior was released.  The predicative use a lifecycle claim needs
+    # ("the option shipped in 4.5", "the behavior shipped and ...") has no
+    # determiner in that slot and is therefore never exempt.
+    r"|\b(?:the|this|that|these|those|a|an|its|our|their)\s+"
+    rf"(?:shipped|delivered)\s+{_NP_GAP}\b(?:{_ARTIFACT_NOUN})\b",
+    re.IGNORECASE,
+)
+
+
+def _artifact_provenance_spans(sentence: str) -> list[tuple[int, int]]:
+    """Spans where a lifecycle verb describes WHERE AN ARTIFACT LIVES rather
+    than the release state of a behavior.  "The DITA 1.3 bookmap DTD shipped
+    in this repository assigns class values" is a provenance statement about
+    an inspected file; it asserts nothing about what the product delivers."""
+
+    return [m.span() for m in _ARTIFACT_PROVENANCE_RE.finditer(sentence)]
 
 
 def _lifecycle_claimed(text: str) -> bool:
@@ -629,7 +674,10 @@ def _lifecycle_claimed(text: str) -> bool:
     never trips the gate."""
 
     for sentence in re.split(r"(?<=[.!?])\s+", text or ""):
+        provenance = _artifact_provenance_spans(sentence)
         for match in _RESEARCHER_LIFECYCLE_RE.finditer(sentence):
+            if any(start <= match.start() < end for start, end in provenance):
+                continue
             prefix = sentence[: match.start()]
             if not _RESEARCHER_NEGATION_RE.search(
                 prefix.replace("\n", " ")
@@ -640,6 +688,37 @@ def _lifecycle_claimed(text: str) -> bool:
             ):
                 return True
     return False
+
+
+_PROVENANCE_FIELDS = ("locator", "title", "query", "accessed_at")
+_PROVENANCE_REQUIRED = ("locator", "title", "query")
+
+
+def _provenance_block(carrier: object) -> dict:
+    """Read a discovered source's provenance from either serialization.
+
+    Provenance is the identity fields - locator, title, query - not a nesting
+    depth.  Workers serialize them either nested under a ``provenance`` key or
+    flat on the same object that names the ``doc:`` slug; both carry the same
+    identity, so admission accepts either and still rejects a slug whose
+    required fields are absent.  Reading only one shape discarded whole
+    results whose provenance was present, which reaches the coordinator as an
+    unresearched question instead of a shape complaint.
+    """
+
+    if not isinstance(carrier, dict):
+        return {}
+    nested = carrier.get("provenance")
+    if isinstance(nested, dict) and nested:
+        return nested
+    flat = {
+        field: carrier[field]
+        for field in _PROVENANCE_FIELDS
+        if str(carrier.get(field) or "").strip()
+    }
+    if all(field in flat for field in _PROVENANCE_REQUIRED):
+        return flat
+    return {}
 
 
 def validate_agent_result_shape(raw: object, worker_role) -> str | None:
@@ -737,17 +816,16 @@ def _validate_agent_result(
         if not isinstance(entry, dict):
             continue
         entry_ref = str(entry.get("source_ref") or "").strip()
-        entry_prov = entry.get("provenance")
+        entry_prov = _provenance_block(entry)
         if (
             re.fullmatch(r"doc:[A-Za-z0-9._~-]{3,80}", entry_ref)
-            and isinstance(entry_prov, dict)
             and entry_prov
         ):
             registry_provenance[entry_ref] = entry_prov
 
     def _resolved_provenance(finding: dict, finding_refs: list[str]) -> dict:
-        own = finding.get("provenance")
-        if isinstance(own, dict) and own:
+        own = _provenance_block(finding)
+        if own:
             return own
         for finding_ref in finding_refs:
             inherited = registry_provenance.get(finding_ref)
@@ -870,23 +948,44 @@ def _validate_agent_result(
                         ResearchWorkerStatus.FAILED,
                         [detail],
                     )
-            # A discovered-source provenance block must be tied to a doc: ref;
-            # provenance without the ref (or vice versa) is malformed.
+            # A discovered doc: reference must carry provenance - that is the
+            # anti-fabrication rule and it still fails the result.  The mirror
+            # case is different in kind: provenance attached to a finding that
+            # cites only authorized bundle evidence adds no source, it only
+            # risks a Source line crediting a page the finding does not rest
+            # on.  Strip it and keep the finding, because discarding the whole
+            # result reaches the coordinator as an unresearched question.
             if request.worker_role == ResearchWorkerRole.DOC_RESEARCHER:
                 has_doc_ref = any(
                     re.fullmatch(r"doc:[A-Za-z0-9._~-]{3,80}", ref)
                     for ref in refs
                 )
                 has_prov = bool(_resolved_provenance(item, refs))
-                if has_doc_ref != has_prov:
+                if has_doc_ref and not has_prov:
                     return _terminal_result(
                         request,
                         ResearchWorkerStatus.FAILED,
                         [
-                            f"findings[{index}] discovered-source provenance "
-                            "and doc: reference must appear together"
+                            f"findings[{index}] cites a discovered doc: "
+                            "reference without provenance"
                         ],
                     )
+                if has_prov and not has_doc_ref:
+                    if not refs:
+                        return _terminal_result(
+                            request,
+                            ResearchWorkerStatus.FAILED,
+                            [
+                                f"findings[{index}] carries discovered-source "
+                                "provenance but cites no source at all, so "
+                                "the two must appear together"
+                            ],
+                        )
+                    item = {
+                        key: value
+                        for key, value in item.items()
+                        if key not in _PROVENANCE_FIELDS and key != "provenance"
+                    }
         try:
             role = ResearchFindingEvidenceRole(
                 str(item.get("evidence_role") or "SUPPORTING_CONTEXT")

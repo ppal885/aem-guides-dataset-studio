@@ -22,8 +22,12 @@ import re
 
 # Vague, untestable phrasing (lint: VAGUE_EXPECTATION).
 VAGUE_PHRASES = (
-    "works correctly", "should work", "verify that", "behaves as expected",
+    "works correctly", "should work", "behaves as expected",
     "as expected", "work as intended", "function properly", "handle properly",
+)
+GENERIC_VERIFY_SUBJECT_RE = re.compile(
+    r"\bverify\s+(?:that\s+)?(?:the\s+)?(?:system|it|this)\b",
+    re.IGNORECASE,
 )
 
 # Uninformative AC titles (lint: UNCLEAR_AC_TITLE).
@@ -84,6 +88,11 @@ def validate_final_ac(i, ac):
         if phrase in low_body:
             problems.append(f"{tag}: VAGUE_EXPECTATION - remove '{phrase}'; state a clear must / must-not outcome")
             break
+    if GENERIC_VERIFY_SUBJECT_RE.search(body):
+        problems.append(
+            f"{tag}: VAGUE_EXPECTATION - name the exact screen, property, or "
+            "artifact after 'Verify that'; do not use a generic subject"
+        )
 
     # Implementation-detail leak, unless the AC declares the symbol is the artifact.
     if not ac.get("technical_artifact_is_requirement"):

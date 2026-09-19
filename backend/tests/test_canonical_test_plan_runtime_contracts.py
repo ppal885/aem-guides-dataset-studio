@@ -2221,15 +2221,20 @@ def test_fj16_every_terminal_disposition_is_addressable_in_one_section() -> (
         row["disposition_id"]
         for row in result.output_payload["coverage_dispositions"]
     }
-    # Settled (research-answered) and dimension-less boilerplate
-    # planner questions are intentionally suppressed from the
-    # human-facing evidence-gaps lane; they stay in the trace.
+    # Research-answered questions are suppressed only after their
+    # hypotheses resolve. An answer can establish a baseline while the
+    # related product decision remains unresolved and visible.
     payload = result.output_payload
     research_by_q = {
         row["question_id"]: row for row in payload.get("question_research", [])
     }
     question_by_id = {
         row["question_id"]: row for row in payload.get("missing_questions", [])
+    }
+    unresolved_question_ids = {
+        row["derived_from_question_id"]
+        for row in payload["hypotheses"]
+        if row["state"] == HypothesisState.UNRESOLVED.value
     }
     suppressed: set[str] = set()
     for row in payload["coverage_dispositions"]:
@@ -2248,7 +2253,15 @@ def test_fj16_every_terminal_disposition_is_addressable_in_one_section() -> (
                 "NOT_REQUIRED",
             } and question_by_id.get(question_id, {}).get("dimension") is None:
                 boilerplate = True
-        if settled or boilerplate:
+        if (
+            boilerplate
+            or (
+                settled
+                and not (
+                    set(row["source_question_ids"]) & unresolved_question_ids
+                )
+            )
+        ):
             suppressed.add(row["disposition_id"])
     expected_ids -= suppressed
     assert set(visible_counts) == expected_ids

@@ -626,10 +626,84 @@ def test_ac_readability() -> None:
         "plain presentation is one line and preserves technical token text exactly",
         technical_projection
         == (
-            "AC-01: largeFileTagCount is 100 for map.ditamap in v2.0; "
+            "AC-01: Verify that largeFileTagCount is 100 for map.ditamap in v2.0; "
             "when POST /bin/fmdita/import runs, "
             "the GUIDES-44288 fixture creates one DITA-OT output."
         ),
+    )
+
+    block_criterion = {
+        "id": "AC-01",
+        "text": "the report lists topics in map order",
+        "source": "Jira GUIDES-44288",
+        "tbd": "is the same order expected in the other panel",
+    }
+    chat_block = ac_presentation_mod.project_ac_block_for_people(block_criterion)
+    check(
+        "delivered AC block puts a bold source on its own line and ends a TBD with a question mark",
+        chat_block
+        == (
+            "- AC-01: Verify that the report lists topics in map order.\n"
+            "  **Source:** Jira GUIDES-44288.\n"
+            "  **TBD:** is the same order expected in the other panel?"
+        ),
+    )
+    jira_block = ac_presentation_mod.project_ac_block_for_people(
+        block_criterion, for_jira=True
+    )
+    check(
+        "Jira projection of the same block carries no markdown emphasis",
+        "**" not in jira_block and "Source: Jira GUIDES-44288." in jira_block,
+    )
+    missing_source = {"id": "AC-02", "text": "the report refreshes"}
+    try:
+        ac_presentation_mod.project_ac_block_for_people(missing_source)
+    except ValueError:
+        source_required = True
+    else:
+        source_required = False
+    check("a delivered AC without a source is rejected", source_required)
+
+    vague_source = {
+        "id": "AC-03",
+        "text": "the Title column falls back to the file name",
+        "source": "current implementation review of the title fallback",
+    }
+    try:
+        ac_presentation_mod.project_ac_block_for_people(vague_source)
+    except ValueError:
+        vague_rejected = True
+    else:
+        vague_rejected = False
+    check(
+        "a source that describes inspecting evidence instead of naming it is rejected",
+        vague_rejected,
+    )
+
+    cited_source = dict(
+        vague_source,
+        source=(
+            "current implementation in the product clone - TitleService.java "
+            "lines 131-146 for the title chain"
+        ),
+    )
+    check(
+        "the same claim with file and line numbers is accepted",
+        "lines 131-146"
+        in ac_presentation_mod.project_ac_block_for_people(cited_source),
+    )
+
+    absence_source = dict(
+        vague_source,
+        source=(
+            "QE analysis; no performance target for this report exists in the "
+            "product documentation or the implementation"
+        ),
+    )
+    check(
+        "a source that explicitly asserts the evidence does not exist is accepted",
+        "no performance target"
+        in ac_presentation_mod.project_ac_block_for_people(absence_source),
     )
 
     coupled_safety = ac.parse_ac_line(
@@ -2237,7 +2311,7 @@ def test_compact_view() -> None:
     check(
         "compact ACs use one plain line and hide internal record labels",
         (
-            "- AC-01: an input; when the system runs, "
+            "- AC-01: Verify that an input; when the system runs, "
             "it produces the correct observable output."
         )
         in acceptance_block
@@ -11958,6 +12032,23 @@ def test_ac_language_policy() -> None:
     vague = dict(good, ac_ref="AC-02", body="The job should work correctly after the fix.")
     check("vague expectation flagged",
           any("VAGUE_EXPECTATION" in p for p in lp.validate(wrap([vague]))))
+
+    manual_qe = dict(
+        good,
+        ac_ref="AC-02A",
+        body="Verify that the Native PDF output preset keeps the saved dc:title value.",
+    )
+    check("specific manual-QE wording passes", lp.validate(wrap([manual_qe])) == [])
+
+    generic_verify = dict(
+        good,
+        ac_ref="AC-02B",
+        body="Verify that the system keeps the saved dc:title value.",
+    )
+    check(
+        "generic manual-QE wording is flagged",
+        any("VAGUE_EXPECTATION" in p for p in lp.validate(wrap([generic_verify]))),
+    )
 
     bad_title = dict(good, ac_ref="AC-03", title="Regression behavior")
     check("unclear title flagged",

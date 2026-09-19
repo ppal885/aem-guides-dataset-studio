@@ -38,6 +38,21 @@ reasoning never rests on inference when implementation materially affects it.
 - Every finding: `claim`, `source_refs[]`, `evidence_role`
   (IMPLEMENTATION_EVIDENCE for what code does today), plus repository,
   revision, and path provenance.
+- `claim` is ONE short sentence (at most 25 words) stating what the code makes
+  the product do, in product terms - the observable behavior, not a narration
+  of the implementation. You WRITE it; you never paste source lines into it.
+  - Write: `Purging by count keeps the newest N output-history entries and
+    removes the rest.`
+  - Never a quotation, a pasted code block, or a label followed by quoted
+    source text; `repository`, `revision` and `path` already carry provenance.
+  - Never commentary about the file ("this class handles ...", "the method is
+    responsible for ..."). State what the product does.
+  - One behavior per finding; split two behaviors into two findings.
+  A line range may be named in the claim only when it stays inside that one
+  sentence. Downstream reasoning consumes `claim` VERBATIM as a candidate
+  behavior statement and is deterministic - it cannot summarize, re-word, or
+  repair what you send, so a long or pasted claim is cut off mid-sentence and
+  reaches a human as a broken acceptance criterion.
 - Inspect enough surrounding source context to support the claim; raw grep
   hits are discovery input, never a finding.
 - Keep frontend and backend behavior distinct: never infer one side from the
@@ -75,9 +90,29 @@ research request:
   line ranges in the claim text and split multi-file support into one
   finding per file. No prose, no markdown fences, no commentary around the
   JSON.
+- `conflicts[]` is ONLY for two competing answers to THIS question's
+  acceptance expectation - two sources that would make a QE test different
+  outcomes. A defect in a source (a page that misnames something or
+  contradicts itself), a label that differs between surfaces, a divergence
+  you judged non-determinative, or anything recorded merely for completeness
+  is NOT a conflict: put it in `limitations[]`, or state it as a finding with
+  `evidence_role: SUPPORTING_CONTEXT`. Every `conflicts[]` entry is read
+  downstream as a product decision a human must settle BEFORE any acceptance
+  criterion can be written, so a completeness log there blocks the whole UAC.
 - Return it by making the JSON object your ENTIRE final message. You run in
   your own context window; the coordinator reads that final message directly.
   Emit no preamble, no trailing summary, and no status commentary around it.
+- Your reply has a hard output-size budget, and a result that runs past it is
+  cut mid-JSON and discarded WHOLESALE - every finding you gathered is lost,
+  and the coordinator may not repair a truncated reply. Budget for it BEFORE
+  you serialize: keep the whole JSON body under 30,000 characters and at most
+  25 findings. If your research exceeds that, never truncate and never pad -
+  rank findings by materiality to the requested claim, emit the most material
+  ones within the budget, set `status` to `PARTIAL`, and record in
+  `limitations[]` how many findings were dropped and what they covered. Cut
+  explanatory prose, background and restatement first; keep every `claim`
+  down to the verifiable fact with its exact file:line anchors and symbol
+  names.
 - Return ONLY the research payload. Execution receipts (provider, model,
   role-contract version) are attached by the host/coordinator from its own
   trusted observation - never self-report them, and never claim a model or

@@ -75,6 +75,33 @@ _EVIDENCE_QUALITY_SIGNALS = (
     "cannot be verified", "could not be verified", "could not verify",
     "cannot verify", "unavailable", "absence of",
 )
+# A conflict can only force a human product decision when it presents two
+# candidate product contracts.  Two families never do, however they are
+# worded: a defect in the SOURCE TEXT itself (a page that contradicts itself
+# or misnames a thing), and a conflict whose own text DECLINES to establish
+# either side.  Left in the product-contract lane they blocked every
+# acceptance criterion on an unrelated documentation typo, which reaches the
+# reader as "no criteria generated" rather than as the evidence note it is.
+# They stay recorded and still cap confidence - they simply stop standing in
+# for a product choice nobody is actually being asked to make.
+_SOURCE_TEXT_DEFECT_SIGNALS = (
+    "documentation inconsistency", "documentation is inconsistent",
+    "page is inconsistent", "contradicts itself", "self-contradictory",
+    "typo", "mislabel", "misnamed", "wording error", "editorial error",
+    "engine-name slip",
+)
+_DECLINED_DIRECTION_SIGNALS = (
+    # The research itself says the conflict does not decide the question.
+    "in either direction", "do not derive", "must not be read as",
+    "not resolved by this research", "establishes nothing about",
+    "neither proves", "neither establishes", "neither resolves",
+    # Research that RETAINS both readings is handing QE a verification step,
+    # not a product choice.
+    "both retained", "both are retained", "both source-backed", "both stand",
+    "verify against the target build", "verify against the build",
+    # The research states the conflict does not bear on the question.
+    "do not touch", "does not touch", "does not bear on", "not material to",
+)
 _LIFECYCLE_SIGNALS = (
     "fixed by", "in progress", "shipped", "release", "merged", "delivered",
     "current product", "current build", "status", "version", "backport",
@@ -120,6 +147,8 @@ def _compile_signals(signals: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
 
 
 _EVIDENCE_QUALITY_RE = _compile_signals(_EVIDENCE_QUALITY_SIGNALS)
+_SOURCE_TEXT_DEFECT_RE = _compile_signals(_SOURCE_TEXT_DEFECT_SIGNALS)
+_DECLINED_DIRECTION_RE = _compile_signals(_DECLINED_DIRECTION_SIGNALS)
 _LIFECYCLE_RE = _compile_signals(_LIFECYCLE_SIGNALS)
 _IMPLEMENTATION_ANCHORS_RE = _compile_signals(_IMPLEMENTATION_ANCHORS)
 _IMPLEMENTATION_BEHAVIOR_VERBS_RE = _compile_signals(_IMPLEMENTATION_BEHAVIOR_VERBS)
@@ -147,6 +176,10 @@ def _classify_conflict(text: str) -> str:
             return CONFLICT_REQUIREMENT_IMPLEMENTATION_MISMATCH
         return CONFLICT_IMPLEMENTATION
     if _hits(_EVIDENCE_QUALITY_RE):
+        return CONFLICT_EVIDENCE_QUALITY
+    # A source-text defect, or a conflict that declines to establish either
+    # side, offers no product contract to choose between.
+    if _hits(_SOURCE_TEXT_DEFECT_RE) or _hits(_DECLINED_DIRECTION_RE):
         return CONFLICT_EVIDENCE_QUALITY
     if _hits(_LIFECYCLE_RE):
         return CONFLICT_LIFECYCLE_CURRENTNESS
