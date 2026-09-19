@@ -1184,7 +1184,7 @@ def test_failed_mandated_worker_is_not_masked_by_retrieval_evidence() -> None:
     assert healthy.research_status != ResearchStatus.SOURCE_UNAVAILABLE
 
 
-def test_documented_baseline_reaches_the_acceptance_lane_for_linked_questions() -> None:
+def test_documented_baseline_reaches_acceptance_only_for_ticket_bound_questions() -> None:
     """Documentation a worker actually established must reach the acceptance
     lane even when its question is already linked to a coverage row.
 
@@ -1245,6 +1245,22 @@ def test_documented_baseline_reaches_the_acceptance_lane_for_linked_questions() 
         evidence_ids=["ev-doc-1"],
     )
 
+    unbound_rows = CANONICAL_REASONING_SERVICE.classify_coverage(
+        _facts(ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT),
+        [closure_row],
+        [],
+        [hypothesis],
+        ScopeResolution(),
+        [question],
+        [answered],
+        None,
+        [worker],
+    )
+    assert not any(
+        row.rationale == _EXISTING_PROPOSED_RATIONALE for row in unbound_rows
+    )
+
+    question.source_fact_ids = ["fact:ticket-output-history"]
     rows = CANONICAL_REASONING_SERVICE.classify_coverage(
         _facts(ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT),
         [closure_row],
@@ -1301,3 +1317,88 @@ def test_documented_baseline_reaches_the_acceptance_lane_for_linked_questions() 
         list(question.source_fact_ids), {}, evidence_refs=row.evidence_ids
     )
     assert "Product documentation" in line
+
+
+def test_answered_dynamic_value_code_research_becomes_visible_p1_coverage() -> None:
+    """Code can establish a preservation check without becoming product scope."""
+
+    from app.core.schemas_canonical_test_plan_runtime import (
+        ResearchFinding,
+        ResearchFindingEvidenceRole,
+    )
+    from app.services.research_workers import (
+        ResearchWorkerResult,
+        ResearchWorkerRole,
+        ResearchWorkerStatus,
+    )
+
+    fact = ContractFact(
+        fact_type=ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+        literal="The Topic List order must match the downloaded CSV order.",
+        source_reference="jira:GUIDES-11947:description",
+    )
+    facts = ContractFactSet(
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+        facts=[fact],
+    )
+    question = MissingQuestion(
+        question=(
+            "Where does the value shown for topic title come from, and does it "
+            "stay current after the source changes?"
+        ),
+        dimension=SemanticDimension.VALUE_PROVENANCE,
+        authority_subject=AuthoritySubject.ACTUAL_IMPLEMENTATION,
+        target_source_types=[EvidenceSourceType.CURRENT_CODE],
+        materiality=InvestigationMateriality.P1,
+        source_fact_ids=[fact.fact_id],
+    )
+    worker = ResearchWorkerResult(
+        worker_role=ResearchWorkerRole.CODE_RESEARCHER,
+        question_id=question.question_id,
+        status=ResearchWorkerStatus.ANSWER_FOUND,
+        findings=[
+            ResearchFinding(
+                claim=(
+                    "The Topic List reads the current topic title after dc:title "
+                    "changes instead of retaining an older value."
+                ),
+                source_refs=["repo:guides-ui@abc123:topic-list.ts:44-58"],
+                evidence_role=ResearchFindingEvidenceRole.IMPLEMENTATION_EVIDENCE,
+            )
+        ],
+    )
+    answered = _research_record(
+        question,
+        ResearchStatus.ANSWER_FOUND,
+        requirement=ResearchRequirement.IMPLEMENTATION,
+        request_ids=[worker.research_id],
+    )
+
+    rows = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts,
+        [_closure_row(question, ClosureDisposition.UNRESOLVED_AND_EXPOSED)],
+        [],
+        [],
+        ScopeResolution(),
+        [question],
+        [answered],
+        worker_results=[worker],
+    )
+
+    dynamic = next(
+        row
+        for row in rows
+        if row.rationale
+        == (
+            "Ticket-bound implementation research established current dynamic-value "
+            "behavior that must remain visible as a QE regression check. It is not "
+            "product acceptance authority and does not resolve a product decision."
+        )
+    )
+    assert dynamic.disposition == CoverageDisposition.SEMANTIC_REGRESSION
+    assert dynamic.priority == "P1"
+    assert dynamic.coverage_class == "QE_REGRESSION"
+    assert dynamic.contract_type == "PRESERVATION"
+    assert dynamic.state_or_transition == "DYNAMIC_VALUE"
+    assert dynamic.variants == [worker.findings[0].claim]
+    assert dynamic.source_fact_ids == [fact.fact_id]

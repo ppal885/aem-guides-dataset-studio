@@ -1545,8 +1545,10 @@ def _build_repository_evidence_contract(
         str(issue.get(key) or "")
         for key in ("issue_key", "summary", "title", "description", "snippet")
     )
-    seed_text = json.dumps(planning_seeds, ensure_ascii=False, default=str)
-    lowered = f"{issue_text}\n{seed_text}".lower()
+    # Repository discovery is rooted in the current Jira issue.  Planner
+    # seeds may come from broad retrieval and must not activate unrelated
+    # feature ladders such as publishing or PDF searches.
+    lowered = issue_text.lower()
 
     repos = [
         {

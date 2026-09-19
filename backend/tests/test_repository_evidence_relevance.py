@@ -299,7 +299,7 @@ class TestSubjectProvenanceOutranksGenericVocabulary:
         assert without_tier[0]["relative_path"] != "pages/panels/reports_panel.py"
         assert with_tier[0]["relative_path"] == "pages/panels/reports_panel.py"
 
-    def test_generic_evidence_is_still_returned_after_the_subject(self, tmp_path):
+    def test_generic_evidence_is_excluded_when_the_subject_matches(self, tmp_path):
         self._tree(tmp_path)
 
         matches = _search_repo(
@@ -310,13 +310,11 @@ class TestSubjectProvenanceOutranksGenericVocabulary:
             subject_queries=frozenset({"Topic List"}),
         )
 
-        # Tiering reorders evidence; it must not discard the generic evidence.
-        assert len(matches) == 10
-        assert any("publishing_" in m["relative_path"] for m in matches)
+        assert _relative_paths(matches) == ["pages/panels/reports_panel.py"]
 
-    def test_repo_without_subject_match_falls_back_cleanly(self, tmp_path):
-        # A clone that contains none of the subject terms must still yield its
-        # generic evidence rather than returning nothing.
+    def test_repo_without_subject_match_reports_no_implementation_evidence(self, tmp_path):
+        # A clone that contains none of the subject terms must not yield a
+        # generic match from another feature.
         _write(tmp_path, "src/publish.py", "output preset handling")
 
         matches = _search_repo(
@@ -327,7 +325,7 @@ class TestSubjectProvenanceOutranksGenericVocabulary:
             subject_queries=frozenset({"Topic List"}),
         )
 
-        assert _relative_paths(matches) == ["src/publish.py"]
+        assert matches == []
 
 
 class TestQueryPlanProvenance:
@@ -361,6 +359,24 @@ class TestQueryPlanProvenance:
 
         assert isinstance(queries, list)
         assert all(isinstance(query, str) for query in queries)
+
+    def test_planning_seeds_do_not_widen_ticket_repository_search(self):
+        queries, _ = _build_query_plan(
+            {"summary": "Topic List report columns"},
+            {
+                "features": ["publishing"],
+                "outputs": ["Native PDF"],
+                "regression_risk_seed": [
+                    {"surface": "output preset", "risk": "DITA-OT"}
+                ],
+            },
+            {"focus_queries": ["Topic List report columns"]},
+        )
+
+        assert "publishing" not in queries
+        assert "Native PDF" not in queries
+        assert "output preset" not in queries
+        assert "DITA-OT" not in queries
 
 
 class TestNoMatchesContract:

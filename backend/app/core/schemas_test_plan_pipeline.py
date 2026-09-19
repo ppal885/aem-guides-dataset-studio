@@ -24,7 +24,13 @@ class TestPlanPipelineRequest(BaseModel):
     include_evidence_graph: bool = True
     graph_max_paths: int = Field(default=20, ge=1, le=50)
     include_uac_intelligence: bool = True
-    compose_draft_plan: bool = True
+    compose_draft_plan: bool = Field(
+        default=True,
+        description=(
+            "Deprecated compatibility flag. Final delivery always preserves the "
+            "complete canonical runtime render."
+        ),
+    )
     write_starling_artifacts: bool = False
     starling_repo_path: str | None = None
     publish_to_team_ui: bool = False
@@ -240,10 +246,10 @@ class TestPlanPipelineResult(BaseModel):
     draft_test_plan_markdown: str | None = Field(
         default=None,
         description=(
-            "NON_CANONICAL, NOT_FOR_ACCEPTANCE, DEPRECATED presentation mirror "
-            "of the runtime render kept for existing clients. Canonical output "
-            "is qe_review_package.canonical_result.plan_markdown; see "
-            "output_provenance."
+            "Deprecated compatibility mirror populated only with the complete "
+            "canonical runtime render. It is byte-identical to "
+            "qe_review_package.canonical_result.plan_markdown and is never a "
+            "shorter draft; see output_provenance."
         ),
     )
     # C2A: explicit presentation provenance so no consumer accidentally
