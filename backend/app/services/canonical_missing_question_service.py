@@ -118,6 +118,7 @@ _DIMENSION_RELATION: dict[SemanticDimension, BehaviorRelationType] = {
     SemanticDimension.NESTED_REFERENCED_CONTENT: BehaviorRelationType.REFERENCES,
     SemanticDimension.ALTERNATE_REPRESENTATION: BehaviorRelationType.RESOLVES_THROUGH,
     SemanticDimension.VALUE_PROVENANCE: BehaviorRelationType.DEFINED_BY,
+    SemanticDimension.SORT_VALUE: BehaviorRelationType.DEFINED_BY,
     SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION: BehaviorRelationType.RESOLVES_THROUGH,
     SemanticDimension.BROKEN_RESOLUTION: BehaviorRelationType.RESOLVES_THROUGH,
     SemanticDimension.IDENTITY_CHANGE: BehaviorRelationType.PERSISTS_THROUGH,

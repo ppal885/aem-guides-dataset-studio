@@ -187,6 +187,47 @@ def test_ordering_ticket_discovers_provenance_resolution_identity_and_parity() -
     } <= _axes(result)
 
 
+def test_dynamic_display_and_sort_questions_keep_ticket_fact_lineage() -> None:
+    """Dynamic display behavior and the ordering key are separate research asks."""
+
+    result = _run(_ordering_and_reporting_packet())
+    dynamic_fact_ids = {
+        row["fact_id"]
+        for row in result.output_payload["contract_facts"]["facts"]
+        if "topic title" in row["literal"].casefold()
+    }
+    assert dynamic_fact_ids
+
+    candidates = _expansion(result)["candidates"]
+    displayed = [
+        row
+        for row in candidates
+        if row["axis"] == CoverageExpansionAxis.VALUE_PROVENANCE.value
+    ]
+    sort_values = [
+        row
+        for row in candidates
+        if row["axis"] == CoverageExpansionAxis.SORT_VALUE.value
+    ]
+    assert any("topic title" in row["subject"].casefold() for row in displayed)
+    assert any("filename" in row["subject"].casefold() for row in sort_values)
+    assert all(
+        dynamic_fact_ids & set(row["source_fact_ids"])
+        for row in [*displayed, *sort_values]
+    )
+
+    questions = result.output_payload["missing_questions"]
+    for dimension in (
+        SemanticDimension.VALUE_PROVENANCE.value,
+        SemanticDimension.SORT_VALUE.value,
+    ):
+        assert any(
+            row["dimension"] == dimension
+            and dynamic_fact_ids & set(row["source_fact_ids"])
+            for row in questions
+        ), dimension
+
+
 def test_reference_resolution_ticket_discovers_broken_resolution_and_identity() -> None:
     result = _run(_reference_resolution_packet())
     expansion = _expansion(result)

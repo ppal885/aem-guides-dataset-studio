@@ -968,7 +968,7 @@ class CanonicalTestPlanRuntime:
             signals=abstract_signals,
             activations=reasoning_pattern_activations,
             deterministic_dimensions=self._reasoning.applicable_semantic_dimensions(
-                visible, model, expansion=expansion
+                visible, model, expansion=expansion, facts=facts
             ),
             pattern_lookup=pattern_lookup,
         )
@@ -989,6 +989,7 @@ class CanonicalTestPlanRuntime:
                 reasoning_pattern_activations,
                 investigation.mandatory_families,
                 expansion=expansion,
+                facts=facts,
             ),
         )
         investigation_payload = investigation.model_dump(
@@ -1451,6 +1452,7 @@ class CanonicalTestPlanRuntime:
                 promotions,
                 facts,
                 dispositions,
+                admitted_clarifications,
             ),
         )
         # A5 host mediation: computed once, consumed by the renderer and the
@@ -1629,6 +1631,11 @@ class CanonicalTestPlanRuntime:
                 row.model_dump(mode="json") for row in candidate_lifecycle
             ],
             "promotion_decisions": [row.model_dump(mode="json") for row in promotions],
+            # Compatibility adapters must project this exact Writer output,
+            # never reconstruct a shorter UAC from promotion decisions.
+            "written_acceptance_criteria": [
+                row.model_dump(mode="json") for row in written_acceptance_criteria
+            ],
             "gate_decisions": [row.model_dump(mode="json") for row in gates],
             "structured_plan": structured_plan.model_dump(mode="json"),
             "plan_markdown": rendered_output,

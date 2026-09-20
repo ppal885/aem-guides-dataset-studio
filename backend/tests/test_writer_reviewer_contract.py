@@ -19,28 +19,48 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.schemas_canonical_test_plan_runtime import (
+    AcceptanceCandidate,
+    AcceptancePromotionDecision,
     AcceptanceSubPoint,
     AcceptanceSubPointKind,
+    AuthorityClass,
+    ContractFact,
+    ContractFactSet,
+    ContractMode,
     ContractFactType,
+    ClarificationAnswerClass,
+    ClarificationStatus,
     ConvergenceRecord,
     ConvergenceStatus,
     CoverageDisposition,
+    CoverageDispositionRecord,
+    HumanClarification,
+    PromotionStatus,
     ResearchFinding,
     ResearchFindingEvidenceRole,
     ResearchWorkerResult,
     ResearchWorkerRole,
     ResearchWorkerStatus,
+    ScopeResolution,
     WrittenAcceptanceCriterion,
+    WriterProjectionStatus,
 )
 from app.services.agent_execution_provider import _conflict_text
+from app.services.canonical_evidence_service import normalize_legacy_packet
 from app.services.canonical_test_plan_reasoning_service import (
     _AC_META_PROSE_RE,
     _AC_NEAR_DUPLICATE_JACCARD,
+    _acceptance_contract_delivery_failures,
+    _acceptance_presentation_failures,
+    _acceptance_source_line,
     _COVERAGE_FILLER_RE,
     _DISPOSITION_SECTIONS,
     _absorb_near_duplicate,
+    _as_manual_qe_check,
     _as_outcome_sentence,
+    _clarification_source_lines,
     _convergence_detail_lines,
+    _documented_baseline_contract_statement,
     _derive_outcome_statement,
     _derive_tbd_question,
     _fact_types,
@@ -48,6 +68,8 @@ from app.services.canonical_test_plan_reasoning_service import (
     _is_requested_capability,
     _render_written_criterion,
     _split_independent_requirements,
+    _writer_projection_completeness,
+    CANONICAL_REASONING_SERVICE,
 )
 
 
@@ -321,6 +343,80 @@ class TestSourceLineDerivation:
 
         assert "QE-derived" in _acceptance_source_line([], {})
 
+    def test_admitted_human_decision_is_named_as_its_own_source(self):
+        clarification = HumanClarification(
+            question_ref="question:source-line",
+            answer="The image view includes direct and nested uses.",
+            answer_classification=ClarificationAnswerClass.PRODUCT_DECISION,
+            provided_by="requester",
+            authority_role=AuthorityClass.CONFIRMED_PRODUCT_DECISION,
+            source_context="Interactive product-decision response for GUIDES-38274",
+            status=ClarificationStatus.ADMITTED,
+        )
+        reference = f"clarification:{clarification.clarification_id}"
+
+        line = _acceptance_source_line(
+            [],
+            {},
+            [reference],
+            _clarification_source_lines([clarification]),
+        )
+
+        assert line == "GUIDES-38274 — requester-confirmed product decision."
+
+
+class TestWriterSourcePreservation:
+    def test_direct_and_nested_reference_decision_stays_one_contract(self):
+        statement = (
+            "Add a user-facing view for each image or media asset that shows "
+            "every direct and nested topic use and the baseline content version "
+            "that will use it."
+        )
+
+        assert _split_independent_requirements(statement) == [statement]
+
+    def test_documented_example_is_not_promoted_as_an_exact_contract_value(self):
+        statement = (
+            "For Referred Content, the documented Pick Automatically rule "
+            "selects the version corresponding to the content in which it is "
+            "referenced. Adobe's example states that topic A version 1.5 "
+            "selects image B version 1.2."
+        )
+
+        concise = _documented_baseline_contract_statement(statement)
+
+        assert "Pick Automatically" in concise
+        assert "1.5" not in concise
+        assert "1.2" not in concise
+        assert "documented" not in concise
+
+    def test_manual_qe_check_reframes_a_user_facing_view_request(self):
+        assert _as_manual_qe_check(
+            "Add a user-facing view for each image or media asset that shows "
+            "every direct and nested topic use."
+        ) == (
+            "Verify that each image or media asset has a user-facing view that "
+            "shows every direct and nested topic use."
+        )
+
+    def test_manual_qe_check_reframes_a_preservation_directive(self):
+        assert _as_manual_qe_check(
+            "Preserve existing baseline resolution options. This change does "
+            "not introduce a new label-resolution rule."
+        ) == (
+            "Verify that the existing baseline resolution options stay "
+            "unchanged; this change does not introduce a new label-resolution rule."
+        )
+
+    def test_manual_qe_check_places_a_fronted_context_after_the_outcome(self):
+        assert _as_manual_qe_check(
+            'For Referred Content, the "Pick Automatically" rule selects '
+            "the matching version."
+        ) == (
+            'Verify that for Referred Content, the "Pick Automatically" rule '
+            "selects the matching version."
+        )
+
 
 class TestRetrievalResidueNeverReachesTheReader:
     """Retrieved documentation must not define this ticket's scope."""
@@ -370,16 +466,8 @@ class TestScopeIsATicketDecision:
         )
 
 
-class TestRequestedCapabilityQuestionSurvivesTheContract:
-    """D1-a: a "?" alone must not evict a requested capability.
-
-    GUIDES-11947 ASK-3 - "Could we add also a where used for each topic?" -
-    was classified HUMAN_OPEN_QUESTIONS purely because the literal contained
-    "?", which removed a requested product capability from the acceptance
-    contract entirely.  A question that asks the PRODUCT to do something is a
-    requirement; only a question that asks the TEAM to decide something is a
-    human open question.
-    """
+class TestRequestedCapabilityAuthorityBoundary:
+    """A Jira request is not an accepted product contract merely by its wording."""
 
     @pytest.mark.parametrize(
         "literal",
@@ -406,10 +494,45 @@ class TestRequestedCapabilityQuestionSurvivesTheContract:
     def test_genuine_decisions_are_not_capabilities(self, literal):
         assert not _is_requested_capability(literal)
 
-    def test_capability_question_is_not_typed_as_a_human_open_question(self):
+    def test_description_capability_request_stays_a_product_decision(self):
         types = _fact_types("description", "Could we add also a where used for each topic?")
+        assert ContractFactType.HUMAN_OPEN_QUESTIONS in types
+        assert ContractFactType.DIRECT_EXPECTED_BEHAVIOR not in types
+
+    def test_accepted_uac_capability_wording_remains_a_contract(self):
+        types = _fact_types(
+            "issue.acceptance_criteria.0",
+            "Could we add also a where used for each topic?",
+        )
         assert ContractFactType.HUMAN_OPEN_QUESTIONS not in types
         assert ContractFactType.DIRECT_EXPECTED_BEHAVIOR in types
+
+    def test_description_capability_request_cannot_be_promoted_as_an_ac(self):
+        bundle = normalize_legacy_packet(
+            {
+                "jira_key": "GUIDES-11947",
+                "issue": {
+                    "description": (
+                        "Could we add also a where used for each topic?"
+                    )
+                },
+            },
+            tenant_id="writer-contract-test",
+        )
+        facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+        scope = ScopeResolution(in_scope=["Topic List"])
+        coverage = CANONICAL_REASONING_SERVICE.classify_coverage(
+            facts, [], [], [], scope, []
+        )
+        candidates = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract(
+            facts, coverage, []
+        )
+        _, decisions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
+            candidates, facts, scope, coverage
+        )
+
+        assert not candidates
+        assert not decisions
 
     def test_genuine_open_question_still_routes_to_the_open_question_lane(self):
         types = _fact_types("description", "Which retention mode becomes the default?")
@@ -424,6 +547,14 @@ class TestRequestedCapabilityQuestionSurvivesTheContract:
 
 class TestCompoundRequirementSplitting:
     """D2: two independent requirements are two pass/fail contracts."""
+
+    def test_shared_subject_with_and_is_not_split(self):
+        statement = (
+            "Image and media version labels must be manageable while users "
+            "upload or update the asset."
+        )
+
+        assert _split_independent_requirements(statement) == [statement]
 
     def test_compound_jira_sentence_splits_into_two_requirements(self):
         clauses = _split_independent_requirements(
@@ -576,6 +707,28 @@ class TestReviewerRemainsFailClosed:
             "Ability to view the topic list in the same order as it appears in the map."
         )
 
+    def test_generic_qe_wording_and_generic_source_block_delivery(self):
+        failures = _acceptance_presentation_failures(
+            ["Verify that the system works correctly."],
+            {"Verify that the system works correctly.": "Jira."},
+        )
+
+        assert any("generic QE subject" in failure for failure in failures)
+        assert any("criterion-specific source" in failure for failure in failures)
+
+    def test_more_than_ten_criteria_block_instead_of_hiding_coverage(self):
+        statements = [
+            f"Verify that Output History keeps retention case {index} visible."
+            for index in range(11)
+        ]
+        failures = _acceptance_contract_delivery_failures(
+            statements,
+            {statement: "Jira GUIDES-55040." for statement in statements},
+            [],
+        )
+
+        assert any("would hide 1 criterion" in failure for failure in failures)
+
 
 class TestNearDuplicateCriteriaAreMerged:
     """A Jira summary and its description restate one requirement.
@@ -698,6 +851,217 @@ class TestNearDuplicateCriteriaAreMerged:
         before = written[0].criterion_id
         assert self._absorb(written, "Topics are listed in resolved map order.")
         assert written[0].criterion_id != before
+
+
+class TestWriterProjectionCompleteness:
+    """Regression coverage must remain visible or fail before delivery."""
+
+    def _coverage_fixture(self):
+        fact = ContractFact(
+            fact_type=ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+            literal=(
+                "Output History retains configured entries, generated outputs, "
+                "and existing default behavior."
+            ),
+            source_reference="jira:GUIDES-55040:description",
+        )
+        facts = ContractFactSet(
+            contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+            facts=[fact],
+        )
+        p0 = CoverageDispositionRecord(
+            candidate=(
+                "Output History retains configured entries, generated outputs, "
+                "and existing default behavior."
+            ),
+            disposition=CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+            source_fact_ids=[fact.fact_id],
+            rationale="Ticket outcome.",
+            priority="P0",
+            coverage_class="ACCEPTANCE",
+            contract_type="POSITIVE",
+            applicability="APPLICABLE",
+        )
+        candidate = AcceptanceCandidate(
+            statement=p0.candidate,
+            contract_mode=facts.contract_mode,
+            source_fact_ids=[fact.fact_id],
+            source_disposition_ids=[p0.disposition_id],
+            in_scope=True,
+            observable=True,
+        )
+        promotion = AcceptancePromotionDecision(
+            candidate_id=candidate.candidate_id,
+            status=PromotionStatus.PROMOTED,
+            resulting_disposition=CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+            authority_supported=True,
+            scope_established=True,
+            observable=True,
+            exact_values_supported=True,
+        )
+        p1 = CoverageDispositionRecord(
+            candidate="Output History retention variants preserve the selected behavior.",
+            disposition=CoverageDisposition.CONFIGURATION_VARIANT,
+            source_fact_ids=[fact.fact_id],
+            rationale="Each supported COUNT value is a material regression variant.",
+            priority="P1",
+            coverage_class="QE_REGRESSION",
+            contract_type="PRESERVATION",
+            applicability="APPLICABLE",
+            variants=[
+                "Output History retains the newest one entry for COUNT retention.",
+                "Output History retains the newest two entries for COUNT retention.",
+                "Output History retains generated outputs when LOGS_ONLY purges logs.",
+                "Output History keeps AGE retention behavior when AGE is selected.",
+                "Output History keeps the existing default when no retention mode is selected.",
+            ],
+        )
+        return facts, candidate, promotion, p0, p1
+
+    def test_opposed_fallback_states_are_not_merged(self):
+        written = [
+            WrittenAcceptanceCriterion(
+                outcome="Output History keeps the fallback enabled.",
+                source_line="Jira GUIDES-55040.",
+            )
+        ]
+
+        assert not _absorb_near_duplicate(
+            written,
+            "Output History keeps the fallback disabled.",
+            unresolved=False,
+            candidate_ids=["cand-disabled"],
+            fact_ids=["fact-disabled"],
+            disposition_ids=["disp-disabled"],
+            evidence_ids=["ev-disabled"],
+        )
+        assert len(written) == 1
+
+    def test_output_history_count_and_logs_only_variants_remain_attached(self):
+        facts, candidate, promotion, p0, p1 = self._coverage_fixture()
+
+        written = CANONICAL_REASONING_SERVICE.write_acceptance_criteria(
+            [candidate],
+            [promotion],
+            facts,
+            [p0, p1],
+        )
+        records, failures = _writer_projection_completeness(
+            [p0, p1],
+            written,
+            {},
+        )
+
+        assert not failures
+        criterion = written[0]
+        assert len(criterion.sub_points) == 5
+        assert {
+            sub_point.text for sub_point in criterion.sub_points
+        } == set(p1.variants)
+        p1_record = next(
+            row for row in records if row.coverage_disposition_id == p1.disposition_id
+        )
+        assert p1_record.status == WriterProjectionStatus.ATTACHED_VARIANT
+
+    def test_dynamic_value_regression_is_not_merged_into_ordering(self):
+        from app.core.schemas_canonical_test_plan_runtime import (
+            CanonicalBehaviorModel,
+            GenerationProfile,
+            RuntimeEntryPoint,
+            ScopeResolution,
+        )
+        from app.services.canonical_test_plan_runtime import (
+            CANONICAL_TEST_PLAN_RUNTIME,
+        )
+
+        facts, candidate, promotion, p0, _ = self._coverage_fixture()
+        dynamic = CoverageDispositionRecord(
+            candidate=(
+                "The Topic List reads the current topic title after dc:title "
+                "changes instead of retaining an older value."
+            ),
+            disposition=CoverageDisposition.SEMANTIC_REGRESSION,
+            source_fact_ids=[facts.facts[0].fact_id],
+            evidence_ids=["repo:guides-ui@abc123:topic-list.ts:44-58"],
+            rationale=(
+                "Ticket-bound implementation research established current "
+                "dynamic-value behavior that must remain visible."
+            ),
+            priority="P1",
+            coverage_class="QE_REGRESSION",
+            contract_type="PRESERVATION",
+            applicability="APPLICABLE",
+            state_or_transition="DYNAMIC_VALUE",
+            variants=[
+                (
+                    "The Topic List reads the current topic title after dc:title "
+                    "changes instead of retaining an older value."
+                )
+            ],
+        )
+
+        written = CANONICAL_REASONING_SERVICE.write_acceptance_criteria(
+            [candidate],
+            [promotion],
+            facts,
+            [p0, dynamic],
+        )
+        records, failures = _writer_projection_completeness(
+            [p0, dynamic],
+            written,
+            {},
+        )
+
+        assert not failures
+        dynamic_criterion = next(
+            row
+            for row in written
+            if dynamic.disposition_id in row.source_disposition_ids
+        )
+        assert dynamic_criterion.outcome == dynamic.variants[0]
+        assert not dynamic_criterion.sub_points
+        assert all(
+            dynamic.variants[0] not in sub_point.text
+            for row in written
+            if row is not dynamic_criterion
+            for sub_point in row.sub_points
+        )
+        dynamic_record = next(
+            row
+            for row in records
+            if row.coverage_disposition_id == dynamic.disposition_id
+        )
+        assert dynamic_record.status == WriterProjectionStatus.STANDALONE_AC
+
+        request = CANONICAL_TEST_PLAN_RUNTIME.build_request(
+            jira_key="GUIDES-55040",
+            tenant_id="tenant-writer",
+            entry_point=RuntimeEntryPoint.PYTHON_API,
+            generation_profile=GenerationProfile.BACKEND_COMPATIBILITY,
+        )
+        _plan, rendered = CANONICAL_REASONING_SERVICE.render_final_plan(
+            request,
+            facts,
+            ScopeResolution(),
+            CanonicalBehaviorModel(),
+            [],
+            [],
+            [],
+            [p0, dynamic],
+            [candidate],
+            [promotion],
+            [],
+            written_acceptance_criteria=written,
+        )
+        assert dynamic_criterion.outcome in rendered
+
+    def test_unhosted_typed_p1_variant_fails_closed(self):
+        _, _, _, _, p1 = self._coverage_fixture()
+
+        records, failures = _writer_projection_completeness([p1], [], {})
+
+        assert failures
+        assert records[0].status == WriterProjectionStatus.EXPLICITLY_EXCLUDED
 
 
 class TestResearchConflictReachesTheReader:

@@ -18,12 +18,17 @@ from __future__ import annotations
 import pytest
 
 from app.core.schemas_canonical_test_plan_runtime import (
+    AuthorityClass,
+    CanonicalBehaviorModel,
     CanonicalEvidenceBundle,
     ChangeSurfaceKind,
+    ContractFact,
     ContractFactSet,
+    ContractFactType,
     ContractMode,
     EvidenceRecord,
     EvidenceSourceType,
+    SemanticDimension,
     SourceVisibility,
 )
 from app.services.canonical_test_plan_reasoning_service import (
@@ -141,3 +146,40 @@ def test_noise_only_record_falls_back_instead_of_flooding() -> None:
     )
 
     assert not any(row.entity in {"must", "tests"} for row in surfaces)
+
+
+def test_dita_dimensions_require_a_ticket_signal_not_code_vocabulary() -> None:
+    """A code match mentioning DITA cannot widen a non-DITA Jira request."""
+
+    bundle = _bundle(
+        {
+            "matches": [
+                {
+                    "symbol": "TopicListService",
+                    "snippet": "Filter DITA topic file types before returning rows.",
+                }
+            ]
+        }
+    )
+    facts = ContractFactSet(
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+        facts=[
+            ContractFact(
+                fact_type=ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                literal="Topic List and downloaded CSV follow map order.",
+                source_evidence_ids=["jira:GUIDES-11947"],
+                source_reference="jira:GUIDES-11947:description",
+                authority_class=AuthorityClass.CUSTOMER_REQUEST,
+                authoritative=True,
+            )
+        ],
+    )
+
+    dimensions = CanonicalTestPlanReasoningService().applicable_semantic_dimensions(
+        bundle,
+        CanonicalBehaviorModel(),
+        facts=facts,
+    )
+
+    assert SemanticDimension.NESTED_REFERENCED_CONTENT not in dimensions
+    assert SemanticDimension.HIERARCHY not in dimensions

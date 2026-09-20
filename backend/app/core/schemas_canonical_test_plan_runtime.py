@@ -874,6 +874,10 @@ class SemanticDimension(StrEnum):
     # C1: where a displayed/exported/sorted/compared value actually comes from.
     # A field named in a requirement is not atomic until this is considered.
     VALUE_PROVENANCE = "VALUE_PROVENANCE"
+    # The displayed value and the key used to order it can be different.
+    # Keep them separate so an ordering fix cannot silently replace title/value
+    # regression coverage with a sort-only check.
+    SORT_VALUE = "SORT_VALUE"
     DIRECT_CONSUMERS = "DIRECT_CONSUMERS"
     SIBLING_CONSUMERS = "SIBLING_CONSUMERS"
     ALTERNATE_MECHANISMS = "ALTERNATE_MECHANISMS"
@@ -977,6 +981,7 @@ class CoverageExpansionAxis(StrEnum):
     """
 
     VALUE_PROVENANCE = "VALUE_PROVENANCE"
+    SORT_VALUE = "SORT_VALUE"
     FALLBACK_AND_ABSENCE = "FALLBACK_AND_ABSENCE"
     VALUE_RESOLUTION_OR_INDIRECTION = "VALUE_RESOLUTION_OR_INDIRECTION"
     IDENTITY_AND_LIFECYCLE = "IDENTITY_AND_LIFECYCLE"
@@ -2407,6 +2412,10 @@ class BehavioralCoverageCandidate(BaseModel):
     subject: str
     trigger: CoverageExpansionTrigger
     dimensions: list[SemanticDimension] = Field(default_factory=list)
+    # Ticket facts that made this generic discovery candidate material.  The
+    # candidate remains non-authoritative; this preserves the path back to the
+    # actual ticket behavior that requires investigation.
+    source_fact_ids: list[str] = Field(default_factory=list)
     question: str
     rationale: str
     material: bool = True
@@ -2418,6 +2427,7 @@ class BehavioralCoverageCandidate(BaseModel):
         if not self.dimensions:
             raise ValueError("a coverage candidate must name at least one dimension")
         self.dimensions = sorted(set(self.dimensions), key=lambda row: row.value)
+        self.source_fact_ids = sorted(set(self.source_fact_ids))
         identity = self.model_dump(mode="json", exclude={"candidate_id"})
         expected = f"covexp:{stable_sha256(identity)[:32]}"
         if self.candidate_id and self.candidate_id != expected:
@@ -2619,6 +2629,9 @@ class ClosureDimensionResult(BaseModel):
     applicability: ApplicabilityState
     disposition: ClosureDisposition
     evidence_ids: list[str] = Field(default_factory=list)
+    # Fact lineage from behavioral expansion.  This makes mandatory research
+    # traceable to the Jira statement that activated it.
+    source_fact_ids: list[str] = Field(default_factory=list)
     rationale: str
 
     @model_validator(mode="after")
@@ -2636,6 +2649,7 @@ class ClosureDimensionResult(BaseModel):
             raise ValueError("closure_id does not match deterministic identity")
         self.closure_id = expected
         self.evidence_ids = sorted(set(self.evidence_ids))
+        self.source_fact_ids = sorted(set(self.source_fact_ids))
         return self
 
 
@@ -4711,6 +4725,50 @@ class RendererProjectionDecision(BaseModel):
         return self
 
 
+class WriterProjectionStatus(StrEnum):
+    """Terminal human-facing projection state for material coverage."""
+
+    STANDALONE_AC = "STANDALONE_AC"
+    ATTACHED_VARIANT = "ATTACHED_VARIANT"
+    ATTACHED_TBD = "ATTACHED_TBD"
+    RETAINED_QE_REGRESSION = "RETAINED_QE_REGRESSION"
+    EXPLICITLY_EXCLUDED = "EXPLICITLY_EXCLUDED"
+
+
+class WriterProjectionRecord(BaseModel):
+    """Proof that an applicable P0/P1 coverage decision reached the UAC."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    projection_id: str = ""
+    coverage_disposition_id: str = Field(
+        pattern=r"^disposition:[a-f0-9]{32}$"
+    )
+    priority: Literal["P0", "P1"]
+    status: WriterProjectionStatus
+    criterion_id: str = ""
+    projected_variant_texts: list[str] = Field(default_factory=list)
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def normalize_and_identify(self) -> "WriterProjectionRecord":
+        self.projected_variant_texts = sorted(
+            {" ".join(str(text).split()) for text in self.projected_variant_texts if str(text).strip()}
+        )
+        if self.status in {
+            WriterProjectionStatus.STANDALONE_AC,
+            WriterProjectionStatus.ATTACHED_VARIANT,
+            WriterProjectionStatus.ATTACHED_TBD,
+        } and not self.criterion_id:
+            raise ValueError("projected coverage requires a written criterion")
+        identity = self.model_dump(mode="json", exclude={"projection_id"})
+        expected = f"writer-projection:{stable_sha256(identity)[:32]}"
+        if self.projection_id and self.projection_id != expected:
+            raise ValueError("writer projection ID is not deterministic")
+        self.projection_id = expected
+        return self
+
+
 class GateDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -4746,6 +4804,9 @@ class StructuredQEPlan(BaseModel):
     candidate_lifecycle: list[CandidateLifecycleRecord] = Field(default_factory=list)
     dedup_decisions: list[CandidateDedupDecision] = Field(default_factory=list)
     renderer_decisions: list[RendererProjectionDecision] = Field(default_factory=list)
+    writer_projection_records: list[WriterProjectionRecord] = Field(
+        default_factory=list
+    )
     gate_decisions: list[GateDecision] = Field(default_factory=list)
 
 

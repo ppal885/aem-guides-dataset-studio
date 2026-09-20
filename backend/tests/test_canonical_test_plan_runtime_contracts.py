@@ -37,6 +37,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     HypothesisState,
     IssueDomain,
     MissingQuestion,
+    OpenQuestionClass,
     ProductContractOwnership,
     ProductOwnership,
     PromotionStatus,
@@ -849,6 +850,66 @@ def test_unclear_human_term_is_preserved_and_flagged_instead_of_renamed() -> Non
         row["blocking"] and "Gloss alt/gloss title" in row["question"]
         for row in result.output_payload["missing_questions"]
     )
+
+
+def test_terminology_probe_is_nonblocking_when_jira_has_expected_behavior() -> None:
+    facts = ContractFactSet(
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+        facts=[
+            ContractFact(
+                fact_type=ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                literal="The Topic List follows the map order.",
+                source_evidence_ids=["jira:expected"],
+                source_reference="jira:GUIDES-11947:expected",
+                authority_class=AuthorityClass.CUSTOMER_REQUEST,
+                authoritative=True,
+            ),
+            ContractFact(
+                fact_type=ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+                literal="Topic List currently sorts by title/name.",
+                source_evidence_ids=["jira:current"],
+                source_reference="jira:GUIDES-11947:description",
+                authority_class=AuthorityClass.CUSTOMER_REQUEST,
+                authoritative=True,
+            ),
+        ],
+    )
+
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        closure=[],
+        scope=ScopeResolution(),
+        facts=facts,
+    )
+
+    (terminology,) = [
+        row for row in questions if "Topic List currently sorts" in row.question
+    ]
+    assert terminology.blocking is False
+    assert terminology.open_question_class == OpenQuestionClass.RESEARCH_REQUIRED
+
+
+def test_documentation_terminology_does_not_create_a_ticket_question() -> None:
+    facts = ContractFactSet(
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+        facts=[
+            ContractFact(
+                fact_type=ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+                literal="NOTE Dropdown with manually predefined values.",
+                source_evidence_ids=["doc:note-dropdown"],
+                source_reference="docs:unrelated",
+                authority_class=AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
+                authoritative=True,
+            )
+        ],
+    )
+
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        closure=[],
+        scope=ScopeResolution(),
+        facts=facts,
+    )
+
+    assert questions == []
 
 
 def test_subject_specific_authority_uses_different_source_precedence() -> None:

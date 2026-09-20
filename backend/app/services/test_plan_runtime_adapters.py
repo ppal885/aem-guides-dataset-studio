@@ -6,6 +6,7 @@ or acceptance promotions.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.core.schemas_canonical_test_plan_runtime import (
@@ -19,6 +20,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     LegacyCompatibilityProjection,
     PromotionStatus,
     RuntimeEntryPoint,
+    WrittenAcceptanceCriterion,
+    WriterProjectionStatus,
     stable_sha256,
 )
 from app.core.schemas_test_plan_pipeline import (
@@ -76,6 +79,85 @@ def canonical_bundle_from_packet(
     return normalize_legacy_packet(packet, tenant_id=tenant_id)
 
 
+_HUMAN_FACING_WRITER_STATUSES = frozenset(
+    {
+        WriterProjectionStatus.STANDALONE_AC,
+        WriterProjectionStatus.ATTACHED_VARIANT,
+        WriterProjectionStatus.ATTACHED_TBD,
+    }
+)
+_INTERNAL_WRITER_METADATA_PREFIX = "Internal scope or closure metadata"
+
+
+def _normalized_delivery_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+
+
+def _canonical_uac_delivery_failures(result: GenerationResult) -> list[str]:
+    """Verify that a compatibility response cannot hide writer-admitted coverage."""
+
+    plan = result.structured_plan
+    if plan is None:
+        return []
+    projections = [
+        row
+        for row in plan.writer_projection_records
+        if row.priority in {"P0", "P1"}
+        and not (
+            row.status == WriterProjectionStatus.EXPLICITLY_EXCLUDED
+            and row.reason.startswith(_INTERNAL_WRITER_METADATA_PREFIX)
+        )
+    ]
+    if not projections:
+        return []
+
+    raw_written = result.output_payload.get("written_acceptance_criteria")
+    if not isinstance(raw_written, list):
+        return [
+            "Canonical Writer output is unavailable; compatibility delivery cannot "
+            "prove complete P0/P1 UAC coverage."
+        ]
+    try:
+        written = [
+            WrittenAcceptanceCriterion.model_validate(row) for row in raw_written
+        ]
+    except (TypeError, ValueError) as error:
+        return [
+            "Canonical Writer output is invalid; compatibility delivery cannot "
+            f"prove complete P0/P1 UAC coverage ({error})."
+        ]
+
+    failures: list[str] = []
+    written_by_id = {row.criterion_id: row for row in written}
+    rendered = _normalized_delivery_text(result.rendered_output)
+    if not rendered:
+        failures.append("Canonical rendered UAC is empty.")
+
+    for projection in projections:
+        if projection.status not in _HUMAN_FACING_WRITER_STATUSES:
+            failures.append(
+                f"{projection.priority} coverage "
+                f"{projection.coverage_disposition_id} has no human-facing UAC projection."
+            )
+            continue
+        criterion = written_by_id.get(projection.criterion_id)
+        if criterion is None:
+            failures.append(
+                f"{projection.priority} coverage "
+                f"{projection.coverage_disposition_id} references a missing Writer criterion."
+            )
+            continue
+        for text in projection.projected_variant_texts:
+            normalized = _normalized_delivery_text(text)
+            if normalized and normalized not in rendered:
+                failures.append(
+                    f"{projection.priority} coverage "
+                    f"{projection.coverage_disposition_id} is absent from the "
+                    "canonical rendered UAC."
+                )
+    return failures
+
+
 class LegacyCompatibilityProjector:
     """Named, lossless projections that run only after canonical reasoning."""
 
@@ -95,6 +177,7 @@ class LegacyCompatibilityProjector:
             and result.validation_status == "passed"
             and bool(result.gate_decisions)
             and all(row.status == GateStatus.PASSED for row in result.gate_decisions)
+            and not _canonical_uac_delivery_failures(result)
         )
 
     def project_result(
@@ -106,6 +189,7 @@ class LegacyCompatibilityProjector:
         """Return a stable compatibility DTO without changing canonical decisions."""
 
         packet = legacy_packet or {}
+        delivery_failures = _canonical_uac_delivery_failures(result)
         return {
             "projection_version": "canonical-result-compatibility-v2",
             "projector_id": self.projector_id,
@@ -118,6 +202,11 @@ class LegacyCompatibilityProjector:
             "validation_status": result.validation_status,
             "postable": self.is_postable(result),
             "plan_markdown": result.rendered_output,
+            "uac_delivery": {
+                "canonical_field": "plan_markdown",
+                "complete": not delivery_failures,
+                "failures": delivery_failures,
+            },
             "output_payload": result.output_payload,
             "structured_plan": (
                 result.structured_plan.model_dump(mode="json")
@@ -156,6 +245,7 @@ class LegacyCompatibilityProjector:
             str(row.get("candidate_id") or ""): row
             for row in payload.get("acceptance_candidates") or []
         }
+        delivery_failures = _canonical_uac_delivery_failures(result)
         contract_mode = str(
             (payload.get("contract_facts") or {}).get("contract_mode") or ""
         )
@@ -163,8 +253,7 @@ class LegacyCompatibilityProjector:
         acceptance_criteria = _project_acceptance_criteria(
             result,
             candidates=candidates,
-            promotions=promotions,
-            questions=questions,
+            delivery_failures=delivery_failures,
         )
         score = _project_pipeline_score(
             result,
@@ -198,9 +287,10 @@ class LegacyCompatibilityProjector:
         blockers = [
             failure for gate in result.gate_decisions for failure in gate.failures
         ]
+        blockers.extend(delivery_failures)
         review_status = (
             "Needs human review"
-            if score.human_review_required
+            if score.human_review_required or delivery_failures
             else "Ready for QE review"
         )
         qe_handoff = QeHandoff(
@@ -213,9 +303,14 @@ class LegacyCompatibilityProjector:
             blocking_gaps=blockers,
             next_actions=(
                 [
-                    "Resolve the listed product decisions, then run the canonical engine again."
+                    (
+                        "Restore complete canonical UAC delivery, then run the "
+                        "canonical engine again."
+                        if delivery_failures
+                        else "Resolve the listed product decisions, then run the canonical engine again."
+                    )
                 ]
-                if score.human_review_required
+                if score.human_review_required or delivery_failures
                 else ["QE can review and execute the canonical plan."]
             ),
         )
@@ -265,13 +360,19 @@ class LegacyCompatibilityProjector:
                 "evidence_record_count": len(result.evidence_bundle.records),
                 "unavailable_sources": result.evidence_bundle.unavailable_sources,
             },
-            draft_test_plan_markdown=(
-                result.rendered_output if request.compose_draft_plan else None
-            ),
+            # A compatibility field must never become a shorter manual draft.
+            # Preserve it only as an exact canonical mirror for existing clients.
+            draft_test_plan_markdown=result.rendered_output,
             output_provenance={
                 "canonical": "qe_review_package.canonical_result.plan_markdown",
                 "draft_test_plan_markdown": (
-                    "NON_CANONICAL:NOT_FOR_ACCEPTANCE:DEPRECATED"
+                    "CANONICAL_MIRROR:IDENTICAL_TO:"
+                    "qe_review_package.canonical_result.plan_markdown"
+                ),
+                "acceptance_criteria": (
+                    "CANONICAL_WRITER_MIRROR:COMPLETE_P0_P1_ONLY"
+                    if not delivery_failures
+                    else "BLOCKED:CANONICAL_UAC_DELIVERY_INCOMPLETE"
                 ),
             },
             validation=result.validation_result,
@@ -374,78 +475,148 @@ def _project_acceptance_criteria(
     result: GenerationResult,
     *,
     candidates: dict[str, dict[str, Any]],
-    promotions: list[dict[str, Any]],
-    questions: list[dict[str, Any]],
+    delivery_failures: list[str],
 ) -> list[dict[str, Any]]:
-    question_by_id = {
-        str(row.get("question_id") or ""): str(row.get("question") or "")
-        for row in questions
+    """Mirror Writer output; never rebuild a UAC from promotion rows."""
+
+    if delivery_failures:
+        return []
+    raw_written = result.output_payload.get("written_acceptance_criteria")
+    if not isinstance(raw_written, list):
+        return []
+    written = [
+        WrittenAcceptanceCriterion.model_validate(row) for row in raw_written
+    ]
+    dispositions = {
+        str(row.get("disposition_id") or ""): row
+        for row in result.output_payload.get("coverage_dispositions") or []
     }
     rows: list[dict[str, Any]] = []
-    for decision in promotions:
-        if decision.get("status") != PromotionStatus.PROMOTED.value:
-            continue
-        candidate = candidates.get(str(decision.get("candidate_id") or "")) or {}
-        statement = str(candidate.get("statement") or "").strip()
-        if not statement:
-            continue
+    for criterion in written:
         sequence = len(rows) + 1
         uac_id = f"UAC-{sequence:02d}"
-        evidence_refs = [str(value) for value in candidate.get("evidence_ids") or []]
+        statement = " ".join(
+            part
+            for part in [
+                criterion.outcome,
+                *[sub_point.text for sub_point in criterion.sub_points],
+            ]
+            if part.strip()
+        )
+        evidence_refs = list(dict.fromkeys(criterion.evidence_ids))
+        candidate_rows = [
+            candidates[candidate_id]
+            for candidate_id in criterion.source_candidate_ids
+            if candidate_id in candidates
+        ]
+        for candidate in candidate_rows:
+            evidence_refs.extend(
+                str(value) for value in candidate.get("evidence_ids") or []
+            )
+        evidence_refs = list(dict.fromkeys(evidence_refs))
         if not evidence_refs:
             evidence_refs = [result.evidence_bundle_id]
         accepted_snapshot = _accepted_uac_snapshot(result, evidence_refs)
-        confirmed = bool(candidate.get("accepted_human_contract") and accepted_snapshot)
-        unresolved = [
-            question_by_id.get(str(value), str(value))
-            for value in candidate.get("unresolved_decision_ids") or []
+        confirmed = bool(
+            candidate_rows
+            and len(candidate_rows) == len(criterion.source_candidate_ids)
+            and all(
+                candidate.get("accepted_human_contract")
+                for candidate in candidate_rows
+            )
+            and accepted_snapshot
+        )
+        tbd_questions = [
+            sub_point.text
+            for sub_point in criterion.sub_points
+            if sub_point.kind.value == "TBD_QUESTION"
         ]
+        applicable_dispositions = [
+            dispositions[disposition_id]
+            for disposition_id in criterion.source_disposition_ids
+            if disposition_id in dispositions
+        ]
+        priority = next(
+            (
+                value
+                for value in ("P0", "P1", "P2")
+                if any(
+                    row.get("priority") == value
+                    for row in applicable_dispositions
+                )
+            ),
+            "P1",
+        )
+        sphere = (
+            "Negative"
+            if any(
+                str(row.get("contract_type") or "") == "NEGATIVE"
+                for row in applicable_dispositions
+            )
+            else "Basic"
+        )
+        requirement_category = next(
+            (
+                str(row.get("disposition") or "")
+                for row in applicable_dispositions
+                if str(row.get("disposition") or "")
+            ),
+            "ACCEPTANCE_CONTRACT",
+        )
+        classification = next(
+            (
+                str(candidate.get("contract_mode") or "")
+                for candidate in candidate_rows
+                if str(candidate.get("contract_mode") or "")
+            ),
+            str(
+                (result.output_payload.get("contract_facts") or {}).get(
+                    "contract_mode"
+                )
+                or ""
+            ),
+        )
+        derivation = (
+            "HUMAN_CLARIFICATION_REQUIRED"
+            if criterion.unresolved or tbd_questions
+            else "TICKET_CONFIRMED"
+            if confirmed
+            else "REASONABLE_ASSUMPTION"
+        )
         fingerprint = stable_sha256(
             {
                 "uac_id": uac_id,
                 "statement": statement,
-                "candidate_id": candidate.get("candidate_id"),
+                "writer_criterion_id": criterion.criterion_id,
                 "evidence_refs": evidence_refs,
             }
-        )
-        checks = (
-            "authority_supported",
-            "scope_established",
-            "observable",
-            "exact_values_supported",
-        )
-        confidence = round(
-            100 * sum(bool(decision.get(name)) for name in checks) / len(checks)
         )
         rows.append(
             {
                 "schema_version": "aem-guides-ac-v1",
                 "uac_id": uac_id,
                 "status": "Confirmed" if confirmed else "Proposed",
-                "sphere": "Basic",
+                "sphere": sphere,
                 "behaviour_statement": statement,
                 "given": "The Jira scope and required test data are available.",
                 "when": "The behavior described in this criterion is exercised.",
                 "then": statement,
-                "priority": "P1",
-                "requirement_category": str(
-                    decision.get("resulting_disposition") or "ACCEPTANCE_CONTRACT"
-                ),
-                "classification": str(candidate.get("contract_mode") or ""),
+                "priority": priority,
+                "requirement_category": requirement_category,
+                "classification": classification,
                 "evidence_refs": evidence_refs,
                 "source_snapshot_ids": (
                     [accepted_snapshot] if confirmed else evidence_refs
                 ),
                 "source_clause_id": uac_id if confirmed else "",
-                "derivation_classification": (
-                    "TICKET_CONFIRMED" if confirmed else "REASONABLE_ASSUMPTION"
-                ),
-                "confidence": confidence,
+                "derivation_classification": derivation,
+                "confidence": 100 if confirmed else 80,
                 "assumptions": [],
-                "open_question": "; ".join(value for value in unresolved if value),
+                "open_question": "; ".join(tbd_questions),
                 "automation_consumption": "blocked",
                 "automation_block_reason": (
-                    "Compatibility projection requires explicit human approval before automation consumption."
+                    "Canonical UAC projection requires explicit human approval "
+                    "before automation consumption."
                 ),
                 "fingerprint": fingerprint,
             }

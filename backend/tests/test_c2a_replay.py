@@ -306,13 +306,69 @@ def test_cli_selection_equals_http_canonical_field() -> None:
     # One shared renderer: the CLI selection is the canonical field, compared
     # formatting-normalized (the CLI strips trailing whitespace).
     assert cli._select_plan_text(dumped) == canonical.strip()
-    # HTTP contract: the result model carries the same canonical field and the
-    # explicit provenance marking.
+    # Compatibility fields are lossless canonical mirrors, not a reduced
+    # promotion-only UAC or an optional draft.
+    assert dumped["draft_test_plan_markdown"] == canonical
     assert dumped["output_provenance"]["draft_test_plan_markdown"] == (
-        "NON_CANONICAL:NOT_FOR_ACCEPTANCE:DEPRECATED"
+        "CANONICAL_MIRROR:IDENTICAL_TO:"
+        "qe_review_package.canonical_result.plan_markdown"
+    )
+    assert dumped["output_provenance"]["acceptance_criteria"] == (
+        "BLOCKED:CANONICAL_UAC_DELIVERY_INCOMPLETE"
     )
     assert dumped["output_provenance"]["canonical"] == (
         "qe_review_package.canonical_result.plan_markdown"
+    )
+    assert dumped["acceptance_criteria"] == []
+    assert dumped["qe_review_package"]["canonical_result"]["uac_delivery"][
+        "complete"
+    ] is False
+
+
+def test_compatibility_projection_fails_closed_when_writer_coverage_is_missing() -> None:
+    from app.core.schemas_test_plan_pipeline import TestPlanPipelineRequest
+    from app.services.test_plan_runtime_adapters import LEGACY_COMPATIBILITY_PROJECTOR
+    from tests.test_canonical_test_plan_runtime_contracts import _canonical_result
+
+    result = _canonical_result()
+    complete = LEGACY_COMPATIBILITY_PROJECTOR.project_result(result)
+    assert complete["uac_delivery"]["complete"] is True
+    complete_rows = LEGACY_COMPATIBILITY_PROJECTOR.project_pipeline_result(
+        result,
+        request=TestPlanPipelineRequest(jira_key="GUIDES-1000"),
+        legacy_packet={"jira_key": "GUIDES-1000"},
+        correlation_id="complete-writer-coverage",
+        elapsed_ms=1,
+    )
+    writer_rows = result.output_payload["written_acceptance_criteria"]
+    assert len(complete_rows.acceptance_criteria) == len(writer_rows)
+    projection = next(
+        row
+        for row in result.structured_plan.writer_projection_records
+        if row.priority in {"P0", "P1"} and row.criterion_id
+    )
+    result.output_payload["written_acceptance_criteria"] = [
+        row
+        for row in result.output_payload["written_acceptance_criteria"]
+        if row["criterion_id"] != projection.criterion_id
+    ]
+
+    projected = LEGACY_COMPATIBILITY_PROJECTOR.project_pipeline_result(
+        result,
+        request=TestPlanPipelineRequest(jira_key="GUIDES-99088"),
+        legacy_packet={"jira_key": "GUIDES-99088"},
+        correlation_id="missing-writer-coverage",
+        elapsed_ms=1,
+    )
+
+    assert projected.acceptance_criteria == []
+    assert projected.draft_test_plan_markdown == result.rendered_output
+    assert LEGACY_COMPATIBILITY_PROJECTOR.project_result(result)["uac_delivery"][
+        "complete"
+    ] is False
+    assert any(
+        "missing Writer criterion" in failure
+        for failure in projected.qe_handoff.blocking_gaps
     )
 
 
@@ -345,6 +401,10 @@ def test_http_route_returns_same_canonical_result(monkeypatch) -> None:
     assert body["qe_review_package"]["canonical_result"]["plan_markdown"] == (
         dumped["qe_review_package"]["canonical_result"]["plan_markdown"]
     )
+    assert body["draft_test_plan_markdown"] == body["qe_review_package"][
+        "canonical_result"
+    ]["plan_markdown"]
     assert body["output_provenance"]["draft_test_plan_markdown"] == (
-        "NON_CANONICAL:NOT_FOR_ACCEPTANCE:DEPRECATED"
+        "CANONICAL_MIRROR:IDENTICAL_TO:"
+        "qe_review_package.canonical_result.plan_markdown"
     )

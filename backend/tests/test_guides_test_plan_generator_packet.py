@@ -30,6 +30,25 @@ def test_generator_entrypoint_delegates_to_canonical_runtime(monkeypatch):
     )
 
 
+def test_repository_contract_does_not_activate_seeded_feature_ladders():
+    contract = service._build_repository_evidence_contract(
+        {
+            "issue_key": "GUIDES-11947",
+            "summary": "Topic List report order",
+            "description": "Show the Topic List report in map order.",
+        },
+        {
+            "features": ["publishing"],
+            "outputs": ["Native PDF"],
+            "regression_risk_seed": [{"risk": "DITA-OT processing"}],
+        },
+    )
+
+    assert "publishing" not in contract["focus_queries"]
+    assert "Native PDF" not in contract["focus_queries"]
+    assert "DITA-OT" not in contract["focus_queries"]
+
+
 @pytest.fixture(autouse=True)
 def _stub_optional_graph_and_history(monkeypatch):
     monkeypatch.setattr(

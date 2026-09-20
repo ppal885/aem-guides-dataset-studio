@@ -190,7 +190,6 @@ def _build_query_plan(
     """
 
     values: list[str] = []
-    values.extend(str(item) for item in repo_contract.get("focus_queries") or [])
     for key in ("issue_key", "summary", "title"):
         if issue.get(key):
             values.append(str(issue[key]))
@@ -198,18 +197,84 @@ def _build_query_plan(
         str(issue.get(key) or "")
         for key in ("summary", "title", "description", "snippet")
     )
-    derived = _derive_query_terms(issue_blob)
+    derived = _ticket_subject_queries(_derive_query_terms(issue_blob))
     values.extend(derived)
-    for key in ("features", "constructs", "outputs"):
-        values.extend(str(item) for item in planning_seeds.get(key) or [])
-    for seed_key in ("blast_radius_seed", "bug_hypothesis_seed", "test_area_seed", "regression_risk_seed"):
-        for seed in planning_seeds.get(seed_key) or []:
-            if isinstance(seed, dict):
-                values.extend(str(seed.get(k) or "") for k in ("id", "area", "suspected_bug", "title", "surface", "risk"))
+    values.extend(str(item) for item in repo_contract.get("focus_queries") or [])
+    # Planning seeds are retrieval output, not ticket scope.  Letting an
+    # unrelated historical/RAG seed create a repository query admits broad
+    # matches (for example, every publishing test) as if they described the
+    # current issue.  Repository discovery must start with the Jira-derived
+    # subject; a later, question-bound research request can widen it only when
+    # its evidence contract authorizes that query.
     queries = _dedupe_queries(values)[:40]
     retained = set(queries)
     subject = frozenset(term for term in _dedupe_queries(derived) if term in retained)
     return queries, subject
+
+
+_GENERIC_CODE_SEARCH_TERMS = frozenset(
+    {
+        "api",
+        "csv",
+        "download",
+        "editor",
+        "export",
+        "guides",
+        "list",
+        "map",
+        "maps",
+        "new",
+        "order",
+        "output",
+        "outputs",
+        "report",
+        "reports",
+        "topic",
+        "topics",
+        "ui",
+        "view",
+    }
+)
+
+
+def _ticket_subject_queries(terms: list[str]) -> list[str]:
+    """Keep repository searches bound to a distinctive Jira subject.
+
+    A current issue often contains broad nouns such as ``Reports`` or
+    ``topic``.  Searching a whole product clone for those nouns yields valid
+    files from unrelated features, which must not become implementation
+    evidence for this ticket.  Prefer exact labels, phrases, endpoints, and
+    identifier-shaped terms; only fall back to a single non-generic term when
+    the ticket supplies no stronger subject.
+    """
+
+    cleaned = [" ".join(str(term).split()) for term in terms if str(term).strip()]
+    specific = [
+        term
+        for term in cleaned
+        if (
+            term.startswith("/")
+            or " " in term
+            or "_" in term
+            or "-" in term
+            or any(char.isupper() for char in term[1:])
+            or term.casefold() not in _GENERIC_CODE_SEARCH_TERMS
+        )
+    ]
+    selected = specific or [
+        term
+        for term in cleaned
+        if term.casefold() not in _GENERIC_CODE_SEARCH_TERMS
+    ]
+    variants: list[str] = []
+    for term in selected:
+        variants.append(term)
+        words = re.findall(r"[A-Za-z0-9]+", term)
+        if 2 <= len(words) <= 4:
+            variants.append("".join(word[:1].upper() + word[1:] for word in words))
+            variants.append("_".join(word.casefold() for word in words))
+            variants.append("-".join(word.casefold() for word in words))
+    return _dedupe_queries(variants)
 
 
 def _derive_query_terms(text: str) -> list[str]:
@@ -347,6 +412,12 @@ def _search_repo(
         key=lambda row: (row[0], row[1]),
         reverse=True,
     )
+    if subject_queries:
+        # A subject query was available, so a generic focus match is not
+        # admissible evidence for this ticket.  Returning no match is an
+        # honest evidence gap; returning an unrelated file silently widens
+        # scope and produces false coverage.
+        ranked = [row for row in ranked if row[0]]
 
     scored: list[tuple[int, float, str, dict[str, Any]]] = []
     for scanned, path in enumerate(_iter_text_files(root)):

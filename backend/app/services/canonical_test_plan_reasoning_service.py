@@ -109,6 +109,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     WrittenAcceptanceCriterion,
     SufficiencyStatus,
     VerificationState,
+    WriterProjectionRecord,
+    WriterProjectionStatus,
     stable_sha256,
 )
 from app.services.canonical_evidence_service import record_visible_to
@@ -792,6 +794,17 @@ def documented_baseline_claims(
     )
 
 
+def _has_ticket_bound_baseline_anchor(question: MissingQuestion) -> bool:
+    """Whether documentation may supply a baseline for ticket acceptance.
+
+    Research can answer broad discovery questions without widening the ticket.
+    Existing behavior reaches proposed acceptance coverage only when the
+    question is both blocking and explicitly linked to a ticket contract fact.
+    """
+
+    return question.blocking and bool(question.source_fact_ids)
+
+
 def verified_implementation_claims(
     question: MissingQuestion,
     research_by_question: dict[str, QuestionResearchRecord],
@@ -832,6 +845,32 @@ _IMPLEMENTATION_ORACLE_RATIONALE = (
     "Code is not a product contract, so it never becomes acceptance "
     "coverage and never resolves the open acceptance question."
 )
+_DYNAMIC_VALUE_REGRESSION_DIMENSIONS = frozenset(
+    {
+        SemanticDimension.VALUE_PROVENANCE,
+        SemanticDimension.SORT_VALUE,
+        SemanticDimension.FALLBACK,
+        SemanticDimension.ABSENT_VALUE,
+        SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
+        SemanticDimension.IDENTITY_CHANGE,
+        SemanticDimension.MUTATION_FRESHNESS,
+        SemanticDimension.CROSS_SURFACE_SYNC,
+        SemanticDimension.ALTERNATE_REPRESENTATION,
+    }
+)
+_DYNAMIC_VALUE_REGRESSION_RATIONALE = (
+    "Ticket-bound implementation research established current dynamic-value "
+    "behavior that must remain visible as a QE regression check. It is not "
+    "product acceptance authority and does not resolve a product decision."
+)
+
+
+def _is_ticket_bound_dynamic_value_question(question: MissingQuestion) -> bool:
+    """Whether code research must become visible value-preservation coverage."""
+
+    return bool(question.source_fact_ids) and (
+        question.dimension in _DYNAMIC_VALUE_REGRESSION_DIMENSIONS
+    )
 
 
 def _normalize_candidate_key(text: str) -> str:
@@ -980,8 +1019,8 @@ def _as_outcome_sentence(clause: str) -> str:
 # pass/fail contracts.  Splitting only on a modal-bearing conjunct keeps
 # ordinary descriptive "and" phrases ("topics and maps") intact.
 _INDEPENDENT_REQUIREMENT_RE = re.compile(
-    r"\s+and\s+(?=(?:the|a|an|its|their|each|every|all)?\s*[\w\s,'\"-]{3,80}?"
-    r"\b(?:should|must|shall|will|needs?\s+to|has\s+to|have\s+to)\b)",
+    r"\s+and\s+(?=(?:the|a|an|its|their|each|every|all)\s+[\w\s,'\"-]{3,80}?"
+    r"\b(?:should|must|shall|needs?\s+to|has\s+to|have\s+to)\b)",
     re.IGNORECASE,
 )
 
@@ -999,6 +1038,81 @@ def _split_independent_requirements(statement: str) -> list[str]:
     parts = [part.strip(" ,;") for part in _INDEPENDENT_REQUIREMENT_RE.split(text)]
     parts = [part for part in parts if part]
     return parts or [text]
+
+
+_DOCUMENTATION_EXAMPLE_SENTENCE_RE = re.compile(
+    r"\b(?:for\s+example|e\.g\.|example\s+(?:states?|shows?|is)|"
+    r"Adobe'?s?\s+example)\b",
+    re.IGNORECASE,
+)
+_DOCUMENTATION_ATTRIBUTION_RE = re.compile(
+    r"\b(?:Adobe|the\s+documentation|documentation)\s+"
+    r"(?:documents?|states?|explains?|describes?)\s+that\s+",
+    re.IGNORECASE,
+)
+_DOCUMENTED_RULE_PREFIX_RE = re.compile(r"\bthe\s+documented\s+", re.IGNORECASE)
+_UNACCEPTABLE_MANUAL_PRACTICE_RE = re.compile(
+    r"\b(?P<practice>manual(?:ly)?\s+"
+    r"(?:assigning|entering|typing|selecting|managing)\b[^.?!]{0,240}?)"
+    r"\s+is\s+not\s+acceptable\b",
+    re.IGNORECASE,
+)
+_MANUAL_PRACTICE_PARTS_RE = re.compile(
+    r"^manual(?:ly)?\s+"
+    r"(?P<action>assigning|entering|typing|selecting|managing)\s+"
+    r"(?P<subject>.+?)"
+    r"(?P<surface>\s+(?:through|in|using|via)\s+.+)?$",
+    re.IGNORECASE,
+)
+_MANUAL_ACTION_NOUNS = {
+    "assigning": "assignment",
+    "entering": "entry",
+    "typing": "entry",
+    "selecting": "selection",
+    "managing": "management",
+}
+
+
+def _documented_baseline_contract_statement(statement: str) -> str:
+    """Keep a documented rule while removing a non-normative example.
+
+    Documentation examples are useful research evidence, but an illustrative
+    version number must not turn into an unsupported product-specific AC.
+    """
+
+    sentences = re.split(r"(?<=[.!?])\s+", " ".join(statement.split()))
+    retained: list[str] = []
+    for sentence in sentences:
+        if retained and _DOCUMENTATION_EXAMPLE_SENTENCE_RE.search(sentence):
+            continue
+        retained.append(sentence)
+    text = _DOCUMENTATION_ATTRIBUTION_RE.sub("", " ".join(retained))
+    text = _DOCUMENTED_RULE_PREFIX_RE.sub("the ", text)
+    return _as_outcome_sentence(text)
+
+
+def _negative_contract_statement(statement: str) -> str:
+    """Turn an explicit unacceptable manual practice into a testable boundary.
+
+    The Jira source establishes that the manual practice is unacceptable, but
+    not which replacement control Product will choose.  This retains the
+    negative product contract without inventing a dropdown, dialog, or source.
+    """
+
+    match = _UNACCEPTABLE_MANUAL_PRACTICE_RE.search(statement)
+    if match is None:
+        return _as_outcome_sentence(statement)
+    practice = match.group("practice").strip()
+    parts = _MANUAL_PRACTICE_PARTS_RE.fullmatch(practice)
+    if parts is None:
+        return _as_outcome_sentence(f"{practice} is not required")
+    action = parts.group("action").casefold()
+    subject = parts.group("subject").strip()
+    surface = " ".join((parts.group("surface") or "").split())
+    noun = _MANUAL_ACTION_NOUNS.get(action, action)
+    return _as_outcome_sentence(
+        f"Manual {noun} of {subject}{(' ' + surface) if surface else ''} is not required"
+    )
 
 
 # D2/D1-c: phrasings that turn an unresolved capability into the decision QE
@@ -1144,6 +1258,53 @@ _AC_CONTENT_STOPWORDS = frozenset(
     "should must will shall verify ensure when then given user able "
     "not no if into their its each any all both which while".split()
 )
+_MERGE_NEGATION_RE = re.compile(
+    r"\b(?:not|never|no|without|cannot|can't|den(?:y|ied)|reject(?:ed|s)?)\b",
+    re.IGNORECASE,
+)
+_MERGE_SENSITIVE_TERMS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "configuration",
+        re.compile(
+            r"\b(?:enabled|disabled|on|off|true|false|default|custom|"
+            r"age|count|logs?_only)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "fallback",
+        re.compile(r"\b(?:fallback|fall back|default value)\b", re.IGNORECASE),
+    ),
+    (
+        "persistence",
+        re.compile(
+            r"\b(?:persist(?:s|ed|ence)?|save[ds]?|reload(?:s|ed)?|restart(?:s|ed)?)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "timing",
+        re.compile(
+            r"\b(?:before|after|during|immediately|later|first|last|next)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "surface",
+        re.compile(
+            r"\b(?:author|source|web editor|map dashboard|output history|"
+            r"collection|explorer|api)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "permission",
+        re.compile(
+            r"\b(?:permission|role|access|allow(?:ed|s)?|den(?:y|ied|ies))\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
 
 
 def _ac_content_words(statement: str) -> set[str]:
@@ -1155,6 +1316,20 @@ def _ac_content_words(statement: str) -> set[str]:
         for token in tokens
         if token not in _AC_CONTENT_STOPWORDS and len(token) > 2
     }
+
+
+def _merge_sensitive_semantics(statement: str) -> frozenset[str]:
+    """Return meaning-changing markers that lexical overlap must not erase."""
+
+    semantics: set[str] = set()
+    if _MERGE_NEGATION_RE.search(statement):
+        semantics.add("polarity:negative")
+    else:
+        semantics.add("polarity:positive")
+    for category, pattern in _MERGE_SENSITIVE_TERMS:
+        for match in pattern.findall(statement):
+            semantics.add(f"{category}:{str(match).casefold()}")
+    return frozenset(semantics)
 
 
 def _absorb_near_duplicate(
@@ -1191,6 +1366,14 @@ def _absorb_near_duplicate(
             continue
         overlap = len(words & existing_words) / len(words | existing_words)
         if overlap < _AC_NEAR_DUPLICATE_JACCARD:
+            continue
+        # Jaccard similarity only identifies a possible duplicate.  It cannot
+        # prove semantic equivalence when statements differ on a state,
+        # fallback, persistence/timing rule, surface, permission, or polarity.
+        # Prefer two visible criteria to silently erasing one such behavior.
+        if _merge_sensitive_semantics(existing.outcome) != _merge_sensitive_semantics(
+            outcome
+        ):
             continue
         merged = existing.model_dump(exclude={"criterion_id"})
         # Strictly more content words means strictly more of the source
@@ -1281,6 +1464,19 @@ _QE_CHECK_LEAD_RE = re.compile(r"^(?:verify|confirm|check)\b", re.I)
 _QE_STATUS_PREFIX_RE = re.compile(r"^(?:proposed|confirmed):\s*", re.I)
 _QE_ARTICLE_PREFIX_RE = re.compile(r"^(?:A|An|The|No|Each)\b")
 _QE_TBD_QUESTION_RE = re.compile(r"\?\s*(?:\(TBD\))?\.?\s*$", re.I)
+_QE_ADD_VIEW_RE = re.compile(
+    r"^Add (?P<view>an? user-facing view) for (?P<subject>each .+?) "
+    r"that (?P<behavior>.+?)[.!?]?$",
+    re.I,
+)
+_QE_PRESERVE_RE = re.compile(
+    r"^Preserve (?P<subject>[^.]+)(?:\.\s*(?P<detail>.+))?[.!?]?$",
+    re.I,
+)
+_QE_FOR_CONTEXT_RE = re.compile(
+    r"^For (?P<context>[^,]+),\s*(?P<statement>.+)$",
+    re.I,
+)
 
 
 def _as_manual_qe_check(text: str) -> str:
@@ -1298,6 +1494,27 @@ def _as_manual_qe_check(text: str) -> str:
         or _QE_TBD_QUESTION_RE.search(value)
     ):
         return value
+    add_view = _QE_ADD_VIEW_RE.match(value)
+    if add_view:
+        return (
+            f"Verify that {add_view.group('subject')} has "
+            f"{add_view.group('view')} that "
+            f"{add_view.group('behavior').rstrip('.!?')}."
+        )
+    preserve = _QE_PRESERVE_RE.match(value)
+    if preserve:
+        subject = preserve.group("subject").strip()
+        if not re.match(r"^(?:the|a|an|each|all)\b", subject, re.I):
+            subject = f"the {subject}"
+        detail = (preserve.group("detail") or "").strip().rstrip(".!?")
+        suffix = f"; {detail[0].lower() + detail[1:]}" if detail else ""
+        return f"Verify that {subject} stay unchanged{suffix}."
+    context = _QE_FOR_CONTEXT_RE.match(value)
+    if context:
+        statement = context.group("statement").strip().rstrip(".!?")
+        return (
+            f"Verify that for {context.group('context').strip()}, {statement}."
+        )
     article = _QE_ARTICLE_PREFIX_RE.match(value)
     if article:
         value = article.group(0).lower() + value[article.end():]
@@ -1331,6 +1548,7 @@ def _acceptance_source_line(
     fact_ids: list[str],
     facts_by_id: Mapping[str, Any],
     evidence_refs: list[str] | None = None,
+    clarification_source_lines: Mapping[str, str] | None = None,
 ) -> str:
     """Human-facing Source line for one acceptance criterion.
 
@@ -1347,35 +1565,75 @@ def _acceptance_source_line(
         if label not in labels:
             labels.append(label)
 
+    def describe(reference: str) -> str:
+        value = reference.strip()
+        lowered = value.casefold()
+        jira_match = re.search(r"\b[A-Z][A-Z0-9]+-\d+\b", value, re.IGNORECASE)
+        if lowered.startswith("jira:"):
+            return f"Jira {jira_match.group(0).upper()}" if jira_match else value
+        if "attachment" in lowered:
+            return f"Jira attachment: {value}"
+        if "experienceleague.adobe.com" in lowered:
+            return f"Experience League: {value}"
+        if lowered.startswith(("doc:", "learned-doc:")):
+            return f"Product documentation: {value.split(':', 1)[1].strip()}"
+        if lowered.startswith(("repo:", "code:", "github:")):
+            return f"Implementation source: {value}"
+        if lowered.startswith("clarification:"):
+            return f"Human product decision record: {value}"
+        return ""
+
     for fact_id in fact_ids:
         fact = facts_by_id.get(fact_id)
         if fact is None:
             continue
         reference = str(getattr(fact, "source_reference", "") or "")
-        lowered = reference.lower()
-        if "attachment" in lowered:
-            add("Jira attachments")
-        elif lowered.startswith("jira:"):
-            add("Jira")
-        elif "experienceleague.adobe.com" in lowered:
-            add("Experience League")
-        elif lowered.startswith(("doc:", "learned-doc:")):
-            add("Product documentation")
-        elif lowered.startswith(("repo:", "code:", "github:")):
-            add("Implementation evidence")
+        label = describe(reference)
+        if label:
+            add(label)
     # Admitted research cites its sources as documentation slugs rather than
     # contract facts, so a criterion grounded by researched documentation must
     # credit that documentation instead of silently inheriting the Jira label
     # of the question that triggered the research.
     for ref in evidence_refs or []:
-        lowered = str(ref).lower()
-        if lowered.startswith(("doc:", "learned-doc:")):
-            add("Product documentation")
-        elif lowered.startswith(("repo:", "code:", "github:")):
-            add("Implementation evidence")
+        reference = str(ref)
+        label = (clarification_source_lines or {}).get(reference) or describe(
+            reference
+        )
+        if label:
+            add(label)
     if not labels:
-        return "QE-derived coverage."
+        return (
+            "QE-derived coverage: no named Jira, documentation, or implementation "
+            "source establishes this additional coverage."
+        )
     return " + ".join(labels) + "."
+
+
+def _clarification_source_lines(
+    clarifications: list[HumanClarification] | None,
+) -> dict[str, str]:
+    """Name admitted human decisions without misattributing them to Jira text."""
+
+    labels: dict[str, str] = {}
+    for clarification in clarifications or []:
+        if clarification.status != ClarificationStatus.ADMITTED:
+            continue
+        reference = f"clarification:{clarification.clarification_id}"
+        context = " ".join(clarification.source_context.split())
+        jira_match = re.search(
+            r"\b[A-Z][A-Z0-9]+-\d+\b", context, re.IGNORECASE
+        )
+        if jira_match:
+            labels[reference] = (
+                f"{jira_match.group(0).upper()} — "
+                f"{clarification.provided_by}-confirmed product decision"
+            )
+        elif context:
+            labels[reference] = f"Human product decision: {context}"
+        else:
+            labels[reference] = f"Human product decision record: {reference}"
+    return labels
 
 
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
@@ -1621,11 +1879,11 @@ _RAW_FRAGMENT_RE = re.compile(
     r"|\bclass\s+[A-Z]\w*|\bdef\s+\w+\(|\b[A-Z][\w$]*\.[a-z][\w$]*\s*\("
     r"|\bFeature:\s)"
 )
-
-# D1-d: the most sub-points one criterion may absorb from regression-class
-# coverage.  The contract stays scannable; anything beyond the bound is
-# already represented by the coverage matrix in the trace.
-_MAX_VARIANT_SUB_POINTS = 4
+_VARIANT_METADATA_RE = re.compile(
+    r"^(?:in scope|[^:]+(?:type|version|processing|deployment|preset)):\s*"
+    r"[A-Za-z0-9_. -]+\.?$",
+    re.IGNORECASE,
+)
 
 # D1-d: how much subject a regression variant must share with the outcome it
 # qualifies, measured against the smaller of the two subjects.
@@ -1642,6 +1900,8 @@ def _derive_variant_statement(candidate: str) -> str | None:
 
     text = " ".join(candidate.split())
     if not text:
+        return None
+    if _VARIANT_METADATA_RE.match(text):
         return None
     if (
         _COVERAGE_FILLER_RE.search(text)
@@ -1667,7 +1927,12 @@ def _derive_variant_statement(candidate: str) -> str | None:
 
 
 def _closest_variant_host(
-    variant: str, written: list["WrittenAcceptanceCriterion"]
+    variant: str,
+    written: list["WrittenAcceptanceCriterion"],
+    *,
+    source_fact_ids: list[str] | None = None,
+    evidence_ids: list[str] | None = None,
+    allow_lineage_fallback: bool = False,
 ) -> "WrittenAcceptanceCriterion | None":
     """Pick the criterion a regression variant qualifies, or None.
 
@@ -1676,7 +1941,10 @@ def _closest_variant_host(
     makes it useful.  The overlap is therefore normalised against the smaller
     subject, which keeps the "genuinely shared subject matter" requirement
     without punishing a specific clause for being specific.  No host means the
-    behavior stays out of the contract - it never invents a parent.
+    behavior stays out of the contract - it never invents a parent.  A typed
+    coverage variant may use its admitted fact/evidence binding as a narrow
+    fallback when wording differences such as singular/plural forms make the
+    lexical score insufficient; ambiguous lineage never chooses a host.
     """
 
     variant_tokens = _content_tokens(variant)
@@ -1698,7 +1966,22 @@ def _closest_variant_host(
         if score > best_score:
             best_score = score
             best = criterion
-    return best if best_score >= _VARIANT_HOST_MIN_OVERLAP else None
+    if best_score >= _VARIANT_HOST_MIN_OVERLAP:
+        return best
+    if not allow_lineage_fallback:
+        return None
+    source_fact_set = set(source_fact_ids or [])
+    evidence_set = set(evidence_ids or [])
+    lineage_hosts = [
+        criterion
+        for criterion in written
+        if not criterion.unresolved
+        and (
+            source_fact_set & set(criterion.source_fact_ids)
+            or evidence_set & set(criterion.evidence_ids)
+        )
+    ]
+    return lineage_hosts[0] if len(lineage_hosts) == 1 else None
 
 # UX1: human-question quality contract - a user-facing question must be a
 # product behavior decision readable without repository context.  Raw
@@ -1895,13 +2178,30 @@ def _behavior_subject_from_facts(facts: ContractFactSet) -> str:
 # promotion guard itself never uses keywords - it uses the evidence role
 # assigned here plus claim/evidence token coverage and authority.
 _PROBLEM_SHAPE_RE = re.compile(
-    r"\b(?:there is no|no easy way|not easy to|difficult to|hard to|cumbersome|"
+    r"\b(?:there is no|no (?:\w+\s+){0,2}way to|not easy to|difficult to|hard to|cumbersome|"
     r"painful|fragile|error[- ]prone|time[- ]consuming|"
     r"does not (?:have|provide|offer|support|allow|include)|"
     r"do not (?:have|provide|offer|support|allow)|"
     r"lacks?|lack of|missing|cannot|can't|unable to|no way to|no option to|"
     r"not driven by|not supported|not available|no visibility|"
+    r"neither\s+(?:the\s+)?users?\s+ha(?:s|ve)\s+visibility|"
+    r"not acceptable|"
     r"manual(?:ly)?(?:\s+(?:process|step|workflow|approach|way))?)\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_NEGATIVE_CONTRACT_RE = re.compile(
+    r"\b(?:must\s+not|should\s+not|is\s+not\s+acceptable|are\s+not\s+acceptable|"
+    r"not\s+permitted|prohibited)\b",
+    re.IGNORECASE,
+)
+_UNACCEPTABLE_CONTRACT_RE = re.compile(
+    r"\b(?:is|are)\s+not\s+acceptable\b",
+    re.IGNORECASE,
+)
+_UNRESOLVED_VALUE_SOURCE_RE = re.compile(
+    r"\b(?:is|are)\s+not\s+"
+    r"(?:driven|derived|populated|managed|configured)\s+by\s+"
+    r"(?P<source>.+?)(?=(?:[?!;,]|\.(?:\s|$)|$))",
     re.IGNORECASE,
 )
 # Imperative language marks a requirement, not a problem statement, even when
@@ -1909,6 +2209,13 @@ _PROBLEM_SHAPE_RE = re.compile(
 _IMPERATIVE_REQUIREMENT_RE = re.compile(
     r"\b(?:must|shall|should|required|needs? to|has to|have to|is expected to|"
     r"are expected to|provide|support|allow)\b",
+    re.IGNORECASE,
+)
+# A phrase such as "what label should be applied" reports a user's current
+# decision burden.  It is not an imperative product requirement, even though
+# it contains the word "should".
+_INDIRECT_SHOULD_CONTEXT_RE = re.compile(
+    r"\b(?:what|which|how|where)\b[^.?!]{0,80}\bshould\b",
     re.IGNORECASE,
 )
 
@@ -2467,6 +2774,14 @@ _DIMENSION_KEYWORDS: dict[SemanticDimension, tuple[str, ...]] = {
         "computed",
         "source of truth",
     ),
+    SemanticDimension.SORT_VALUE: (
+        "sort key",
+        "sort by",
+        "ordered by",
+        "order by",
+        "collation",
+        "comparison value",
+    ),
     SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION: (
         "resolved",
         "resolution",
@@ -2538,6 +2853,7 @@ _QUESTION_TEXT: dict[SemanticDimension, str] = {
     SemanticDimension.NESTED_REFERENCED_CONTENT: "Can nested referenced content reach {entity}?",
     SemanticDimension.ALTERNATE_REPRESENTATION: "Is there another representation of {entity}?",
     SemanticDimension.VALUE_PROVENANCE: "Where does the value shown for {entity} come from?",
+    SemanticDimension.SORT_VALUE: "Which value is used to sort or order {entity}?",
     SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION: "Can the value for {entity} be resolved indirectly through referenced or reused content?",
     SemanticDimension.IDENTITY_CHANGE: "What happens to the stored state for {entity} when the underlying item is moved or renamed?",
     SemanticDimension.MUTATION_FRESHNESS: "Does {entity} read an updated value after its source changes, or can an out-of-date value remain?",
@@ -2646,6 +2962,7 @@ _EXPANSION_TRIGGER_AXES: dict[
         CoverageExpansionAxis.VALUE_PROVENANCE,
         CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
         CoverageExpansionAxis.VALUE_RESOLUTION_OR_INDIRECTION,
+        CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
         CoverageExpansionAxis.MUTATION_AND_FRESHNESS,
     ),
     CoverageExpansionTrigger.EXPORTED_VALUE: (
@@ -2654,6 +2971,7 @@ _EXPANSION_TRIGGER_AXES: dict[
         CoverageExpansionAxis.FALLBACK_AND_ABSENCE,
     ),
     CoverageExpansionTrigger.ORDERING_RULE: (
+        CoverageExpansionAxis.SORT_VALUE,
         CoverageExpansionAxis.IDENTITY_AND_LIFECYCLE,
         CoverageExpansionAxis.CONSUMER_SURFACE_PARITY,
         CoverageExpansionAxis.CONTEXT_AND_SCOPE,
@@ -2699,6 +3017,7 @@ _EXPANSION_AXIS_DIMENSIONS: dict[
     CoverageExpansionAxis, tuple[SemanticDimension, ...]
 ] = {
     CoverageExpansionAxis.VALUE_PROVENANCE: (SemanticDimension.VALUE_PROVENANCE,),
+    CoverageExpansionAxis.SORT_VALUE: (SemanticDimension.SORT_VALUE,),
     CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
         SemanticDimension.FALLBACK,
         SemanticDimension.ABSENT_VALUE,
@@ -2742,6 +3061,10 @@ _EXPANSION_AXIS_QUESTION: dict[CoverageExpansionAxis, str] = {
         "Where does the value shown for {subject} come from, and does every "
         "supported way of setting it behave the same?"
     ),
+    CoverageExpansionAxis.SORT_VALUE: (
+        "Which value is used to sort or order {subject}, and can it differ "
+        "from the displayed value?"
+    ),
     CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
         "What is shown for {subject} when the expected value is missing or empty?"
     ),
@@ -2774,6 +3097,10 @@ _EXPANSION_AXIS_RATIONALE: dict[CoverageExpansionAxis, str] = {
     CoverageExpansionAxis.VALUE_PROVENANCE: (
         "A named value is not atomic until every channel that can set it is known."
     ),
+    CoverageExpansionAxis.SORT_VALUE: (
+        "The displayed value and the key used to order it can be different "
+        "contracts and must not be merged."
+    ),
     CoverageExpansionAxis.FALLBACK_AND_ABSENCE: (
         "Absence behavior is a separate product contract from the populated case."
     ),
@@ -2799,6 +3126,79 @@ _EXPANSION_AXIS_RATIONALE: dict[CoverageExpansionAxis, str] = {
         "Broken and invalid inputs are a distinct contract from the positive path."
     ),
 }
+
+
+_DISPLAY_VALUE_SUBJECT_RE = re.compile(
+    r"\b(?:topic|map|asset|file|output|report|content|document|item)\s+"
+    r"(?:title|label|name|value|metadata)\b|\b(?:dc:title|jcr:title)\b",
+    re.IGNORECASE,
+)
+_SORT_VALUE_SUBJECT_RE = re.compile(
+    r"\b(?:sort(?:ed|ing)?|order(?:ed|ing)?)\s+(?:by|using)\s+"
+    r"(?P<subject>[a-z][a-z0-9 _-]{0,60}?)(?=[,.;]|\s+(?:and|while|but)\b|$)",
+    re.IGNORECASE,
+)
+
+
+def _expansion_subjects_from_ticket_facts(
+    ticket_facts: list[Any],
+    fallback_subjects: list[str],
+) -> dict[CoverageExpansionTrigger, list[tuple[str, list[str]]]]:
+    """Bind generic value discovery to the fact that made it material.
+
+    A summary-shaped model entity is useful for broad discovery but is too
+    vague for current-behavior research.  When Jira names a displayed value or
+    sort key, use that concrete subject and carry the fact ID to the candidate,
+    closure, and eventually the research question.
+    """
+
+    displayed: dict[str, set[str]] = defaultdict(set)
+    sorted_values: dict[str, set[str]] = defaultdict(set)
+    for fact in ticket_facts:
+        literal = str(fact.literal)
+        for match in _DISPLAY_VALUE_SUBJECT_RE.finditer(literal):
+            displayed[" ".join(match.group(0).split())].add(fact.fact_id)
+        for match in _SORT_VALUE_SUBJECT_RE.finditer(literal):
+            subject = " ".join(match.group("subject").split()).strip(" -")
+            if subject:
+                sorted_values[subject].add(fact.fact_id)
+
+    def rows(values: dict[str, set[str]]) -> list[tuple[str, list[str]]]:
+        return [
+            (subject, sorted(fact_ids))
+            for subject, fact_ids in sorted(values.items(), key=lambda row: row[0].casefold())
+        ]
+
+    display_rows = rows(displayed)
+    sort_rows = rows(sorted_values)
+    fallback = [
+        (
+            subject,
+            sorted(
+                {
+                    fact.fact_id
+                    for fact in ticket_facts
+                    if subject.casefold() in str(fact.literal).casefold()
+                }
+            ),
+        )
+        for subject in fallback_subjects
+    ]
+    default_rows = fallback or [("the requested behavior", [])]
+    return {
+        CoverageExpansionTrigger.DISPLAYED_VALUE: display_rows or default_rows,
+        CoverageExpansionTrigger.EXPORTED_VALUE: display_rows or default_rows,
+        CoverageExpansionTrigger.ORDERING_RULE: sort_rows or display_rows or default_rows,
+        CoverageExpansionTrigger.COMPARED_OR_FILTERED_VALUE: (
+            display_rows or default_rows
+        ),
+        CoverageExpansionTrigger.PERSISTED_VALUE: display_rows or default_rows,
+        CoverageExpansionTrigger.RESOLVED_REFERENCE: default_rows,
+        CoverageExpansionTrigger.IDENTITY_REFERENCE: display_rows or default_rows,
+        CoverageExpansionTrigger.STATE_TRANSITION: default_rows,
+        CoverageExpansionTrigger.CONFIGURATION_DEPENDENCY: display_rows or default_rows,
+        CoverageExpansionTrigger.MULTIPLE_CONSUMER_SURFACES: display_rows or default_rows,
+    }
 
 
 # Each dependency kind is decided by exactly one discovery axis, so a record is
@@ -3283,11 +3683,13 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
         "id",
         "issue_key",
         "jira_key",
+        "lookup_message",
         "source",
         "lookup_source",
         "source_hash",
         "source_url",
         "canonical_url",
+        "url",
         "chunk_id",
         "snapshot_id",
         "fingerprint",
@@ -3309,6 +3711,7 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
         "target_key",
         "target_summary",
         "mime_type",
+        "filename",
         "size",
         "author",
     }:
@@ -3324,6 +3727,44 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
     )
 
 
+_RETRIEVED_TITLE_METADATA_SOURCES = frozenset(
+    {
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+        EvidenceSourceType.DITA_SPECIFICATION,
+        EvidenceSourceType.DITA_OT_DOCUMENTATION,
+        EvidenceSourceType.AEM_ASSETS_PLATFORM_DOCUMENTATION,
+        EvidenceSourceType.CURRENT_CODE,
+        EvidenceSourceType.CURRENT_PR,
+        EvidenceSourceType.EXISTING_AUTOMATION,
+        EvidenceSourceType.HISTORICAL_JIRA,
+        EvidenceSourceType.EVIDENCE_GRAPH_LEAF,
+        EvidenceSourceType.MODEL_INFERENCE,
+        EvidenceSourceType.IMPLEMENTATION_DIFF,
+        EvidenceSourceType.CODE_DIFF,
+        EvidenceSourceType.BENCHMARK_PUBLIC_INPUT,
+        EvidenceSourceType.CODEX_MANIFEST,
+        EvidenceSourceType.UNKNOWN,
+    }
+)
+
+
+def _is_retrieved_title_metadata(
+    source_type: EvidenceSourceType, path: str
+) -> bool:
+    """Keep retrieved page titles out of contract facts.
+
+    A documentation title helps retrieval but does not establish product behavior.
+    Ticket titles are deliberately retained because they can express the request.
+    """
+
+    normalized_path = path.casefold().replace("[", ".").replace("]", "")
+    leaf = normalized_path.rsplit(".", 1)[-1]
+    return (
+        source_type in _RETRIEVED_TITLE_METADATA_SOURCES
+        and leaf in {"title", "page_title", "heading"}
+    )
+
+
 # Terminology facts exist to clarify the TICKET AUTHOR's words.  Retrieved
 # documentation, specs, code, diffs, and automation text are evidence, not a
 # human asking anything - quoted sentences inside them must never become
@@ -3334,6 +3775,8 @@ _TICKET_UNDERSTANDING_AUTHORITIES = frozenset(
         AuthorityClass.USER_EXPECTATION,
         AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
         AuthorityClass.CONFIRMED_PRODUCT_DECISION,
+        AuthorityClass.PROPOSED,
+        AuthorityClass.PENDING_HUMAN_REVIEW,
     }
 )
 
@@ -3376,13 +3819,29 @@ _SCALAR_SCOPE_FACT_TYPES = frozenset(
     }
 )
 
+# These fact types preserve identifiers, values, and context needed to trace an
+# admitted contract. They do not by themselves express a product behavior, so
+# classifying them as P1 would create a false regression obligation from a Jira
+# label, attachment name, or current-state detail.
+_COVERAGE_BEARING_FACT_TYPES = frozenset(
+    {
+        ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+        ContractFactType.OUT_OF_SCOPE,
+        ContractFactType.COMPATIBILITY_REQUIREMENTS,
+        ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS,
+        ContractFactType.HUMAN_OPEN_QUESTIONS,
+        ContractFactType.ENGINEERING_DESIGN_QUESTIONS,
+        ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+        ContractFactType.PROBLEM_STATEMENT,
+    }
+)
 
-# D1-a: a requested capability is still a requirement when the reporter phrases
-# it politely as a question ("Could we add a where-used for each topic?").
-# Classifying it as a human open question on the strength of the "?" alone
-# removes a requested product capability from the acceptance contract entirely.
-# These ask the PRODUCT to do something; a genuine open question asks the TEAM
-# to decide something.
+
+# A capability-shaped Jira request ("Could we add a where-used view?") describes
+# desired scope but does not, by itself, prove that Product accepted the behavior.
+# Keep it visible as a bounded product decision unless it appears in the accepted
+# UAC field. The Writer may then render a TBD, but must not assert the capability
+# as a settled product outcome.
 _REQUESTED_CAPABILITY_QUESTION_RE = re.compile(
     r"\b(?:"
     r"(?:could|can|would|will|may)\s+(?:we|you|it|the\s+\w+)\s+"
@@ -3398,14 +3857,23 @@ _REQUESTED_CAPABILITY_QUESTION_RE = re.compile(
 
 
 def _is_requested_capability(literal: str) -> bool:
-    """True when a '?' sentence asks the product for a capability.
-
-    Such a literal keeps its requirement character: it stays in the acceptance
-    lane (as a bounded TBD when its semantics are unresolved) instead of being
-    diverted to the human-open-question lane by punctuation alone.
-    """
+    """True when a sentence asks the product to add a capability."""
 
     return bool(_REQUESTED_CAPABILITY_QUESTION_RE.search(literal or ""))
+
+
+def _is_accepted_contract_path(path: str) -> bool:
+    """Whether a flattened source path is an explicitly accepted Jira contract."""
+
+    key = (path or "").casefold()
+    return any(
+        marker in key
+        for marker in (
+            "acceptance_criteria",
+            "accepted_uac",
+            "current_uac_contract",
+        )
+    )
 
 
 def _fact_types(path: str, literal: str) -> list[ContractFactType]:
@@ -3465,23 +3933,31 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
     for fact_type, signals in mappings:
         if any(signal in combined for signal in signals):
             found.append(fact_type)
-    # D1-a: a "?" alone must not convert a requested product capability into a
-    # human open question.  The explicit open-question path keys (and an
-    # explicit design question) still classify; bare punctuation does not.
-    if (
-        ContractFactType.HUMAN_OPEN_QUESTIONS in found
-        and _is_requested_capability(literal)
-        and not any(
+    if _EXPLICIT_NEGATIVE_CONTRACT_RE.search(literal):
+        found.append(ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS)
+    # A politely phrased capability request in Jira description/comments is
+    # not approval to promise the capability. An explicit accepted-UAC field
+    # remains authoritative even when its human wording is interrogative.
+    if _is_requested_capability(literal):
+        explicitly_open = any(
             signal in combined for signal in ("open_question", "open question")
         )
-    ):
-        found = [
-            fact_type
-            for fact_type in found
-            if fact_type != ContractFactType.HUMAN_OPEN_QUESTIONS
-        ]
-        if ContractFactType.DIRECT_EXPECTED_BEHAVIOR not in found:
-            found.append(ContractFactType.DIRECT_EXPECTED_BEHAVIOR)
+        if _is_accepted_contract_path(path) and not explicitly_open:
+            found = [
+                fact_type
+                for fact_type in found
+                if fact_type != ContractFactType.HUMAN_OPEN_QUESTIONS
+            ]
+            if ContractFactType.DIRECT_EXPECTED_BEHAVIOR not in found:
+                found.append(ContractFactType.DIRECT_EXPECTED_BEHAVIOR)
+        else:
+            found = [
+                fact_type
+                for fact_type in found
+                if fact_type != ContractFactType.DIRECT_EXPECTED_BEHAVIOR
+            ]
+            if ContractFactType.HUMAN_OPEN_QUESTIONS not in found:
+                found.append(ContractFactType.HUMAN_OPEN_QUESTIONS)
     if re.search(r"(?:\b\d+(?:\.\d+)?\b|#[0-9a-f]{3,8}\b)", literal, re.IGNORECASE):
         found.append(ContractFactType.EXACT_VALUES)
     if re.search(r"['\"“”][^'\"“”]{2,80}['\"“”]", literal):
@@ -3509,10 +3985,18 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
     # PROBLEM_STATEMENT - it establishes the problem, never a solution.
     # UX1: person-centric burden language forces the problem role even when a
     # generic modal is present, because the modal attaches to the person.
+    has_requirement_imperative = bool(_IMPERATIVE_REQUIREMENT_RE.search(literal))
+    if _INDIRECT_SHOULD_CONTEXT_RE.search(literal):
+        has_requirement_imperative = False
     if (
         _PROBLEM_SHAPE_RE.search(literal)
-        and not _IMPERATIVE_REQUIREMENT_RE.search(literal)
+        and not has_requirement_imperative
     ) or _HUMAN_BURDEN_RE.search(literal):
+        preserved_problem_fact_types = (
+            {ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS}
+            if _EXPLICIT_NEGATIVE_CONTRACT_RE.search(literal)
+            else set()
+        )
         found = [
             row
             for row in found
@@ -3520,7 +4004,18 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
             not in {
                 ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
                 ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS,
+                ContractFactType.EXACT_LABELS,
+                ContractFactType.EXACT_DEFAULTS,
+                ContractFactType.EXACT_VALUES,
+                ContractFactType.EXACT_STATUS_NAMES,
+                ContractFactType.COLORS,
+                ContractFactType.COUNTS,
+                ContractFactType.LIMITS,
+                ContractFactType.HUMAN_TERMINOLOGY,
+                ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+                ContractFactType.COMPATIBILITY_REQUIREMENTS,
             }
+            or row in preserved_problem_fact_types
         ]
         found.append(ContractFactType.PROBLEM_STATEMENT)
     if not found and any(token in key for token in ("summary", "description", "title")):
@@ -3707,6 +4202,7 @@ def _subject_for_dimension(dimension: SemanticDimension) -> AuthoritySubject:
         # dimensions fall through to the PRODUCT_CONTRACT default below and
         # their mandatory research misroutes to documentation.
         SemanticDimension.VALUE_PROVENANCE,
+        SemanticDimension.SORT_VALUE,
         SemanticDimension.VALUE_RESOLUTION_OR_INDIRECTION,
         SemanticDimension.BROKEN_RESOLUTION,
         SemanticDimension.IDENTITY_CHANGE,
@@ -3768,6 +4264,24 @@ def _target_sources(subject: AuthoritySubject) -> list[EvidenceSourceType]:
             EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
         ],
     }[subject]
+
+
+def _product_decision_sources() -> list[EvidenceSourceType]:
+    """Return ticket-authority sources that can settle a product decision.
+
+    A question about which source Product wants to use is not a question about
+    how an existing source behaves.  Documentation may describe a candidate
+    source, but cannot choose it for the ticket.
+    """
+
+    return [
+        EvidenceSourceType.ACCEPTED_UAC,
+        EvidenceSourceType.PRODUCT_DECISION,
+        EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+        EvidenceSourceType.JIRA_DESCRIPTION,
+        EvidenceSourceType.JIRA_COMMENT,
+        EvidenceSourceType.CUSTOMER_REQUEST,
+    ]
 
 
 # A contract fact must read as observable behaviour, not a raw evidence span. These
@@ -3904,6 +4418,210 @@ def _lint_acceptance_criteria(statements: list[str]) -> list[str]:
             "style) and keep granular detail as sub-points or in the linked full record"
         )
     return problems
+
+
+_GENERIC_QE_OPENING_RE = re.compile(
+    r"^verify that (?:the )?(?:system|it|this|expected behavior)\b", re.IGNORECASE
+)
+_UNOBSERVABLE_QE_OUTCOME_RE = re.compile(
+    r"\b(?:expected behavior|behavior)\s+(?:is|remains|was)\s+"
+    r"(?:retained|preserved|correct|successful)\b",
+    re.IGNORECASE,
+)
+_GENERIC_SOURCE_LINE_RE = re.compile(
+    r"^(?:jira|experience league|product documentation|implementation evidence|"
+    r"qe-derived coverage)\.?$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_projection_text(value: str) -> str:
+    """Normalize visible wording for deterministic coverage comparisons."""
+
+    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+
+
+def _writer_projection_completeness(
+    dispositions: list[CoverageDispositionRecord],
+    written: list[WrittenAcceptanceCriterion],
+    sections_by_source_id: Mapping[str, list[PlanSection]],
+) -> tuple[list[WriterProjectionRecord], list[str]]:
+    """Prove that every applicable P0/P1 behavior has a human-facing UAC path."""
+
+    records: list[WriterProjectionRecord] = []
+    failures: list[str] = []
+    for row in dispositions:
+        if (
+            row.applicability != "APPLICABLE"
+            or row.priority not in {"P0", "P1"}
+        ):
+            continue
+        raw_variants = list(row.variants)
+        derived_variants = [
+            _derive_variant_statement(variant) for variant in raw_variants
+        ]
+        if row.priority == "P1" and not raw_variants:
+            legacy_variant = _derive_variant_statement(row.candidate)
+            if legacy_variant is None:
+                # The coverage reasoner uses P1 for internal closure/scope
+                # rows as well as actual regression behavior.  Keep an
+                # explicit projection record for those rows, but do not
+                # demand a human AC for text that cannot be a QE check.
+                records.append(
+                    WriterProjectionRecord(
+                        coverage_disposition_id=row.disposition_id,
+                        priority=row.priority,
+                        status=WriterProjectionStatus.EXPLICITLY_EXCLUDED,
+                        reason=(
+                            "Internal scope or closure metadata has no "
+                            "testable regression behavior to project."
+                        ),
+                    )
+                )
+                continue
+            derived_variants = [legacy_variant]
+        matching_sub_points = [
+            (criterion, sub_point)
+            for criterion in written
+            for sub_point in criterion.sub_points
+            if row.disposition_id in sub_point.source_disposition_ids
+        ]
+        matching_criteria = [
+            criterion
+            for criterion in written
+            if row.disposition_id in criterion.source_disposition_ids
+        ]
+        projected_texts = [
+            criterion.outcome
+            for criterion in matching_criteria
+        ] + [sub_point.text for _, sub_point in matching_sub_points]
+        criterion_id = ""
+        if matching_sub_points:
+            criterion_id = matching_sub_points[0][0].criterion_id
+            status = (
+                WriterProjectionStatus.ATTACHED_TBD
+                if any(
+                    sub_point.kind == AcceptanceSubPointKind.TBD_QUESTION
+                    for _, sub_point in matching_sub_points
+                )
+                else WriterProjectionStatus.ATTACHED_VARIANT
+            )
+            reason = "Attached to the qualifying acceptance criterion."
+        elif matching_criteria:
+            criterion_id = matching_criteria[0].criterion_id
+            status = WriterProjectionStatus.STANDALONE_AC
+            reason = "Rendered as a standalone acceptance criterion."
+        elif row.disposition_id in sections_by_source_id:
+            status = WriterProjectionStatus.RETAINED_QE_REGRESSION
+            reason = (
+                "Retained only in a non-acceptance coverage section; it is not "
+                "visible in the human-facing UAC."
+            )
+        else:
+            status = WriterProjectionStatus.EXPLICITLY_EXCLUDED
+            reason = "No human-facing projection was produced."
+
+        missing_variants: list[str] = []
+        for raw_variant, variant in zip(raw_variants, derived_variants):
+            if variant is None:
+                missing_variants.append(raw_variant)
+                continue
+            normalized_variant = _normalize_projection_text(variant)
+            if not any(
+                normalized_variant == _normalize_projection_text(text)
+                for text in projected_texts
+            ):
+                missing_variants.append(variant)
+        source_text = " ".join([row.candidate, *row.variants])
+        projected_text = " ".join(projected_texts)
+        lost_negative = (
+            row.contract_type == "NEGATIVE"
+            and bool(_MERGE_NEGATION_RE.search(source_text))
+            and not _MERGE_NEGATION_RE.search(projected_text)
+        )
+        if status in {
+            WriterProjectionStatus.RETAINED_QE_REGRESSION,
+        } or (
+            status == WriterProjectionStatus.EXPLICITLY_EXCLUDED
+            and not reason.startswith("Internal scope or closure metadata")
+        ):
+            failures.append(
+                f"{row.priority} coverage {row.disposition_id} has no "
+                "human-facing acceptance projection."
+            )
+        if missing_variants:
+            failures.append(
+                f"{row.priority} coverage {row.disposition_id} lost typed variants: "
+                + "; ".join(missing_variants)
+            )
+        if lost_negative:
+            failures.append(
+                f"{row.priority} negative coverage {row.disposition_id} lost its "
+                "must-not behavior in the human-facing projection."
+            )
+        records.append(
+            WriterProjectionRecord(
+                coverage_disposition_id=row.disposition_id,
+                priority=row.priority,
+                status=status,
+                criterion_id=criterion_id,
+                projected_variant_texts=projected_texts,
+                reason=reason,
+            )
+        )
+    return records, failures
+
+
+def _acceptance_presentation_failures(
+    statements: list[str],
+    source_lines: Mapping[str, str],
+) -> list[str]:
+    """Reject high-risk QE wording and opaque source attribution at delivery."""
+
+    failures: list[str] = []
+    for statement in statements:
+        outcome = statement.partition("\n")[0].strip()
+        source_line = source_lines.get(statement.strip(), "").strip()
+        if _GENERIC_QE_OPENING_RE.search(outcome):
+            failures.append(
+                f"Acceptance criterion has a generic QE subject: {outcome[:120]}"
+            )
+        if _UNOBSERVABLE_QE_OUTCOME_RE.search(outcome):
+            failures.append(
+                f"Acceptance criterion has no observable outcome: {outcome[:120]}"
+            )
+        if (
+            not source_line
+            or _GENERIC_SOURCE_LINE_RE.fullmatch(source_line)
+            or source_line.casefold().startswith("qe-derived coverage:")
+        ):
+            failures.append(
+                "Acceptance criterion has no openable, criterion-specific source: "
+                f"{outcome[:120]}"
+            )
+    return failures
+
+
+def _acceptance_contract_delivery_failures(
+    statements: list[str],
+    source_lines: Mapping[str, str],
+    lint_problems: list[str],
+) -> list[str]:
+    """Return quality failures that make a compact UAC unsafe to deliver."""
+
+    failures = _acceptance_presentation_failures(statements, source_lines)
+    failures.extend(
+        f"Acceptance criterion is too long for a two-line QE UAC: {problem}"
+        for problem in lint_problems
+        if problem.startswith("EXCESSIVE_LENGTH:")
+    )
+    if len(statements) > _LINT_MAX_AC_COUNT:
+        failures.append(
+            "Acceptance-contract projection would hide "
+            f"{len(statements) - _LINT_MAX_AC_COUNT} criterion/criteria; "
+            "consolidate without losing coverage before delivery."
+        )
+    return failures
 
 
 def _plain_candidate(value: str) -> str:
@@ -4326,7 +5044,9 @@ class CanonicalTestPlanReasoningService:
                         # statement and must never be presented to a reader as
                         # configuration, scope, or coverage evidence.
                         continue
-                    if _is_contract_metadata(path, literal):
+                    if _is_contract_metadata(
+                        path, literal
+                    ) or _is_retrieved_title_metadata(record.source_type, path):
                         continue
                     fact_types = _fact_types(path, literal)
                     is_scalar_scope_fact = bool(
@@ -4428,14 +5148,17 @@ class CanonicalTestPlanReasoningService:
                                 else "",
                             )
                         )
+        # A confirmed product decision is authoritative for the decision it
+        # names, but it is not necessarily the ticket's complete accepted
+        # UAC.  Treating one as a full accepted contract suppresses adjacent
+        # Jira requirements that must remain in the coverage set.
         has_accepted = any(
-            fact.authority_class in _ACCEPTED_AUTHORITIES
-            or any(
-                record.evidence_id in fact.source_evidence_ids
-                and record.source_type == EvidenceSourceType.ACCEPTED_UAC
-                for record in bundle.records
-            )
-            for fact in facts
+            record.source_type
+            in {
+                EvidenceSourceType.ACCEPTED_UAC,
+                EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+            }
+            for record in bundle.records
         )
         has_human = any(
             record.source_type in _HUMAN_CONTRACT_SOURCES for record in bundle.records
@@ -4477,11 +5200,19 @@ class CanonicalTestPlanReasoningService:
     def route_domains(
         self, bundle: CanonicalEvidenceBundle, facts: ContractFactSet
     ) -> list[DomainActivation]:
+        ticket_records = [
+            record
+            for record in bundle.records
+            if record.requirement_authority in _TICKET_UNDERSTANDING_AUTHORITIES
+        ]
         positive_values = [
             fact.literal
             for fact in facts.facts
-            if fact.fact_type != ContractFactType.OUT_OF_SCOPE
-        ] + [_record_text(record) for record in bundle.records]
+            if (
+                fact.fact_type != ContractFactType.OUT_OF_SCOPE
+                and fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+            )
+        ] + [_record_text(record) for record in ticket_records]
         text = " ".join(_positive_scope_clauses(positive_values)).casefold()
         padded = f" {text} "
         scale_text = _scale_detection_text(padded)
@@ -4512,7 +5243,7 @@ class CanonicalTestPlanReasoningService:
                         confidence=min(0.98, 0.65 + 0.08 * len(matched)),
                         evidence_ids=[
                             record.evidence_id
-                            for record in bundle.records
+                            for record in ticket_records
                             if any(
                                 _contains_domain_signal(
                                     " ".join(
@@ -4546,20 +5277,11 @@ class CanonicalTestPlanReasoningService:
         # Scope is a TICKET decision, never a documentation statement.  Retrieved
         # product documentation legitimately says things like "Applies to folders
         # under Experience Manager DAM"; that sentence describes the doc's own
-        # subject, not this ticket's scope.  Admitting it made an unrelated
-        # Experience League page define in-scope/deployment for the run.  Docs
-        # still establish existing behavior everywhere else - they just cannot
-        # declare what this ticket covers.
-        _SCOPE_DEFINING_TYPES = {
-            ContractFactType.IN_SCOPE,
-            ContractFactType.OUT_OF_SCOPE,
-            ContractFactType.DEPLOYMENT_MODE,
-        }
+        # subject, not this ticket's scope.  The same rule applies to product
+        # area, output, and semantic units: external evidence can answer a
+        # bound research question, but cannot activate a new ticket dimension.
         for fact in facts.facts:
-            if (
-                fact.fact_type in _SCOPE_DEFINING_TYPES
-                and fact.authority_class not in _TICKET_UNDERSTANDING_AUTHORITIES
-            ):
+            if fact.authority_class not in _TICKET_UNDERSTANDING_AUTHORITIES:
                 continue
             by_type[fact.fact_type].append(fact)
         publishing = any(row.domain == IssueDomain.PUBLISHING for row in domains)
@@ -4568,7 +5290,10 @@ class CanonicalTestPlanReasoningService:
             [
                 fact.literal
                 for fact in facts.facts
-                if fact.fact_type != ContractFactType.OUT_OF_SCOPE
+                if (
+                    fact.fact_type != ContractFactType.OUT_OF_SCOPE
+                    and fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+                )
             ]
         )
         dita_ot = DitaOtProcessingState.NOT_APPLICABLE
@@ -4694,6 +5419,7 @@ class CanonicalTestPlanReasoningService:
             {
                 fact.literal
                 for fact in facts.facts
+                if fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
                 if "share" in fact.literal.casefold()
                 and any(
                     token in fact.literal.casefold()
@@ -4786,7 +5512,11 @@ class CanonicalTestPlanReasoningService:
                 for fact in by_type[ContractFactType.DEPLOYMENT_MODE]
             ],
             unresolved_fields=unresolved,
-            source_fact_ids=[fact.fact_id for fact in facts.facts],
+            source_fact_ids=[
+                fact.fact_id
+                for fact in facts.facts
+                if fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+            ],
         )
 
     def extract_change_surfaces(
@@ -5082,7 +5812,10 @@ class CanonicalTestPlanReasoningService:
             [
                 fact.literal
                 for fact in facts.facts
-                if fact.fact_type != ContractFactType.OUT_OF_SCOPE
+                if (
+                    fact.fact_type != ContractFactType.OUT_OF_SCOPE
+                    and fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+                )
             ]
             + entities
         )
@@ -5199,12 +5932,16 @@ class CanonicalTestPlanReasoningService:
         """
 
         entities = list(dict.fromkeys(row.entity for row in surfaces))[:12]
+        ticket_facts = [
+            fact
+            for fact in facts.facts
+            if (
+                fact.fact_type != ContractFactType.OUT_OF_SCOPE
+                and fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+            )
+        ]
         units = _semantic_text_units(
-            [
-                fact.literal
-                for fact in facts.facts
-                if fact.fact_type != ContractFactType.OUT_OF_SCOPE
-            ]
+            [fact.literal for fact in ticket_facts]
             + entities
             + list(model.primary_entities or [])
         )
@@ -5231,26 +5968,52 @@ class CanonicalTestPlanReasoningService:
         } <= triggers:
             triggers.add(CoverageExpansionTrigger.MULTIPLE_CONSUMER_SURFACES)
 
-        subjects = list(dict.fromkeys((model.primary_entities or []) + entities))[:4]
-        if not subjects:
-            subjects = ["the requested behavior"]
+        fallback_subjects = list(
+            dict.fromkeys((model.primary_entities or []) + entities)
+        )[:4]
+        if not fallback_subjects:
+            fallback_subjects = ["the requested behavior"]
+        subjects_by_trigger = _expansion_subjects_from_ticket_facts(
+            ticket_facts,
+            fallback_subjects,
+        )
+        fact_ids_by_trigger: dict[CoverageExpansionTrigger, set[str]] = {
+            trigger: {
+                fact.fact_id
+                for fact in ticket_facts
+                if _units_contain_any([fact.literal], _EXPANSION_TRIGGER_SIGNALS[trigger])
+            }
+            for trigger in triggers
+            if trigger != CoverageExpansionTrigger.MULTIPLE_CONSUMER_SURFACES
+        }
+        fact_ids_by_trigger[CoverageExpansionTrigger.MULTIPLE_CONSUMER_SURFACES] = (
+            fact_ids_by_trigger.get(CoverageExpansionTrigger.DISPLAYED_VALUE, set())
+            | fact_ids_by_trigger.get(CoverageExpansionTrigger.EXPORTED_VALUE, set())
+        )
 
         axis_triggers: dict[CoverageExpansionAxis, CoverageExpansionTrigger] = {}
+        axis_fact_ids: dict[CoverageExpansionAxis, set[str]] = defaultdict(set)
         for trigger in sorted(triggers, key=lambda row: row.value):
             for axis in _EXPANSION_TRIGGER_AXES[trigger]:
                 axis_triggers.setdefault(axis, trigger)
+                axis_fact_ids[axis].update(fact_ids_by_trigger.get(trigger, set()))
 
         candidates: list[BehavioralCoverageCandidate] = []
         for axis, trigger in sorted(
             axis_triggers.items(), key=lambda item: item[0].value
         ):
-            for subject in subjects:
+            for subject, subject_fact_ids in subjects_by_trigger.get(
+                trigger, []
+            ):
                 candidates.append(
                     BehavioralCoverageCandidate(
                         axis=axis,
                         subject=subject,
                         trigger=trigger,
                         dimensions=list(_EXPANSION_AXIS_DIMENSIONS[axis]),
+                        source_fact_ids=sorted(
+                            set(subject_fact_ids) | axis_fact_ids[axis]
+                        ),
                         question=_EXPANSION_AXIS_QUESTION[axis].format(subject=subject),
                         rationale=_EXPANSION_AXIS_RATIONALE[axis],
                     )
@@ -5334,12 +6097,13 @@ class CanonicalTestPlanReasoningService:
         activations: list[ReasoningPatternActivation] | None = None,
         mandatory_families: list[MandatoryInvestigationFamily] | None = None,
         expansion: BehavioralCoverageExpansion | None = None,
+        facts: ContractFactSet | None = None,
     ) -> list[ClosureDimensionResult]:
         signals = signals or []
         activations = activations or []
         mandatory_families = mandatory_families or []
         applicable = self.applicable_semantic_dimensions(
-            bundle, model, expansion=expansion
+            bundle, model, expansion=expansion, facts=facts
         )
         applicable.update(
             row.family_id
@@ -5365,8 +6129,23 @@ class CanonicalTestPlanReasoningService:
                 signal.signal_id in activation.source_signal_ids for signal in signals
             )
         ]
+        expansion_fact_ids: dict[tuple[str, SemanticDimension], set[str]] = (
+            defaultdict(set)
+        )
+        expansion_subjects: list[str] = []
+        if expansion is not None:
+            for candidate in expansion.candidates:
+                if not candidate.material:
+                    continue
+                expansion_subjects.append(candidate.subject)
+                for dimension in candidate.dimensions:
+                    expansion_fact_ids[
+                        (candidate.subject.casefold(), dimension)
+                    ].update(candidate.source_fact_ids)
         entities = list(
-            dict.fromkeys((model.primary_entities or []) + activated_subjects)
+            dict.fromkeys(
+                (model.primary_entities or []) + activated_subjects + expansion_subjects
+            )
         ) or ["AEM Guides behavior"]
         for entity in entities:
             for dimension in SemanticDimension:
@@ -5433,6 +6212,12 @@ class CanonicalTestPlanReasoningService:
                         ),
                         disposition=disposition,
                         evidence_ids=evidence_ids,
+                        source_fact_ids=sorted(
+                            expansion_fact_ids.get(
+                                (entity.casefold(), dimension),
+                                set(),
+                            )
+                        ),
                         rationale=rationale,
                     )
                 )
@@ -5443,17 +6228,39 @@ class CanonicalTestPlanReasoningService:
         bundle: CanonicalEvidenceBundle,
         model: CanonicalBehaviorModel,
         expansion: BehavioralCoverageExpansion | None = None,
+        facts: ContractFactSet | None = None,
     ) -> set[SemanticDimension]:
         """Return the existing deterministic domain/model family set."""
 
+        scoped_records = [
+            record
+            for record in bundle.records
+            if (
+                record.requirement_authority in _TICKET_UNDERSTANDING_AUTHORITIES
+                or record.source_type in _UI_SOURCES
+                or record.source_type in _IMPLEMENTATION_SOURCES
+            )
+        ]
         combined = " ".join(
-            _record_text(record) for record in bundle.records
+            _record_text(record) for record in scoped_records
         ).casefold()
+        ticket_text = (
+            " ".join(
+                fact.literal
+                for fact in facts.facts
+                if (
+                    fact.fact_type != ContractFactType.OUT_OF_SCOPE
+                    and fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+                )
+            ).casefold()
+            if facts is not None
+            else combined
+        )
         domains = set(model.domains)
         dita_like = bool(
             re.search(
                 r"\b(dita|topicref|mapref|bookmap|ditaval|attribute|specialization)\b",
-                combined,
+                ticket_text,
             )
         )
         publishing = IssueDomain.PUBLISHING in domains
@@ -5630,6 +6437,11 @@ class CanonicalTestPlanReasoningService:
                         else OpenQuestionClass.RESEARCH_REQUIRED
                     ),
                     source_closure_ids=[row.closure_id for row in unresolved_rows],
+                    source_fact_ids=[
+                        fact_id
+                        for row in unresolved_rows
+                        for fact_id in row.source_fact_ids
+                    ],
                     investigation_terms=raw_entities,
                 )
             )
@@ -5681,9 +6493,32 @@ class CanonicalTestPlanReasoningService:
                     materiality=InvestigationMateriality.P1,
                 )
             )
+        terminology_literals = {
+            fact.literal
+            for fact in facts.facts
+            if fact.fact_type == ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED
+            and fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+        }
+        has_separate_ticket_expected_behavior = any(
+            fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+            and fact.fact_type
+            in {
+                ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS,
+            }
+            and fact.literal not in terminology_literals
+            for fact in facts.facts
+        )
         for fact in facts.facts:
-            if fact.fact_type != ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED:
+            if (
+                fact.fact_type
+                != ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED
+                or fact.authority_class not in _TICKET_UNDERSTANDING_AUTHORITIES
+            ):
                 continue
+            # A terminology probe establishes current behavior. When Jira
+            # already supplies the desired behavior, it must not become an
+            # unnecessary blocking product decision or a raw-question AC.
             questions.append(
                 MissingQuestion(
                     question=f'What exact product behavior does the human term "{fact.literal}" mean?',
@@ -5691,8 +6526,12 @@ class CanonicalTestPlanReasoningService:
                     target_source_types=_target_sources(
                         AuthoritySubject.PRODUCT_CONTRACT
                     ),
-                    blocking=True,
-                    open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
+                    blocking=not has_separate_ticket_expected_behavior,
+                    open_question_class=(
+                        OpenQuestionClass.RESEARCH_REQUIRED
+                        if has_separate_ticket_expected_behavior
+                        else OpenQuestionClass.USER_ACCEPTANCE_DECISION
+                    ),
                     source_fact_ids=[fact.fact_id],
                 )
             )
@@ -5704,6 +6543,7 @@ class CanonicalTestPlanReasoningService:
             for fact in facts.facts
             if fact.fact_type == ContractFactType.PROBLEM_STATEMENT
             and fact.authoritative
+            and fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
         ]
         # The gap anchor is the ticket's own problem statement, chosen
         # deterministically: description/current-ticket sources before
@@ -5806,6 +6646,31 @@ class CanonicalTestPlanReasoningService:
                             OpenQuestionClass.USER_ACCEPTANCE_DECISION
                         ),
                         source_fact_ids=[problem_facts[0].fact_id],
+                    )
+                )
+        # A report that a value is not driven by a named source exposes a
+        # product-source decision.  Keep that decision visible as a bounded
+        # TBD instead of assuming the named source is required or silently
+        # dropping the source-selection dimension.
+        if facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT:
+            for fact in problem_facts:
+                source_match = _UNRESOLVED_VALUE_SOURCE_RE.search(fact.literal)
+                if source_match is None:
+                    continue
+                source = source_match.group("source").strip()
+                if not source:
+                    continue
+                questions.append(
+                    MissingQuestion(
+                        question=(
+                            "What approved source must provide the value that is "
+                            f"currently not driven by {source}?"
+                        ),
+                        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+                        target_source_types=_product_decision_sources(),
+                        blocking=True,
+                        open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
+                        source_fact_ids=[fact.fact_id],
                     )
                 )
         # UX1: equivalent questions (identical canonical text, e.g. several
@@ -6612,10 +7477,18 @@ class CanonicalTestPlanReasoningService:
         rows: list[CoverageDispositionRecord] = []
         out_scope_values = [_scope_clause_value(value) for value in scope.out_of_scope]
         for fact in facts.facts:
-            if fact.fact_type == ContractFactType.CONTEXT_STATEMENT:
-                # UX1: narrative context informs issue understanding only; it
-                # is not a behavior and receives no coverage disposition, so
-                # it can never become an acceptance candidate.
+            if fact.authority_class not in _TICKET_UNDERSTANDING_AUTHORITIES:
+                # Documentation, historical Jira, code, and model seeds may
+                # answer a planned question, but they are not independent
+                # ticket requirements.  Their answer reaches coverage only
+                # through the bound question/research path below.
+                continue
+            if fact.fact_type not in _COVERAGE_BEARING_FACT_TYPES:
+                # Identifiers, scalar settings, exact values, labels, and
+                # current-state context remain in the fact ledger and can
+                # qualify a real contract. They are not standalone behavior,
+                # so they must never mint P1 coverage merely because they
+                # appear in a Jira description or attachment metadata.
                 continue
             if fact.fact_type == ContractFactType.OUT_OF_SCOPE:
                 disposition = CoverageDisposition.OUT_OF_SCOPE
@@ -6644,7 +7517,15 @@ class CanonicalTestPlanReasoningService:
                         else CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
                     )
             elif fact.fact_type == ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS:
-                disposition = CoverageDisposition.NEGATIVE_BOUNDARY
+                # A customer statement that a practice is unacceptable is a
+                # direct negative product contract.  It must reach the UAC
+                # without inventing the replacement UX.  Other negative
+                # dimensions remain P1 regression coverage.
+                disposition = (
+                    CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                    if _UNACCEPTABLE_CONTRACT_RE.search(fact.literal)
+                    else CoverageDisposition.NEGATIVE_BOUNDARY
+                )
             else:
                 disposition = CoverageDisposition.CONFIGURATION_VARIANT
             rows.append(
@@ -7071,11 +7952,11 @@ class CanonicalTestPlanReasoningService:
                 # documentation finding that stayed meta prose).  Falling
                 # through keeps the question in the acceptance lane as a
                 # bounded TBD rather than dropping it from coverage entirely.
-            # Documented existing behavior relevant to this question grounds a
-            # PROPOSED baseline candidate so documentation research reaches
-            # the acceptance lane instead of being dropped.  These rows are
-            # additive: the question is NOT resolved by them, so its bounded
-            # TBD is still emitted below and the product decision stays open.
+            # Documented existing behavior may ground a proposed baseline only
+            # when this is a blocking, ticket-fact-bound question. Discovery
+            # research remains traceable but cannot widen ticket acceptance.
+            if not _has_ticket_bound_baseline_anchor(question):
+                continue
             for baseline_text, baseline_refs in documented_baseline_claims(
                 question,
                 research_by_question,
@@ -7148,6 +8029,8 @@ class CanonicalTestPlanReasoningService:
             _normalize_candidate_key(row.candidate) for row in rows
         }
         for question in questions:
+            if not _has_ticket_bound_baseline_anchor(question):
+                continue
             for baseline_text, baseline_refs in documented_baseline_claims(
                 question,
                 research_by_question,
@@ -7203,25 +8086,53 @@ class CanonicalTestPlanReasoningService:
                 if key in already_covered:
                     continue
                 already_covered.add(key)
+                visible_dynamic_regression = (
+                    _is_ticket_bound_dynamic_value_question(question)
+                    and research_by_question.get(question.question_id)
+                    is not None
+                    and research_by_question[
+                        question.question_id
+                    ].research_status
+                    == ResearchStatus.ANSWER_FOUND
+                )
+                disposition = (
+                    CoverageDisposition.SEMANTIC_REGRESSION
+                    if visible_dynamic_regression
+                    else CoverageDisposition.IMPLEMENTATION_ORACLE
+                )
                 i_class, i_priority, i_impact = _derive_c1(
-                    CoverageDisposition.IMPLEMENTATION_ORACLE,
+                    disposition,
                     has_direct_evidence=True,
                 )
                 rows.append(
                     CoverageDispositionRecord(
                         candidate=impl_text,
-                        disposition=CoverageDisposition.IMPLEMENTATION_ORACLE,
+                        disposition=disposition,
                         source_question_ids=[question.question_id],
                         source_fact_ids=list(question.source_fact_ids),
                         evidence_ids=[
                             ref for ref in impl_refs if str(ref).strip()
                         ],
-                        rationale=_IMPLEMENTATION_ORACLE_RATIONALE,
+                        rationale=(
+                            _DYNAMIC_VALUE_REGRESSION_RATIONALE
+                            if visible_dynamic_regression
+                            else _IMPLEMENTATION_ORACLE_RATIONALE
+                        ),
                         coverage_class=i_class,
                         priority=i_priority,
                         acceptance_impact=i_impact,
-                        contract_type="POSITIVE",
+                        contract_type=(
+                            "PRESERVATION"
+                            if visible_dynamic_regression
+                            else "POSITIVE"
+                        ),
                         applicability="APPLICABLE",
+                        state_or_transition=(
+                            "DYNAMIC_VALUE"
+                            if visible_dynamic_regression
+                            else ""
+                        ),
+                        variants=[impl_text] if visible_dynamic_regression else [],
                         research_derived=True,
                     )
                 )
@@ -7286,6 +8197,16 @@ class CanonicalTestPlanReasoningService:
                     for ref in disposition.evidence_ids
                     if str(ref).startswith("doc:")
                 )
+            if (
+                not existing_ids
+                and disposition.research_derived
+                and disposition.rationale == _DYNAMIC_VALUE_REGRESSION_RATIONALE
+            ):
+                existing_ids = sorted(
+                    str(ref)
+                    for ref in disposition.evidence_ids
+                    if str(ref).startswith(("repo:", "code:", "github:"))
+                )
             requested_ids = sorted(
                 row.evidence_id
                 for row in linked
@@ -7301,6 +8222,16 @@ class CanonicalTestPlanReasoningService:
                 rationale = (
                     "Existing and requested sources disagree on this behavior; "
                     "a Human must settle the conflict."
+                )
+            elif (
+                disposition.rationale == _DYNAMIC_VALUE_REGRESSION_RATIONALE
+                and existing_ids
+            ):
+                behavior_class = BehaviorChangeClass.PRESERVED_EXISTING_BEHAVIOR
+                rationale = (
+                    "Ticket-bound implementation research establishes current "
+                    "dynamic-value behavior that remains a preservation check; "
+                    "it does not establish new product scope."
                 )
             elif existing_ids and (requested_ids or change_ids):
                 if _PRESERVATION_RE.search(disposition.candidate):
@@ -7403,10 +8334,23 @@ class CanonicalTestPlanReasoningService:
                 ContractFactType.EXACT_DEFAULTS,
                 ContractFactType.EXACT_STATUS_NAMES,
             }
+            candidate_statement = row.candidate
+            if (
+                row.research_derived
+                and row.rationale == _EXISTING_PROPOSED_RATIONALE
+            ):
+                candidate_statement = _documented_baseline_contract_statement(
+                    candidate_statement
+                )
+            if any(
+                fact.fact_type == ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS
+                for fact in source_facts
+            ):
+                candidate_statement = _negative_contract_statement(candidate_statement)
             has_exactness = bool(
                 re.search(
                     r"(?:\b\d+(?:\.\d+)?\b|#[0-9a-f]{3,8}\b)",
-                    row.candidate,
+                    candidate_statement,
                     re.IGNORECASE,
                 )
             )
@@ -7425,7 +8369,6 @@ class CanonicalTestPlanReasoningService:
             # so request grammar is reframed here.  When it cannot be reframed
             # the candidate stays non-observable and the promotion gate - whose
             # observability check is otherwise unreachable - correctly stops it.
-            candidate_statement = row.candidate
             if _is_request_not_outcome(candidate_statement):
                 derived = _derive_outcome_statement(candidate_statement)
                 if derived is not None:
@@ -7653,6 +8596,9 @@ class CanonicalTestPlanReasoningService:
         expansion: BehavioralCoverageExpansion | None = None,
     ) -> GateDecision:
         questions_by_id = {row.question_id: row for row in questions}
+        research_by_question = {
+            row.question_id: row for row in research_records or []
+        }
         question_closure_ids = {
             closure_id
             for question in questions
@@ -7716,9 +8662,6 @@ class CanonicalTestPlanReasoningService:
                             f"({', '.join(row.value for row in undecided)})"
                         )
         if research_requirements is not None:
-            research_by_question = {
-                row.question_id: row for row in research_records or []
-            }
             for requirement in research_requirements:
                 if (
                     not requirement.material
@@ -7889,10 +8832,33 @@ class CanonicalTestPlanReasoningService:
                     CoverageDisposition.TECHNICAL_NOTE,
                 }
             ):
-                failures.append(
-                    "Verified material hypothesis did not reach QE regression "
-                    f"coverage: {hypothesis.hypothesis_id}"
+                # Mandatory research may establish a high-confidence
+                # investigation hypothesis while still leaving the answer
+                # unusable for final coverage.  In that case Coverage must
+                # preserve the explicit open disposition rather than turn
+                # the hypothesis into a QE regression claim from ticket
+                # inference alone.  PENDING research is still rejected by
+                # the routing check above; other incomplete terminal states
+                # legitimately remain visible as an Open Question/TBD.
+                research_blocks_coverage = (
+                    question is not None
+                    and _mandatory_research_open_rationale(
+                        [question], research_by_question
+                    )
+                    is not None
                 )
+                if not (
+                    research_blocks_coverage
+                    and disposition
+                    in {
+                        CoverageDisposition.OPEN_QUESTION,
+                        CoverageDisposition.ACCEPTANCE_TBD,
+                    }
+                ):
+                    failures.append(
+                        "Verified material hypothesis did not reach QE regression "
+                        f"coverage: {hypothesis.hypothesis_id}"
+                    )
         if (
             scope.enable_dita_ot_processing == DitaOtProcessingState.UNRESOLVED
             and not any("DITA-OT" in row.question for row in questions)
@@ -8377,6 +9343,7 @@ class CanonicalTestPlanReasoningService:
         promotions: list[AcceptancePromotionDecision],
         facts: ContractFactSet,
         dispositions: list[CoverageDispositionRecord] | None = None,
+        clarifications: list[HumanClarification] | None = None,
     ) -> list[WrittenAcceptanceCriterion]:
         """D2 Writer: turn admitted candidates into testable acceptance criteria.
 
@@ -8402,8 +9369,35 @@ class CanonicalTestPlanReasoningService:
         dispositions_by_id = {
             row.disposition_id: row for row in (dispositions or [])
         }
+        clarification_source_lines = _clarification_source_lines(clarifications)
         written: list[WrittenAcceptanceCriterion] = []
         seen_outcomes: set[str] = set()
+
+        def retain_disposition_binding(
+            criterion: WrittenAcceptanceCriterion,
+            row: CoverageDispositionRecord,
+            *,
+            sub_point: AcceptanceSubPoint | None = None,
+        ) -> WrittenAcceptanceCriterion:
+            """Rebuild a criterion while retaining coverage lineage exactly once."""
+
+            return WrittenAcceptanceCriterion(
+                outcome=criterion.outcome,
+                sub_points=(
+                    [*criterion.sub_points, sub_point]
+                    if sub_point is not None
+                    else list(criterion.sub_points)
+                ),
+                unresolved=criterion.unresolved,
+                source_line=criterion.source_line,
+                source_candidate_ids=list(criterion.source_candidate_ids),
+                source_fact_ids=[*criterion.source_fact_ids, *row.source_fact_ids],
+                source_disposition_ids=[
+                    *criterion.source_disposition_ids,
+                    row.disposition_id,
+                ],
+                evidence_ids=[*criterion.evidence_ids, *row.evidence_ids],
+            )
 
         for decision in promotions:
             if decision.status != PromotionStatus.PROMOTED:
@@ -8415,6 +9409,7 @@ class CanonicalTestPlanReasoningService:
                 list(candidate.source_fact_ids),
                 facts_by_id,
                 list(candidate.evidence_ids),
+                clarification_source_lines,
             )
             proposed = (
                 facts.contract_mode == ContractMode.HUMAN_ACCEPTED_CONTRACT
@@ -8518,7 +9513,10 @@ class CanonicalTestPlanReasoningService:
                         outcome=question,
                         unresolved=True,
                         source_line=_acceptance_source_line(
-                            list(row.source_fact_ids), facts_by_id
+                            list(row.source_fact_ids),
+                            facts_by_id,
+                            list(row.evidence_ids),
+                            clarification_source_lines,
                         ),
                         source_fact_ids=list(row.source_fact_ids),
                         source_disposition_ids=[row.disposition_id],
@@ -8545,11 +9543,9 @@ class CanonicalTestPlanReasoningService:
 
         # D1-d: applicable regression-class coverage belongs INSIDE the flat
         # acceptance contract, as a sub-point of the outcome it qualifies.
-        # Leaving it in a separate QE-regression lane loses it outright,
-        # because the flat contract renders no such lane.  It attaches only to
-        # a criterion it genuinely qualifies and never becomes a criterion of
-        # its own, so C2B-C1 promotion authority is unchanged: regression
-        # coverage still cannot assert an acceptance outcome by itself.
+        # Typed variants are the canonical source; the candidate text is only
+        # a legacy fallback.  An unresolved attachment is left unprojected for
+        # the WriterProjectionCompletenessGate to fail closed at the boundary.
         for row in dispositions or []:
             if (
                 row.coverage_class != "QE_REGRESSION"
@@ -8557,52 +9553,74 @@ class CanonicalTestPlanReasoningService:
                 or row.applicability != "APPLICABLE"
             ):
                 continue
-            variant = _derive_variant_statement(row.candidate)
-            if variant is None:
-                continue
-            if any(
-                variant.casefold() == existing.outcome.casefold()
-                or any(
-                    variant.casefold() == sub.text.casefold()
-                    for sub in existing.sub_points
+            raw_variants = list(row.variants) or [row.candidate]
+            for raw_variant in raw_variants:
+                variant = _derive_variant_statement(raw_variant)
+                if variant is None:
+                    continue
+                exact_host = next(
+                    (
+                        existing
+                        for existing in written
+                        if variant.casefold() == existing.outcome.casefold()
+                        or any(
+                            variant.casefold() == sub.text.casefold()
+                            for sub in existing.sub_points
+                        )
+                    ),
+                    None,
                 )
-                for existing in written
-            ):
-                continue
-            host = _closest_variant_host(variant, written)
-            if host is None:
-                # No acceptance outcome this behavior qualifies.  Inventing a
-                # parent would assert coverage the evidence never established.
-                continue
-            if (
-                sum(
-                    1
-                    for sub in host.sub_points
-                    if sub.kind == AcceptanceSubPointKind.CONFIRMED_VARIANT
+                if exact_host is not None:
+                    # Even an exact existing clause needs this coverage row's
+                    # binding.  Without it, IDs survive in the trace but the
+                    # P1 decision has no proof that its behavior is visible.
+                    written[written.index(exact_host)] = retain_disposition_binding(
+                        exact_host, row
+                    )
+                    continue
+                if row.state_or_transition == "DYNAMIC_VALUE":
+                    # A displayed/resolved value and an ordering key can share
+                    # vocabulary without sharing an outcome.  Do not attach
+                    # researched dynamic-value preservation under the nearest
+                    # ordering criterion: it must remain a separately readable
+                    # QE check.
+                    written.append(
+                        WrittenAcceptanceCriterion(
+                            outcome=variant,
+                            source_line=_acceptance_source_line(
+                                list(row.source_fact_ids),
+                                facts_by_id,
+                                list(row.evidence_ids),
+                                clarification_source_lines,
+                            ),
+                            source_fact_ids=list(row.source_fact_ids),
+                            source_disposition_ids=[row.disposition_id],
+                            evidence_ids=list(row.evidence_ids),
+                        )
+                    )
+                    continue
+                host = _closest_variant_host(
+                    variant,
+                    written,
+                    source_fact_ids=list(row.source_fact_ids),
+                    evidence_ids=list(row.evidence_ids),
+                    allow_lineage_fallback=bool(row.variants),
                 )
-                >= _MAX_VARIANT_SUB_POINTS
-            ):
-                continue
-            sub_point = AcceptanceSubPoint(
-                text=variant,
-                kind=AcceptanceSubPointKind.CONFIRMED_VARIANT,
-                source_fact_ids=list(row.source_fact_ids),
-                source_disposition_ids=[row.disposition_id],
-                evidence_ids=list(row.evidence_ids),
-            )
-            written[written.index(host)] = WrittenAcceptanceCriterion(
-                outcome=host.outcome,
-                sub_points=[*host.sub_points, sub_point],
-                unresolved=host.unresolved,
-                source_line=host.source_line,
-                source_candidate_ids=list(host.source_candidate_ids),
-                source_fact_ids=[*host.source_fact_ids, *row.source_fact_ids],
-                source_disposition_ids=[
-                    *host.source_disposition_ids,
-                    row.disposition_id,
-                ],
-                evidence_ids=[*host.evidence_ids, *row.evidence_ids],
-            )
+                if host is None:
+                    # Never invent a P0 parent for regression-only behavior.
+                    # The boundary gate turns this into a visible delivery
+                    # failure instead of silently dropping it.
+                    continue
+                sub_point = AcceptanceSubPoint(
+                    text=variant,
+                    kind=AcceptanceSubPointKind.CONFIRMED_VARIANT,
+                    source_fact_ids=list(row.source_fact_ids),
+                    source_disposition_ids=[row.disposition_id],
+                    evidence_ids=list(row.evidence_ids),
+                )
+                written[written.index(host)] = retain_disposition_binding(
+                    host, row, sub_point=sub_point
+                )
         # Merging and TBD attachment both widen a criterion's fact set, so the
         # Source line is recomputed from the final bindings.  A criterion must
         # never credit fewer - or more - sources than it actually rests on.
@@ -8611,6 +9629,7 @@ class CanonicalTestPlanReasoningService:
                 list(criterion.source_fact_ids),
                 facts_by_id,
                 list(criterion.evidence_ids),
+                clarification_source_lines,
             )
             if not recomputed or recomputed == criterion.source_line:
                 continue
@@ -8779,20 +9798,16 @@ class CanonicalTestPlanReasoningService:
         # (settled research or planner boilerplate with no evidence linkage)
         # remain in the trace; the render invariant exempts them explicitly.
         skipped_open_dispositions: set[str] = set()
-        # Issue understanding is WHAT THE TICKET STATES: only facts carrying
-        # a ticket/human authority class belong.  Retrieved documentation may
-        # establish existing product behavior downstream, but a doc-chunk
-        # sentence is never the issue's own understanding.
+        # Issue understanding is WHAT THE TICKET STATES: every retained
+        # ticket/human fact is visible here even when it is a qualifier (for
+        # example a named default or current label workflow), rather than a
+        # standalone acceptance or regression behavior. Retrieved
+        # documentation may establish existing product behavior downstream,
+        # but a doc-chunk sentence is never the issue's own understanding.
         understanding = [
             row
             for row in facts.facts
-            if row.fact_type
-            in {
-                ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
-                # UX1: narrative context is the legitimate issue-understanding
-                # source for thin tickets (no requirement signal, no promotion).
-                ContractFactType.CONTEXT_STATEMENT,
-            }
+            if row.fact_type != ContractFactType.OUT_OF_SCOPE
             and row.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
         ]
         for fact in understanding:
@@ -8843,6 +9858,14 @@ class CanonicalTestPlanReasoningService:
                 tbd_records.extend(criterion.source_disposition_ids)
                 tbd_records.extend(criterion.source_fact_ids)
                 section_items["acceptance_contract"].append((rendered, ""))
+            elif not criterion.source_candidate_ids:
+                # P1 dynamic-value preservation has no P0 acceptance
+                # candidate by design: implementation research can establish
+                # a current regression oracle, never new product scope.  It
+                # still belongs in the QE-owned UAC as its own criterion.
+                section_items["acceptance_contract"].append((rendered, ""))
+                tbd_records.extend(criterion.source_disposition_ids)
+                tbd_records.extend(criterion.source_fact_ids)
             for record_id in tbd_records:
                 if record_id:
                     section_items["acceptance_contract"].append((rendered, record_id))
@@ -9192,7 +10215,9 @@ class CanonicalTestPlanReasoningService:
         # Runtime UAC lint pass: apply the skill uac_linter's plan-text checks to the
         # promoted acceptance criteria so shipped runtime plans meet the same quality bar
         # (the skill linter only runs when authoring through the skill, not on VM output).
-        # Advisory: findings surface in the coverage-gate section; no AC is mutated.
+        # Every finding remains visible in the coverage-gate section.  High-risk
+        # wording and projection cases below also block delivery rather than
+        # allowing an unreadable UAC to look successful.
         promoted_statements: list[str] = []
         seen_promoted: set[str] = set()
         for statement, _record in section_items["acceptance_contract"]:
@@ -9200,7 +10225,8 @@ class CanonicalTestPlanReasoningService:
             if normalized and normalized not in seen_promoted:
                 seen_promoted.add(normalized)
                 promoted_statements.append(normalized)
-        for lint_problem in _lint_acceptance_criteria(promoted_statements):
+        lint_problems = _lint_acceptance_criteria(promoted_statements)
+        for lint_problem in lint_problems:
             section_items["coverage_gate_result"].append(
                 (f"AcceptanceContractLint: {lint_problem}", "acceptance_contract_lint")
             )
@@ -9227,22 +10253,19 @@ class CanonicalTestPlanReasoningService:
                 for statement in promoted_statements
                 if _is_request_not_outcome(statement)
             )
+        reviewer_failures.extend(
+            _acceptance_contract_delivery_failures(
+                promoted_statements,
+                acceptance_sources,
+                lint_problems,
+            )
+        )
 
         # Coverage lanes that only announce an internal record are not
         # coverage.  They are suppressed from the human-facing markdown at
         # render time rather than failing the plan: the closure records stay
         # in the structured plan and the trace, so nothing is lost, but a
         # content-free bullet never reaches the tester.
-        if reviewer_failures:
-            gates.append(
-                GateDecision(
-                    gate=CanonicalRuntimeStage.FINAL_QE_PLAN_RENDERER,
-                    status=GateStatus.FAILED,
-                    failures=reviewer_failures,
-                    checked_ids=sorted(seen_promoted),
-                )
-            )
-
         order = list(titles)
         sections: list[PlanSection] = []
         for key in order:
@@ -9280,6 +10303,30 @@ class CanonicalTestPlanReasoningService:
         for section in sections:
             for source_id in section.source_record_ids:
                 sections_by_source_id[source_id].append(section)
+        writer_projection_records, projection_failures = _writer_projection_completeness(
+            dispositions,
+            written_acceptance_criteria or [],
+            sections_by_source_id,
+        )
+        reviewer_failures.extend(projection_failures)
+        gates.append(
+            GateDecision(
+                gate=CanonicalRuntimeStage.FINAL_QE_PLAN_RENDERER,
+                status=(
+                    GateStatus.FAILED if reviewer_failures else GateStatus.PASSED
+                ),
+                failures=reviewer_failures,
+                checked_ids=sorted(
+                    {
+                        *seen_promoted,
+                        *(
+                            record.coverage_disposition_id
+                            for record in writer_projection_records
+                        ),
+                    }
+                ),
+            )
+        )
         renderer_decisions: list[RendererProjectionDecision] = []
         for lifecycle_row in candidate_lifecycle:
             matching_sections = sections_by_source_id.get(
@@ -9324,6 +10371,7 @@ class CanonicalTestPlanReasoningService:
             candidate_lifecycle=candidate_lifecycle,
             dedup_decisions=acceptance_resolution.dedup_decisions,
             renderer_decisions=renderer_decisions,
+            writer_projection_records=writer_projection_records,
             gate_decisions=gates,
         )
         lines = [f"# {request.jira_key} — QE plan", ""]
@@ -9445,7 +10493,7 @@ class CanonicalTestPlanReasoningService:
                     # actually support it.  Capped at ten points - a longer
                     # list is not readable as a sign-off contract, and the
                     # full set stays in the structured plan and the trace.
-                    for index, item in enumerate(visible_items[:10], start=1):
+                    for index, item in enumerate(visible_items, start=1):
                         source_line = acceptance_sources.get(
                             item.strip(), "QE-derived coverage."
                         )
@@ -9460,11 +10508,6 @@ class CanonicalTestPlanReasoningService:
                                 lines.append(f"  {sub_line.strip()}")
                         lines.append(f"  **Source:** {source_line}")
                         lines.append("")
-                    if len(visible_items) > 10:
-                        lines.append(
-                            f"- {len(visible_items) - 10} further criteria are "
-                            "retained in the structured plan."
-                        )
                 else:
                     if section.section_key == "issue_understanding":
                         # The summary reads as prose, not as a bullet dump of
@@ -9504,7 +10547,16 @@ class CanonicalTestPlanReasoningService:
         missing_authoritative_fact_ids = [
             fact.fact_id
             for fact in facts.facts
-            if fact.authoritative and fact.fact_id not in rendered_source_ids
+            # A documentation or implementation fact can be authoritative for
+            # the behavior it establishes without being a requirement of this
+            # ticket.  Those facts remain in the evidence/question trace and
+            # may support a bound research resolution, but only the current
+            # Jira/Human contract is required to render as a disposition.
+            if (
+                fact.authoritative
+                and fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+                and fact.fact_id not in rendered_source_ids
+            )
         ]
         if missing_authoritative_fact_ids:
             raise RuntimeError(

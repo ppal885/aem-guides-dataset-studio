@@ -34,7 +34,12 @@ def main() -> int:
         "--no-uac", action="store_true", help="Skip UAC intelligence stage"
     )
     parser.add_argument(
-        "--no-draft", action="store_true", help="Skip draft test plan composition"
+        "--no-draft",
+        action="store_true",
+        help=(
+            "Deprecated compatibility flag; the complete canonical runtime "
+            "render is always delivered."
+        ),
     )
     parser.add_argument(
         "--write-starling",

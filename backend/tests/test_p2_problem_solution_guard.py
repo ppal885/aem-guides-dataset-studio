@@ -32,6 +32,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     MissingQuestion,
     OpenQuestionClass,
     PromotionStatus,
+    ResearchRequirement,
+    ResearchStatus,
     RuntimeEntryPoint,
     ScopeResolution,
     SufficiencyStatus,
@@ -40,6 +42,7 @@ from app.services.canonical_test_plan_reasoning_service import (
     CANONICAL_REASONING_SERVICE,
     assess_claim_sufficiency,
 )
+from app.services.canonical_evidence_service import normalize_legacy_packet
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILL_SCRIPTS = REPO_ROOT / "skills" / "test-plan-generation" / "scripts"
@@ -169,6 +172,110 @@ def test_problem_statements_never_become_acceptance_coverage() -> None:
                 CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
                 CoverageDisposition.ACCEPTANCE_CONTRACT,
             }
+
+
+def test_problem_details_and_jira_metadata_do_not_mint_p1_coverage() -> None:
+    """A current-state gap is not a regression contract just because it names a label."""
+
+    bundle = normalize_legacy_packet(
+        {
+            "jira_key": "GUIDES-TEST",
+            "issue": {
+                "description": (
+                    "When authors update topics, they can apply a label to show "
+                    "what label should be applied according to their content "
+                    "changes, but there is no logical way to define a label on "
+                    "images. "
+                    "The image Version History panel uses a text field and is not "
+                    "driven by folder-profile labels."
+                ),
+                "lookup_message": "Fetched GUIDES-TEST directly from Jira API.",
+                "attachments": [
+                    {
+                        "filename": "customer-discussion.mp4",
+                        "mime_type": "video/mp4",
+                    }
+                ],
+            },
+        },
+        tenant_id="p2-problem-metadata-test",
+    )
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+    literals = {row.literal for row in facts.facts}
+
+    assert "Fetched GUIDES-TEST directly from Jira API." not in literals
+    assert "customer-discussion.mp4" not in literals
+    problem_facts = [
+        row
+        for row in facts.facts
+        if row.fact_type == ContractFactType.PROBLEM_STATEMENT
+    ]
+    assert len(problem_facts) >= 2
+    problem_literals = {row.literal.casefold() for row in problem_facts}
+    assert any(
+        "there is no logical way to define a label on images" in literal
+        for literal in problem_literals
+    )
+    assert any(
+        "is not driven by folder-profile labels" in literal
+        for literal in problem_literals
+    )
+    assert not any(
+        row.fact_type == ContractFactType.EXACT_LABELS
+        and (
+            "no logical way to define a label" in row.literal.casefold()
+            or "is not driven by folder-profile labels" in row.literal.casefold()
+        )
+        for row in facts.facts
+    )
+
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), []
+    )
+    assert all(row.priority != "P1" for row in dispositions)
+    assert all(
+        row.disposition == CoverageDisposition.KNOWN_LIMITATION
+        for row in dispositions
+    )
+
+
+def test_retrieved_document_titles_do_not_become_contract_facts() -> None:
+    """A related page title must not create a new feature research subject."""
+
+    document_title = (
+        "Configuration overrides for Cloud Service | Adobe Experience Manager"
+    )
+    bundle = normalize_legacy_packet(
+        {
+            "jira_key": "GUIDES-TEST",
+            "issue": {
+                "description": "Add image version labels to Baseline content.",
+            },
+            "experience_league_evidence": [
+                {
+                    "title": document_title,
+                    "snippet": (
+                        "A Baseline stores selected topic and asset versions "
+                        "for publishing."
+                    ),
+                    "source_url": (
+                        "https://experienceleague.adobe.com/en/docs/"
+                        "experience-manager-guides/example"
+                    ),
+                }
+            ],
+        },
+        tenant_id="p2-document-title-test",
+    )
+
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+
+    assert document_title not in {row.literal for row in facts.facts}
+    assert not any(
+        row.fact_type == ContractFactType.DEPLOYMENT_MODE
+        and row.literal == document_title
+        for row in facts.facts
+    )
 
 
 def test_problem_claim_may_be_sufficient_but_is_not_acceptance() -> None:
@@ -504,6 +611,164 @@ def test_production_path_cannot_promote_unstated_solution() -> None:
     assert report["runtime_promotion_status"] == "AGREES"
 
 
+def test_unacceptable_manual_practice_remains_a_negative_contract() -> None:
+    result = _runtime_run(
+        "Considering the release-management gap, manually assigning image "
+        "version labels through Assets UI is not acceptable."
+    )
+    payload = result.output_payload
+
+    negative_rows = [
+        row
+        for row in payload["coverage_dispositions"]
+        if (
+            row["disposition"] == "PROPOSED_ACCEPTANCE_CONTRACT"
+            and row["contract_type"] == "NEGATIVE"
+        )
+    ]
+    assert negative_rows
+    assert negative_rows[0]["contract_type"] == "NEGATIVE"
+
+    promoted_ids = {
+        row["candidate_id"]
+        for row in payload["promotion_decisions"]
+        if row["status"] == "PROMOTED"
+    }
+    promoted = [
+        row
+        for row in payload["acceptance_candidates"]
+        if row["candidate_id"] in promoted_ids
+    ]
+    assert any(
+        row["statement"]
+        == "Manual assignment of image version labels through Assets UI is not required."
+        for row in promoted
+    )
+    assert all("dropdown" not in row["statement"].casefold() for row in promoted)
+
+
+def test_confirmed_image_label_scope_keeps_every_core_contract() -> None:
+    """Keep human-confirmed coverage without turning an undecided source into fact."""
+
+    bundle = normalize_legacy_packet(
+        {
+            "jira_key": "GUIDES-TEST",
+            "issue": {
+                "summary": "Manage image version labels for Baselines",
+                "description": (
+                    "While uploading or updating an image, the dialog has no "
+                    "label option. Users cannot see where an image is used in "
+                    "topics or which Baseline content version uses it. The only "
+                    "image-label path is a Version History text box in Assets UI, "
+                    "and manually assigning image version labels through Assets "
+                    "UI is not acceptable. The text box is not driven by "
+                    "labels.json of Folder profiles."
+                ),
+            },
+            "product_decisions": [
+                (
+                    "Image and media version labels must be manageable while "
+                    "users upload or update the asset."
+                ),
+                (
+                    "For each image or media asset, show every direct and nested "
+                    "topic use and the Baseline content version that will use it."
+                ),
+                "Preserve the existing Baseline resolution options.",
+            ],
+        },
+        tenant_id="p2-complete-image-label-coverage",
+    )
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+    assert facts.contract_mode == ContractMode.PARTIAL_HUMAN_CONTRACT
+    coverage = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), []
+    )
+    candidates = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract(
+        facts, coverage, []
+    )
+    _, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
+        candidates, facts, ScopeResolution(), coverage
+    )
+    promoted_ids = {
+        row.candidate_id
+        for row in promotions
+        if row.status == PromotionStatus.PROMOTED
+    }
+    statements = {
+        row.statement for row in candidates if row.candidate_id in promoted_ids
+    }
+    joined = "\n".join(statements).casefold()
+    written = CANONICAL_REASONING_SERVICE.write_acceptance_criteria(
+        candidates, promotions, facts, coverage
+    )
+    written_outcomes = "\n".join(row.outcome for row in written).casefold()
+
+    assert (
+        "image and media version labels must be manageable while users upload"
+        in joined
+    )
+    assert "every direct and nested topic use" in joined
+    assert "baseline content version" in joined
+    assert "preserve the existing baseline resolution options" in joined
+    assert "manual assignment of image version labels through assets ui" in joined
+    assert "labels.json" not in joined
+    assert "dropdown" not in joined
+    assert (
+        "image and media version labels must be manageable while users upload"
+        in written_outcomes
+    )
+    assert "every direct and nested topic use" in written_outcomes
+    assert "baseline content version" in written_outcomes
+    assert "preserve the existing baseline resolution options" in written_outcomes
+    assert "manual assignment of image version labels through assets ui" in written_outcomes
+
+
+def test_undecided_value_source_stays_as_a_product_tbd() -> None:
+    bundle = normalize_legacy_packet(
+        {
+            "jira_key": "GUIDES-TEST",
+            "issue": {
+                "description": (
+                    "The image label is a text box and is not driven by "
+                    "labels.json of Folder profiles."
+                )
+            },
+        },
+        tenant_id="p2-value-source-tbd",
+    )
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [], ScopeResolution(), facts
+    )
+    source_question = next(
+        row
+        for row in questions
+        if "currently not driven by labels.json of Folder profiles" in row.question
+    )
+
+    requirements = CANONICAL_REASONING_SERVICE.classify_research_requirements(
+        questions, facts
+    )
+    research = CANONICAL_REASONING_SERVICE.resolve_question_research(
+        questions, requirements, [], []
+    )
+    source_research = next(
+        row for row in research if row.question_id == source_question.question_id
+    )
+    assert source_research.research_requirement == ResearchRequirement.NONE
+    assert source_research.research_status == ResearchStatus.NOT_REQUIRED
+
+    coverage = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), questions, research
+    )
+    assert any(
+        row.disposition == CoverageDisposition.ACCEPTANCE_TBD
+        and source_question.question_id in row.source_question_ids
+        for row in coverage
+    )
+
+
 def test_production_path_resume_establishes_solution() -> None:
     description = (
         "There is no easy way to manage version labels on rich assets. "
@@ -526,6 +791,7 @@ def test_production_path_resume_establishes_solution() -> None:
         "answer_classification": "PRODUCT_DECISION",
         "provided_by": "product-owner",
         "authority_role": "CONFIRMED_PRODUCT_DECISION",
+        "source_context": "Interactive product-decision response for GUIDES-99101",
     }
     second = _runtime_run(description, clarifications=[clarification])
     payload = second.output_payload
@@ -543,6 +809,12 @@ def test_production_path_resume_establishes_solution() -> None:
     assert any(
         "managed labels" in row["statement"].casefold()
         for row in promoted_statements.values()
+    )
+    assert any(
+        row["source_line"]
+        == "GUIDES-99101 — product-owner-confirmed product decision."
+        for row in payload["written_acceptance_criteria"]
+        if "managed labels" in row["outcome"].casefold()
     )
     trace_statuses = {
         row.status.value for row in second.trace.human_clarifications
