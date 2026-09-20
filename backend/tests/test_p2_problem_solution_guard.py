@@ -40,6 +40,7 @@ from app.services.canonical_test_plan_reasoning_service import (
     CANONICAL_REASONING_SERVICE,
     assess_claim_sufficiency,
 )
+from app.services.canonical_evidence_service import normalize_legacy_packet
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILL_SCRIPTS = REPO_ROOT / "skills" / "test-plan-generation" / "scripts"
@@ -169,6 +170,110 @@ def test_problem_statements_never_become_acceptance_coverage() -> None:
                 CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
                 CoverageDisposition.ACCEPTANCE_CONTRACT,
             }
+
+
+def test_problem_details_and_jira_metadata_do_not_mint_p1_coverage() -> None:
+    """A current-state gap is not a regression contract just because it names a label."""
+
+    bundle = normalize_legacy_packet(
+        {
+            "jira_key": "GUIDES-TEST",
+            "issue": {
+                "description": (
+                    "When authors update topics, they can apply a label to show "
+                    "what label should be applied according to their content "
+                    "changes, but there is no logical way to define a label on "
+                    "images. "
+                    "The image Version History panel uses a text field and is not "
+                    "driven by folder-profile labels."
+                ),
+                "lookup_message": "Fetched GUIDES-TEST directly from Jira API.",
+                "attachments": [
+                    {
+                        "filename": "customer-discussion.mp4",
+                        "mime_type": "video/mp4",
+                    }
+                ],
+            },
+        },
+        tenant_id="p2-problem-metadata-test",
+    )
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+    literals = {row.literal for row in facts.facts}
+
+    assert "Fetched GUIDES-TEST directly from Jira API." not in literals
+    assert "customer-discussion.mp4" not in literals
+    problem_facts = [
+        row
+        for row in facts.facts
+        if row.fact_type == ContractFactType.PROBLEM_STATEMENT
+    ]
+    assert len(problem_facts) >= 2
+    problem_literals = {row.literal.casefold() for row in problem_facts}
+    assert any(
+        "there is no logical way to define a label on images" in literal
+        for literal in problem_literals
+    )
+    assert any(
+        "is not driven by folder-profile labels" in literal
+        for literal in problem_literals
+    )
+    assert not any(
+        row.fact_type == ContractFactType.EXACT_LABELS
+        and (
+            "no logical way to define a label" in row.literal.casefold()
+            or "is not driven by folder-profile labels" in row.literal.casefold()
+        )
+        for row in facts.facts
+    )
+
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), []
+    )
+    assert all(row.priority != "P1" for row in dispositions)
+    assert all(
+        row.disposition == CoverageDisposition.KNOWN_LIMITATION
+        for row in dispositions
+    )
+
+
+def test_retrieved_document_titles_do_not_become_contract_facts() -> None:
+    """A related page title must not create a new feature research subject."""
+
+    document_title = (
+        "Configuration overrides for Cloud Service | Adobe Experience Manager"
+    )
+    bundle = normalize_legacy_packet(
+        {
+            "jira_key": "GUIDES-TEST",
+            "issue": {
+                "description": "Add image version labels to Baseline content.",
+            },
+            "experience_league_evidence": [
+                {
+                    "title": document_title,
+                    "snippet": (
+                        "A Baseline stores selected topic and asset versions "
+                        "for publishing."
+                    ),
+                    "source_url": (
+                        "https://experienceleague.adobe.com/en/docs/"
+                        "experience-manager-guides/example"
+                    ),
+                }
+            ],
+        },
+        tenant_id="p2-document-title-test",
+    )
+
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+
+    assert document_title not in {row.literal for row in facts.facts}
+    assert not any(
+        row.fact_type == ContractFactType.DEPLOYMENT_MODE
+        and row.literal == document_title
+        for row in facts.facts
+    )
 
 
 def test_problem_claim_may_be_sufficient_but_is_not_acceptance() -> None:
@@ -526,6 +631,7 @@ def test_production_path_resume_establishes_solution() -> None:
         "answer_classification": "PRODUCT_DECISION",
         "provided_by": "product-owner",
         "authority_role": "CONFIRMED_PRODUCT_DECISION",
+        "source_context": "Interactive product-decision response for GUIDES-99101",
     }
     second = _runtime_run(description, clarifications=[clarification])
     payload = second.output_payload
@@ -543,6 +649,12 @@ def test_production_path_resume_establishes_solution() -> None:
     assert any(
         "managed labels" in row["statement"].casefold()
         for row in promoted_statements.values()
+    )
+    assert any(
+        row["source_line"]
+        == "GUIDES-99101 — product-owner-confirmed product decision."
+        for row in payload["written_acceptance_criteria"]
+        if "managed labels" in row["outcome"].casefold()
     )
     trace_statuses = {
         row.status.value for row in second.trace.human_clarifications

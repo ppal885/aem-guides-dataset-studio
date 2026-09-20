@@ -23,14 +23,18 @@ from app.core.schemas_canonical_test_plan_runtime import (
     AcceptancePromotionDecision,
     AcceptanceSubPoint,
     AcceptanceSubPointKind,
+    AuthorityClass,
     ContractFact,
     ContractFactSet,
     ContractMode,
     ContractFactType,
+    ClarificationAnswerClass,
+    ClarificationStatus,
     ConvergenceRecord,
     ConvergenceStatus,
     CoverageDisposition,
     CoverageDispositionRecord,
+    HumanClarification,
     PromotionStatus,
     ResearchFinding,
     ResearchFindingEvidenceRole,
@@ -48,11 +52,15 @@ from app.services.canonical_test_plan_reasoning_service import (
     _AC_NEAR_DUPLICATE_JACCARD,
     _acceptance_contract_delivery_failures,
     _acceptance_presentation_failures,
+    _acceptance_source_line,
     _COVERAGE_FILLER_RE,
     _DISPOSITION_SECTIONS,
     _absorb_near_duplicate,
+    _as_manual_qe_check,
     _as_outcome_sentence,
+    _clarification_source_lines,
     _convergence_detail_lines,
+    _documented_baseline_contract_statement,
     _derive_outcome_statement,
     _derive_tbd_question,
     _fact_types,
@@ -334,6 +342,80 @@ class TestSourceLineDerivation:
         )
 
         assert "QE-derived" in _acceptance_source_line([], {})
+
+    def test_admitted_human_decision_is_named_as_its_own_source(self):
+        clarification = HumanClarification(
+            question_ref="question:source-line",
+            answer="The image view includes direct and nested uses.",
+            answer_classification=ClarificationAnswerClass.PRODUCT_DECISION,
+            provided_by="requester",
+            authority_role=AuthorityClass.CONFIRMED_PRODUCT_DECISION,
+            source_context="Interactive product-decision response for GUIDES-38274",
+            status=ClarificationStatus.ADMITTED,
+        )
+        reference = f"clarification:{clarification.clarification_id}"
+
+        line = _acceptance_source_line(
+            [],
+            {},
+            [reference],
+            _clarification_source_lines([clarification]),
+        )
+
+        assert line == "GUIDES-38274 — requester-confirmed product decision."
+
+
+class TestWriterSourcePreservation:
+    def test_direct_and_nested_reference_decision_stays_one_contract(self):
+        statement = (
+            "Add a user-facing view for each image or media asset that shows "
+            "every direct and nested topic use and the baseline content version "
+            "that will use it."
+        )
+
+        assert _split_independent_requirements(statement) == [statement]
+
+    def test_documented_example_is_not_promoted_as_an_exact_contract_value(self):
+        statement = (
+            "For Referred Content, the documented Pick Automatically rule "
+            "selects the version corresponding to the content in which it is "
+            "referenced. Adobe's example states that topic A version 1.5 "
+            "selects image B version 1.2."
+        )
+
+        concise = _documented_baseline_contract_statement(statement)
+
+        assert "Pick Automatically" in concise
+        assert "1.5" not in concise
+        assert "1.2" not in concise
+        assert "documented" not in concise
+
+    def test_manual_qe_check_reframes_a_user_facing_view_request(self):
+        assert _as_manual_qe_check(
+            "Add a user-facing view for each image or media asset that shows "
+            "every direct and nested topic use."
+        ) == (
+            "Verify that each image or media asset has a user-facing view that "
+            "shows every direct and nested topic use."
+        )
+
+    def test_manual_qe_check_reframes_a_preservation_directive(self):
+        assert _as_manual_qe_check(
+            "Preserve existing baseline resolution options. This change does "
+            "not introduce a new label-resolution rule."
+        ) == (
+            "Verify that the existing baseline resolution options stay "
+            "unchanged; this change does not introduce a new label-resolution rule."
+        )
+
+    def test_manual_qe_check_places_a_fronted_context_after_the_outcome(self):
+        assert _as_manual_qe_check(
+            'For Referred Content, the "Pick Automatically" rule selects '
+            "the matching version."
+        ) == (
+            'Verify that for Referred Content, the "Pick Automatically" rule '
+            "selects the matching version."
+        )
 
 
 class TestRetrievalResidueNeverReachesTheReader:

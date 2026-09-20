@@ -1452,6 +1452,7 @@ class CanonicalTestPlanRuntime:
                 promotions,
                 facts,
                 dispositions,
+                admitted_clarifications,
             ),
         )
         # A5 host mediation: computed once, consumed by the renderer and the

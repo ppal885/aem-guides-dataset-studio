@@ -1020,7 +1020,7 @@ def _as_outcome_sentence(clause: str) -> str:
 # ordinary descriptive "and" phrases ("topics and maps") intact.
 _INDEPENDENT_REQUIREMENT_RE = re.compile(
     r"\s+and\s+(?=(?:the|a|an|its|their|each|every|all)?\s*[\w\s,'\"-]{3,80}?"
-    r"\b(?:should|must|shall|will|needs?\s+to|has\s+to|have\s+to)\b)",
+    r"\b(?:should|must|shall|needs?\s+to|has\s+to|have\s+to)\b)",
     re.IGNORECASE,
 )
 
@@ -1038,6 +1038,37 @@ def _split_independent_requirements(statement: str) -> list[str]:
     parts = [part.strip(" ,;") for part in _INDEPENDENT_REQUIREMENT_RE.split(text)]
     parts = [part for part in parts if part]
     return parts or [text]
+
+
+_DOCUMENTATION_EXAMPLE_SENTENCE_RE = re.compile(
+    r"\b(?:for\s+example|e\.g\.|example\s+(?:states?|shows?|is)|"
+    r"Adobe'?s?\s+example)\b",
+    re.IGNORECASE,
+)
+_DOCUMENTATION_ATTRIBUTION_RE = re.compile(
+    r"\b(?:Adobe|the\s+documentation|documentation)\s+"
+    r"(?:documents?|states?|explains?|describes?)\s+that\s+",
+    re.IGNORECASE,
+)
+_DOCUMENTED_RULE_PREFIX_RE = re.compile(r"\bthe\s+documented\s+", re.IGNORECASE)
+
+
+def _documented_baseline_contract_statement(statement: str) -> str:
+    """Keep a documented rule while removing a non-normative example.
+
+    Documentation examples are useful research evidence, but an illustrative
+    version number must not turn into an unsupported product-specific AC.
+    """
+
+    sentences = re.split(r"(?<=[.!?])\s+", " ".join(statement.split()))
+    retained: list[str] = []
+    for sentence in sentences:
+        if retained and _DOCUMENTATION_EXAMPLE_SENTENCE_RE.search(sentence):
+            continue
+        retained.append(sentence)
+    text = _DOCUMENTATION_ATTRIBUTION_RE.sub("", " ".join(retained))
+    text = _DOCUMENTED_RULE_PREFIX_RE.sub("the ", text)
+    return _as_outcome_sentence(text)
 
 
 # D2/D1-c: phrasings that turn an unresolved capability into the decision QE
@@ -1389,6 +1420,19 @@ _QE_CHECK_LEAD_RE = re.compile(r"^(?:verify|confirm|check)\b", re.I)
 _QE_STATUS_PREFIX_RE = re.compile(r"^(?:proposed|confirmed):\s*", re.I)
 _QE_ARTICLE_PREFIX_RE = re.compile(r"^(?:A|An|The|No|Each)\b")
 _QE_TBD_QUESTION_RE = re.compile(r"\?\s*(?:\(TBD\))?\.?\s*$", re.I)
+_QE_ADD_VIEW_RE = re.compile(
+    r"^Add (?P<view>an? user-facing view) for (?P<subject>each .+?) "
+    r"that (?P<behavior>.+?)[.!?]?$",
+    re.I,
+)
+_QE_PRESERVE_RE = re.compile(
+    r"^Preserve (?P<subject>[^.]+)(?:\.\s*(?P<detail>.+))?[.!?]?$",
+    re.I,
+)
+_QE_FOR_CONTEXT_RE = re.compile(
+    r"^For (?P<context>[^,]+),\s*(?P<statement>.+)$",
+    re.I,
+)
 
 
 def _as_manual_qe_check(text: str) -> str:
@@ -1406,6 +1450,27 @@ def _as_manual_qe_check(text: str) -> str:
         or _QE_TBD_QUESTION_RE.search(value)
     ):
         return value
+    add_view = _QE_ADD_VIEW_RE.match(value)
+    if add_view:
+        return (
+            f"Verify that {add_view.group('subject')} has "
+            f"{add_view.group('view')} that "
+            f"{add_view.group('behavior').rstrip('.!?')}."
+        )
+    preserve = _QE_PRESERVE_RE.match(value)
+    if preserve:
+        subject = preserve.group("subject").strip()
+        if not re.match(r"^(?:the|a|an|each|all)\b", subject, re.I):
+            subject = f"the {subject}"
+        detail = (preserve.group("detail") or "").strip().rstrip(".!?")
+        suffix = f"; {detail[0].lower() + detail[1:]}" if detail else ""
+        return f"Verify that {subject} stay unchanged{suffix}."
+    context = _QE_FOR_CONTEXT_RE.match(value)
+    if context:
+        statement = context.group("statement").strip().rstrip(".!?")
+        return (
+            f"Verify that for {context.group('context').strip()}, {statement}."
+        )
     article = _QE_ARTICLE_PREFIX_RE.match(value)
     if article:
         value = article.group(0).lower() + value[article.end():]
@@ -1439,6 +1504,7 @@ def _acceptance_source_line(
     fact_ids: list[str],
     facts_by_id: Mapping[str, Any],
     evidence_refs: list[str] | None = None,
+    clarification_source_lines: Mapping[str, str] | None = None,
 ) -> str:
     """Human-facing Source line for one acceptance criterion.
 
@@ -1469,6 +1535,8 @@ def _acceptance_source_line(
             return f"Product documentation: {value.split(':', 1)[1].strip()}"
         if lowered.startswith(("repo:", "code:", "github:")):
             return f"Implementation source: {value}"
+        if lowered.startswith("clarification:"):
+            return f"Human product decision record: {value}"
         return ""
 
     for fact_id in fact_ids:
@@ -1484,7 +1552,10 @@ def _acceptance_source_line(
     # credit that documentation instead of silently inheriting the Jira label
     # of the question that triggered the research.
     for ref in evidence_refs or []:
-        label = describe(str(ref))
+        reference = str(ref)
+        label = (clarification_source_lines or {}).get(reference) or describe(
+            reference
+        )
         if label:
             add(label)
     if not labels:
@@ -1493,6 +1564,32 @@ def _acceptance_source_line(
             "source establishes this additional coverage."
         )
     return " + ".join(labels) + "."
+
+
+def _clarification_source_lines(
+    clarifications: list[HumanClarification] | None,
+) -> dict[str, str]:
+    """Name admitted human decisions without misattributing them to Jira text."""
+
+    labels: dict[str, str] = {}
+    for clarification in clarifications or []:
+        if clarification.status != ClarificationStatus.ADMITTED:
+            continue
+        reference = f"clarification:{clarification.clarification_id}"
+        context = " ".join(clarification.source_context.split())
+        jira_match = re.search(
+            r"\b[A-Z][A-Z0-9]+-\d+\b", context, re.IGNORECASE
+        )
+        if jira_match:
+            labels[reference] = (
+                f"{jira_match.group(0).upper()} — "
+                f"{clarification.provided_by}-confirmed product decision"
+            )
+        elif context:
+            labels[reference] = f"Human product decision: {context}"
+        else:
+            labels[reference] = f"Human product decision record: {reference}"
+    return labels
 
 
 _DOMAIN_SIGNALS: dict[IssueDomain, tuple[str, ...]] = {
@@ -2037,12 +2134,14 @@ def _behavior_subject_from_facts(facts: ContractFactSet) -> str:
 # promotion guard itself never uses keywords - it uses the evidence role
 # assigned here plus claim/evidence token coverage and authority.
 _PROBLEM_SHAPE_RE = re.compile(
-    r"\b(?:there is no|no easy way|not easy to|difficult to|hard to|cumbersome|"
+    r"\b(?:there is no|no (?:\w+\s+){0,2}way to|not easy to|difficult to|hard to|cumbersome|"
     r"painful|fragile|error[- ]prone|time[- ]consuming|"
     r"does not (?:have|provide|offer|support|allow|include)|"
     r"do not (?:have|provide|offer|support|allow)|"
     r"lacks?|lack of|missing|cannot|can't|unable to|no way to|no option to|"
     r"not driven by|not supported|not available|no visibility|"
+    r"neither\s+(?:the\s+)?users?\s+ha(?:s|ve)\s+visibility|"
+    r"not acceptable|"
     r"manual(?:ly)?(?:\s+(?:process|step|workflow|approach|way))?)\b",
     re.IGNORECASE,
 )
@@ -2051,6 +2150,13 @@ _PROBLEM_SHAPE_RE = re.compile(
 _IMPERATIVE_REQUIREMENT_RE = re.compile(
     r"\b(?:must|shall|should|required|needs? to|has to|have to|is expected to|"
     r"are expected to|provide|support|allow)\b",
+    re.IGNORECASE,
+)
+# A phrase such as "what label should be applied" reports a user's current
+# decision burden.  It is not an imperative product requirement, even though
+# it contains the word "should".
+_INDIRECT_SHOULD_CONTEXT_RE = re.compile(
+    r"\b(?:what|which|how|where)\b[^.?!]{0,80}\bshould\b",
     re.IGNORECASE,
 )
 
@@ -3518,11 +3624,13 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
         "id",
         "issue_key",
         "jira_key",
+        "lookup_message",
         "source",
         "lookup_source",
         "source_hash",
         "source_url",
         "canonical_url",
+        "url",
         "chunk_id",
         "snapshot_id",
         "fingerprint",
@@ -3544,6 +3652,7 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
         "target_key",
         "target_summary",
         "mime_type",
+        "filename",
         "size",
         "author",
     }:
@@ -3556,6 +3665,44 @@ def _is_contract_metadata(path: str, literal: str) -> bool:
             ".query_runtime.",
             ".generation.id",
         )
+    )
+
+
+_RETRIEVED_TITLE_METADATA_SOURCES = frozenset(
+    {
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+        EvidenceSourceType.DITA_SPECIFICATION,
+        EvidenceSourceType.DITA_OT_DOCUMENTATION,
+        EvidenceSourceType.AEM_ASSETS_PLATFORM_DOCUMENTATION,
+        EvidenceSourceType.CURRENT_CODE,
+        EvidenceSourceType.CURRENT_PR,
+        EvidenceSourceType.EXISTING_AUTOMATION,
+        EvidenceSourceType.HISTORICAL_JIRA,
+        EvidenceSourceType.EVIDENCE_GRAPH_LEAF,
+        EvidenceSourceType.MODEL_INFERENCE,
+        EvidenceSourceType.IMPLEMENTATION_DIFF,
+        EvidenceSourceType.CODE_DIFF,
+        EvidenceSourceType.BENCHMARK_PUBLIC_INPUT,
+        EvidenceSourceType.CODEX_MANIFEST,
+        EvidenceSourceType.UNKNOWN,
+    }
+)
+
+
+def _is_retrieved_title_metadata(
+    source_type: EvidenceSourceType, path: str
+) -> bool:
+    """Keep retrieved page titles out of contract facts.
+
+    A documentation title helps retrieval but does not establish product behavior.
+    Ticket titles are deliberately retained because they can express the request.
+    """
+
+    normalized_path = path.casefold().replace("[", ".").replace("]", "")
+    leaf = normalized_path.rsplit(".", 1)[-1]
+    return (
+        source_type in _RETRIEVED_TITLE_METADATA_SOURCES
+        and leaf in {"title", "page_title", "heading"}
     )
 
 
@@ -3610,6 +3757,23 @@ _SCALAR_SCOPE_FACT_TYPES = frozenset(
         ContractFactType.DEPLOYMENT_MODE,
         ContractFactType.PRODUCT_VERSION,
         ContractFactType.FEATURE_STATE,
+    }
+)
+
+# These fact types preserve identifiers, values, and context needed to trace an
+# admitted contract. They do not by themselves express a product behavior, so
+# classifying them as P1 would create a false regression obligation from a Jira
+# label, attachment name, or current-state detail.
+_COVERAGE_BEARING_FACT_TYPES = frozenset(
+    {
+        ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+        ContractFactType.OUT_OF_SCOPE,
+        ContractFactType.COMPATIBILITY_REQUIREMENTS,
+        ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS,
+        ContractFactType.HUMAN_OPEN_QUESTIONS,
+        ContractFactType.ENGINEERING_DESIGN_QUESTIONS,
+        ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+        ContractFactType.PROBLEM_STATEMENT,
     }
 )
 
@@ -3760,9 +3924,12 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
     # PROBLEM_STATEMENT - it establishes the problem, never a solution.
     # UX1: person-centric burden language forces the problem role even when a
     # generic modal is present, because the modal attaches to the person.
+    has_requirement_imperative = bool(_IMPERATIVE_REQUIREMENT_RE.search(literal))
+    if _INDIRECT_SHOULD_CONTEXT_RE.search(literal):
+        has_requirement_imperative = False
     if (
         _PROBLEM_SHAPE_RE.search(literal)
-        and not _IMPERATIVE_REQUIREMENT_RE.search(literal)
+        and not has_requirement_imperative
     ) or _HUMAN_BURDEN_RE.search(literal):
         found = [
             row
@@ -3771,6 +3938,16 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
             not in {
                 ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
                 ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS,
+                ContractFactType.EXACT_LABELS,
+                ContractFactType.EXACT_DEFAULTS,
+                ContractFactType.EXACT_VALUES,
+                ContractFactType.EXACT_STATUS_NAMES,
+                ContractFactType.COLORS,
+                ContractFactType.COUNTS,
+                ContractFactType.LIMITS,
+                ContractFactType.HUMAN_TERMINOLOGY,
+                ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+                ContractFactType.COMPATIBILITY_REQUIREMENTS,
             }
         ]
         found.append(ContractFactType.PROBLEM_STATEMENT)
@@ -4782,7 +4959,9 @@ class CanonicalTestPlanReasoningService:
                         # statement and must never be presented to a reader as
                         # configuration, scope, or coverage evidence.
                         continue
-                    if _is_contract_metadata(path, literal):
+                    if _is_contract_metadata(
+                        path, literal
+                    ) or _is_retrieved_title_metadata(record.source_type, path):
                         continue
                     fact_types = _fact_types(path, literal)
                     is_scalar_scope_fact = bool(
@@ -7191,10 +7370,12 @@ class CanonicalTestPlanReasoningService:
                 # ticket requirements.  Their answer reaches coverage only
                 # through the bound question/research path below.
                 continue
-            if fact.fact_type == ContractFactType.CONTEXT_STATEMENT:
-                # UX1: narrative context informs issue understanding only; it
-                # is not a behavior and receives no coverage disposition, so
-                # it can never become an acceptance candidate.
+            if fact.fact_type not in _COVERAGE_BEARING_FACT_TYPES:
+                # Identifiers, scalar settings, exact values, labels, and
+                # current-state context remain in the fact ledger and can
+                # qualify a real contract. They are not standalone behavior,
+                # so they must never mint P1 coverage merely because they
+                # appear in a Jira description or attachment metadata.
                 continue
             if fact.fact_type == ContractFactType.OUT_OF_SCOPE:
                 disposition = CoverageDisposition.OUT_OF_SCOPE
@@ -8032,10 +8213,18 @@ class CanonicalTestPlanReasoningService:
                 ContractFactType.EXACT_DEFAULTS,
                 ContractFactType.EXACT_STATUS_NAMES,
             }
+            candidate_statement = row.candidate
+            if (
+                row.research_derived
+                and row.rationale == _EXISTING_PROPOSED_RATIONALE
+            ):
+                candidate_statement = _documented_baseline_contract_statement(
+                    candidate_statement
+                )
             has_exactness = bool(
                 re.search(
                     r"(?:\b\d+(?:\.\d+)?\b|#[0-9a-f]{3,8}\b)",
-                    row.candidate,
+                    candidate_statement,
                     re.IGNORECASE,
                 )
             )
@@ -8054,7 +8243,6 @@ class CanonicalTestPlanReasoningService:
             # so request grammar is reframed here.  When it cannot be reframed
             # the candidate stays non-observable and the promotion gate - whose
             # observability check is otherwise unreachable - correctly stops it.
-            candidate_statement = row.candidate
             if _is_request_not_outcome(candidate_statement):
                 derived = _derive_outcome_statement(candidate_statement)
                 if derived is not None:
@@ -9029,6 +9217,7 @@ class CanonicalTestPlanReasoningService:
         promotions: list[AcceptancePromotionDecision],
         facts: ContractFactSet,
         dispositions: list[CoverageDispositionRecord] | None = None,
+        clarifications: list[HumanClarification] | None = None,
     ) -> list[WrittenAcceptanceCriterion]:
         """D2 Writer: turn admitted candidates into testable acceptance criteria.
 
@@ -9054,6 +9243,7 @@ class CanonicalTestPlanReasoningService:
         dispositions_by_id = {
             row.disposition_id: row for row in (dispositions or [])
         }
+        clarification_source_lines = _clarification_source_lines(clarifications)
         written: list[WrittenAcceptanceCriterion] = []
         seen_outcomes: set[str] = set()
 
@@ -9093,6 +9283,7 @@ class CanonicalTestPlanReasoningService:
                 list(candidate.source_fact_ids),
                 facts_by_id,
                 list(candidate.evidence_ids),
+                clarification_source_lines,
             )
             proposed = (
                 facts.contract_mode == ContractMode.HUMAN_ACCEPTED_CONTRACT
@@ -9196,7 +9387,10 @@ class CanonicalTestPlanReasoningService:
                         outcome=question,
                         unresolved=True,
                         source_line=_acceptance_source_line(
-                            list(row.source_fact_ids), facts_by_id
+                            list(row.source_fact_ids),
+                            facts_by_id,
+                            list(row.evidence_ids),
+                            clarification_source_lines,
                         ),
                         source_fact_ids=list(row.source_fact_ids),
                         source_disposition_ids=[row.disposition_id],
@@ -9271,6 +9465,7 @@ class CanonicalTestPlanReasoningService:
                                 list(row.source_fact_ids),
                                 facts_by_id,
                                 list(row.evidence_ids),
+                                clarification_source_lines,
                             ),
                             source_fact_ids=list(row.source_fact_ids),
                             source_disposition_ids=[row.disposition_id],
@@ -9308,6 +9503,7 @@ class CanonicalTestPlanReasoningService:
                 list(criterion.source_fact_ids),
                 facts_by_id,
                 list(criterion.evidence_ids),
+                clarification_source_lines,
             )
             if not recomputed or recomputed == criterion.source_line:
                 continue
@@ -9476,20 +9672,16 @@ class CanonicalTestPlanReasoningService:
         # (settled research or planner boilerplate with no evidence linkage)
         # remain in the trace; the render invariant exempts them explicitly.
         skipped_open_dispositions: set[str] = set()
-        # Issue understanding is WHAT THE TICKET STATES: only facts carrying
-        # a ticket/human authority class belong.  Retrieved documentation may
-        # establish existing product behavior downstream, but a doc-chunk
-        # sentence is never the issue's own understanding.
+        # Issue understanding is WHAT THE TICKET STATES: every retained
+        # ticket/human fact is visible here even when it is a qualifier (for
+        # example a named default or current label workflow), rather than a
+        # standalone acceptance or regression behavior. Retrieved
+        # documentation may establish existing product behavior downstream,
+        # but a doc-chunk sentence is never the issue's own understanding.
         understanding = [
             row
             for row in facts.facts
-            if row.fact_type
-            in {
-                ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
-                # UX1: narrative context is the legitimate issue-understanding
-                # source for thin tickets (no requirement signal, no promotion).
-                ContractFactType.CONTEXT_STATEMENT,
-            }
+            if row.fact_type != ContractFactType.OUT_OF_SCOPE
             and row.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
         ]
         for fact in understanding:
