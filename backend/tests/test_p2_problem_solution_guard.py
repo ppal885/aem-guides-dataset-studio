@@ -32,6 +32,8 @@ from app.core.schemas_canonical_test_plan_runtime import (
     MissingQuestion,
     OpenQuestionClass,
     PromotionStatus,
+    ResearchRequirement,
+    ResearchStatus,
     RuntimeEntryPoint,
     ScopeResolution,
     SufficiencyStatus,
@@ -607,6 +609,164 @@ def test_production_path_cannot_promote_unstated_solution() -> None:
     manifest, meta = adapter.project_runtime_result(result.model_dump(mode="json"))
     report = run_gates.replay_runtime_projection(manifest)
     assert report["runtime_promotion_status"] == "AGREES"
+
+
+def test_unacceptable_manual_practice_remains_a_negative_contract() -> None:
+    result = _runtime_run(
+        "Considering the release-management gap, manually assigning image "
+        "version labels through Assets UI is not acceptable."
+    )
+    payload = result.output_payload
+
+    negative_rows = [
+        row
+        for row in payload["coverage_dispositions"]
+        if (
+            row["disposition"] == "PROPOSED_ACCEPTANCE_CONTRACT"
+            and row["contract_type"] == "NEGATIVE"
+        )
+    ]
+    assert negative_rows
+    assert negative_rows[0]["contract_type"] == "NEGATIVE"
+
+    promoted_ids = {
+        row["candidate_id"]
+        for row in payload["promotion_decisions"]
+        if row["status"] == "PROMOTED"
+    }
+    promoted = [
+        row
+        for row in payload["acceptance_candidates"]
+        if row["candidate_id"] in promoted_ids
+    ]
+    assert any(
+        row["statement"]
+        == "Manual assignment of image version labels through Assets UI is not required."
+        for row in promoted
+    )
+    assert all("dropdown" not in row["statement"].casefold() for row in promoted)
+
+
+def test_confirmed_image_label_scope_keeps_every_core_contract() -> None:
+    """Keep human-confirmed coverage without turning an undecided source into fact."""
+
+    bundle = normalize_legacy_packet(
+        {
+            "jira_key": "GUIDES-TEST",
+            "issue": {
+                "summary": "Manage image version labels for Baselines",
+                "description": (
+                    "While uploading or updating an image, the dialog has no "
+                    "label option. Users cannot see where an image is used in "
+                    "topics or which Baseline content version uses it. The only "
+                    "image-label path is a Version History text box in Assets UI, "
+                    "and manually assigning image version labels through Assets "
+                    "UI is not acceptable. The text box is not driven by "
+                    "labels.json of Folder profiles."
+                ),
+            },
+            "product_decisions": [
+                (
+                    "Image and media version labels must be manageable while "
+                    "users upload or update the asset."
+                ),
+                (
+                    "For each image or media asset, show every direct and nested "
+                    "topic use and the Baseline content version that will use it."
+                ),
+                "Preserve the existing Baseline resolution options.",
+            ],
+        },
+        tenant_id="p2-complete-image-label-coverage",
+    )
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+    assert facts.contract_mode == ContractMode.PARTIAL_HUMAN_CONTRACT
+    coverage = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), []
+    )
+    candidates = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract(
+        facts, coverage, []
+    )
+    _, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
+        candidates, facts, ScopeResolution(), coverage
+    )
+    promoted_ids = {
+        row.candidate_id
+        for row in promotions
+        if row.status == PromotionStatus.PROMOTED
+    }
+    statements = {
+        row.statement for row in candidates if row.candidate_id in promoted_ids
+    }
+    joined = "\n".join(statements).casefold()
+    written = CANONICAL_REASONING_SERVICE.write_acceptance_criteria(
+        candidates, promotions, facts, coverage
+    )
+    written_outcomes = "\n".join(row.outcome for row in written).casefold()
+
+    assert (
+        "image and media version labels must be manageable while users upload"
+        in joined
+    )
+    assert "every direct and nested topic use" in joined
+    assert "baseline content version" in joined
+    assert "preserve the existing baseline resolution options" in joined
+    assert "manual assignment of image version labels through assets ui" in joined
+    assert "labels.json" not in joined
+    assert "dropdown" not in joined
+    assert (
+        "image and media version labels must be manageable while users upload"
+        in written_outcomes
+    )
+    assert "every direct and nested topic use" in written_outcomes
+    assert "baseline content version" in written_outcomes
+    assert "preserve the existing baseline resolution options" in written_outcomes
+    assert "manual assignment of image version labels through assets ui" in written_outcomes
+
+
+def test_undecided_value_source_stays_as_a_product_tbd() -> None:
+    bundle = normalize_legacy_packet(
+        {
+            "jira_key": "GUIDES-TEST",
+            "issue": {
+                "description": (
+                    "The image label is a text box and is not driven by "
+                    "labels.json of Folder profiles."
+                )
+            },
+        },
+        tenant_id="p2-value-source-tbd",
+    )
+    facts = CANONICAL_REASONING_SERVICE.extract_contract_facts(bundle)
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [], ScopeResolution(), facts
+    )
+    source_question = next(
+        row
+        for row in questions
+        if "currently not driven by labels.json of Folder profiles" in row.question
+    )
+
+    requirements = CANONICAL_REASONING_SERVICE.classify_research_requirements(
+        questions, facts
+    )
+    research = CANONICAL_REASONING_SERVICE.resolve_question_research(
+        questions, requirements, [], []
+    )
+    source_research = next(
+        row for row in research if row.question_id == source_question.question_id
+    )
+    assert source_research.research_requirement == ResearchRequirement.NONE
+    assert source_research.research_status == ResearchStatus.NOT_REQUIRED
+
+    coverage = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], ScopeResolution(), questions, research
+    )
+    assert any(
+        row.disposition == CoverageDisposition.ACCEPTANCE_TBD
+        and source_question.question_id in row.source_question_ids
+        for row in coverage
+    )
 
 
 def test_production_path_resume_establishes_solution() -> None:

@@ -548,6 +548,14 @@ class TestRequestedCapabilityAuthorityBoundary:
 class TestCompoundRequirementSplitting:
     """D2: two independent requirements are two pass/fail contracts."""
 
+    def test_shared_subject_with_and_is_not_split(self):
+        statement = (
+            "Image and media version labels must be manageable while users "
+            "upload or update the asset."
+        )
+
+        assert _split_independent_requirements(statement) == [statement]
+
     def test_compound_jira_sentence_splits_into_two_requirements(self):
         clauses = _split_independent_requirements(
             "Ability to view the topic list in the same order as it appears in "

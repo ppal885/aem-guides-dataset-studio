@@ -1019,7 +1019,7 @@ def _as_outcome_sentence(clause: str) -> str:
 # pass/fail contracts.  Splitting only on a modal-bearing conjunct keeps
 # ordinary descriptive "and" phrases ("topics and maps") intact.
 _INDEPENDENT_REQUIREMENT_RE = re.compile(
-    r"\s+and\s+(?=(?:the|a|an|its|their|each|every|all)?\s*[\w\s,'\"-]{3,80}?"
+    r"\s+and\s+(?=(?:the|a|an|its|their|each|every|all)\s+[\w\s,'\"-]{3,80}?"
     r"\b(?:should|must|shall|needs?\s+to|has\s+to|have\s+to)\b)",
     re.IGNORECASE,
 )
@@ -1051,6 +1051,26 @@ _DOCUMENTATION_ATTRIBUTION_RE = re.compile(
     re.IGNORECASE,
 )
 _DOCUMENTED_RULE_PREFIX_RE = re.compile(r"\bthe\s+documented\s+", re.IGNORECASE)
+_UNACCEPTABLE_MANUAL_PRACTICE_RE = re.compile(
+    r"\b(?P<practice>manual(?:ly)?\s+"
+    r"(?:assigning|entering|typing|selecting|managing)\b[^.?!]{0,240}?)"
+    r"\s+is\s+not\s+acceptable\b",
+    re.IGNORECASE,
+)
+_MANUAL_PRACTICE_PARTS_RE = re.compile(
+    r"^manual(?:ly)?\s+"
+    r"(?P<action>assigning|entering|typing|selecting|managing)\s+"
+    r"(?P<subject>.+?)"
+    r"(?P<surface>\s+(?:through|in|using|via)\s+.+)?$",
+    re.IGNORECASE,
+)
+_MANUAL_ACTION_NOUNS = {
+    "assigning": "assignment",
+    "entering": "entry",
+    "typing": "entry",
+    "selecting": "selection",
+    "managing": "management",
+}
 
 
 def _documented_baseline_contract_statement(statement: str) -> str:
@@ -1069,6 +1089,30 @@ def _documented_baseline_contract_statement(statement: str) -> str:
     text = _DOCUMENTATION_ATTRIBUTION_RE.sub("", " ".join(retained))
     text = _DOCUMENTED_RULE_PREFIX_RE.sub("the ", text)
     return _as_outcome_sentence(text)
+
+
+def _negative_contract_statement(statement: str) -> str:
+    """Turn an explicit unacceptable manual practice into a testable boundary.
+
+    The Jira source establishes that the manual practice is unacceptable, but
+    not which replacement control Product will choose.  This retains the
+    negative product contract without inventing a dropdown, dialog, or source.
+    """
+
+    match = _UNACCEPTABLE_MANUAL_PRACTICE_RE.search(statement)
+    if match is None:
+        return _as_outcome_sentence(statement)
+    practice = match.group("practice").strip()
+    parts = _MANUAL_PRACTICE_PARTS_RE.fullmatch(practice)
+    if parts is None:
+        return _as_outcome_sentence(f"{practice} is not required")
+    action = parts.group("action").casefold()
+    subject = parts.group("subject").strip()
+    surface = " ".join((parts.group("surface") or "").split())
+    noun = _MANUAL_ACTION_NOUNS.get(action, action)
+    return _as_outcome_sentence(
+        f"Manual {noun} of {subject}{(' ' + surface) if surface else ''} is not required"
+    )
 
 
 # D2/D1-c: phrasings that turn an unresolved capability into the decision QE
@@ -2143,6 +2187,21 @@ _PROBLEM_SHAPE_RE = re.compile(
     r"neither\s+(?:the\s+)?users?\s+ha(?:s|ve)\s+visibility|"
     r"not acceptable|"
     r"manual(?:ly)?(?:\s+(?:process|step|workflow|approach|way))?)\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_NEGATIVE_CONTRACT_RE = re.compile(
+    r"\b(?:must\s+not|should\s+not|is\s+not\s+acceptable|are\s+not\s+acceptable|"
+    r"not\s+permitted|prohibited)\b",
+    re.IGNORECASE,
+)
+_UNACCEPTABLE_CONTRACT_RE = re.compile(
+    r"\b(?:is|are)\s+not\s+acceptable\b",
+    re.IGNORECASE,
+)
+_UNRESOLVED_VALUE_SOURCE_RE = re.compile(
+    r"\b(?:is|are)\s+not\s+"
+    r"(?:driven|derived|populated|managed|configured)\s+by\s+"
+    r"(?P<source>.+?)(?=(?:[?!;,]|\.(?:\s|$)|$))",
     re.IGNORECASE,
 )
 # Imperative language marks a requirement, not a problem statement, even when
@@ -3874,6 +3933,8 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
     for fact_type, signals in mappings:
         if any(signal in combined for signal in signals):
             found.append(fact_type)
+    if _EXPLICIT_NEGATIVE_CONTRACT_RE.search(literal):
+        found.append(ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS)
     # A politely phrased capability request in Jira description/comments is
     # not approval to promise the capability. An explicit accepted-UAC field
     # remains authoritative even when its human wording is interrogative.
@@ -3931,6 +3992,11 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
         _PROBLEM_SHAPE_RE.search(literal)
         and not has_requirement_imperative
     ) or _HUMAN_BURDEN_RE.search(literal):
+        preserved_problem_fact_types = (
+            {ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS}
+            if _EXPLICIT_NEGATIVE_CONTRACT_RE.search(literal)
+            else set()
+        )
         found = [
             row
             for row in found
@@ -3949,6 +4015,7 @@ def _fact_types(path: str, literal: str) -> list[ContractFactType]:
                 ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
                 ContractFactType.COMPATIBILITY_REQUIREMENTS,
             }
+            or row in preserved_problem_fact_types
         ]
         found.append(ContractFactType.PROBLEM_STATEMENT)
     if not found and any(token in key for token in ("summary", "description", "title")):
@@ -4197,6 +4264,24 @@ def _target_sources(subject: AuthoritySubject) -> list[EvidenceSourceType]:
             EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
         ],
     }[subject]
+
+
+def _product_decision_sources() -> list[EvidenceSourceType]:
+    """Return ticket-authority sources that can settle a product decision.
+
+    A question about which source Product wants to use is not a question about
+    how an existing source behaves.  Documentation may describe a candidate
+    source, but cannot choose it for the ticket.
+    """
+
+    return [
+        EvidenceSourceType.ACCEPTED_UAC,
+        EvidenceSourceType.PRODUCT_DECISION,
+        EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+        EvidenceSourceType.JIRA_DESCRIPTION,
+        EvidenceSourceType.JIRA_COMMENT,
+        EvidenceSourceType.CUSTOMER_REQUEST,
+    ]
 
 
 # A contract fact must read as observable behaviour, not a raw evidence span. These
@@ -5063,14 +5148,17 @@ class CanonicalTestPlanReasoningService:
                                 else "",
                             )
                         )
+        # A confirmed product decision is authoritative for the decision it
+        # names, but it is not necessarily the ticket's complete accepted
+        # UAC.  Treating one as a full accepted contract suppresses adjacent
+        # Jira requirements that must remain in the coverage set.
         has_accepted = any(
-            fact.authority_class in _ACCEPTED_AUTHORITIES
-            or any(
-                record.evidence_id in fact.source_evidence_ids
-                and record.source_type == EvidenceSourceType.ACCEPTED_UAC
-                for record in bundle.records
-            )
-            for fact in facts
+            record.source_type
+            in {
+                EvidenceSourceType.ACCEPTED_UAC,
+                EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+            }
+            for record in bundle.records
         )
         has_human = any(
             record.source_type in _HUMAN_CONTRACT_SOURCES for record in bundle.records
@@ -6560,6 +6648,31 @@ class CanonicalTestPlanReasoningService:
                         source_fact_ids=[problem_facts[0].fact_id],
                     )
                 )
+        # A report that a value is not driven by a named source exposes a
+        # product-source decision.  Keep that decision visible as a bounded
+        # TBD instead of assuming the named source is required or silently
+        # dropping the source-selection dimension.
+        if facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT:
+            for fact in problem_facts:
+                source_match = _UNRESOLVED_VALUE_SOURCE_RE.search(fact.literal)
+                if source_match is None:
+                    continue
+                source = source_match.group("source").strip()
+                if not source:
+                    continue
+                questions.append(
+                    MissingQuestion(
+                        question=(
+                            "What approved source must provide the value that is "
+                            f"currently not driven by {source}?"
+                        ),
+                        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+                        target_source_types=_product_decision_sources(),
+                        blocking=True,
+                        open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
+                        source_fact_ids=[fact.fact_id],
+                    )
+                )
         # UX1: equivalent questions (identical canonical text, e.g. several
         # raw-fragment entities projected to the same typed dimension)
         # collapse to one question; their internal lineage and investigation
@@ -7404,7 +7517,15 @@ class CanonicalTestPlanReasoningService:
                         else CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
                     )
             elif fact.fact_type == ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS:
-                disposition = CoverageDisposition.NEGATIVE_BOUNDARY
+                # A customer statement that a practice is unacceptable is a
+                # direct negative product contract.  It must reach the UAC
+                # without inventing the replacement UX.  Other negative
+                # dimensions remain P1 regression coverage.
+                disposition = (
+                    CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+                    if _UNACCEPTABLE_CONTRACT_RE.search(fact.literal)
+                    else CoverageDisposition.NEGATIVE_BOUNDARY
+                )
             else:
                 disposition = CoverageDisposition.CONFIGURATION_VARIANT
             rows.append(
@@ -8221,6 +8342,11 @@ class CanonicalTestPlanReasoningService:
                 candidate_statement = _documented_baseline_contract_statement(
                     candidate_statement
                 )
+            if any(
+                fact.fact_type == ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS
+                for fact in source_facts
+            ):
+                candidate_statement = _negative_contract_statement(candidate_statement)
             has_exactness = bool(
                 re.search(
                     r"(?:\b\d+(?:\.\d+)?\b|#[0-9a-f]{3,8}\b)",
