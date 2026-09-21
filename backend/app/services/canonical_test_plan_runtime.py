@@ -1062,7 +1062,11 @@ class CanonicalTestPlanRuntime:
         research_requirements = stage(
             CanonicalRuntimeStage.RESEARCH_REQUIREMENT_CLASSIFIER,
             [questions, facts],
-            lambda: self._reasoning.classify_research_requirements(questions, facts),
+            lambda: self._reasoning.classify_research_requirements(
+                questions,
+                facts,
+                clarified_question_ids=admitted_clarified_question_ids,
+            ),
         )
         # R2: RESEARCH_REQUIRED means a research worker actually executes (or
         # the envelope records why it could not) - before any human-facing
@@ -1074,7 +1078,11 @@ class CanonicalTestPlanRuntime:
             CanonicalRuntimeStage.RESEARCH_ORCHESTRATOR,
             [questions, research_requirements, visible],
             lambda: RESEARCH_ORCHESTRATOR.execute(
-                questions,
+                [
+                    question
+                    for question in questions
+                    if question.question_id not in admitted_clarified_question_ids
+                ],
                 research_requirements,
                 visible,
                 run_scope=run_id,
@@ -1091,8 +1099,13 @@ class CanonicalTestPlanRuntime:
             list[DirectedRetrievalRecord] | ReasoningEvidenceSemanticBatch
         ):
             nonlocal local_retrievals_for_trace
+            research_questions = [
+                question
+                for question in questions
+                if question.question_id not in admitted_clarified_question_ids
+            ]
             local_retrievals = self._reasoning.retrieve_for_questions(
-                visible, questions
+                visible, research_questions
             )
             local_retrievals_for_trace = list(local_retrievals)
             try:
@@ -1102,7 +1115,7 @@ class CanonicalTestPlanRuntime:
                     evidence=visible,
                     domains=domains,
                     scope=scope,
-                    questions=questions,
+                    questions=research_questions,
                     local_retrievals=local_retrievals,
                 )
                 if second_pass.semantic_evidence:
@@ -1138,7 +1151,11 @@ class CanonicalTestPlanRuntime:
         def verify_with_optional_second_pass():
             provisional_hypotheses, enriched_model = self._reasoning.verify_hypotheses(
                 runtime_evidence,
-                questions,
+                [
+                    question
+                    for question in questions
+                    if question.question_id not in admitted_clarified_question_ids
+                ],
                 retrievals,
                 model,
                 scope=scope,
@@ -1163,7 +1180,11 @@ class CanonicalTestPlanRuntime:
                 scope=scope,
                 surfaces=surfaces,
                 evidence=runtime_evidence,
-                questions=questions,
+                questions=[
+                    question
+                    for question in questions
+                    if question.question_id not in admitted_clarified_question_ids
+                ],
                 hypotheses=provisional_hypotheses,
             )
             implementation_batch = self._github_verification.apply_results(

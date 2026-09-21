@@ -6,7 +6,10 @@ from app.services.dita_construct_coverage_service import (
     known_construct_names,
     verified_examples_for_construct,
 )
-from app.services.dita_construct_semantics_service import infer_construct_semantics
+from app.services.dita_construct_semantics_service import (
+    detect_dita_semantic_terms,
+    infer_construct_semantics,
+)
 
 
 def test_coverage_matrix_has_core_top_value_constructs():
@@ -59,6 +62,14 @@ def test_construct_semantics_expose_deterministic_recipe_id():
 
     topicgroup = next(item for item in semantics if item.name == "topicgroup")
     assert topicgroup.deterministic_recipe_id == "maps.topicgroup_basic"
+
+
+def test_semantic_detector_uses_the_generic_construct_registry():
+    found = detect_dita_semantic_terms(
+        "Use colsep and locktitle, resolve a keyref, and retain @scalefit."
+    )
+
+    assert {"colsep", "locktitle", "keyref", "scalefit"} <= set(found)
 
 
 def test_top_value_construct_registry_contains_no_accidental_empty_names():

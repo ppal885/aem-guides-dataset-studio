@@ -40,16 +40,24 @@ from app.core.schemas_canonical_test_plan_runtime import (
     EvidenceSourceType,
     GateStatus,
     GenerationProfile,
+    HumanClarification,
     HypothesisState,
     InvestigationMateriality,
     MissingQuestion,
     ProductContractOwnership,
     ProductOwnership,
     QuestionResearchRecord,
+    ClarificationAnswerClass,
+    ClarificationStatus,
+    ResearchFinding,
+    ResearchFindingEvidenceRole,
     ResearchRequirement,
     ResearchRoutingProductContext,
     ResearchRoutingRequest,
     ResearchStatus,
+    ResearchWorkerResult,
+    ResearchWorkerRole,
+    ResearchWorkerStatus,
     RetrievalStatus,
     RuntimeEntryPoint,
     ScopeResolution,
@@ -66,6 +74,7 @@ from app.services.canonical_test_plan_runtime import CANONICAL_TEST_PLAN_RUNTIME
 from app.services.question_research_routing_service import (
     QUESTION_RESEARCH_ROUTER,
 )
+from app.services.research_workers import ResearchOrchestrator
 
 
 TENANT = "tenant-research-routing"
@@ -128,6 +137,24 @@ def _purge_question(
         blocking=True,
         materiality=InvestigationMateriality.P1,
         source_closure_ids=closure_ids or [],
+    )
+
+
+def _dita_semantics_question() -> MissingQuestion:
+    return MissingQuestion(
+        question=(
+            "What do the DITA specification and DITA-OT documentation "
+            "establish about colsep table separator behavior?"
+        ),
+        dimension=SemanticDimension.CONTROLLING_ATTRIBUTES,
+        authority_subject=AuthoritySubject.DITA_SEMANTICS,
+        target_source_types=[
+            EvidenceSourceType.DITA_SPECIFICATION,
+            EvidenceSourceType.DITA_OT_DOCUMENTATION,
+            EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+        ],
+        materiality=InvestigationMateriality.P1,
+        blocking=True,
     )
 
 
@@ -288,6 +315,72 @@ def test_classification_covers_every_route() -> None:
     assert not by_question[jira_only.question_id].required_source_types
 
 
+def test_named_dita_attribute_activates_generic_semantic_research() -> None:
+    """A known DITA attribute activates semantic research without `attribute`."""
+
+    jira = _record(
+        source_type=EvidenceSourceType.JIRA_DESCRIPTION,
+        reference="jira:GUIDES-table",
+        text="Show and edit colsep values in the editor.",
+    )
+    facts = ContractFactSet(
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+        facts=[
+            ContractFact(
+                fact_type=ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                literal="Show and edit colsep values in the editor.",
+                source_evidence_ids=[jira.evidence_id],
+                source_reference=jira.source_reference,
+                authority_class=AuthorityClass.CUSTOMER_REQUEST,
+                authoritative=True,
+            )
+        ],
+    )
+    bundle = build_bundle([jira], tenant_id=TENANT)
+
+    dimensions = CANONICAL_REASONING_SERVICE.applicable_semantic_dimensions(
+        bundle,
+        CanonicalBehaviorModel(primary_entities=["colsep"]),
+        facts=facts,
+    )
+    assert SemanticDimension.CONTROLLING_ATTRIBUTES in dimensions
+
+    closure = [
+        ClosureDimensionResult(
+            entity="colsep",
+            dimension=SemanticDimension.CONTROLLING_ATTRIBUTES,
+            applicability=ApplicabilityState.APPLICABLE,
+            disposition=ClosureDisposition.UNRESOLVED_AND_EXPOSED,
+            rationale="The ticket does not establish the DITA semantics.",
+        )
+    ]
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        closure,
+        ScopeResolution(),
+        facts,
+    )
+    (question,) = [
+        row
+        for row in questions
+        if row.dimension == SemanticDimension.CONTROLLING_ATTRIBUTES
+    ]
+    assert question.authority_subject == AuthoritySubject.DITA_SEMANTICS
+    assert {
+        EvidenceSourceType.DITA_SPECIFICATION,
+        EvidenceSourceType.DITA_OT_DOCUMENTATION,
+    } <= set(question.target_source_types)
+
+    (requirement,) = CANONICAL_REASONING_SERVICE.classify_research_requirements(
+        [question],
+        facts,
+    )
+    assert requirement.research_requirement == ResearchRequirement.DOCUMENTATION
+    assert {
+        EvidenceSourceType.DITA_SPECIFICATION,
+        EvidenceSourceType.DITA_OT_DOCUMENTATION,
+    } <= set(requirement.required_source_types)
+
+
 def test_human_accepted_contract_needs_no_documentation_research() -> None:
     questions = _purge_questions()
     records = CANONICAL_REASONING_SERVICE.classify_research_requirements(
@@ -308,6 +401,49 @@ def test_human_accepted_contract_needs_no_documentation_research() -> None:
                 by_question[question.question_id].research_requirement
                 == ResearchRequirement.IMPLEMENTATION
             )
+
+
+def test_admitted_human_clarification_needs_no_documentation_research() -> None:
+    """A bound product decision resolves only its exact question."""
+
+    question = _purge_question(
+        "Which documented behavior controls the retention setting?"
+    )
+    clarification = HumanClarification(
+        question_ref=question.question_id,
+        question_revision=question.question_revision,
+        answer="Show and edit the retention setting only.",
+        answer_classification=ClarificationAnswerClass.PRODUCT_DECISION,
+        provided_by="product-owner",
+        authority_role=AuthorityClass.CUSTOMER_REQUEST,
+        decision_reason="The product owner narrowed the scope.",
+    )
+    admitted, errors = CANONICAL_REASONING_SERVICE.admit_clarifications(
+        [clarification.model_dump(mode="json")], [question]
+    )
+    assert errors == []
+    assert admitted[0].status == ClarificationStatus.ADMITTED
+
+    requirements = CANONICAL_REASONING_SERVICE.classify_research_requirements(
+        [question],
+        _facts(ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT),
+        clarified_question_ids={question.question_id},
+    )
+    assert requirements[0].research_requirement == ResearchRequirement.NONE
+
+    worker_results, worker_executions = ResearchOrchestrator().execute(
+        [question],
+        requirements,
+        build_bundle([], tenant_id=TENANT),
+        repository_roots=[],
+    )
+    assert worker_results == []
+    assert worker_executions == []
+
+    (research,) = CANONICAL_REASONING_SERVICE.resolve_question_research(
+        [question], requirements, [], []
+    )
+    assert research.research_status == ResearchStatus.NOT_REQUIRED
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +568,154 @@ def test_documented_answer_completes_research() -> None:
         evidence=bundle,
     )
     assert record.research_status == ResearchStatus.ANSWER_FOUND
+
+
+def test_dita_semantics_cannot_finalize_without_dita_ot_source() -> None:
+    """Jira and screenshot/config evidence cannot substitute for formal docs."""
+
+    question = _dita_semantics_question()
+    facts = _facts(ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT)
+    (requirement,) = CANONICAL_REASONING_SERVICE.classify_research_requirements(
+        [question],
+        facts,
+    )
+    jira = _record(
+        source_type=EvidenceSourceType.JIRA_DESCRIPTION,
+        reference="jira:GUIDES-table",
+        text="Show and edit colsep values in the editor.",
+    )
+    screenshot = _record(
+        source_type=EvidenceSourceType.SCREENSHOT_REPRODUCTION,
+        reference="attachment:table-editor-config",
+        text="The editor configuration shows colsep set to 1.",
+    )
+    bundle = build_bundle([jira, screenshot], tenant_id=TENANT)
+    hypothesis = BehaviorHypothesis(
+        statement=question.question,
+        state=HypothesisState.CONFIRMED,
+        supporting_evidence_ids=[jira.evidence_id, screenshot.evidence_id],
+        derived_from_question_id=question.question_id,
+        confidence=0.9,
+    )
+
+    resolved = QUESTION_RESEARCH_ROUTER.resolve(
+        requirement,
+        retrievals=[_retrieval(question, [jira, screenshot])],
+        hypotheses=[hypothesis],
+        evidence=bundle,
+    )
+    assert resolved.research_status == ResearchStatus.SOURCE_UNAVAILABLE
+    assert EvidenceSourceType.DITA_SPECIFICATION.value in resolved.reason
+    assert EvidenceSourceType.DITA_OT_DOCUMENTATION.value in resolved.reason
+
+    coverage = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts,
+        [_closure_row(question, ClosureDisposition.UNRESOLVED_AND_EXPOSED)],
+        [],
+        [hypothesis],
+        ScopeResolution(),
+        [question],
+        [resolved],
+    )
+    assert coverage[0].disposition == CoverageDisposition.OPEN_QUESTION
+
+
+def test_dita_semantics_requires_admitted_evidence_from_both_formal_sources() -> None:
+    """A DITA-OT record must support the question, not merely exist nearby."""
+
+    question = _dita_semantics_question()
+    facts = _facts(ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT)
+    (requirement,) = CANONICAL_REASONING_SERVICE.classify_research_requirements(
+        [question],
+        facts,
+    )
+    spec = _record(
+        source_type=EvidenceSourceType.DITA_SPECIFICATION,
+        reference="dita:colsep",
+        text="The colsep attribute controls column separators in a CALS table.",
+        authority=AuthorityClass.SPECIFICATION_AUTHORITY,
+        authority_subject=AuthoritySubject.DITA_SEMANTICS,
+    )
+    dita_ot = _record(
+        source_type=EvidenceSourceType.DITA_OT_DOCUMENTATION,
+        reference="dita-ot:table-rendering",
+        text="DITA-OT table rendering depends on the active transformation.",
+        authority=AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
+        authority_subject=AuthoritySubject.DITA_SEMANTICS,
+    )
+    bundle = build_bundle([spec, dita_ot], tenant_id=TENANT)
+    spec_hypothesis = BehaviorHypothesis(
+        statement=question.question,
+        state=HypothesisState.CONFIRMED,
+        supporting_evidence_ids=[spec.evidence_id],
+        derived_from_question_id=question.question_id,
+        confidence=0.9,
+    )
+    spec_only_worker = ResearchWorkerResult(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        status=ResearchWorkerStatus.ANSWER_FOUND,
+        findings=[
+            ResearchFinding(
+                claim="The specification defines colsep for CALS table separators.",
+                source_refs=[spec.evidence_id],
+                evidence_role=ResearchFindingEvidenceRole.EXISTING_BEHAVIOR,
+            )
+        ],
+    )
+
+    partial = QUESTION_RESEARCH_ROUTER.resolve(
+        requirement,
+        retrievals=[_retrieval(question, [spec, dita_ot])],
+        hypotheses=[spec_hypothesis],
+        evidence=bundle,
+        worker_results=[spec_only_worker],
+    )
+    assert partial.research_status == ResearchStatus.PARTIAL
+    assert EvidenceSourceType.DITA_OT_DOCUMENTATION.value in partial.reason
+    coverage = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts,
+        [_closure_row(question, ClosureDisposition.UNRESOLVED_AND_EXPOSED)],
+        [],
+        [spec_hypothesis],
+        ScopeResolution(),
+        [question],
+        [partial],
+    )
+    assert coverage[0].disposition == CoverageDisposition.OPEN_QUESTION
+
+    complete_hypothesis = BehaviorHypothesis(
+        statement=question.question,
+        state=HypothesisState.CONFIRMED,
+        supporting_evidence_ids=[spec.evidence_id, dita_ot.evidence_id],
+        derived_from_question_id=question.question_id,
+        confidence=0.9,
+    )
+    complete_worker = ResearchWorkerResult(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        status=ResearchWorkerStatus.ANSWER_FOUND,
+        findings=[
+            ResearchFinding(
+                claim="The specification defines colsep for CALS table separators.",
+                source_refs=[spec.evidence_id],
+                evidence_role=ResearchFindingEvidenceRole.EXISTING_BEHAVIOR,
+            ),
+            ResearchFinding(
+                claim="DITA-OT documents processor-specific table rendering.",
+                source_refs=[dita_ot.evidence_id],
+                evidence_role=ResearchFindingEvidenceRole.EXISTING_BEHAVIOR,
+            ),
+        ],
+    )
+    resolved = QUESTION_RESEARCH_ROUTER.resolve(
+        requirement,
+        retrievals=[_retrieval(question, [spec, dita_ot])],
+        hypotheses=[complete_hypothesis],
+        evidence=bundle,
+        worker_results=[complete_worker],
+    )
+    assert resolved.research_status == ResearchStatus.ANSWER_FOUND
 
 
 # ---------------------------------------------------------------------------

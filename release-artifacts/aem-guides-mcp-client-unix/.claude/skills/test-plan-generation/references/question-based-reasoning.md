@@ -106,6 +106,16 @@ produced the answer. The earlier nested shape (`question_ref` + `status` + an
     for root-cause/diagnostic/mechanics uncertainty.
 13. Root cause / diagnostics / implementation mechanics are normally
     INVESTIGATION_ONLY.
+14. A table copy, paste, import, or conversion signal requires one blocking
+    scope-and-variant question before coverage finalizes the affected behavior.
+    The question must resolve the in-ticket source applications, candidate
+    sources within AEM Guides and from Word/Excel, and whether Web Editor and
+    New Editor share the contract. Do not infer parity or external-source
+    support. A narrow clarification about one table attribute cannot bypass
+    the unresolved source/editor matrix; it blocks related acceptance
+    candidates until product authority resolves it. An accepted AC suppresses
+    this question only when that AC itself names the table operation, source
+    scope, and editor scope; an attribute-only accepted AC does not.
 
 ## Writer boundary
 

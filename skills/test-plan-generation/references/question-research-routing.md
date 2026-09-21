@@ -54,6 +54,24 @@ them must have a routing entry.
 - **`ANSWER_FOUND` proves its request.** The record must cite the research
   request that produced the answer; `NONE`/`NOT_REQUIRED` records cite none.
 
+## DITA construct semantics
+
+When a material question names a DITA construct or governing attribute, route
+it from the reusable DITA construct registry rather than a ticket-specific
+keyword. The formal DITA source pair is mandatory:
+
+- `DITA_SPECIFICATION` establishes the construct semantics.
+- `DITA_OT_DOCUMENTATION` establishes the processor baseline.
+
+The two sources are independent. If either is unavailable from the authorized
+evidence bundle, the research status is `SOURCE_UNAVAILABLE`; if one source is
+present but has not supplied admitted evidence for the question, the status is
+`PARTIAL`. A retrieval hit that merely shares vocabulary does not satisfy this
+pair. `NOT_FOUND` still means neither source established an answer, never that
+the opposite behavior is true. AEM Guides product documentation may add
+product-specific behavior, but it must not be credited for DITA or DITA-OT
+behavior it does not establish.
+
 ## Worked shape
 
 A documentation-dependent question ("what does the product document for this
