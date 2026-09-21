@@ -34,6 +34,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     MissingQuestion,
     OpenQuestionClass,
     PromotionStatus,
+    ScopeResolution,
 )
 from app.services.canonical_test_plan_reasoning_service import (
     CANONICAL_REASONING_SERVICE,
@@ -371,6 +372,145 @@ def test_answering_one_question_does_not_unblock_another() -> None:
     )
     linked_candidate = linked_batch.candidates[0]
     assert linked_candidate.unresolved_decision_ids == [sorted(blocking)[0]]
+
+
+def test_table_paste_scope_cannot_be_replaced_by_a_narrow_clarification() -> None:
+    facts = ContractFactSet(
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+        facts=[
+            _fact(
+                "When authors copy or paste tables, pixel colwidth values can "
+                "be written into colsep.",
+                ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+            ),
+            _fact("Show and edit colsep values in the editor."),
+        ],
+    )
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [], ScopeResolution(), facts
+    )
+    (variant_question,) = [
+        row
+        for row in questions
+        if "TABLE_PASTE_VARIANT_SCOPE" in row.investigation_terms
+    ]
+    assert variant_question.blocking is True
+    assert "AEM Guides" in variant_question.question
+    assert "Word" in variant_question.question
+    assert "Excel" in variant_question.question
+    assert "Web Editor" in variant_question.question
+    assert "New Editor" in variant_question.question
+    assert not any(
+        row.question.startswith("What exact product behavior does the human term")
+        for row in questions
+    )
+
+    disposition = CoverageDispositionRecord(
+        candidate="Show and edit colsep values in the editor.",
+        disposition=CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+        source_fact_ids=[facts.facts[1].fact_id],
+        rationale="from ticket",
+    )
+    blocked = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts, [disposition], questions
+    )
+    assert blocked.candidates[0].unresolved_decision_ids == [
+        variant_question.question_id
+    ]
+
+    answer = (
+        "For tables copied within AEM Guides and pasted from Word or Excel, "
+        "show and edit colsep in Web Editor and New Editor; do not show pixel "
+        "colwidth values as colsep."
+    )
+    clarification = {
+        "question_ref": variant_question.question_id,
+        "question_revision": variant_question.question_revision,
+        "answer": answer,
+        "answer_classification": ClarificationAnswerClass.PRODUCT_DECISION.value,
+        "provided_by": "qe-reviewer",
+        "authority_role": AuthorityClass.CUSTOMER_REQUEST.value,
+        "decision_reason": "QE requires the full paste-source and editor matrix.",
+    }
+    admitted, errors = CANONICAL_REASONING_SERVICE.admit_clarifications(
+        [clarification], questions
+    )
+    assert errors == []
+    assert admitted[0].status == ClarificationStatus.ADMITTED
+
+    resumed = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts,
+        [disposition],
+        questions,
+        resolved_question_ids={variant_question.question_id},
+        clarifications=admitted,
+    )
+    matrix_candidate = next(
+        row
+        for row in resumed.candidates
+        if row.statement == answer
+    )
+    assert matrix_candidate.source_fact_ids == variant_question.source_fact_ids
+    assert matrix_candidate.unresolved_decision_ids == []
+
+
+def test_narrow_accepted_attribute_contract_does_not_erase_table_paste_scope() -> None:
+    facts = ContractFactSet(
+        contract_mode=ContractMode.HUMAN_ACCEPTED_CONTRACT,
+        facts=[
+            _fact(
+                "When authors copy or paste tables, pixel colwidth values can "
+                "be written into colsep.",
+                ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+            ),
+            _fact(
+                "Show and edit colsep values in the editor.",
+                authority=AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
+            ),
+        ],
+    )
+
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [], ScopeResolution(), facts
+    )
+
+    variant_question = next(
+        row
+        for row in questions
+        if "TABLE_PASTE_VARIANT_SCOPE" in row.investigation_terms
+    )
+    paste_fact = next(
+        row for row in facts.facts if "copy or paste tables" in row.literal
+    )
+    assert variant_question.blocking is True
+    assert set(variant_question.source_fact_ids) == {paste_fact.fact_id}
+
+
+def test_explicit_accepted_table_paste_scope_needs_no_duplicate_question() -> None:
+    facts = ContractFactSet(
+        contract_mode=ContractMode.HUMAN_ACCEPTED_CONTRACT,
+        facts=[
+            _fact(
+                "When authors copy or paste tables, pixel colwidth values can "
+                "be written into colsep.",
+                ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED,
+            ),
+            _fact(
+                "For tables copied within AEM Guides and pasted from Word or "
+                "Excel, Web Editor and New Editor show and edit colsep values.",
+                authority=AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
+            ),
+        ],
+    )
+
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [], ScopeResolution(), facts
+    )
+
+    assert not any(
+        "TABLE_PASTE_VARIANT_SCOPE" in row.investigation_terms
+        for row in questions
+    )
 
 
 # ---------------------------------------------------------------------------

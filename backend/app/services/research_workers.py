@@ -495,15 +495,10 @@ class ResearchOrchestrator:
     ) -> tuple[list[ResearchWorkerResult], list]:
         from app.core.schemas_canonical_test_plan_runtime import (
             AgentResearchRequest,
-            EvidenceSourceType,
             ResearchWorkerExecution,
         )
 
         requirements_by_question = {row.question_id: row for row in requirements}
-        has_attachments = any(
-            record.source_type == EvidenceSourceType.JIRA_ATTACHMENT
-            for record in bundle.records
-        )
         results: list[ResearchWorkerResult] = []
         executions: list[ResearchWorkerExecution] = []
         for question in sorted(questions, key=lambda row: row.question_id):
@@ -514,7 +509,7 @@ class ResearchOrchestrator:
                 or requirement.research_requirement == ResearchRequirement.NONE
             ):
                 continue
-            roles = self._roles_for(requirement, has_attachments)
+            roles = self._roles_for(requirement)
             for role in roles:
                 request = AgentResearchRequest(
                     run_scope=run_scope,
@@ -579,14 +574,8 @@ class ResearchOrchestrator:
                     )
         return results, executions
 
-    def _roles_for(self, requirement, has_attachments: bool):
-        from app.services.question_research_routing_service import (
-            RESEARCH_CATEGORY_DOCUMENTATION,
-            RESEARCH_CATEGORY_IMPLEMENTATION,
-            research_source_category,
-        )
-
-    def _roles_for(self, requirement, has_attachments: bool):
+    def _roles_for(self, requirement):
+        from app.core.schemas_canonical_test_plan_runtime import EvidenceSourceType
         from app.services.question_research_routing_service import (
             RESEARCH_CATEGORY_DOCUMENTATION,
             RESEARCH_CATEGORY_IMPLEMENTATION,
@@ -611,10 +600,12 @@ class ResearchOrchestrator:
                 roles.append(worker.role)
             elif (
                 worker.role == ResearchWorkerRole.ATTACHMENT_RESEARCHER
-                and has_attachments
+                and EvidenceSourceType.JIRA_ATTACHMENT
+                in requirement.required_source_types
             ):
-                # Attachment evidence may answer any material question when
-                # present; it never replaces the mandated doc/code routes.
+                # An attachment worker is evidence-bound to this question,
+                # rather than being fanned out from unrelated ticket
+                # attachments. It never replaces mandated doc/code routes.
                 roles.append(worker.role)
         return roles
 

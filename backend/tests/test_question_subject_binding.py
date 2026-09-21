@@ -31,7 +31,10 @@ from app.core.schemas_canonical_test_plan_runtime import (
 from app.services.canonical_test_plan_reasoning_service import (
     CANONICAL_REASONING_SERVICE as SERVICE,
 )
-from app.services.canonical_test_plan_reasoning_service import _DIMENSION_KEYWORDS
+from app.services.canonical_test_plan_reasoning_service import (
+    _DIMENSION_KEYWORDS,
+    _behavior_subject_from_facts,
+)
 from app.services.canonical_missing_question_service import _resolved_materiality
 from app.services.question_research_routing_service import (
     MATERIAL_RESEARCH_MATERIALITY,
@@ -148,6 +151,35 @@ def test_sentence_shaped_fact_is_reduced_to_its_subject_noun_phrase() -> None:
     )
     assert "Map title/dc:title" in provenance.question
     assert "shows entire booktitle element" not in provenance.question
+
+
+def test_ticket_behavior_beats_generic_component_as_question_subject() -> None:
+    """A component label must not replace the behavior named by the ticket."""
+
+    facts = ContractFactSet(
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+        facts=[
+            ContractFact(
+                fact_type=ContractFactType.PRIMARY_PRODUCT_AREA,
+                literal="Editor",
+                source_evidence_ids=["ev-1"],
+                authoritative=True,
+            ),
+            ContractFact(
+                fact_type=ContractFactType.CONTEXT_STATEMENT,
+                literal=(
+                    "In Web Editor Author view, add the colsep attributes "
+                    "for table columns."
+                ),
+                source_evidence_ids=["ev-1"],
+                authoritative=True,
+            ),
+        ],
+    )
+
+    subject = _behavior_subject_from_facts(facts)
+
+    assert subject == "Web Editor Author view the colsep attributes for table columns"
 
 
 def test_identity_change_question_is_planned_for_a_report_reading_stored_state() -> None:

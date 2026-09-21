@@ -195,7 +195,12 @@ def test_orchestrator_dispatches_only_mandated_routes() -> None:
         "The configuration controls the retention window.",
         EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
     )
-    bundle = _bundle(doc)
+    attachment = _record(
+        "att2",
+        "Screenshot evidence from an unrelated ticket observation.",
+        EvidenceSourceType.JIRA_ATTACHMENT,
+    )
+    bundle = _bundle(doc, attachment)
     doc_question = _question("Which configuration controls retention?")
     doc_requirement = _requirement(
         doc_question,
@@ -220,9 +225,35 @@ def test_orchestrator_dispatches_only_mandated_routes() -> None:
     # Doc question -> doc worker only; code question -> code worker only.
     assert len(by_role[ResearchWorkerRole.DOC_RESEARCHER]) == 1
     assert len(by_role[ResearchWorkerRole.CODE_RESEARCHER]) == 1
-    # No attachments in the bundle -> attachment worker never runs.
+    # An unrelated ticket attachment must not fan out an attachment worker to
+    # documentation or implementation questions.
     assert ResearchWorkerRole.ATTACHMENT_RESEARCHER not in by_role
     assert all(execution.result_ref for execution in executions)
+
+
+def test_orchestrator_dispatches_attachment_worker_only_when_required() -> None:
+    attachment = _record(
+        "att3",
+        "A screenshot that must be inspected for the requested visual behavior.",
+        EvidenceSourceType.JIRA_ATTACHMENT,
+    )
+    question = _question("What does the attached screenshot show?")
+    requirement = _requirement(
+        question,
+        ResearchRequirement.MULTI_SOURCE,
+        [EvidenceSourceType.JIRA_ATTACHMENT],
+    )
+
+    _results, executions = ResearchOrchestrator().execute(
+        [question],
+        [requirement],
+        _bundle(attachment),
+        repository_roots=[],
+    )
+
+    assert [execution.worker_role for execution in executions] == [
+        ResearchWorkerRole.ATTACHMENT_RESEARCHER
+    ]
 
 
 def test_resolve_consumes_worker_results() -> None:
@@ -336,9 +367,10 @@ def test_linked_fix_evidence_is_researched_before_clarification() -> None:
     assert all(
         execution.result_ref for execution in trace.research_worker_executions
     )
-    # Attachment evidence is present and was routed to the attachment worker.
-    assert any(
-        execution.worker_role.value == "ATTACHMENT_RESEARCHER"
+    # The attached screenshot does not fan out to unrelated questions unless
+    # their source requirements explicitly name Jira attachment evidence.
+    assert all(
+        execution.worker_role.value != "ATTACHMENT_RESEARCHER"
         for execution in trace.research_worker_executions
     )
     # The accepted fix establishes the bounded intended behavior without any

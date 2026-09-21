@@ -4,6 +4,92 @@ import re
 
 from app.core.schemas_dita_generation_contract import ConstructSemantic, DomainDecomposition
 
+# This vocabulary decides when a ticket has named a DITA construct whose
+# semantics must be researched. It intentionally carries no behavior mapping:
+# the specification, DITA-OT documentation, and product evidence still decide
+# what the construct means and how a processor handles it.
+_GOVERNING_DITA_ATTRIBUTE_TERMS = frozenset(
+    {
+        "navtitle",
+        "locktitle",
+        "conref",
+        "conkeyref",
+        "conaction",
+        "conrefend",
+        "keyref",
+        "keys",
+        "keyscope",
+        "frame",
+        "rowsep",
+        "colsep",
+        "processing-role",
+        "collection-type",
+        "cascade",
+        "chunk",
+        "linking",
+        "toc",
+        "print",
+        "search",
+        "otherprops",
+        "props",
+        "outputclass",
+    }
+)
+_DISTINCTIVE_DITA_CONSTRUCT_TERMS = frozenset(
+    {
+        "keydef",
+        "topichead",
+        "glossref",
+        "reltable",
+        "mapref",
+        "navref",
+        "linktext",
+    }
+)
+_NAMED_DITA_SEMANTIC_TERMS = (
+    _GOVERNING_DITA_ATTRIBUTE_TERMS | _DISTINCTIVE_DITA_CONSTRUCT_TERMS
+)
+_DITA_ATTRIBUTE_REFERENCE_RE = re.compile(
+    r"@([a-z][a-z0-9:-]*)",
+    re.IGNORECASE,
+)
+
+
+def detect_dita_semantic_terms(text: str) -> tuple[str, ...]:
+    """Return named DITA constructs that require semantic research.
+
+    Bare terms are restricted to a curated generic registry so ordinary words
+    such as ``type`` and ``format`` do not accidentally activate DITA routing.
+    An explicit ``@attribute`` reference is unambiguous and is resolved through
+    the reusable DITA attribute catalog.
+    """
+
+    haystack = str(text or "").casefold()
+    found = {
+        term
+        for term in _NAMED_DITA_SEMANTIC_TERMS
+        if re.search(
+            rf"(?<![a-z0-9_-]){re.escape(term)}(?![a-z0-9_-])",
+            haystack,
+        )
+    }
+    explicit_attributes = {
+        match.group(1).casefold()
+        for match in _DITA_ATTRIBUTE_REFERENCE_RE.finditer(haystack)
+    }
+    if explicit_attributes:
+        # Import lazily: the catalog reads the DITA seed on demand, while most
+        # runtime requests never need this detector.
+        from app.services.dita_attribute_catalog import get_attribute_spec
+
+        found.update(
+            attribute
+            for attribute in explicit_attributes
+            if get_attribute_spec(attribute) is not None
+        )
+    return tuple(sorted(found))
+
+
 _CONSTRUCT_PATTERN_MAP: dict[str, tuple[re.Pattern[str], ...]] = {
     "conref": (
         re.compile(r"\bconref\b", re.IGNORECASE),

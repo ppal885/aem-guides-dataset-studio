@@ -114,6 +114,9 @@ from app.core.schemas_canonical_test_plan_runtime import (
     stable_sha256,
 )
 from app.services.canonical_evidence_service import record_visible_to
+from app.services.dita_construct_semantics_service import (
+    detect_dita_semantic_terms,
+)
 from app.services.question_research_routing_service import (
     DOCUMENTATION_RESEARCH_SOURCES,
     JIRA_AUTHORITY_RESEARCH_SOURCES,
@@ -2108,11 +2111,31 @@ _SUBJECT_LEADING_PREPOSITION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Jira requests often state a required UI behavior as an imperative sentence:
+# "In <surface>, add <property>." The product subject is the surface plus the
+# requested property, not the verb phrase.
+_SUBJECT_IMPERATIVE_RE = re.compile(
+    r"^(?:(?P<context>(?:in|on|at|under|for|with|within)\s+[^,;:]+),\s*)?"
+    r"(?P<verb>add|show|display|expose|make|provide|support|allow|preserve|"
+    r"retain|remove|delete|update|save|write|read|render|generate|create|use)\s+"
+    r"(?P<object>.+)$",
+    re.IGNORECASE,
+)
+
 
 def _subject_noun_phrase(value: str) -> str:
     """Reduce a source-authored sentence to the noun phrase it is about."""
 
     normalized = value.strip().rstrip(" .;:,")
+    imperative_match = _SUBJECT_IMPERATIVE_RE.match(normalized)
+    if imperative_match is not None:
+        context = (imperative_match.group("context") or "").strip()
+        object_phrase = imperative_match.group("object").strip()
+        if context:
+            context = _SUBJECT_LEADING_PREPOSITION_RE.sub("", context).strip()
+            normalized = f"{context} {object_phrase}".strip()
+        elif object_phrase:
+            normalized = object_phrase
     match = _SUBJECT_FINITE_VERB_RE.search(normalized)
     if match is not None and match.start() > 0:
         head = normalized[: match.start()].strip().rstrip(" .;:,-")
@@ -2151,9 +2174,16 @@ def _behavior_subject_from_facts(facts: ContractFactSet) -> str:
     result means the caller keeps its own generic wording.
     """
 
+    # A component label such as "Editor" identifies an area, not the behavior
+    # a researcher must investigate. Prefer the ticket's stated behavior so
+    # material questions remain answerable and cannot fan out from a generic
+    # product-area label.
     for fact_type in (
-        ContractFactType.PRIMARY_PRODUCT_AREA,
+        ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+        ContractFactType.EXPLICIT_NEGATIVE_REQUIREMENTS,
+        ContractFactType.CONTEXT_STATEMENT,
         ContractFactType.HUMAN_TERMINOLOGY,
+        ContractFactType.PRIMARY_PRODUCT_AREA,
     ):
         for fact in facts.facts:
             if fact.fact_type != fact_type:
@@ -2372,6 +2402,73 @@ def _derive_contract_type(
 
 def _content_tokens(text: str) -> set[str]:
     return {token for token in re.findall(r"[a-z0-9]+", text.casefold()) if len(token) > 2}
+
+
+_TABLE_PASTE_TRANSFORMATION_RE = re.compile(
+    r"\b(?:copy|copied|copying|paste|pasted|pasting|import|imported|"
+    r"importing|convert|converted|converting)\b.{0,120}\b"
+    r"(?:tables?|simpletables?|cals)\b|"
+    r"\b(?:tables?|simpletables?|cals)\b.{0,120}\b"
+    r"(?:copy|copied|copying|paste|pasted|pasting|import|imported|"
+    r"importing|convert|converted|converting)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_TABLE_PASTE_SOURCE_SCOPE_RE = re.compile(
+    r"\b(?:aem\s+guides|word|excel|google\s+docs?|html|"
+    r"external(?:\s+source(?:\s+application)?)?)\b",
+    re.IGNORECASE,
+)
+_TABLE_PASTE_EDITOR_SCOPE_RE = re.compile(
+    r"\b(?:web\s+editor|new\s+editor|old\s+editor|legacy\s+editor)\b",
+    re.IGNORECASE,
+)
+_TABLE_PASTE_VARIANT_SCOPE_MARKER = "TABLE_PASTE_VARIANT_SCOPE"
+
+
+def _table_paste_variant_facts(facts: ContractFactSet) -> list[ContractFact]:
+    """Return ticket facts that require an explicit table-transformation scope.
+
+    A paste/import report names a transformation shape, not its full source or
+    editor matrix.  The matrix remains a product decision until current ticket
+    authority or a Human clarification establishes it.
+    """
+
+    return [
+        fact
+        for fact in facts.facts
+        if fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+        and fact.fact_type != ContractFactType.OUT_OF_SCOPE
+        and _TABLE_PASTE_TRANSFORMATION_RE.search(fact.literal)
+    ]
+
+
+def _has_explicit_accepted_table_paste_scope(
+    facts: ContractFactSet, table_paste_facts: list[ContractFact]
+) -> bool:
+    """Return whether accepted authority has bounded the source/editor matrix.
+
+    A Human Accepted contract can settle table-paste scope, but an accepted
+    attribute-only sentence cannot erase the original transformation problem.
+    Suppression requires the accepted material itself to name the table
+    operation, at least one source boundary, and an editor boundary.
+    """
+
+    if not table_paste_facts:
+        return False
+    accepted_text = " ".join(
+        fact.literal
+        for fact in facts.facts
+        if fact.authority_class in _ACCEPTED_AUTHORITIES and fact.authoritative
+    )
+    return bool(
+        _TABLE_PASTE_TRANSFORMATION_RE.search(accepted_text)
+        and _TABLE_PASTE_SOURCE_SCOPE_RE.search(accepted_text)
+        and _TABLE_PASTE_EDITOR_SCOPE_RE.search(accepted_text)
+    )
+
+
+def _is_table_paste_variant_scope_question(question: MissingQuestion) -> bool:
+    return _TABLE_PASTE_VARIANT_SCOPE_MARKER in question.investigation_terms
 
 
 def assess_claim_sufficiency(
@@ -6257,7 +6354,7 @@ class CanonicalTestPlanReasoningService:
             else combined
         )
         domains = set(model.domains)
-        dita_like = bool(
+        dita_like = bool(detect_dita_semantic_terms(ticket_text)) or bool(
             re.search(
                 r"\b(dita|topicref|mapref|bookmap|ditaval|attribute|specialization)\b",
                 ticket_text,
@@ -6335,6 +6432,34 @@ class CanonicalTestPlanReasoningService:
         bundle: CanonicalEvidenceBundle | None = None,
     ) -> list[MissingQuestion]:
         questions: list[MissingQuestion] = []
+        table_paste_facts = _table_paste_variant_facts(facts)
+        table_paste_fact_ids = {
+            fact.fact_id for fact in table_paste_facts
+        }
+        if table_paste_facts and not _has_explicit_accepted_table_paste_scope(
+            facts, table_paste_facts
+        ):
+            subject = _behavior_subject_from_facts(facts) or "the table behavior"
+            questions.append(
+                MissingQuestion(
+                    question=(
+                        "Which table-paste sources and editor surfaces must support "
+                        f"{subject}? State the required result for tables copied "
+                        "within AEM Guides, pasted from Word or Excel, and pasted "
+                        "from any other in-scope external source application; state "
+                        "whether Web Editor and New Editor must have the same "
+                        "behavior."
+                    ),
+                    dimension=SemanticDimension.CROSS_SURFACE_SYNC,
+                    authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+                    target_source_types=_product_decision_sources(),
+                    materiality=InvestigationMateriality.P0,
+                    blocking=True,
+                    open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
+                    source_fact_ids=sorted(table_paste_fact_ids),
+                    investigation_terms=[_TABLE_PASTE_VARIANT_SCOPE_MARKER],
+                )
+            )
         families = {
             row.family_id: row
             for row in (investigation.mandatory_families if investigation else [])
@@ -6514,6 +6639,7 @@ class CanonicalTestPlanReasoningService:
                 fact.fact_type
                 != ContractFactType.TERMINOLOGY_CLARIFICATION_REQUIRED
                 or fact.authority_class not in _TICKET_UNDERSTANDING_AUTHORITIES
+                or fact.fact_id in table_paste_fact_ids
             ):
                 continue
             # A terminology probe establishes current behavior. When Jira
@@ -6577,12 +6703,17 @@ class CanonicalTestPlanReasoningService:
                 return (min(ranks, default=1), fact.fact_id)
 
             problem_facts = sorted(problem_facts, key=_anchor_rank)
+        generic_problem_facts = [
+            fact
+            for fact in problem_facts
+            if fact.fact_id not in table_paste_fact_ids
+        ]
         if (
-            problem_facts
+            generic_problem_facts
             and facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT
         ):
             problem_tokens: set[str] = set()
-            for fact in problem_facts:
+            for fact in generic_problem_facts:
                 problem_tokens |= _content_tokens(fact.literal)
             solution_authorities = {
                 AuthorityClass.ACCEPTED_PRODUCT_REQUIREMENT,
@@ -6624,7 +6755,7 @@ class CanonicalTestPlanReasoningService:
                 anchor = re.sub(
                     r"^(?:description|summary|title)\s*:\s*",
                     "",
-                    problem_facts[0].literal.strip(),
+                    generic_problem_facts[0].literal.strip(),
                     flags=re.IGNORECASE,
                 ).rstrip(".")
                 # Truncate at a word boundary so the question never ends
@@ -6645,7 +6776,7 @@ class CanonicalTestPlanReasoningService:
                         open_question_class=(
                             OpenQuestionClass.USER_ACCEPTANCE_DECISION
                         ),
-                        source_fact_ids=[problem_facts[0].fact_id],
+                        source_fact_ids=[generic_problem_facts[0].fact_id],
                     )
                 )
         # A report that a value is not driven by a named source exposes a
@@ -7008,6 +7139,8 @@ class CanonicalTestPlanReasoningService:
         self,
         questions: list[MissingQuestion],
         facts: ContractFactSet,
+        *,
+        clarified_question_ids: set[str] | None = None,
     ) -> list[ResearchRequirementRecord]:
         """Classify the mandatory research route of every planned question.
 
@@ -7022,14 +7155,33 @@ class CanonicalTestPlanReasoningService:
         """
 
         router = QUESTION_RESEARCH_ROUTER
-        return [
-            router.classify(
+        clarified_question_ids = clarified_question_ids or set()
+        records: list[ResearchRequirementRecord] = []
+        for question in sorted(questions, key=lambda row: row.question_id):
+            routed = router.classify(
                 router.build_request(question),
                 question=question,
                 contract_mode=facts.contract_mode,
             )
-            for question in sorted(questions, key=lambda row: row.question_id)
-        ]
+            if question.question_id in clarified_question_ids:
+                records.append(
+                    ResearchRequirementRecord(
+                        question_id=question.question_id,
+                        research_requirement=ResearchRequirement.NONE,
+                        material=routed.material,
+                        blocking=routed.blocking,
+                        rationale=(
+                            "An admitted, question-bound Human clarification "
+                            "establishes this exact acceptance decision; "
+                            "external research is not required."
+                        ),
+                        product_context=routed.product_context,
+                        applicability=routed.applicability,
+                    )
+                )
+            else:
+                records.append(routed)
+        return records
 
     def resolve_question_research(
         self,
@@ -8300,15 +8452,53 @@ class CanonicalTestPlanReasoningService:
             row.question_id
             for row in questions
             if row.blocking and row.question_id not in resolved_question_ids
-        ]        # P3: claim-level dependency.  A candidate is blocked only by
+        ]
+        questions_by_id = {row.question_id: row for row in questions}
+        table_paste_fact_ids = {
+            fact.fact_id for fact in _table_paste_variant_facts(facts)
+        }
+        unresolved_table_paste_scope_ids = {
+            row.question_id
+            for row in questions
+            if row.question_id in blocking_ids
+            and _is_table_paste_variant_scope_question(row)
+        }
+        table_paste_tokens = {
+            token
+            for fact in facts.facts
+            if fact.fact_id in table_paste_fact_ids
+            for token in _content_tokens(fact.literal)
+        }
+
+        # P3: claim-level dependency.  A candidate is blocked only by
         # unresolved blocking questions actually linked to its source coverage
         # dispositions; independent sufficiently-established claims must not
-        # inherit ticket-wide blocking.  The disposition linkage IS the
-        # dependency record - an unlinked claim has no dependency.
-        def _dependent_blocking_ids(row: CoverageDispositionRecord) -> list[str]:
-            linked = set(row.source_question_ids)
+        # inherit ticket-wide blocking. A table-paste scope question is also
+        # linked to every candidate that cites the reported transformation or
+        # its affected behavior; otherwise a narrow clarification can replace
+        # the source/editor matrix that makes the contract complete.
+        def _candidate_blocking_ids(
+            *,
+            source_question_ids: list[str],
+            source_fact_ids: list[str],
+            statement: str,
+        ) -> list[str]:
+            linked = set(source_question_ids)
+            statement_tokens = _content_tokens(statement)
+            if unresolved_table_paste_scope_ids and (
+                bool(set(source_fact_ids) & table_paste_fact_ids)
+                or bool(statement_tokens & table_paste_tokens)
+            ):
+                linked |= unresolved_table_paste_scope_ids
             return sorted(
                 question_id for question_id in blocking_ids if question_id in linked
+            )
+
+        def _dependent_blocking_ids(row: CoverageDispositionRecord) -> list[str]:
+            return _candidate_blocking_ids(
+                source_question_ids=row.source_question_ids,
+                source_fact_ids=row.source_fact_ids,
+                statement=row.candidate,
             )
 
         discovered_candidates: list[AcceptanceCandidate] = []
@@ -8501,18 +8691,28 @@ class CanonicalTestPlanReasoningService:
                 continue
             if _content_tokens(row.answer) <= covered_tokens:
                 continue
+            question = questions_by_id.get(row.question_ref)
+            source_fact_ids = (
+                list(question.source_fact_ids)
+                if question and _is_table_paste_variant_scope_question(question)
+                else []
+            )
             synthesized = AcceptanceCandidate(
                 statement=row.answer,
                 contract_mode=facts.contract_mode,
                 accepted_human_contract=False,
-                source_fact_ids=[],
+                source_fact_ids=source_fact_ids,
                 source_disposition_ids=[],
                 evidence_ids=[f"clarification:{row.clarification_id}"],
                 in_scope=True,
                 observable=bool(row.answer.strip()),
                 exact_values_supported=True,
                 contradicts_human_contract=False,
-                unresolved_decision_ids=[],
+                unresolved_decision_ids=_candidate_blocking_ids(
+                    source_question_ids=[row.question_ref],
+                    source_fact_ids=source_fact_ids,
+                    statement=row.answer,
+                ),
             )
             discovered_candidates.append(synthesized)
             final_candidates.append(synthesized)

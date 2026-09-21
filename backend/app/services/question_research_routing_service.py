@@ -159,6 +159,27 @@ _REQUIREMENT_DEFAULT_SOURCES: dict[ResearchRequirement, frozenset[EvidenceSource
     ),
 }
 
+# A DITA construct-semantics question is exceptional within the broader
+# DOCUMENTATION category. The DITA specification establishes the construct's
+# semantics and DITA-OT establishes the processor baseline; one cannot stand
+# in for the other. Other source lists remain candidate routes, not an
+# accidental requirement to inspect every implementation alternative.
+_MANDATORY_DITA_SEMANTICS_SOURCE_TYPES = frozenset(
+    {
+        EvidenceSourceType.DITA_SPECIFICATION,
+        EvidenceSourceType.DITA_OT_DOCUMENTATION,
+    }
+)
+
+
+def _mandatory_dita_semantics_sources(
+    requirement: ResearchRequirementRecord,
+) -> frozenset[EvidenceSourceType]:
+    required = frozenset(requirement.required_source_types)
+    if _MANDATORY_DITA_SEMANTICS_SOURCE_TYPES <= required:
+        return _MANDATORY_DITA_SEMANTICS_SOURCE_TYPES
+    return frozenset()
+
 
 class QuestionResearchRouter:
     """Per-question research-routing contract.
@@ -396,6 +417,7 @@ class QuestionResearchRouter:
             row.evidence_id: row.source_type
             for row in (evidence.records if evidence is not None else [])
         }
+        mandatory_dita_sources = _mandatory_dita_semantics_sources(requirement)
 
         def build(
             status: ResearchStatus,
@@ -478,6 +500,36 @@ class QuestionResearchRouter:
                 for source_ref in finding.source_refs
             }
         )
+        # Retrieval hits prove only that a source shared vocabulary. Formal
+        # DITA source requirements need admitted research evidence from each
+        # source, not a same-term retrieval result from one source type.
+        substantive_evidence_ids = {
+            evidence_id
+            for row in question_hypotheses
+            for evidence_id in (
+                list(row.supporting_evidence_ids)
+                + list(row.contradicting_evidence_ids)
+                + list(row.verification_evidence_ids)
+            )
+        } | {
+            source_ref
+            for row in question_worker_results
+            for finding in row.findings
+            for source_ref in finding.source_refs
+        }
+        missing_dita_source_inputs = (
+            mandatory_dita_sources - set(source_type_by_evidence_id.values())
+            if evidence is not None
+            else set()
+        )
+        researched_dita_sources = {
+            source_type_by_evidence_id[evidence_id]
+            for evidence_id in substantive_evidence_ids
+            if evidence_id in source_type_by_evidence_id
+        } & mandatory_dita_sources
+        missing_dita_source_evidence = (
+            mandatory_dita_sources - researched_dita_sources
+        )
         required_categories = {
             research_source_category(source_type)
             for source_type in requirement.required_source_types
@@ -533,6 +585,22 @@ class QuestionResearchRouter:
             researched_categories.add(RESEARCH_CATEGORY_IMPLEMENTATION)
         unresearched = required_categories - researched_categories
         states = {row.state for row in question_hypotheses}
+        if missing_dita_source_inputs:
+            return build(
+                ResearchStatus.SOURCE_UNAVAILABLE,
+                "Required DITA semantics research source(s) are unavailable "
+                "from the authorized evidence bundle: "
+                + ", ".join(
+                    source_type.value
+                    for source_type in sorted(
+                        missing_dita_source_inputs,
+                        key=lambda row: row.value,
+                    )
+                )
+                + ". The question remains open.",
+                request_ids,
+                evidence_ids,
+            )
         # R2: workers executed and found nothing, with no other evidence or
         # hypothesis: that is a true NOT_FOUND (executed, no answer), never a
         # PARTIAL upgrade and never evidence of the opposite behavior.
@@ -597,6 +665,40 @@ class QuestionResearchRouter:
                 ResearchStatus.SOURCE_UNAVAILABLE,
                 "A mandated research worker could not execute; the question "
                 "remains open and sufficiency stays bounded.",
+                request_ids,
+                evidence_ids,
+            )
+        # A worker that found no answer after searching both supplied formal
+        # sources remains NOT_FOUND below. Any positive/partial answer,
+        # however, must preserve what each formal source actually established.
+        if (
+            missing_dita_source_evidence
+            and not (
+                question_worker_results
+                and not evidence_ids
+                and not question_hypotheses
+                and all(
+                    row.status
+                    in {
+                        ResearchWorkerStatus.NOT_FOUND,
+                        ResearchWorkerStatus.NO_RELEVANT_EVIDENCE,
+                    }
+                    for row in question_worker_results
+                )
+            )
+        ):
+            return build(
+                ResearchStatus.PARTIAL,
+                "DITA semantics research did not produce admitted evidence "
+                "from every required formal source: "
+                + ", ".join(
+                    source_type.value
+                    for source_type in sorted(
+                        missing_dita_source_evidence,
+                        key=lambda row: row.value,
+                    )
+                )
+                + ". The established portion remains bounded.",
                 request_ids,
                 evidence_ids,
             )
