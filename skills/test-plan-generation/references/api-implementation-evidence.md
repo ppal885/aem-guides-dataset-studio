@@ -26,6 +26,10 @@ handler, then write the AC.
    `core/publish-listener/`, `core/publish-workflow/`, etc.) or via GitHub MCP — the
    servlet dispatch, the operation branch, and the response DTO it writes. Do not stop
    at the ticket text or a file name.
+   A configuration provider, registration, or class name is not proof that a request
+   reaches that handler, even if later dispatch evidence names the same class. Read the
+   dispatch/registration evidence that connects the actual handler to the named route;
+   otherwise keep the current behavior as an Open Question or evidence gap.
 3. **Verify the ticket's current-behaviour premise against the code.** Record whether
    the code confirms it (`premise_holds`). If the code contradicts the premise (e.g. a
    job id is already returned), the AC must reflect the code, not the ticket.

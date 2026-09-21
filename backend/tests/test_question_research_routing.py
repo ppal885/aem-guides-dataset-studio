@@ -380,6 +380,53 @@ def test_named_dita_attribute_activates_generic_semantic_research() -> None:
         EvidenceSourceType.DITA_OT_DOCUMENTATION,
     } <= set(requirement.required_source_types)
 
+    surface_question = next(
+        row
+        for row in questions
+        if row.dimension == SemanticDimension.CROSS_SURFACE_SYNC
+        and "colsep attribute" in row.question
+    )
+    assert surface_question.authority_subject == AuthoritySubject.CURRENT_UI
+    assert {
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+        EvidenceSourceType.CURRENT_CODE,
+    } <= set(surface_question.target_source_types)
+    surface_requirement = CANONICAL_REASONING_SERVICE.classify_research_requirements(
+        [surface_question],
+        facts,
+    )[0]
+    assert (
+        surface_requirement.research_requirement
+        == ResearchRequirement.DOCUMENTATION_AND_IMPLEMENTATION
+    )
+
+
+def test_any_named_editor_attribute_gets_surface_research_without_a_catalog() -> None:
+    facts = ContractFactSet(
+        contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
+        facts=[
+            ContractFact(
+                fact_type=ContractFactType.DIRECT_EXPECTED_BEHAVIOR,
+                literal="Update the align attribute in Source View and show its value in the editor.",
+                source_reference="jira:attribute-surface",
+                authority_class=AuthorityClass.CUSTOMER_REQUEST,
+                authoritative=True,
+            )
+        ],
+    )
+    questions = CANONICAL_REASONING_SERVICE.generate_missing_questions(
+        [],
+        ScopeResolution(),
+        facts,
+    )
+    question = next(
+        row
+        for row in questions
+        if row.dimension == SemanticDimension.CROSS_SURFACE_SYNC
+        and "align attribute" in row.question
+    )
+    assert question.investigation_terms[0] == "align"
+
 
 def test_human_accepted_contract_needs_no_documentation_research() -> None:
     questions = _purge_questions()

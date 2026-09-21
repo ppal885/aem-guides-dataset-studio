@@ -20,6 +20,12 @@
       "doc_terms": ["output log", "view log", "download log", "troubleshooting"],
       "provenance": "BOOTSTRAP",
       "rationale": "The log viewer for a generated output is documented under output-generation troubleshooting actions (View log/Download log)."
+    },
+    {
+      "concept": ["attribute", "attributes", "tag view", "author view", "source view"],
+      "doc_terms": ["Web Editor", "right panel", "Content Properties", "Tag View", "Source View"],
+      "provenance": "BOOTSTRAP",
+      "rationale": "Documentation describes editing and rendering XML attributes through named Web Editor surfaces rather than an arbitrary attribute identifier from a ticket."
     }
   ]
 }

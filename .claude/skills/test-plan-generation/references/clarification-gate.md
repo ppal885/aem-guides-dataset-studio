@@ -23,7 +23,12 @@ A non-activated legacy record may omit the block and continues to pass.
 1. Enumerate every plausible behavior dimension before drafting ACs. Start with
    value-set channels, shared code consumers, output presets/engines, topic types,
    terminal states, lifecycle stages, configuration branches, roles, and migration
-   paths. Keep only candidates that can plausibly change this ticket's behavior.
+   paths. When current evidence names a value-writing control and a distinct
+   value-reading surface, enumerate that exact writer/reader pair. Keep only
+   candidates that can plausibly change this ticket's behavior.
+   When an AC would name a selectable UI option/action, enumerate the action and its
+   exact surface separately from any configured or documented outcome. Do not infer an
+   action from an outcome.
 2. Mark each candidate material or non-material and state why.
 3. Resolve material candidates from current evidence first. Cite the exact evidence.
 4. If evidence cannot answer a material question and its answer changes scope, the
@@ -78,6 +83,7 @@ Allowed axes are:
 - `CONFIG_BRANCH`
 - `PERMISSION_ROLE`
 - `MIGRATION_PATH`
+- `ASSET_UPLOAD_CONFLICT`
 
 Allowed resolutions are:
 
@@ -97,6 +103,28 @@ plan body.
 - A value-written-to-output signal requires `VALUE_SET_CHANNEL`, including a concrete
   repository-node or CRX/DE candidate.
 - A shared-code-path signal requires `CODE_PATH_CONSUMER`.
+- A named value-writing control and distinct value-reading surface requires
+  `CODE_PATH_CONSUMER` and the dimension inventory's write/read consumer-parity
+  disposition. The writer/reader relationship must be covered by an AC, exposed as
+  an Open Question, or bounded out with a concrete evidence-backed reason.
+- A named selectable UI option/action requires the dimension inventory's
+  `ui_action_surface_coverage` disposition and surface-specific proof that the action
+  exists there. A configured or documented outcome cannot satisfy that proof.
+  This validation checks an existing-action assertion only. The authoritative
+  source-to-UAC comparison runs first: preserve a requested outcome as AC, explicit
+  out-of-scope decision, or genuine Open Question even if the claimed existing action
+  is unsupported. Record that unsupported implementation claim as an Open Question;
+  do not let it choose ticket scope.
+- An asset-upload conflict signal requires `ASSET_UPLOAD_CONFLICT` plus the
+  miss-probe gate's structured `asset_upload_conflict` disposition. Keep
+  content-identity duplicate detection, name/path conflict, request dispatch,
+  named deployments, affected behavior path, baseline actions, and documentation scope
+  independently resolved or exposed. This proves investigation and disposition only:
+  an evidence-backed out-of-scope, not-applicable, or preserved dimension does not need
+  an AC merely because the signal matched. Name native AEM Assets controls as native
+  Assets behavior; Create Version and Overwrite Files are native Assets flows. Do not
+  call Overwrite Files “Replace” or credit either native action to Guides without
+  evidence of a Guides-owned surface.
 
 These checks prove enumeration. The owning coverage gates remain responsible for the
 actual AC wording and expected behavior.

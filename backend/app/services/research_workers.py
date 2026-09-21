@@ -23,11 +23,13 @@ from datetime import datetime, timezone
 
 from app.core.schemas_canonical_test_plan_runtime import (
     CanonicalEvidenceBundle,
+    EvidenceSourceType,
     MissingQuestion,
     ResearchFinding,
     ResearchFindingEvidenceRole,
     ResearchRequirement,
     ResearchRequirementRecord,
+    ResearchRoutingProductContext,
     ResearchWorkerResult,
     ResearchWorkerRole,
     ResearchWorkerStatus,
@@ -51,6 +53,23 @@ _MAX_TERMS = 6
 _MAX_MATCHED_RECORDS = 20
 _MAX_REPO_FILES = 20
 _MAX_CLAIM = 300
+_ATTRIBUTE_SUBJECT_RE = re.compile(
+    r"\b(?:(?P<before>[a-z_][a-z0-9_:-]{1,80})\s+attributes?\b|"
+    r"attributes?\s+(?:named\s+)?(?P<after>[a-z_][a-z0-9_:-]{1,80}))",
+    re.IGNORECASE,
+)
+_TICKET_OWNERSHIP_SOURCES = frozenset(
+    {
+        EvidenceSourceType.CURRENT_JIRA,
+        EvidenceSourceType.JIRA_DESCRIPTION,
+        EvidenceSourceType.JIRA_ACCEPTANCE_CRITERIA,
+        EvidenceSourceType.JIRA_COMMENT,
+        EvidenceSourceType.CUSTOMER_REQUEST,
+        EvidenceSourceType.CUSTOMER_WORKFLOW,
+        EvidenceSourceType.PRODUCT_DECISION,
+        EvidenceSourceType.ENGINEERING_DECISION,
+    }
+)
 
 
 def _now() -> str:
@@ -92,6 +111,55 @@ def _record_text(record) -> str:
 
     _flatten(content)
     return " ".join(parts).casefold()
+
+
+def _research_terms(
+    question: MissingQuestion, bundle: CanonicalEvidenceBundle
+) -> list[str]:
+    """Carry explicitly named ticket terms into bounded documentation discovery.
+
+    Attribute/property names are identifiers, not a fixed catalog: a ticket
+    can introduce any valid name.  The generic ``attribute`` signal activates
+    the documentation-side surface vocabulary, while the exact identifier
+    keeps the retrieval tied to this question.
+    """
+
+    terms = list(_terms(question))
+    ticket_text = "\n".join(
+        _record_text(record)
+        for record in bundle.records
+        if record.source_type in _TICKET_OWNERSHIP_SOURCES
+    )
+    for match in _ATTRIBUTE_SUBJECT_RE.finditer(ticket_text):
+        subject = (match.group("before") or match.group("after") or "").strip()
+        if subject and subject not in terms:
+            terms.append(subject)
+        if "attribute" not in terms:
+            terms.append("attribute")
+    return terms[:_MAX_TERMS * 2]
+
+
+def _product_context(
+    requirement: ResearchRequirementRecord,
+    bundle: CanonicalEvidenceBundle,
+) -> ResearchRoutingProductContext | None:
+    if requirement.product_context is not None:
+        return requirement.product_context
+    for record in bundle.records:
+        if record.source_type not in _TICKET_OWNERSHIP_SOURCES:
+            continue
+        owner = record.ownership
+        if not owner.product.strip():
+            continue
+        return ResearchRoutingProductContext(
+            product=owner.product,
+            product_area=owner.product_area or owner.component or record.product_area,
+            product_versions=[record.product_version] if record.product_version else [],
+            deployment_modes=(
+                [record.deployment_model] if record.deployment_model else []
+            ),
+        )
+    return None
 
 
 def _match_records(bundle: CanonicalEvidenceBundle, source_types, terms):
@@ -518,6 +586,9 @@ class ResearchOrchestrator:
                     question_revision=question.question_revision,
                     requested_claim=question.question,
                     research_requirement=requirement.research_requirement,
+                    required_source_types=list(requirement.required_source_types),
+                    product_context=_product_context(requirement, bundle),
+                    research_terms=_research_terms(question, bundle),
                     authorized_source_refs=[
                         record.evidence_id for record in bundle.records
                     ],

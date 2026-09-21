@@ -22,6 +22,7 @@ import behavior_model
 import clarification_gate
 import publishing_scope_coverage
 import shared_path_regression_coverage
+import source_requirement_fidelity
 import value_provenance_coverage
 
 
@@ -52,6 +53,7 @@ PROTECTED_BEHAVIOR_BLOCKS = frozenset({
 REASONING_BLOCKS = frozenset(CORE_BEHAVIOR_BLOCKS) | frozenset({
     "change_impact", "scope_applicability", "entry_point_equivalence",
     "clarification", "temporal_evidence", "generated_output_contract",
+    "authoritative_source_coverage",
 })
 LEGACY_SCHEMA = "aem-guides-evidence-manifest-v2"
 
@@ -97,6 +99,7 @@ SIGNAL_REQUIRED_BLOCKS = {
     ),
     "versioned_behavior": ("temporal_evidence",),
     "generated_artifact_behavior": ("generated_output_contract",),
+    "authoritative_ticket_intake": ("authoritative_source_coverage",),
 }
 
 
@@ -169,6 +172,11 @@ def detect_signals(plan_body: str, manifest: dict) -> dict[str, bool]:
         "generated_artifact_behavior": bool(
             not behavior_opt_out
             and (model.get("generated_artifacts") or model.get("artifact_shapes"))
+        ),
+        "authoritative_ticket_intake": bool(
+            source_requirement_fidelity.authoritative_source_coverage_required(
+                manifest
+            )
         ),
     }
 

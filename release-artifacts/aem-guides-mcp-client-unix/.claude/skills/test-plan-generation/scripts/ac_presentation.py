@@ -107,6 +107,25 @@ def _as_manual_qe_check(value: str) -> str:
     return f"Verify that {text}"
 
 
+_AC_ID_RE = re.compile(r"^AC-(\d+)$", re.IGNORECASE)
+
+
+def human_ac_label(ac_id: str) -> str:
+    """Spell out the human-facing label for an internal ``AC-##`` id.
+
+    The internal id stays ``AC-01`` for traceability (scenario mappings,
+    ``ac_ref`` fields, manifests). The delivered label is spelled out because
+    ``AC-01`` matches Jira's issue-key shape ``[A-Z]+-\\d+``: Jira auto-links it
+    to a non-existent issue and renders it struck through. ``Acceptance
+    Criteria 01`` carries no such shape. Any other id form is returned as-is.
+    """
+
+    match = _AC_ID_RE.match(str(ac_id).strip())
+    if not match:
+        return str(ac_id)
+    return f"Acceptance Criteria {int(match.group(1)):02d}"
+
+
 def project_ac_for_people(
     criterion: Mapping[str, str],
     *,
@@ -120,9 +139,11 @@ def project_ac_for_people(
     [Proposed]/[Confirmed] status tag in human-facing text (include_status must be False
     for chat and Jira; the Needs_Human_Review label conveys status). The underlying
     clause stays unchanged after the concrete ``Verify that`` presentation wrapper.
+    The visible label is spelled out as ``Acceptance Criteria ##`` while the
+    internal id remains ``AC-##``.
     """
 
-    ac_id = criterion["id"]
+    ac_id = human_ac_label(criterion["id"])
     status = f" [{criterion['status']}]" if include_status else ""
     header_prefix = "- " if header_bullet else ""
     # Clause text is copied verbatim (not capitalized) so a leading lowercase technical
@@ -152,7 +173,7 @@ def project_ac_block_for_people(
     The delivered UAC is a FLAT list. This block is the only structure allowed
     around a criterion:
 
-        - AC-01: <verbatim criterion>.
+        - Acceptance Criteria 01: <verbatim criterion>.
           **Source:** <underlying source>.
           **TBD:** <undecided product decision>?
 

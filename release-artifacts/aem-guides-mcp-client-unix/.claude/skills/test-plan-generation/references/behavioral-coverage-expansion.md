@@ -37,10 +37,11 @@ BehaviorModelBuilder
   -> AcceptancePromotionGate
 ```
 
-Activating a dimension is enough. Closure already emits a row for every
-(entity x dimension) pair, unresolved rows already become missing questions, and
-missing questions already route into research. So expansion needs no new
-plumbing and changes nothing about how a criterion is accepted.
+Every candidate keeps the Jira fact IDs that made it material. Closure carries
+those IDs into its rows and Missing Question generation carries them into the
+research request. This prevents a generic display/order expansion from becoming
+an unbound question that later cannot prove why it belongs to the ticket.
+Expansion still changes nothing about how a criterion is accepted.
 
 ## Triggers are requirement-shaped, never feature-named
 
@@ -73,6 +74,7 @@ product family uses. It never fires on an AEM feature name.
 | Axis | Activated dimensions |
 | --- | --- |
 | `VALUE_PROVENANCE` | `VALUE_PROVENANCE` |
+| `SORT_VALUE` | `SORT_VALUE` |
 | `FALLBACK_AND_ABSENCE` | `FALLBACK`, `ABSENT_VALUE` |
 | `VALUE_RESOLUTION_OR_INDIRECTION` | `VALUE_RESOLUTION_OR_INDIRECTION`, `REFERENCED_CONTENT`, `NESTED_REFERENCED_CONTENT` |
 | `IDENTITY_AND_LIFECYCLE` | `LIFECYCLE`, `IDENTITY_CHANGE` |
@@ -86,6 +88,12 @@ not the same product behavior as an entry changing state, so they are separate
 dimensions that get separate closure rows, separate questions, and separate
 dispositions. They are never collapsed to shorten the list.
 
+**Displayed value and sort value stay separate.** A list may show one value
+while ordering rows by another. `VALUE_PROVENANCE` asks where the displayed
+value comes from; `SORT_VALUE` asks which value produces the order. A shared
+word such as "title" is not permission to merge the two questions or their
+researched QE checks.
+
 `CONSUMER_SURFACE_PARITY` is the first deterministic path that activates
 `ALTERNATE_REPRESENTATION` at all; before this stage that dimension was only
 reachable through a mandatory family.
@@ -95,9 +103,11 @@ reachable through a mandatory family.
 1. **Triggers are requirement-shaped.** Every candidate records the generic
    trigger that activated it. A candidate that cannot name one is invalid.
 2. **Discovery is bounded and deterministic.** One candidate per
-   (axis, subject); subjects come from the behavior model's primary entities
-   and the change surfaces, capped so a broad ticket cannot explode the plan.
-   The same input always produces the same `covexp:` candidate ids.
+   (axis, subject); subjects come first from concrete values or sort keys named
+   by the triggering Jira facts, then from the behavior model and change
+   surfaces when the ticket names no concrete value. Candidates retain the
+   triggering `source_fact_ids`, and the same input always produces the same
+   `covexp:` candidate ids.
 3. **Discovery is not acceptance.** A candidate carries no acceptance
    authority. Its id lives in the `covexp:` namespace and can never appear as a
    promoted acceptance candidate. The promotion path is untouched, so an
@@ -137,6 +147,7 @@ Optional and backward-compatible: absent means a clean pass. Validated by
         "subject": "the displayed topic title",
         "trigger": "DISPLAYED_VALUE",
         "dimensions": ["VALUE_PROVENANCE"],
+        "source_fact_ids": ["fact:..."],
         "question": "Where does the value shown for the displayed topic title come from?",
         "rationale": "A displayed value can be set through more than one channel; the stated ask does not say which one governs.",
         "material": true
@@ -210,6 +221,7 @@ subjects, and subjects stay bounded by the existing candidate cap.
   say what in the evidence makes it inapplicable.
 - Decide all nine dependency kinds for every material subject, and route each
   one to documentation or implementation by where its answer actually lives.
-- Keep identity change, lifecycle state, and ordering as separate contracts.
+- Keep display value, sort value, identity change, lifecycle state, and ordering
+  as separate contracts.
 - Do not convert a discovered candidate into an acceptance criterion because it
   sounds reasonable. It needs the same authority as anything else.

@@ -10,6 +10,7 @@ negative fixture here.
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import os
@@ -165,6 +166,7 @@ entry_point_equivalence_mod = _load("entry_point_equivalence", "entry_point_equi
 value_provenance_coverage_mod = _load("value_provenance_coverage", "value_provenance_coverage.py")
 state_partition_coverage_mod = _load("state_partition_coverage", "state_partition_coverage.py")
 native_pdf_coverage_mod = _load("native_pdf_coverage", "native_pdf_coverage.py")
+dimension_inventory_mod = _load("dimension_inventory", "dimension_inventory.py")
 shared_path_regression_coverage_mod = _load("shared_path_regression_coverage", "shared_path_regression_coverage.py")
 clarification_gate_mod = _load("clarification_gate", "clarification_gate.py")
 qe_completeness_coverage_mod = _load(
@@ -626,7 +628,7 @@ def test_ac_readability() -> None:
         "plain presentation is one line and preserves technical token text exactly",
         technical_projection
         == (
-            "AC-01: Verify that largeFileTagCount is 100 for map.ditamap in v2.0; "
+            "Acceptance Criteria 01: Verify that largeFileTagCount is 100 for map.ditamap in v2.0; "
             "when POST /bin/fmdita/import runs, "
             "the GUIDES-44288 fixture creates one DITA-OT output."
         ),
@@ -640,13 +642,23 @@ def test_ac_readability() -> None:
     }
     chat_block = ac_presentation_mod.project_ac_block_for_people(block_criterion)
     check(
-        "delivered AC block puts a bold source on its own line and ends a TBD with a question mark",
+        "delivered AC block spells out the label, puts a bold source on its own line, and ends a TBD with a question mark",
         chat_block
         == (
-            "- AC-01: Verify that the report lists topics in map order.\n"
+            "- Acceptance Criteria 01: Verify that the report lists topics in map order.\n"
             "  **Source:** Jira GUIDES-44288.\n"
             "  **TBD:** is the same order expected in the other panel?"
         ),
+    )
+    check(
+        "the delivered label carries no Jira issue-key shape",
+        "AC-01" not in chat_block,
+    )
+    check(
+        "the internal traceability id is unchanged while the visible label is spelled out",
+        block_criterion["id"] == "AC-01"
+        and ac_presentation_mod.human_ac_label("AC-01") == "Acceptance Criteria 01"
+        and ac_presentation_mod.human_ac_label("OQ-01") == "OQ-01",
     )
     jira_block = ac_presentation_mod.project_ac_block_for_people(
         block_criterion, for_jira=True
@@ -1002,6 +1014,433 @@ def test_attachment_manifest() -> None:
         check("one probe passes when behaviour_matters is false", failures == [])
 
 
+def test_visual_reference_coverage() -> None:
+    dim = dimension_inventory_mod
+    plan = "\n".join([
+        "**Acceptance Criteria**",
+        "- AC-01: the named visible control has the approved outcome.",
+        "",
+    ])
+    inventory = {
+        dimension: {
+            "disposition": "NOT_APPLICABLE",
+            "reason": "not relevant to this focused visual-reference fixture",
+        }
+        for dimension in dim.CANONICAL_DIMENSIONS
+    }
+    inventory["state_config_partitions"] = {
+        "disposition": "COVERED_BY_AC",
+        "reason": "the observed visible states are explicitly dispositioned below",
+    }
+    visual_source = {
+        "source_ref": "ATTACH-VISUAL-01",
+        "source_kind": "ATTACHMENT",
+        "reference_context": "COMPARISON_PRODUCT",
+        "inspected": True,
+        "observation_authority": "OBSERVATION_ONLY",
+        "surface": "Properties panel",
+        "visible_artifact": "Value indicator",
+        "state_variants": [
+            {
+                "state_id": "STATE-EMPTY",
+                "observation": "The indicator is absent when no value is present.",
+                "material": True,
+            },
+            {
+                "state_id": "STATE-PRESENT",
+                "observation": "The indicator is shown when a value is present.",
+                "material": True,
+            },
+        ],
+    }
+    inventory["visual_reference_coverage"] = {
+        "schema_version": dim.VISUAL_REFERENCE_SCHEMA,
+        "references": [
+            {
+                "source_ref": "ATTACH-VISUAL-01",
+                "surface": {
+                    "name": "Properties panel",
+                    "disposition": "COVERED_BY_AC",
+                    "reason": "The named panel is in the approved scope.",
+                    "ac_refs": ["AC-01"],
+                    "desired_behavior_authority": "JIRA",
+                    "desired_behavior_evidence_refs": ["SRC-JIRA-UI-SCOPE"],
+                },
+                "state_variants": [
+                    {
+                        "state_id": "STATE-EMPTY",
+                        "disposition": "COVERED_BY_AC",
+                        "reason": "The accepted scope defines the empty-state outcome.",
+                        "ac_refs": ["AC-01"],
+                        "desired_behavior_authority": "JIRA",
+                        "desired_behavior_evidence_refs": ["SRC-JIRA-UI-SCOPE"],
+                    },
+                    {
+                        "state_id": "STATE-PRESENT",
+                        "disposition": "OPEN_QUESTION",
+                        "reason": "The desired present-state outcome is not approved.",
+                        "open_question_ref": "OQ-01",
+                    },
+                ],
+            }
+        ],
+    }
+    manifest = {
+        "dimension_inventory": inventory,
+        "visual_reference_evidence": [visual_source],
+    }
+    check(
+        "inspected comparison visual reference dispositions pass",
+        dim.validate(manifest, plan) == [],
+    )
+    user_visual_with_scoped_state = copy.deepcopy(manifest)
+    user_visual_with_scoped_state["visual_reference_evidence"][0][
+        "source_kind"
+    ] = "USER_PROVIDED"
+    scoped_state = user_visual_with_scoped_state["dimension_inventory"][
+        "visual_reference_coverage"
+    ]["references"][0]["state_variants"][1]
+    scoped_state.clear()
+    scoped_state.update(
+        {
+            "state_id": "STATE-PRESENT",
+            "disposition": "OUT_OF_SCOPE",
+            "reason": "The accepted scope excludes the present-indicator behavior.",
+            "scope_authority": "USER",
+            "scope_evidence_refs": ["SRC-USER-SCOPE"],
+        }
+    )
+    check(
+        "user-provided visual state can carry a concrete scoped-out disposition",
+        dim.validate(user_visual_with_scoped_state, plan) == [],
+    )
+    visual_opt_out = copy.deepcopy(manifest)
+    visual_opt_out["dimension_inventory_not_applicable"] = {
+        "reason": "This visual reference should be ignored despite the observed states."
+    }
+    check(
+        "dimension inventory opt-out cannot bypass an inspected visual reference",
+        any(
+            "cannot bypass an inspected visual reference" in problem
+            for problem in dim.validate(visual_opt_out, plan)
+        ),
+    )
+    missing_surface = copy.deepcopy(manifest)
+    missing_surface["dimension_inventory"]["visual_reference_coverage"]["references"][0].pop(
+        "surface"
+    )
+    check(
+        "visual reference surface cannot be silently omitted",
+        any("surface must disposition" in problem for problem in dim.validate(missing_surface, plan)),
+    )
+    missing_variant = copy.deepcopy(manifest)
+    missing_variant["dimension_inventory"]["visual_reference_coverage"]["references"][0][
+        "state_variants"
+    ].pop()
+    check(
+        "visual reference material state cannot be silently omitted",
+        any(
+            "omits observed material state STATE-PRESENT" in problem
+            for problem in dim.validate(missing_variant, plan)
+        ),
+    )
+    observation_as_requirement = copy.deepcopy(manifest)
+    observation_as_requirement["dimension_inventory"]["visual_reference_coverage"][
+        "references"
+    ][0]["state_variants"][0]["desired_behavior_evidence_refs"] = ["ATTACH-VISUAL-01"]
+    check(
+        "visual observation cannot promote desired behavior by itself",
+        any(
+            "cannot use visual source ATTACH-VISUAL-01 as desired-behavior authority"
+            in problem
+            for problem in dim.validate(observation_as_requirement, plan)
+        ),
+    )
+    uninspected = copy.deepcopy(manifest)
+    uninspected["visual_reference_evidence"][0]["inspected"] = False
+    check(
+        "visual attachment must be inspected instead of inferred from its filename",
+        any(
+            "do not infer UI facts from an attachment filename" in problem
+            for problem in dim.validate(uninspected, plan)
+        ),
+    )
+    print("test_visual_reference_coverage: OK")
+
+
+def test_write_read_consumer_parity() -> None:
+    dim = dimension_inventory_mod
+    plan = "\n".join([
+        "**Acceptance Criteria**",
+        (
+            "- AC-01: editing Display value in Value editor through Display field "
+            "reflects Display value in Display tag on Summary view."
+        ),
+        "",
+    ])
+    inventory = {
+        dimension: {
+            "disposition": "NOT_APPLICABLE",
+            "reason": "not relevant to this focused write/read consumer fixture",
+        }
+        for dimension in dim.CANONICAL_DIMENSIONS
+    }
+    inventory["consumers_and_siblings"] = {
+        "disposition": "COVERED_BY_AC",
+        "reason": "the named writer and reader are covered as one observable value flow",
+    }
+    pair = {
+        "pair_id": "VALUE-PAIR-01",
+        "value_name": "Display value",
+        "write_surface": "Value editor",
+        "write_control": "Display field",
+        "read_surface": "Summary view",
+        "read_artifact": "Display tag",
+        "source_refs": ["SRC-CURRENT-UI-PAIR"],
+    }
+    inventory["write_read_consumer_parity"] = {
+        "schema_version": dim.WRITE_READ_CONSUMER_PARITY_SCHEMA,
+        "pairs": [
+            {
+                "pair_id": "VALUE-PAIR-01",
+                "disposition": "COVERED_BY_AC",
+                "reason": "The accepted scope requires the edited value to be visible to its reader.",
+                "ac_refs": ["AC-01"],
+                "desired_behavior_authority": "JIRA",
+                "desired_behavior_evidence_refs": ["SRC-JIRA-VALUE-PARITY"],
+            }
+        ],
+    }
+    manifest = {
+        "dimension_inventory": inventory,
+        "write_read_consumer_parity_evidence": [pair],
+    }
+    check(
+        "named write/read consumer parity can be covered by an AC",
+        dim.validate(manifest, plan) == [],
+    )
+    missing_parity = copy.deepcopy(manifest)
+    missing_parity["dimension_inventory"].pop("write_read_consumer_parity")
+    check(
+        "named write/read consumer evidence requires a parity disposition",
+        any(
+            "write_read_consumer_parity is required" in problem
+            for problem in dim.validate(missing_parity, plan)
+        ),
+    )
+    unnamed_ac = "\n".join([
+        "**Acceptance Criteria**",
+        "- AC-01: the approved value is shown after editing.",
+        "",
+    ])
+    check(
+        "covered parity AC must name both the writer and reader",
+        any(
+            "must map one AC that names the value" in problem
+            for problem in dim.validate(manifest, unnamed_ac)
+        ),
+    )
+    open_parity = copy.deepcopy(manifest)
+    open_parity["dimension_inventory"]["write_read_consumer_parity"]["pairs"][0] = {
+        "pair_id": "VALUE-PAIR-01",
+        "disposition": "OPEN_QUESTION",
+        "reason": "The required read-after-write outcome is not yet approved.",
+        "open_question_ref": "OQ-01",
+    }
+    check(
+        "named write/read consumer parity can remain an Open Question",
+        dim.validate(open_parity, plan) == [],
+    )
+    scoped_out_parity = copy.deepcopy(manifest)
+    scoped_out_parity["dimension_inventory"]["write_read_consumer_parity"]["pairs"][0] = {
+        "pair_id": "VALUE-PAIR-01",
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "The accepted change is limited to editing and excludes the summary reader.",
+        "scope_authority": "USER",
+        "scope_evidence_refs": ["SRC-USER-SCOPE"],
+    }
+    check(
+        "named write/read consumer parity accepts a concrete scoped-out decision",
+        dim.validate(scoped_out_parity, plan) == [],
+    )
+    same_surface = copy.deepcopy(manifest)
+    same_surface["write_read_consumer_parity_evidence"][0]["read_surface"] = (
+        "Value editor"
+    )
+    check(
+        "write/read consumer evidence requires distinct surfaces",
+        any(
+            "must be a distinct named consumer surface" in problem
+            for problem in dim.validate(same_surface, plan)
+        ),
+    )
+    parity_opt_out = copy.deepcopy(manifest)
+    parity_opt_out["dimension_inventory_not_applicable"] = {
+        "reason": "This named write/read relationship should be ignored without a disposition."
+    }
+    check(
+        "dimension inventory opt-out cannot bypass named write/read consumer parity",
+        any(
+            "cannot bypass named write/read consumer parity evidence" in problem
+            for problem in dim.validate(parity_opt_out, plan)
+        ),
+    )
+    print("test_write_read_consumer_parity: OK")
+
+
+def test_ui_action_surface_evidence() -> None:
+    dim = dimension_inventory_mod
+    plan = "\n".join([
+        "**Acceptance Criteria**",
+        "- AC-01: Apply selection in Settings panel produces the approved result.",
+        "",
+    ])
+    inventory = {
+        dimension: {
+            "disposition": "NOT_APPLICABLE",
+            "reason": "not relevant to this focused UI action fixture",
+        }
+        for dimension in dim.CANONICAL_DIMENSIONS
+    }
+    inventory["entry_points"] = {
+        "disposition": "COVERED_BY_AC",
+        "reason": "the named selectable control is covered on its proven surface",
+    }
+    action = {
+        "action_id": "UI-ACTION-01",
+        "action_name": "Apply selection",
+        "surface": "Settings panel",
+        "evidence_surface": "Settings panel",
+        "proof_kind": dim.UI_ACTION_PROOF_KIND,
+        "evidence_kind": "INSPECTED_UI",
+        "evidence_refs": ["SRC-CURRENT-SETTINGS-CONTROL"],
+    }
+    inventory["ui_action_surface_coverage"] = {
+        "schema_version": dim.UI_ACTION_SURFACE_SCHEMA,
+        "actions": [
+            {
+                "action_id": "UI-ACTION-01",
+                "disposition": "COVERED_BY_AC",
+                "reason": "The accepted scope names the observed selectable control.",
+                "ac_refs": ["AC-01"],
+                "desired_behavior_authority": "JIRA",
+                "desired_behavior_evidence_refs": ["SRC-JIRA-ACTION-SCOPE"],
+            }
+        ],
+    }
+    manifest = {
+        "dimension_inventory": inventory,
+        "ui_action_surface_evidence": [action],
+    }
+    check(
+        "surface-specific proof supports a named UI action",
+        dim.validate(manifest, plan) == [],
+    )
+    configured_outcome = copy.deepcopy(manifest)
+    configured_outcome["ui_action_surface_evidence"][0]["proof_kind"] = (
+        "CONFIGURED_OUTCOME"
+    )
+    check(
+        "a configured outcome cannot be presented as a selectable UI action",
+        any(
+            "does not prove a selectable UI action" in problem
+            for problem in dim.validate(configured_outcome, plan)
+        ),
+    )
+    unverified_action = copy.deepcopy(manifest)
+    unverified_action["ui_action_surface_evidence"][0] = {
+        "action_id": "UI-ACTION-01",
+        "action_name": "Apply selection",
+        "surface": "Settings panel",
+        "claim_status": "UNVERIFIED",
+        "unverified_reason": (
+            "Current evidence names an outcome but does not show this action "
+            "on the Settings panel."
+        ),
+        "open_question_ref": "OQ-01",
+        "claim_evidence_refs": ["SRC-JIRA-REQUEST"],
+    }
+    unverified_action["dimension_inventory"]["ui_action_surface_coverage"][
+        "actions"
+    ][0] = {
+        "action_id": "UI-ACTION-01",
+        "disposition": "OPEN_QUESTION",
+        "reason": (
+            "The requested outcome remains covered separately while the claimed "
+            "existing action is unverified."
+        ),
+        "open_question_ref": "OQ-01",
+    }
+    check(
+        "an unverified existing action is an Open Question instead of selecting or dropping the requested outcome",
+        dim.validate(unverified_action, plan) == [],
+    )
+    requirement_only = copy.deepcopy(manifest)
+    requirement_only["ui_action_surface_evidence"][0]["evidence_kind"] = (
+        "ACCEPTED_UI_REQUIREMENT"
+    )
+    check(
+        "accepted scope alone cannot prove an existing selectable UI action",
+        any(
+            "evidence_kind must be one of" in problem
+            for problem in dim.validate(requirement_only, plan)
+        ),
+    )
+    missing_action_evidence = copy.deepcopy(manifest)
+    missing_action_evidence["ui_action_surface_evidence"][0]["evidence_refs"] = []
+    check(
+        "a named UI action requires current surface-specific evidence",
+        any(
+            "must cite current surface-specific action proof" in problem
+            for problem in dim.validate(missing_action_evidence, plan)
+        ),
+    )
+    wrong_surface = copy.deepcopy(manifest)
+    wrong_surface["ui_action_surface_evidence"][0]["evidence_surface"] = (
+        "Other settings panel"
+    )
+    check(
+        "UI action evidence from another surface is rejected",
+        any(
+            "from another surface cannot prove this UI action" in problem
+            for problem in dim.validate(wrong_surface, plan)
+        ),
+    )
+    unnamed_action = "\n".join([
+        "**Acceptance Criteria**",
+        "- AC-01: the approved result is produced.",
+        "",
+    ])
+    check(
+        "a covered UI action AC must name its action and surface",
+        any(
+            "must map one AC that names the UI action and its surface" in problem
+            for problem in dim.validate(manifest, unnamed_action)
+        ),
+    )
+    missing_coverage = copy.deepcopy(manifest)
+    missing_coverage["dimension_inventory"].pop("ui_action_surface_coverage")
+    check(
+        "a named UI action requires a coverage disposition",
+        any(
+            "ui_action_surface_coverage is required" in problem
+            for problem in dim.validate(missing_coverage, plan)
+        ),
+    )
+    action_opt_out = copy.deepcopy(manifest)
+    action_opt_out["dimension_inventory_not_applicable"] = {
+        "reason": "This named action should be ignored without a surface disposition."
+    }
+    check(
+        "dimension inventory opt-out cannot bypass named UI action evidence",
+        any(
+            "cannot bypass named UI action surface evidence" in problem
+            for problem in dim.validate(action_opt_out, plan)
+        ),
+    )
+    print("test_ui_action_surface_evidence: OK")
+
+
 def _full_preflight() -> dict:
     return {
         "mode": "full",
@@ -1091,6 +1530,52 @@ def _canonical_semantic_fixture() -> dict:
                     "integrity": "PRESERVED",
                     "destination": "ACCEPTANCE_CRITERION",
                     "ac_ref": "AC-02",
+                },
+            ],
+        },
+        "authoritative_source_coverage": {
+            "schema_version": (
+                "aem-guides-authoritative-source-coverage-v1"
+            ),
+            "sources": [
+                {
+                    "source_id": "TSRC-01",
+                    "source_ref": "issue.description",
+                    "source_kind": "JIRA_DESCRIPTION",
+                    "raw_text": (
+                        "The requested behavior produces correct observable output "
+                        "and retains valid prior state."
+                    ),
+                    "sha256": source_requirement_fidelity_mod.sha256_text(
+                        "The requested behavior produces correct observable output "
+                        "and retains valid prior state."
+                    ),
+                    "inspected": True,
+                    "atomization_complete": True,
+                }
+            ],
+            "facts": [
+                {
+                    "fact_id": "TSF-01",
+                    "source_id": "TSRC-01",
+                    "verbatim_text": (
+                        "The requested behavior produces correct observable output"
+                    ),
+                    "material": True,
+                    "destination": "ACCEPTANCE_CRITERION",
+                    "contract_fact_refs": ["CF-01"],
+                    "ac_refs": ["AC-01"],
+                    "required_terms_all": ["correct observable output"],
+                },
+                {
+                    "fact_id": "TSF-02",
+                    "source_id": "TSRC-01",
+                    "verbatim_text": "retains valid prior state",
+                    "material": True,
+                    "destination": "ACCEPTANCE_CRITERION",
+                    "contract_fact_refs": ["CF-02"],
+                    "ac_refs": ["AC-02"],
+                    "required_terms_all": ["retains valid prior state"],
                 },
             ],
         },
@@ -2311,7 +2796,7 @@ def test_compact_view() -> None:
     check(
         "compact ACs use one plain line and hide internal record labels",
         (
-            "- AC-01: Verify that an input; when the system runs, "
+            "- Acceptance Criteria 01: Verify that an input; when the system runs, "
             "it produces the correct observable output."
         )
         in acceptance_block
@@ -3083,8 +3568,13 @@ def test_component_reference_routing() -> None:
         encoding="utf-8"
     )
     for marker in (
+        "## Asset Upload Conflict Evidence Contract",
         "## Bulk Same-Name Asset Overwrite and Session Contract",
         "no historical-ticket authority",
+        "content-identity duplicate detection",
+        "configuration provider, service registration, or class name",
+        "Cloud Service and On-premise",
+        "documentation_sources",
         "A ticket key, customer name, old batch count, or old release cannot activate",
         "import endpoint traffic as failure signatures",
         "not a supported maximum, SLA, timeout, or resource ceiling",
@@ -3095,6 +3585,23 @@ def test_component_reference_routing() -> None:
         "Do not claim data loss",
     ):
         check(f"Platform component pack retains marker {marker}", marker in platform_reference)
+
+    visual_reference = (
+        skill_root / "references" / "attachment-visual-reference-coverage.md"
+    ).read_text(encoding="utf-8")
+    for marker in (
+        "# Attachment and Visual-Reference Coverage",
+        "OBSERVATION_ONLY",
+        "visual_reference_evidence",
+        "aem-guides-visual-reference-coverage-v1",
+        "comparison-product visual",
+        "cannot establish desired product behavior",
+        "attachment filename, alt-text guess",
+    ):
+        check(
+            f"Attachment visual-reference contract retains marker {marker}",
+            marker in visual_reference,
+        )
 
     repo_root = _find_repo_root()
     if repo_root is None:
@@ -3120,9 +3627,11 @@ def test_component_reference_routing() -> None:
             "SKILL.md",
             "references/chat-deliverable.md",
             "references/plain-language-ac-writing.md",
+            "references/design-evidence-flow.md",
             "references/output-template.md",
             "references/quality-gate-checklist.md",
             "references/clarification-gate.md",
+            "references/attachment-visual-reference-coverage.md",
             "references/manifest-completeness.md",
             "references/localization-regression-coverage.md",
             "references/upgrade-migration-coverage.md",
@@ -3145,8 +3654,10 @@ def test_component_reference_routing() -> None:
             "scripts/reviewer_request_coverage.py",
             "scripts/reproducibility_gate.py",
             "scripts/probe_coverage_gate.py",
+            "scripts/coverage_hypotheses.py",
             "scripts/dita_semantics_activation.py",
             "scripts/dimension_synthesizer.py",
+            "scripts/dimension_inventory.py",
             "scripts/discovery_disposition.py",
             "scripts/recorded_neighbor_discovery.py",
             "scripts/test_discovery_disposition.py",
@@ -3162,6 +3673,7 @@ def test_component_reference_routing() -> None:
             "scripts/feature_map.py",
             "data/aem_feature_map.json",
             "references/aem-feature-map.md",
+            "references/api-implementation-evidence.md",
             "scripts/offline_retrieval.py",
             "references/offline-authoring-rag.md",
             "scripts/run_gates.py",
@@ -3501,6 +4013,15 @@ def test_coverage_hypotheses() -> None:
     # confidence range enforced
     check("confidence out of range is rejected",
           any("confidence" in p for p in cov.validate_coverage_block([H(confidence=2.0)])))
+    check(
+        "a discovery hypothesis cannot select authoritative ticket scope",
+        any(
+            "cannot select or dispose authoritative ticket scope" in problem
+            for problem in cov.validate_coverage_block(
+                [H(scope_disposition="OUT_OF_SCOPE")]
+            )
+        ),
+    )
 
     # Cartesian-explosion guard: two equivalent candidates must collapse
     dup = [H(hypothesis_id="H1", candidate="type A reaches path", dimension="TYPE_ABSTRACTION", equivalence_key="reaches-path"),
@@ -5234,6 +5755,263 @@ def test_source_requirement_fidelity() -> None:
         "Every active enumerated requirement list has a hash-bound source requirement ledger"
         in checklist_text,
     )
+
+
+def test_authoritative_source_coverage() -> None:
+    srf = source_requirement_fidelity_mod
+    description = "Apply the requested rule after save."
+    comment = "Keep the existing warning visible."
+    attachment = "The inspected result label is excluded from this change."
+
+    def source(source_id: str, source_ref: str, source_kind: str, raw_text: str) -> dict:
+        return {
+            "source_id": source_id,
+            "source_ref": source_ref,
+            "source_kind": source_kind,
+            "raw_text": raw_text,
+            "sha256": srf.sha256_text(raw_text),
+            "inspected": True,
+            "atomization_complete": True,
+        }
+
+    manifest = {
+        "schema_version": "aem-guides-evidence-manifest-v3",
+        "behaviour_matters": True,
+        "issue": {
+            "key": "GUIDES-100",
+            "description": description,
+            "comments": [{"id": "comment-1", "body": comment}],
+        },
+        "attachments": [
+            {
+                "source_ref": "ATTACHMENT-01",
+                "analyzed": True,
+                "analysis_text": attachment,
+            }
+        ],
+        "contract_facts": {
+            "schema_version": "aem-guides-contract-facts-v1",
+            "contract_state": "EVIDENCE_BACKED_PROPOSED_CONTRACT",
+            "source_refs": [
+                "issue.description",
+                "issue.comments[comment-1]",
+                "ATTACHMENT-01",
+            ],
+            "facts": [
+                {
+                    "fact_id": "CF-01",
+                    "category": "DIRECT_EXPECTED_BEHAVIOR",
+                    "literal": description,
+                    "normalized": description,
+                    "source_ref": "issue.description",
+                    "subject": "PRODUCT_CONTRACT",
+                    "authority": "JIRA_EXPECTED_BEHAVIOR",
+                    "material": True,
+                    "protected_terms": ["requested rule"],
+                    "integrity": "PRESERVED",
+                    "destination": "ACCEPTANCE_CRITERION",
+                    "ac_ref": "AC-01",
+                },
+                {
+                    "fact_id": "CF-02",
+                    "category": "HUMAN_OPEN_QUESTIONS",
+                    "literal": comment,
+                    "normalized": comment,
+                    "source_ref": "issue.comments[comment-1]",
+                    "subject": "PRODUCT_CONTRACT",
+                    "authority": "JIRA_EXPECTED_BEHAVIOR",
+                    "material": True,
+                    "protected_terms": ["existing warning"],
+                    "integrity": "EXPLICITLY_FLAGGED_AS_AMBIGUOUS",
+                    "destination": "OPEN_QUESTION",
+                    "open_question_ref": "OQ-01",
+                },
+                {
+                    "fact_id": "CF-03",
+                    "category": "OUT_OF_SCOPE",
+                    "literal": attachment,
+                    "normalized": attachment,
+                    "source_ref": "ATTACHMENT-01",
+                    "subject": "PRODUCT_CONTRACT",
+                    "authority": "JIRA_EXPECTED_BEHAVIOR",
+                    "material": True,
+                    "protected_terms": ["result label"],
+                    "integrity": "PRESERVED",
+                    "destination": "OUT_OF_SCOPE",
+                    "out_of_scope_ref": "OOS-01",
+                },
+            ],
+        },
+        "authoritative_source_coverage": {
+            "schema_version": srf.AUTHORITATIVE_SOURCE_COVERAGE_SCHEMA,
+            "sources": [
+                source("TSRC-01", "issue.description", "JIRA_DESCRIPTION", description),
+                source(
+                    "TSRC-02",
+                    "issue.comments[comment-1]",
+                    "JIRA_COMMENT",
+                    comment,
+                ),
+                source(
+                    "TSRC-03",
+                    "ATTACHMENT-01",
+                    "ANALYSED_ATTACHMENT",
+                    attachment,
+                ),
+            ],
+            "facts": [
+                {
+                    "fact_id": "TSF-01",
+                    "source_id": "TSRC-01",
+                    "verbatim_text": description,
+                    "material": True,
+                    "destination": "ACCEPTANCE_CRITERION",
+                    "contract_fact_refs": ["CF-01"],
+                    "ac_refs": ["AC-01"],
+                    "required_terms_all": ["requested rule", "after save"],
+                },
+                {
+                    "fact_id": "TSF-02",
+                    "source_id": "TSRC-02",
+                    "verbatim_text": comment,
+                    "material": True,
+                    "destination": "OPEN_QUESTION",
+                    "contract_fact_refs": ["CF-02"],
+                    "open_question_ref": "OQ-01",
+                    "required_terms_all": ["existing warning", "visible"],
+                },
+                {
+                    "fact_id": "TSF-03",
+                    "source_id": "TSRC-03",
+                    "verbatim_text": attachment,
+                    "material": True,
+                    "destination": "OUT_OF_SCOPE",
+                    "contract_fact_refs": ["CF-03"],
+                    "reason": (
+                        "The accepted change keeps the inspected result label excluded "
+                        "from the requested rule."
+                    ),
+                    "required_terms_all": ["result label", "excluded"],
+                },
+            ],
+        },
+    }
+    acs = {
+        "AC-01": "Apply the requested rule after save.",
+    }
+    questions = {
+        "OQ-01": (
+            "Must the existing warning remain visible? QA impact: the answer "
+            "changes the observable result."
+        )
+    }
+    check(
+        "description, comment, and analysed attachment facts are independently atomized and traceable",
+        srf.validate_authoritative_source_coverage(
+            manifest,
+            ac_text_by_id=acs,
+            open_question_text_by_id=questions,
+        )
+        == [],
+    )
+    missing_fact = copy.deepcopy(manifest)
+    missing_fact["authoritative_source_coverage"]["facts"].pop(1)
+    check(
+        "a material comment fact omitted from AC, OQ, and OOS fails authoritative source coverage",
+        any(
+            "has no atomized facts" in problem
+            for problem in srf.validate_authoritative_source_coverage(
+                missing_fact,
+                ac_text_by_id=acs,
+                open_question_text_by_id=questions,
+            )
+        ),
+    )
+    hypothesis_scope = copy.deepcopy(manifest)
+    hypothesis_scope["authoritative_source_coverage"]["facts"][0][
+        "hypothesis_refs"
+    ] = ["HYP-01"]
+    check(
+        "a coverage hypothesis cannot select or suppress authoritative ticket scope",
+        any(
+            "hypotheses may widen investigation" in problem
+            for problem in srf.validate_authoritative_source_coverage(
+                hypothesis_scope,
+                ac_text_by_id=acs,
+                open_question_text_by_id=questions,
+            )
+        ),
+    )
+    missing_block = copy.deepcopy(manifest)
+    missing_block.pop("authoritative_source_coverage")
+    check(
+        "v3 authoritative Jira intake requires the primary source-to-UAC comparison block",
+        any(
+            "requires authoritative_source_coverage" in problem
+            for problem in srf.validate_authoritative_source_coverage(missing_block)
+        ),
+    )
+    source_backed_action_plan = "\n".join([
+        "**Acceptance Criteria**",
+        "- AC-01: Apply requested rule after save on Settings panel.",
+        "",
+    ])
+    action_inventory = {
+        dimension: {
+            "disposition": "NOT_APPLICABLE",
+            "reason": "not relevant to this source-coverage regression fixture",
+        }
+        for dimension in dimension_inventory_mod.CANONICAL_DIMENSIONS
+    }
+    action_inventory["entry_points"] = {
+        "disposition": "COVERED_BY_AC",
+        "reason": "The requested result remains mapped to an acceptance criterion.",
+    }
+    action_inventory["ui_action_surface_coverage"] = {
+        "schema_version": dimension_inventory_mod.UI_ACTION_SURFACE_SCHEMA,
+        "actions": [
+            {
+                "action_id": "UI-ACTION-01",
+                "disposition": "COVERED_BY_AC",
+                "reason": "The requested result is retained as source-backed acceptance coverage.",
+                "ac_refs": ["AC-01"],
+                "desired_behavior_authority": "JIRA",
+                "desired_behavior_evidence_refs": ["issue.description"],
+            }
+        ],
+    }
+    action_manifest = {
+        "dimension_inventory": action_inventory,
+        "ui_action_surface_evidence": [
+            {
+                "action_id": "UI-ACTION-01",
+                "action_name": "Apply requested rule",
+                "surface": "Settings panel",
+                "evidence_surface": "Settings panel",
+                "proof_kind": "CONFIGURED_OUTCOME",
+                "evidence_kind": "INSPECTED_IMPLEMENTATION",
+                "evidence_refs": ["SRC-CONFIG-OUTCOME"],
+            }
+        ],
+    }
+    check(
+        "unsupported existing-action proof is flagged while the requested outcome remains source-covered",
+        srf.validate_authoritative_source_coverage(
+            manifest,
+            ac_text_by_id={
+                "AC-01": "Apply requested rule after save on Settings panel."
+            },
+            open_question_text_by_id=questions,
+        )
+        == []
+        and any(
+            "unsupported existing UI action claim" in problem
+            for problem in dimension_inventory_mod.validate(
+                action_manifest, source_backed_action_plan
+            )
+        ),
+    )
+    print("test_authoritative_source_coverage: OK")
 
 
 def test_ac_decidability() -> None:
@@ -12157,6 +12935,17 @@ def test_miss_probe_library() -> None:
         "seeded probe axis is VALUE_SET_CHANNEL",
         seed["implied_dimension"]["axis"] == "VALUE_SET_CHANNEL",
     )
+    asset_conflict_probe = next(
+        (p for p in library if p.get("probe_id") == "MP-011"),
+        None,
+    )
+    check("asset-upload conflict probe is present", asset_conflict_probe is not None)
+    check(
+        "asset-upload conflict probe is active and uses its dedicated axis",
+        asset_conflict_probe is not None
+        and mpl.effective_status(asset_conflict_probe)[0] == "ACTIVE"
+        and asset_conflict_probe["implied_dimension"]["axis"] == "ASSET_UPLOAD_CONFLICT",
+    )
 
     def probe(**over):
         base = json.loads(json.dumps(seed))
@@ -12199,6 +12988,19 @@ def test_miss_probe_library() -> None:
         "learned candidate technical_basis names the probe and delta",
         any("LEARNED_PROBE:MP-001" in t for t in match["technical_basis"])
         and any("delta:" in t for t in match["technical_basis"]),
+    )
+    asset_candidates = mpl.candidates_for(
+        [("E-UPLOAD", "Asset upload reports duplicate detection for a same-name file.")]
+    )
+    asset_candidate = next(
+        (c for c in asset_candidates if c.get("probe_id") == "MP-011"),
+        None,
+    )
+    check(
+        "asset conflict signal emits the dedicated discovery candidate",
+        asset_candidate is not None
+        and asset_candidate.get("dimension") == "ASSET_UPLOAD_CONFLICT"
+        and asset_candidate.get("status") == "INVESTIGATION_CANDIDATE",
     )
 
     # No match -> no learned candidate.
@@ -12279,6 +13081,12 @@ def test_feature_map() -> None:
     check("feature candidate cites matching evidence", "E-UPLOAD" in duplicate["current_evidence"])
     check("feature candidate is explicitly advisory", duplicate["advisory_only"] is True)
     check(
+        "duplicate-detection candidate keeps content identity separate from name/path conflict",
+        "content-identity duplicate detection" in duplicate["candidate"]
+        and "same-name or path-conflict" in duplicate["candidate"]
+        and "deployment and product surface" in duplicate["candidate"],
+    )
+    check(
         "feature and reference survive in technical basis",
         any("duplicate detection" in basis for basis in duplicate["technical_basis"])
         and any("reference:Experience League" in basis for basis in duplicate["technical_basis"]),
@@ -12287,6 +13095,13 @@ def test_feature_map() -> None:
     check(
         "non-matching evidence contributes no feature-map candidate",
         fm.candidates_for([("E-EDITOR", "The caret remains in the editor after typing.")]) == [],
+    )
+    duplicate_only = fm.candidates_for(
+        [("E-DUPLICATE", "Duplicate detection must be investigated before asset upload is accepted.")]
+    )
+    check(
+        "duplicate-detection evidence activates the asset-upload checklist",
+        any(candidate.get("feature") == "duplicate detection" for candidate in duplicate_only),
     )
     baseline_candidates = fm.candidates_for(
         [("E-BASELINE", "Create a translation project and select Use Baseline.")]
@@ -13161,6 +13976,440 @@ def test_probe_coverage_gate() -> None:
         ep_with_block = dict(ep_manifest, entry_point_equivalence={"candidates": [{"entry_point_id": "EP-01"}]})
         check("populated entry_point_equivalence block satisfies the ENTRY_POINT probe",
               not any("ENTRY_POINT" in p for p in gate.validate(ep_plan, ep_with_block)))
+
+    # Asset upload conflict evidence has a stricter, structured disposition under
+    # the existing probe gate. These fixtures intentionally use generic terms only.
+    asset_plan = nl.join([
+        "**Understanding From Jira**",
+        "- Issue understood: asset upload duplicate detection and a same-name conflict.",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Given an asset upload | When a conflict occurs | Then the approved result is visible | Evidence: Jira.",
+    ])
+    asset_manifest = {
+        "issue": {
+            "summary": "Asset upload duplicate detection",
+            "description": (
+                "A configuration provider is named for Create Asset on "
+                "AEM as a Cloud Service and On-premise."
+            ),
+        },
+        "coverage_hypotheses": [{"dimension": "CODE_PATH_CONSUMER"}],
+        "asset_upload_conflict": {
+            "schema_version": gate.ASSET_UPLOAD_CONFLICT_SCHEMA,
+            "affected_behavior": {
+                "deployment": "AEM as a Cloud Service",
+                "product_surface": "AEM Assets upload dialog",
+                "surface_owner": "NATIVE_AEM_ASSETS",
+                "product_action": "Overwrite Files",
+                "surface_ownership_evidence_refs": ["E-NATIVE-ASSETS-SURFACE"],
+                "path": "same-name asset upload conflict path",
+                "disposition": "COVERED",
+                "reason": "The reported behavior is limited to this Cloud upload path.",
+                "ac_refs": ["AC-01"],
+                "evidence_refs": ["E-CLOUD-PATH"],
+            },
+            "baseline_actions": [
+                {
+                    "action": "upload an asset with a new name",
+                    "relation_to_affected_path": "UNAFFECTED",
+                    "disposition": "PRESERVED",
+                    "reason": "The new-name upload action does not enter the same-name conflict path.",
+                    "evidence_refs": ["E-BASELINE-UPLOAD"],
+                }
+            ],
+            "dimensions": {
+                "content_identity_duplicate_detection": {
+                    "disposition": "COVERED",
+                    "reason": "The content-identity result is mapped to the acceptance contract.",
+                    "ac_refs": ["AC-01"],
+                },
+                "name_path_conflict": {
+                    "disposition": "OPEN_QUESTION",
+                    "reason": "The approved same-name or path result is not yet stated.",
+                    "open_question_ref": "OQ-01",
+                },
+                "request_handler_route": {
+                    "disposition": "OPEN_QUESTION",
+                    "reason": "Request-dispatch evidence has not been inspected.",
+                    "open_question_ref": "OQ-02",
+                    "configuration_artifacts": ["asset upload configuration"],
+                },
+            },
+            "deployments": [
+                {
+                    "deployment": "AEM as a Cloud Service",
+                    "disposition": "COVERED",
+                    "reason": "Cloud behavior has its own acceptance and evidence mapping.",
+                    "ac_refs": ["AC-01"],
+                    "evidence_refs": ["E-CLOUD"],
+                },
+                {
+                    "deployment": "On-premise",
+                    "disposition": "OPEN_QUESTION",
+                    "reason": "On-premise behavior has not been confirmed.",
+                    "open_question_ref": "OQ-03",
+                },
+            ],
+            "documentation_sources": [
+                {
+                    "source_ref": "DOC-CLOUD-ASSETS",
+                    "deployment_scope": ["AEM as a Cloud Service"],
+                    "surface_scope": ["Assets upload dialog"],
+                    "supports": [
+                        {
+                            "dimension": "content_identity_duplicate_detection",
+                            "deployment": "AEM as a Cloud Service",
+                            "surface": "Assets upload dialog",
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+    asset_active = [
+        p for p in gate.activated_probes(asset_plan, asset_manifest)
+        if p["axis"] == gate.ASSET_UPLOAD_CONFLICT_AXIS
+    ]
+    check("asset upload evidence activates only the dedicated conflict probe", bool(asset_active))
+    check(
+        "complete asset conflict contract satisfies the existing probe gate",
+        gate.validate(asset_plan, asset_manifest) == [],
+    )
+
+    missing_content_identity = copy.deepcopy(asset_manifest)
+    missing_content_identity["asset_upload_conflict"]["dimensions"].pop(
+        "content_identity_duplicate_detection"
+    )
+    check(
+        "content identity duplicate detection cannot be replaced by a name conflict",
+        any(
+            "content_identity_duplicate_detection" in problem
+            for problem in gate.validate(asset_plan, missing_content_identity)
+        ),
+    )
+    missing_name_conflict = copy.deepcopy(asset_manifest)
+    missing_name_conflict["asset_upload_conflict"]["dimensions"].pop("name_path_conflict")
+    check(
+        "name or path conflict cannot be replaced by duplicate detection",
+        any(
+            "name_path_conflict" in problem
+            for problem in gate.validate(asset_plan, missing_name_conflict)
+        ),
+    )
+    same_name_scope_without_duplicate_acceptance = copy.deepcopy(asset_manifest)
+    same_name_scope_without_duplicate_acceptance["asset_upload_conflict"][
+        "dimensions"
+    ]["content_identity_duplicate_detection"] = {
+        "disposition": "OUT_OF_SCOPE",
+        "reason": (
+            "Checksum comparison is not entered by the named same-name conflict path."
+        ),
+        "evidence_refs": ["E-PATH-BOUNDARY"],
+    }
+    same_name_scope_without_duplicate_acceptance["asset_upload_conflict"][
+        "dimensions"
+    ]["name_path_conflict"] = {
+        "disposition": "COVERED",
+        "reason": "The changed path resolves an existing name or repository path.",
+        "ac_refs": ["AC-01"],
+    }
+    same_name_scope_without_duplicate_acceptance["asset_upload_conflict"][
+        "deployments"
+    ][1] = {
+        "deployment": "On-premise",
+        "disposition": "PRESERVED",
+        "reason": "The inspected On-premise path does not use the Cloud change.",
+        "evidence_refs": ["E-ON-PREMISE-PATH"],
+    }
+    same_name_scope_without_duplicate_acceptance["asset_upload_conflict"][
+        "documentation_sources"
+    ] = []
+    check(
+        "same-name scope can disposition untouched content identity without an AC",
+        gate.validate(asset_plan, same_name_scope_without_duplicate_acceptance) == [],
+    )
+    check(
+        "Cloud coverage and On-premise preservation are valid separate deployment dispositions",
+        gate.validate(asset_plan, same_name_scope_without_duplicate_acceptance) == [],
+    )
+    not_applicable_duplicate_identity = copy.deepcopy(
+        same_name_scope_without_duplicate_acceptance
+    )
+    not_applicable_duplicate_identity["asset_upload_conflict"]["dimensions"][
+        "content_identity_duplicate_detection"
+    ] = {
+        "disposition": "NOT_APPLICABLE",
+        "reason": (
+            "The inspected same-name path has no content-identity comparison branch."
+        ),
+        "evidence_refs": ["E-PATH-BOUNDARY"],
+    }
+    check(
+        "same-name scope can mark untouched content identity not applicable without an AC",
+        gate.validate(asset_plan, not_applicable_duplicate_identity) == [],
+    )
+    unbacked_duplicate_exclusion = copy.deepcopy(
+        same_name_scope_without_duplicate_acceptance
+    )
+    unbacked_duplicate_exclusion["asset_upload_conflict"]["dimensions"][
+        "content_identity_duplicate_detection"
+    ].pop("evidence_refs")
+    check(
+        "out-of-scope duplicate identity needs a concrete evidence reference",
+        any(
+            "content_identity_duplicate_detection OUT_OF_SCOPE requires evidence_refs"
+            in problem
+            for problem in gate.validate(asset_plan, unbacked_duplicate_exclusion)
+        ),
+    )
+    broad_behavior_path = copy.deepcopy(asset_manifest)
+    broad_behavior_path["asset_upload_conflict"]["affected_behavior"][
+        "path"
+    ] = "non-Guides path"
+    check(
+        "affected behavior must name an exact path instead of an inferred broad category",
+        any(
+            "must name an exact behavior path" in problem
+            for problem in gate.validate(asset_plan, broad_behavior_path)
+        ),
+    )
+    generic_behavior_surface = copy.deepcopy(asset_manifest)
+    generic_behavior_surface["asset_upload_conflict"]["affected_behavior"][
+        "product_surface"
+    ] = "upload dialog"
+    check(
+        "affected behavior must name a product surface instead of a generic dialog",
+        any(
+            "must name the affected product surface" in problem
+            for problem in gate.validate(asset_plan, generic_behavior_surface)
+        ),
+    )
+    replace_named_as_native_assets_action = copy.deepcopy(asset_manifest)
+    replace_named_as_native_assets_action["asset_upload_conflict"]["affected_behavior"][
+        "product_action"
+    ] = "Replace"
+    check(
+        "native AEM Assets overwrite action cannot be called Replace",
+        any(
+            "native AEM Assets action name, not Replace" in problem
+            for problem in gate.validate(asset_plan, replace_named_as_native_assets_action)
+        ),
+    )
+    shortened_native_overwrite_action = copy.deepcopy(asset_manifest)
+    shortened_native_overwrite_action["asset_upload_conflict"]["affected_behavior"][
+        "product_action"
+    ] = "Overwrite"
+    check(
+        "native AEM Assets overwrite action uses the exact Overwrite Files name",
+        any(
+            "native overwrite flow Overwrite Files" in problem
+            for problem in gate.validate(asset_plan, shortened_native_overwrite_action)
+        ),
+    )
+    native_assets_create_version = copy.deepcopy(asset_manifest)
+    native_assets_create_version["asset_upload_conflict"]["affected_behavior"].update(
+        {
+            "product_action": "Create Version",
+            "path": "Create Version asset action path",
+        }
+    )
+    check(
+        "Create Version is a valid native AEM Assets action",
+        gate.validate(asset_plan, native_assets_create_version) == [],
+    )
+    unproven_guides_create_version = copy.deepcopy(native_assets_create_version)
+    unproven_guides_create_version["asset_upload_conflict"]["affected_behavior"].update(
+        {
+            "surface_owner": "AEM_GUIDES",
+            "product_surface": "AEM Guides asset panel",
+        }
+    )
+    unproven_guides_create_version["asset_upload_conflict"]["affected_behavior"].pop(
+        "surface_ownership_evidence_refs"
+    )
+    check(
+        "Create Version cannot be credited to Guides without ownership evidence",
+        any(
+            "before Create Version can be credited to AEM_GUIDES" in problem
+            for problem in gate.validate(asset_plan, unproven_guides_create_version)
+        ),
+    )
+    proven_guides_create_version = copy.deepcopy(unproven_guides_create_version)
+    proven_guides_create_version["asset_upload_conflict"]["affected_behavior"][
+        "surface_ownership_evidence_refs"
+    ] = ["E-GUIDES-SURFACE"]
+    check(
+        "Create Version may use a Guides owner only with surface-ownership evidence",
+        gate.validate(asset_plan, proven_guides_create_version) == [],
+    )
+    native_assets_credited_to_guides = copy.deepcopy(asset_manifest)
+    native_assets_credited_to_guides["asset_upload_conflict"]["affected_behavior"][
+        "surface_owner"
+    ] = "AEM_GUIDES"
+    check(
+        "AEM Assets surface cannot be credited to Guides",
+        any(
+            "cannot be credited to AEM_GUIDES" in problem
+            for problem in gate.validate(asset_plan, native_assets_credited_to_guides)
+        ),
+    )
+    unproven_guides_surface = copy.deepcopy(asset_manifest)
+    unproven_guides_surface["asset_upload_conflict"]["affected_behavior"].update(
+        {
+            "surface_owner": "AEM_GUIDES",
+            "product_surface": "Web Editor asset panel",
+        }
+    )
+    unproven_guides_surface["asset_upload_conflict"]["affected_behavior"].pop(
+        "surface_ownership_evidence_refs"
+    )
+    check(
+        "Guides ownership requires evidence for a Guides-owned surface",
+        any(
+            "must prove a Guides-owned surface" in problem
+            for problem in gate.validate(asset_plan, unproven_guides_surface)
+        ),
+    )
+    generic_baseline_action = copy.deepcopy(asset_manifest)
+    generic_baseline_action["asset_upload_conflict"]["baseline_actions"][0][
+        "action"
+    ] = "upload dialog"
+    check(
+        "unaffected baseline behavior must name an action rather than a generic dialog",
+        any(
+            "must name a specific action" in problem
+            for problem in gate.validate(asset_plan, generic_baseline_action)
+        ),
+    )
+
+    configuration_is_not_dispatch = copy.deepcopy(asset_manifest)
+    configuration_is_not_dispatch["asset_upload_conflict"]["dimensions"][
+        "request_handler_route"
+    ] = {
+        "disposition": "COVERED",
+        "reason": "A configuration class was inspected.",
+        "ac_refs": ["AC-01"],
+        "configuration_artifacts": ["asset upload configuration"],
+        "actual_handler": {
+            "handler": "asset upload configuration",
+            "route": "asset upload request route",
+            "source_ref": "E-CONFIGURATION",
+            "evidence_kind": "CONFIGURATION",
+        },
+    }
+    check(
+        "configuration evidence cannot substitute for request-dispatch evidence",
+        any(
+            "REQUEST_DISPATCH" in problem
+            for problem in gate.validate(asset_plan, configuration_is_not_dispatch)
+        ),
+    )
+    configuration_name_without_dispatch = copy.deepcopy(asset_manifest)
+    configuration_name_without_dispatch["issue"]["description"] = (
+        "The configuration class com.example.assets.CreateAssetServlet is named."
+    )
+    configuration_name_without_dispatch["asset_upload_conflict"]["dimensions"][
+        "request_handler_route"
+    ] = {
+        "disposition": "OUT_OF_SCOPE",
+        "reason": "Only the configuration class is known.",
+        "configuration_artifacts": ["com.example.assets.CreateAssetServlet"],
+    }
+    check(
+        "a configuration class without dispatch evidence remains a handler open question",
+        any(
+            "must be COVERED with dispatch evidence or OPEN_QUESTION" in problem
+            for problem in gate.validate(asset_plan, configuration_name_without_dispatch)
+        ),
+    )
+    configuration_class_with_dispatch = copy.deepcopy(
+        configuration_name_without_dispatch
+    )
+    configuration_class_with_dispatch["asset_upload_conflict"]["dimensions"][
+        "request_handler_route"
+    ] = {
+        "disposition": "COVERED",
+        "reason": "Request-dispatch evidence connects the configured class to this route.",
+        "ac_refs": ["AC-01"],
+        "configuration_artifacts": ["com.example.assets.CreateAssetServlet"],
+        "actual_handler": {
+            "handler": "com.example.assets.CreateAssetServlet",
+            "route": "/content/assets/upload",
+            "source_ref": "E-DISPATCH",
+            "evidence_kind": "REQUEST_DISPATCH",
+        },
+    }
+    check(
+        "dispatch evidence can prove a configuration-named class is the handler",
+        gate.validate(asset_plan, configuration_class_with_dispatch) == [],
+    )
+    inspected_handler = copy.deepcopy(asset_manifest)
+    inspected_handler["asset_upload_conflict"]["dimensions"]["request_handler_route"] = {
+        "disposition": "COVERED",
+        "reason": "The request dispatcher connects the handler and upload route.",
+        "ac_refs": ["AC-01"],
+        "configuration_artifacts": ["asset upload configuration"],
+        "actual_handler": {
+            "handler": "asset upload request handler",
+            "route": "asset upload request route",
+            "source_ref": "E-DISPATCH",
+            "evidence_kind": "REQUEST_DISPATCH",
+        },
+    }
+    check(
+        "request-dispatch evidence can cover the handler and route dimension",
+        gate.validate(asset_plan, inspected_handler) == [],
+    )
+
+    missing_on_premise = copy.deepcopy(asset_manifest)
+    missing_on_premise["asset_upload_conflict"]["deployments"].pop()
+    check(
+        "both named deployments require independent dispositions",
+        any(
+            "ON_PREMISE" in problem
+            for problem in gate.validate(asset_plan, missing_on_premise)
+        ),
+    )
+    cloud_doc_for_on_premise = copy.deepcopy(asset_manifest)
+    cloud_doc_for_on_premise["asset_upload_conflict"]["documentation_sources"][0][
+        "supports"
+    ][0]["deployment"] = "On-premise"
+    check(
+        "cloud-scoped documentation cannot establish on-premise behavior",
+        any(
+            "outside its deployment_scope" in problem
+            for problem in gate.validate(asset_plan, cloud_doc_for_on_premise)
+        ),
+    )
+    guides_doc_for_assets_dialog = copy.deepcopy(asset_manifest)
+    guides_doc_for_assets_dialog["asset_upload_conflict"]["documentation_sources"][0][
+        "supports"
+    ][0]["surface"] = "Guides upload view"
+    check(
+        "product-specific documentation cannot establish another upload surface",
+        any(
+            "outside its surface_scope" in problem
+            for problem in gate.validate(asset_plan, guides_doc_for_assets_dialog)
+        ),
+    )
+    undeclared_documentation_scope = copy.deepcopy(asset_manifest)
+    undeclared_documentation_scope["asset_upload_conflict"].pop("documentation_sources")
+    check(
+        "asset conflict contract must explicitly declare documentation scope use",
+        any(
+            "documentation_sources must be declared" in problem
+            for problem in gate.validate(asset_plan, undeclared_documentation_scope)
+        ),
+    )
+
+    generic_file_upload = gate.activated_probes(
+        "A file upload validation message is shown.",
+        {"issue": {"summary": "File upload validation"}},
+    )
+    check(
+        "generic file upload wording does not activate the asset conflict contract",
+        not any(p["axis"] == gate.ASSET_UPLOAD_CONFLICT_AXIS for p in generic_file_upload),
+    )
 
     # No probe token in the evidence -> not activated, clean pass (backward-compatible).
     quiet_plan = "**Acceptance Criteria**\n- AC-01 [Proposed]: (Basic) Given a thing | When acted | Then result | Evidence: Jira.\n"
@@ -15388,9 +16637,75 @@ def test_v3_authoring_pipeline() -> None:
         axes = probe_coverage_gate_mod._covered_axes({"coverage_hypotheses": upload_candidates})
         check("hypotheses alone preserve discovery-axis probe coverage", "CODE_PATH_CONSUMER" in axes and "VALUE_SET_CHANNEL" in axes)
         activated = probe_coverage_gate_mod.activated_probes("asset upload overwrite", {})
-        check("real active probes accept hypothesis dimensions without parallel clarification",
-              probe_coverage_gate_mod.validate("asset upload overwrite", {
-                  "coverage_hypotheses": [{"dimension": p["axis"]} for p in activated]}) == [])
+        broad_probe_manifest = {
+            "coverage_hypotheses": [{"dimension": p["axis"]} for p in activated]
+        }
+        check(
+            "asset-upload conflict probe cannot be satisfied by a broad axis alone",
+            any(
+                "asset-upload conflict contract" in problem
+                for problem in probe_coverage_gate_mod.validate(
+                    "asset upload overwrite", broad_probe_manifest
+                )
+            ),
+        )
+        broad_probe_manifest["asset_upload_conflict"] = {
+            "schema_version": probe_coverage_gate_mod.ASSET_UPLOAD_CONFLICT_SCHEMA,
+            "affected_behavior": {
+                "deployment": "AEM as a Cloud Service",
+                "product_surface": "AEM Assets upload flow",
+                "surface_owner": "NATIVE_AEM_ASSETS",
+                "product_action": "Overwrite Files",
+                "surface_ownership_evidence_refs": ["E-UPLOAD-SURFACE"],
+                "path": "same-name overwrite path",
+                "disposition": "COVERED",
+                "reason": "The fixture covers the named overwrite path.",
+                "ac_refs": ["AC-01"],
+                "evidence_refs": ["E-UPLOAD-PATH"],
+            },
+            "baseline_actions": [
+                {
+                    "action": "upload an asset with a new name",
+                    "relation_to_affected_path": "UNAFFECTED",
+                    "disposition": "PRESERVED",
+                    "reason": "The baseline action bypasses the same-name overwrite path.",
+                    "evidence_refs": ["E-UPLOAD-BASELINE"],
+                }
+            ],
+            "dimensions": {
+                "content_identity_duplicate_detection": {
+                    "disposition": "COVERED",
+                    "reason": "The content-identity dimension is acceptance coverage.",
+                    "ac_refs": ["AC-01"],
+                },
+                "name_path_conflict": {
+                    "disposition": "OPEN_QUESTION",
+                    "reason": "The name or path result has not been approved.",
+                    "open_question_ref": "OQ-01",
+                },
+                "request_handler_route": {
+                    "disposition": "NOT_APPLICABLE",
+                    "reason": "No handler or request route is named in this evidence.",
+                    "evidence_refs": ["E-UPLOAD"],
+                },
+            },
+            "deployments": [
+                {
+                    "deployment": "AEM as a Cloud Service",
+                    "disposition": "COVERED",
+                    "reason": "The fixture's acceptance scope is this deployment.",
+                    "ac_refs": ["AC-01"],
+                    "evidence_refs": ["E-UPLOAD-PATH"],
+                }
+            ],
+            "documentation_sources": [],
+        }
+        check(
+            "asset-upload contract supplements ordinary active-probe coverage",
+            probe_coverage_gate_mod.validate(
+                "asset upload overwrite", broad_probe_manifest
+            ) == [],
+        )
     finally:
         ds._load_offline_retrieval = offline_loader
 
@@ -15439,6 +16754,11 @@ def test_v3_authoring_pipeline() -> None:
 def test_clarification_gate() -> None:
     cg = clarification_gate_mod
     nl = chr(10)
+
+    check(
+        "asset-upload conflict is a legal clarification axis",
+        "ASSET_UPLOAD_CONFLICT" in cg.AXES,
+    )
 
     plain_plan = nl.join([
         "**Acceptance Criteria**",
@@ -15715,6 +17035,9 @@ def main() -> int:
     test_ac_readability()
     test_verifier()
     test_attachment_manifest()
+    test_visual_reference_coverage()
+    test_write_read_consumer_parity()
+    test_ui_action_surface_evidence()
     test_run_gates()
     test_extract_acs()
     test_compact_view()
@@ -15824,6 +17147,7 @@ def main() -> int:
     test_concurrency_race()
     test_enumerated_coverage()
     test_source_requirement_fidelity()
+    test_authoritative_source_coverage()
     test_ac_decidability()
     test_operational_contract()
     test_skill_bundle_fingerprint()

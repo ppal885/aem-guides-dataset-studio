@@ -150,6 +150,16 @@ backend/storage/ai_runs/
 backend/storage/zips/
 backend/storage/TEXT-*_bundle/
 
+# Host-mediated agent research stores (AGENT_RESEARCH_STORE and per-run variants).
+# Runtime request/result artifacts, reproducible from a rerun.
+backend/storage/agent_research/
+backend/storage/agent_research_*/
+backend/tests/_recorder_test_workdir/
+
+# Ad-hoc debug run dumps and database hold copies at the storage root.
+backend/storage/*.txt
+backend/storage/app.db.hold*
+
 # Local plan execution memory and downloaded customer evidence can contain large
 # recordings or internal material; keep them on disk, never in source control.
 output/test-plans/.pipeline-memory/

@@ -87,6 +87,12 @@ def cmd_pending(store: Path, run_scope: str | None = None) -> int:
                     "question_revision": request.get("question_revision"),
                     "requested_claim": request.get("requested_claim"),
                     "research_requirement": request.get("research_requirement"),
+                    "required_source_types": request.get(
+                        "required_source_types"
+                    )
+                    or [],
+                    "product_context": request.get("product_context") or {},
+                    "research_terms": request.get("research_terms") or [],
                     "authorized_source_refs": request.get(
                         "authorized_source_refs"
                     ),
@@ -96,6 +102,15 @@ def cmd_pending(store: Path, run_scope: str | None = None) -> int:
                         "authorized_repository_roots"
                     )
                     or [],
+                    "attachment_files": request.get("attachment_files") or [],
+                    "documentation_roots": request.get("documentation_roots")
+                    or [],
+                    "documentation_queries": request.get(
+                        "documentation_queries"
+                    )
+                    or [],
+                    "rag_candidates": request.get("rag_candidates") or [],
+                    "rag_status": request.get("rag_status") or "",
                     "applicability": request.get("applicability"),
                     "fulfilled": fulfilled.exists(),
                     "consumed": fulfilled.with_suffix(".consumed").exists(),

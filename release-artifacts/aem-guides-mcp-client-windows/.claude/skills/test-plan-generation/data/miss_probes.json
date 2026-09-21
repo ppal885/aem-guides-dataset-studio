@@ -419,6 +419,45 @@
    "equivalence_key": "map-reference-display-insertion-handling",
    "status": "SHADOW",
    "confidence": 0.3
+  },
+  {
+   "probe_id": "MP-011",
+   "pattern_class": "DISCOVERY_PATTERN",
+   "signal_pattern": {
+    "evidence_kind": "CONTRACT",
+    "match": [
+     "asset upload",
+     "overwrite",
+     "re-upload",
+     "reupload",
+     "duplicate detection",
+     "same-name",
+     "same name",
+     "name conflict",
+     "path conflict",
+     "create asset",
+     "upload conflict",
+     "conflict endpoint"
+    ],
+    "component_scope": ""
+   },
+   "implied_dimension": {
+    "axis": "ASSET_UPLOAD_CONFLICT",
+    "candidate_template": "asset-upload conflict dimensions: investigate and disposition content-identity duplicate detection and name/path conflicts separately before deciding acceptance coverage; establish the actual request handler and upload route independently from configuration artifacts; map the exact affected path, baseline actions, product-surface ownership, every named deployment, and documentation surface from applicable evidence without assuming parity"
+   },
+   "provenance": {
+    "source": "HUMAN",
+    "delta_ids": [
+     "HFD-ASSET-UPLOAD-CONFLICT-DIMENSIONS-01"
+    ],
+    "promotion_state": "APPROVED",
+    "independent_case_count": 1
+   },
+   "abstraction_note": "Asset-upload evidence can conflate content-identity duplicate detection, a same-name or path conflict, configuration metadata, request dispatch, deployment behavior, product-surface ownership, affected path, and baseline actions. These are independent dimensions. A matched probe requires investigation and disposition, not acceptance coverage for every dimension. A source scoped to one deployment or surface cannot establish another, matching labels or class names do not prove request routing, and native Assets actions such as Create Version and Overwrite Files are not Guides actions without source-backed ownership.",
+   "normative_invariant": true,
+   "counterexamples_checked": true,
+   "equivalence_key": "asset-upload-conflict-dimension-separation",
+   "status": "ACTIVE"
   }
  ]
 }

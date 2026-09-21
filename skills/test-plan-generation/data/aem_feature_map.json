@@ -11,7 +11,13 @@
         "overwrite",
         "upload conflict",
         "dam upload",
-        "file upload"
+        "file upload",
+        "re-upload",
+        "duplicate detection",
+        "same-name",
+        "name conflict",
+        "create asset",
+        "conflict endpoint"
       ],
       "native_features": [
         {
@@ -21,7 +27,7 @@
             "asset ingestion"
           ],
           "implied_dimension_axis": "CODE_PATH_CONSUMER",
-          "candidate_template": "when native duplicate detection is enabled, duplicate checking and notification still run on the shared asset upload path, including same-content files with different names",
+          "candidate_template": "when native duplicate detection is enabled, investigate content-identity duplicate detection separately from same-name or path-conflict handling, apply the documented behavior only to its supported deployment and product surface, and preserve native AEM Assets action ownership and terminology such as Create Version and Overwrite Files; an investigated dimension may be evidence-backed out of scope or preserved rather than an acceptance criterion",
           "reference": "Experience League detect-duplicate-assets",
           "reference_urls": [
             "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/admin/detect-duplicate-assets"

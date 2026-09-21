@@ -5,6 +5,9 @@ Read this reference when product behavior enumerates attributes, elements, label
 ## Evidence Boundary
 
 - A screenshot or repository view proves only the values and path observed in that environment. It does not establish the authoritative source, overlay precedence, deployment scope, cache/reload lifecycle, schema applicability, or a closed list of all supported values.
+- A configured or documented outcome does not establish that a separate selectable UI
+  option/action exists. Name such an action in an AC only when current evidence proves
+  it on the applicable surface.
 - Inspect the effective configuration source and every consumer. Compare configured entries with hardcoded arrays, enums, switch branches, label maps, validation lists, caches, and automation fixtures. A configured value missing from a consumer is a concrete extensibility risk.
 - Keep configuration-derived behavior `[Proposed]` unless accepted Jira/UAC confirms it. Code or UI evidence may ground current behavior and regression risk, but it does not upgrade derived scope to `[Confirmed]`.
 - Distinguish membership from presentation. One mechanism may decide that an entry exists, another whether it is valid for the active schema/profile/element, and another which friendly or fallback label is displayed.

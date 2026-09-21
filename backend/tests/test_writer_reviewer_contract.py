@@ -14,6 +14,7 @@ Three defects observed on real runs, each guarded here:
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -174,13 +175,16 @@ class TestRenderedPlanContract:
         criteria = [
             line
             for line in contract.splitlines()
-            if line.startswith("- AC-")
+            if line.startswith("- Acceptance Criteria ")
         ]
 
         assert criteria, "acceptance contract rendered no criteria"
         assert len(criteria) <= 10, "presented acceptance contract exceeds ten points"
         for index, line in enumerate(criteria, start=1):
-            assert line.startswith(f"- AC-{index:02d}: Verify that ")
+            assert line.startswith(f"- Acceptance Criteria {index:02d}: Verify that ")
+        # The human-facing label must not be issue-key shaped, or Jira auto-links
+        # it and renders the criterion struck through.
+        assert not any(re.search(r"\bAC-\d", line) for line in criteria)
 
     def test_every_criterion_carries_a_source_line(self, result):
         contract = result.rendered_output.split(
@@ -190,7 +194,7 @@ class TestRenderedPlanContract:
         criteria = [
             position
             for position, line in enumerate(lines)
-            if line.startswith("- AC-")
+            if line.startswith("- Acceptance Criteria ")
         ]
 
         assert criteria

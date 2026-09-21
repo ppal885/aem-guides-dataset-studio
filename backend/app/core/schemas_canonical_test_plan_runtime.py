@@ -3172,6 +3172,12 @@ class AgentResearchRequest(BaseModel):
     question_revision: str = ""
     requested_claim: str = Field(min_length=1, max_length=2000)
     research_requirement: ResearchRequirement
+    # Preserve the reusable per-question routing contract all the way to the
+    # worker.  Without these fields, a product- and surface-bound question
+    # degenerates into an unscoped sentence at the research boundary.
+    required_source_types: list[EvidenceSourceType] = Field(default_factory=list)
+    product_context: ResearchRoutingProductContext | None = None
+    research_terms: list[str] = Field(default_factory=list, max_length=20)
     authorized_source_refs: list[str] = Field(default_factory=list)
     repository_aliases: list[str] = Field(default_factory=list)
     applicability: str = Field(default="", max_length=500)
@@ -3181,6 +3187,17 @@ class AgentResearchRequest(BaseModel):
 
     @model_validator(mode="after")
     def identify(self) -> "AgentResearchRequest":
+        self.required_source_types = sorted(
+            set(self.required_source_types), key=lambda row: row.value
+        )
+        self.research_terms = sorted(
+            {
+                str(term).strip()
+                for term in self.research_terms
+                if str(term).strip()
+            },
+            key=str.casefold,
+        )
         self.authorized_source_refs = sorted(set(self.authorized_source_refs))
         self.repository_aliases = sorted(set(self.repository_aliases))
         self.context_refs = sorted(set(self.context_refs))
