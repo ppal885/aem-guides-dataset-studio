@@ -26,8 +26,11 @@ from __future__ import annotations
 
 import re
 
-# An AC line: "AC-01", "AC 1", "- AC-3:", numbered "1." bullets used as ACs.
-_AC_LABEL_RE = re.compile(r"\bAC[-\s]?(\d+)\b", re.IGNORECASE)
+# An AC line: "AC-01", "AC 1", "- AC-3:", the spelled-out human-facing
+# "Acceptance Criteria 01", or numbered "1." bullets used as ACs.
+_AC_LABEL_RE = re.compile(
+    r"\b(?:AC[-\s]?|Acceptance\s+Criteria\s+)(\d+)\b", re.IGNORECASE
+)
 _BULLET_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.*\S)\s*$")
 # Words that do not distinguish two ACs when measuring lexical overlap.
 _STOP = frozenset(

@@ -93,7 +93,14 @@ and never a mandatory replacement for live documentation discovery.
 
 Procedure:
 
-1. Reason over `rag_candidates` when they exist: judge which are actually
+1. Bind discovery to `product_context` before judging relevance. A page from
+   another Adobe product tree is not evidence of the routed product's
+   behavior; record it as a limitation and continue searching the routed
+   product documentation. For a named attribute/property plus an editor
+   surface, use the supplied `research_terms` and `documentation_queries` to
+   seek documented writer and reader surfaces separately; never infer an
+   unsearched surface from one matching page.
+2. Reason over `rag_candidates` when they exist: judge which are actually
    relevant to the research question, then verify the relevant ones by
    fetching the page with `web_fetch` (its `url`) or reading the local
    source before citing it. The indexed knowledge and the Skill's product
@@ -103,11 +110,11 @@ Procedure:
    insufficient, perform your own bounded discovery: derive terms from the
    requested claim and the Skill's product vocabulary, starting from the
    request's `documentation_queries` seeds.
-2. Bounded discovery means: refine terms and try the NEXT candidate or a
+3. Bounded discovery means: refine terms and try the NEXT candidate or a
    new query when a candidate 404s, is unrelated, or fails - a failed fetch
    is never "no documentation exists". At most 4 fetch attempts per
    request.
-3. Return only documentation that actually supports the research question.
+4. Return only documentation that actually supports the research question.
 
 When invoked for a pending research request you have bounded, read-only
 access to the approved documentation sources already supported by the Test
@@ -138,6 +145,10 @@ Rules:
 - Historical Jira content surfaced through retrieval remains
   discovery/supporting evidence only; it never becomes acceptance authority
   automatically.
+- A native AEM Assets page cannot establish AEM Guides behavior, and an AEM
+  Guides page cannot establish native Assets behavior. Do not bridge that
+  ownership boundary with familiar UI action names; report the missing
+  target-product evidence instead.
 - If the sources are reachable but none are relevant to the question after
   the bounded discovery above, return `NO_RELEVANT_EVIDENCE` with
   `limitations` naming the scopes and queries actually searched. Never

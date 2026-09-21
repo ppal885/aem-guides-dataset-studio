@@ -2008,8 +2008,18 @@ _HUMAN_BURDEN_RE = re.compile(
 
 # UX1: product-directed imperative - a sentence that commands product
 # behavior ("Provide an option ...", "The system shall ...").
+# A Jira summary routinely states its area before the directive
+# ("<Area>, add ...", "[<Area>] Add ...", "<Area>: show ..."),
+# so the imperative is recognized after an optional leading scope label.
+# The match stays anchored at the start of the literal, so a verb buried in
+# narrative prose still cannot claim requirement shape.
+_SCOPE_PREFIX_PATTERN = (
+    r"(?:\[[^\]]{1,60}\]\s*|\([^)]{1,60}\)\s*){0,2}"
+    r"(?:[A-Za-z][\w'’/&.+ -]{0,60}?\s*[,:|\u2013\u2014-]\s*){0,2}"
+)
 _PRODUCT_IMPERATIVE_RE = re.compile(
-    r"^\s*(?:provide|support|add|show|display|allow|enable|disable|remove|"
+    r"^\s*" + _SCOPE_PREFIX_PATTERN + r"(?:provide|support|add|show|display|"
+    r"allow|enable|disable|remove|"
     r"delete|create|generate|retain|keep|preserve|exclude|include|hide|"
     r"expose|rename|move|copy|sync|validate|log|record|return|fail|retry)\b"
     r"|\b(?:the\s+)?(?:system|product|editor|output|preset|dialog|panel|"
@@ -2123,6 +2133,28 @@ _SUBJECT_IMPERATIVE_RE = re.compile(
 )
 
 
+# A verb-shaped word followed by a noun it modifies is part of a compound noun,
+# not the sentence's verb: "topics list view", "sort order", "display name",
+# "read only".  Cutting there truncates the very surface the ticket is about
+# ("the topics list view of the editor" -> "the topics").
+_COMPOUND_NOUN_HEAD_RE = re.compile(
+    r"^\s+(?:view|views|order|orders|name|names|mode|modes|state|states|"
+    r"column|columns|field|fields|box|boxes|menu|menus|tab|tabs|panel|panels|"
+    r"page|pages|only|icon|icons|button|buttons|label|labels|area|areas)\b",
+    re.IGNORECASE,
+)
+
+
+def _finite_verb_cut(value: str):
+    """First real finite verb, skipping verb-shaped compound-noun modifiers."""
+
+    for match in _SUBJECT_FINITE_VERB_RE.finditer(value):
+        if _COMPOUND_NOUN_HEAD_RE.match(value[match.end() :]):
+            continue
+        return match
+    return None
+
+
 def _subject_noun_phrase(value: str) -> str:
     """Reduce a source-authored sentence to the noun phrase it is about."""
 
@@ -2136,7 +2168,7 @@ def _subject_noun_phrase(value: str) -> str:
             normalized = f"{context} {object_phrase}".strip()
         elif object_phrase:
             normalized = object_phrase
-    match = _SUBJECT_FINITE_VERB_RE.search(normalized)
+    match = _finite_verb_cut(normalized)
     if match is not None and match.start() > 0:
         head = normalized[: match.start()].strip().rstrip(" .;:,-")
         # A one-or-two character head is an article or fragment left behind by
@@ -2165,6 +2197,23 @@ def _product_subject_safe(text: str) -> bool:
     return True
 
 
+def _ticket_authored_fact(fact: ContractFact) -> bool:
+    """True when a fact's authority is the ticket itself, not retrieval.
+
+    Evidence IDs are deterministic (``ev:<SOURCE_TYPE>:<hash>``), so a fact
+    carries its own provenance without consulting the bundle.  Any retrieved
+    contributor disqualifies the fact: a sentence is only the ticket's own
+    statement when every source behind it is.
+    """
+
+    retrieved = {source.value for source in _NON_HUMAN_TERMINOLOGY_SOURCES}
+    for evidence_id in fact.source_evidence_ids:
+        parts = evidence_id.split(":")
+        if len(parts) >= 3 and parts[1] in retrieved:
+            return False
+    return True
+
+
 def _behavior_subject_from_facts(facts: ContractFactSet) -> str:
     """Return the ticket's own product subject for a human research question.
 
@@ -2172,6 +2221,15 @@ def _behavior_subject_from_facts(facts: ContractFactSet) -> str:
     subject.  The issue itself always names what it is about, so the contract
     facts - never a feature taxonomy - supply the fallback subject.  An empty
     result means the caller keeps its own generic wording.
+
+    Only ticket-authored facts may name the subject.  Retrieved documentation,
+    spec, code, and historical Jira are research evidence: they answer
+    questions *about* the subject and must never silently redefine what the
+    ticket is about.  Extraction already blocks retrieval from claiming the
+    two narrative fact types, but a retrieved sentence can still be classified
+    as an explicit negative requirement or exact label.  Without this guard an
+    off-topic retrieved sentence outranks the ticket's own summary and every
+    planned question is asked about a product area the ticket never mentions.
     """
 
     # A component label such as "Editor" identifies an area, not the behavior
@@ -2188,13 +2246,15 @@ def _behavior_subject_from_facts(facts: ContractFactSet) -> str:
         for fact in facts.facts:
             if fact.fact_type != fact_type:
                 continue
+            if not _ticket_authored_fact(fact):
+                continue
             candidate = _subject_noun_phrase(
                 _bounded_behavior_subject(fact.literal, limit=80)
             )
             if candidate and _product_subject_safe(candidate):
                 return candidate
     behavior_fact = _material_behavior_fact(facts)
-    if behavior_fact is not None:
+    if behavior_fact is not None and _ticket_authored_fact(behavior_fact):
         candidate = _subject_noun_phrase(
             _bounded_behavior_subject(behavior_fact.literal, limit=80)
         )
@@ -2233,6 +2293,19 @@ _UNRESOLVED_VALUE_SOURCE_RE = re.compile(
     r"(?:driven|derived|populated|managed|configured)\s+by\s+"
     r"(?P<source>.+?)(?=(?:[?!;,]|\.(?:\s|$)|$))",
     re.IGNORECASE,
+)
+_ATTRIBUTE_SUBJECT_RE = re.compile(
+    r"\b(?:(?P<before>[a-z_][a-z0-9_:-]{1,80})\s+attributes?\b|"
+    r"attributes?\s+(?:named\s+)?(?P<after>[a-z_][a-z0-9_:-]{1,80}))",
+    re.IGNORECASE,
+)
+_EDITOR_SURFACE_SIGNAL_RE = re.compile(
+    r"\b(?:editor|author(?:ing)?|tag\s+view|source\s+view|right\s+panel|"
+    r"content\s+propert(?:y|ies)|view)\b",
+    re.IGNORECASE,
+)
+_ATTRIBUTE_SUBJECT_STOP_WORDS = frozenset(
+    {"an", "any", "each", "the", "this", "these", "those", "valid"}
 )
 # Imperative language marks a requirement, not a problem statement, even when
 # the sentence also describes a lack.
@@ -3876,6 +3949,53 @@ _TICKET_UNDERSTANDING_AUTHORITIES = frozenset(
         AuthorityClass.PENDING_HUMAN_REVIEW,
     }
 )
+
+
+def _editor_attribute_surface_subjects(
+    facts: ContractFactSet,
+    closure: list[ClosureDimensionResult],
+) -> list[tuple[str, list[str]]]:
+    """Find explicitly named editable attributes without naming any attribute.
+
+    A source can name an attribute directly (``attribute_name attribute``), or the
+    semantic pass can classify a value as a controlling attribute.  We only
+    create this baseline-research question when the ticket also names an
+    editor-facing surface.  That keeps document discovery bounded while
+    making writer/reader parity research mandatory for every such property.
+    """
+
+    ticket_facts = [
+        fact
+        for fact in facts.facts
+        if fact.authority_class in _TICKET_UNDERSTANDING_AUTHORITIES
+    ]
+    source_text = "\n".join(fact.literal for fact in ticket_facts)
+    if not _EDITOR_SURFACE_SIGNAL_RE.search(source_text):
+        return []
+    source_fact_ids = sorted(fact.fact_id for fact in ticket_facts)
+    subjects: dict[str, set[str]] = {}
+
+    def add(subject: str, fact_ids: list[str]) -> None:
+        normalized = subject.strip().casefold()
+        if (
+            not re.fullmatch(r"[a-z_][a-z0-9_:-]{1,80}", normalized)
+            or normalized in _ATTRIBUTE_SUBJECT_STOP_WORDS
+        ):
+            return
+        subjects.setdefault(normalized, set()).update(fact_ids)
+
+    for fact in ticket_facts:
+        for match in _ATTRIBUTE_SUBJECT_RE.finditer(fact.literal):
+            add(match.group("before") or match.group("after") or "", [fact.fact_id])
+    for row in closure:
+        if row.dimension != SemanticDimension.CONTROLLING_ATTRIBUTES:
+            continue
+        add(row.entity, row.source_fact_ids or source_fact_ids)
+    return [
+        (subject, sorted(fact_ids))
+        for subject, fact_ids in sorted(subjects.items())
+    ]
+
 
 _NON_HUMAN_TERMINOLOGY_SOURCES = frozenset(
     {
@@ -6661,6 +6781,34 @@ class CanonicalTestPlanReasoningService:
                     source_fact_ids=[fact.fact_id],
                 )
             )
+        # An explicitly named value/attribute in an editor-facing request is
+        # not covered by researching DITA semantics alone.  The question below
+        # discovers documented writer and reader surfaces before coverage can
+        # assert UI parity.  It is baseline research, not a new requirement.
+        if facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT:
+            for subject, source_fact_ids in _editor_attribute_surface_subjects(
+                facts, closure
+            ):
+                questions.append(
+                    MissingQuestion(
+                        question=(
+                            "Which AEM Guides editor surfaces write or render "
+                            f"the {subject} attribute, and what existing value "
+                            "consistency must those surfaces preserve?"
+                        ),
+                        dimension=SemanticDimension.CROSS_SURFACE_SYNC,
+                        authority_subject=AuthoritySubject.CURRENT_UI,
+                        target_source_types=[
+                            EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+                            EvidenceSourceType.CURRENT_CODE,
+                        ],
+                        materiality=InvestigationMateriality.P1,
+                        blocking=False,
+                        open_question_class=OpenQuestionClass.RESEARCH_REQUIRED,
+                        source_fact_ids=source_fact_ids,
+                        investigation_terms=[subject, "attribute", "editor"],
+                    )
+                )
         # P2: an established problem with no established solution earns exactly
         # one neutral product-decision question - it names the gap and never
         # embeds a proposed solution.
@@ -10702,7 +10850,12 @@ class CanonicalTestPlanReasoningService:
                         # the acceptance contract instead of moving to a
                         # sibling section.
                         outcome, _, sub_block = item.partition("\n")
-                        lines.append(f"- AC-{index:02d}: {outcome}")
+                        # The human-facing label is spelled out rather than
+                        # abbreviated. "AC-01" matches Jira's issue-key shape
+                        # and is auto-linked and struck through when pasted
+                        # into a Jira field; "Acceptance Criteria 01" is not.
+                        # Internal traceability IDs are unchanged.
+                        lines.append(f"- Acceptance Criteria {index:02d}: {outcome}")
                         for sub_line in sub_block.splitlines():
                             if sub_line.strip():
                                 lines.append(f"  {sub_line.strip()}")

@@ -161,6 +161,11 @@ Use this before calling a test plan review-ready.
 - `manifest_completeness_gate` reuses existing behavior, publishing, value-write, shared-path, and clarification signals. Every activated block is non-empty or has one explicit waiver with `block`, concrete `reason`, and `waived_by`; omission never counts as a clean gate result.
 - `qe_completeness_coverage` activates for every real Open Question or regression item. Every Open Question is classified exactly once as a genuine product decision or rejected deferred coverage; every regression item is classified as a safety re-test or mapped to a real AC as in-scope behavior. A `QE COMPLETENESS REVIEW:` finding keeps the preflight receipt non-postable.
 - The manifest includes source-bound `contract_facts`; literal human terminology, exact labels/defaults/values/status/colors/counts/limits, scope, deployment/version, preset/output, and DITA-OT state are preserved or explicitly made an Open Question.
+- Before discovery, `authoritative_source_coverage` atomizes every retained Jira
+  description, comment, and analysed-attachment fact. Every material atom maps to an
+  AC, an explicit out-of-scope decision, or a genuine Open Question through
+  `contract_facts`; no hypothesis or UI-action assertion selects or removes ticket
+  scope.
 - `issue_domains` has at least one evidence-backed active route. Publishing activates `publishing_scope`; generated artifact content/structure/delivery evidence independently activates `generated_output_contract`. Publishing configuration alone does not imply download delivery. Assets/content-version behavior activates `content_identity_contract`.
 - Every material behavior-graph node/edge has canonical evidence-ID provenance; each edge's authority is valid for its declared subject. It also records currentness, applicability, confidence, and verification state. Inference remains an investigation candidate.
 - `semantic_closure` explicitly dispositioned every canonical dimension for every material entity. No missing record is interpreted as `NOT_APPLICABLE`.

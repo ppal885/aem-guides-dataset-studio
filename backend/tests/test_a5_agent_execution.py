@@ -22,8 +22,11 @@ from app.core.schemas_canonical_test_plan_runtime import (
     GenerationProfile,
     MissingQuestion,
     OpenQuestionClass,
+    ProductContractOwnership,
+    ProductOwnership,
     ResearchRequirement,
     ResearchRequirementRecord,
+    ResearchRoutingProductContext,
     ResearchWorkerResult,
     ResearchWorkerRole,
     ResearchWorkerStatus,
@@ -737,7 +740,15 @@ def _fake_retrieve_factory(monkeypatch, rows_by_substring):
     return docs_mod
 
 
-def _doc_pending_payload(tmp_path, monkeypatch, claim, rows_by_substring):
+def _doc_pending_payload(
+    tmp_path,
+    monkeypatch,
+    claim,
+    rows_by_substring,
+    *,
+    research_terms=None,
+    product_context=None,
+):
     import json
 
     from app.services.agent_execution_provider import HostMediatedResearchProvider
@@ -756,6 +767,9 @@ def _doc_pending_payload(tmp_path, monkeypatch, claim, rows_by_substring):
         question_revision="rev-test",
         requested_claim=claim,
         research_requirement=ResearchRequirement.DOCUMENTATION,
+        required_source_types=requirement.required_source_types,
+        product_context=product_context,
+        research_terms=research_terms or [],
         authorized_source_refs=[record.evidence_id],
     )
     provider = HostMediatedResearchProvider(store=tmp_path)
@@ -802,6 +816,191 @@ def test_vocabulary_expansion_improves_recall_across_terminology(tmp_path, monke
         for query in candidates[0]["matched_queries"]
     )
     assert "generated outputs" in payload["rag_expansion_terms"]
+
+
+def test_named_attribute_query_discovers_documented_editor_surfaces(
+    tmp_path, monkeypatch
+) -> None:
+    """Arbitrary property names stay in the query while product terminology
+    supplies the documented editor surface."""
+
+    row = {
+        "url": (
+            "https://experienceleague.adobe.com/en/docs/"
+            "experience-manager-guides/using/user-guide/author-content/"
+            "work-with-editor/editor-interface-features/web-editor-right-panel"
+        ),
+        "title": "Web Editor right panel",
+        "snippet": "Content Properties lets authors work with element attributes.",
+        "corpus": "aem_guides",
+        "chunk_id": "chunk-content-properties",
+    }
+    payload = _doc_pending_payload(
+        tmp_path,
+        monkeypatch,
+        "Which editor surfaces display the requested table property?",
+        {"content properties": [row]},
+        research_terms=["align", "attribute"],
+        product_context=ResearchRoutingProductContext(product="AEM Guides"),
+    )
+    assert payload["rag_candidates"][0]["url"] == row["url"]
+    assert payload["product_context"]["product"] == "AEM Guides"
+    assert set(payload["research_terms"]) == {"align", "attribute"}
+    assert any(
+        "align" in query.casefold() and "content properties" in query.casefold()
+        for query in payload["documentation_queries"]
+    )
+
+
+def test_guides_research_filters_native_assets_documentation_candidates(
+    tmp_path, monkeypatch
+) -> None:
+    native_assets = {
+        "url": (
+            "https://experienceleague.adobe.com/en/docs/"
+            "experience-manager-cloud-service/content/assets/manage/"
+            "download-assets"
+        ),
+        "title": "Manage assets",
+        "snippet": "Native Assets version behavior.",
+        "corpus": "aem_guides",
+        "chunk_id": "chunk-assets",
+    }
+    payload = _doc_pending_payload(
+        tmp_path,
+        monkeypatch,
+        "What does the Guides upload flow do when a binary is replaced?",
+        {"guides": [native_assets]},
+        product_context=ResearchRoutingProductContext(product="AEM Guides"),
+    )
+    assert payload["rag_candidates"] == []
+
+
+def test_orchestrator_preserves_ticket_owner_and_attribute_terms_for_doc_research() -> None:
+    class CaptureProvider:
+        request = None
+
+        def execute(self, request, **_kwargs):
+            self.request = request
+            result = ResearchWorkerResult(
+                worker_role=request.worker_role,
+                question_id=request.question_id,
+                status=ResearchWorkerStatus.AWAITING_HOST,
+                limitations=["test host handoff"],
+            )
+            return result, [("COPILOT_HOST", True, result, {})]
+
+    jira = _record(
+        "jira-attribute",
+        "In the Web Editor, authors update the colsep attribute from a table.",
+        EvidenceSourceType.JIRA_DESCRIPTION,
+    )
+    question = _question("Which existing editor surfaces write the table value?")
+    requirement = _requirement(
+        question,
+        ResearchRequirement.DOCUMENTATION,
+        [EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION],
+    )
+    provider = CaptureProvider()
+    orchestrator = ResearchOrchestrator(workers=[DocResearchWorker()], provider=provider)
+    results, _ = orchestrator.execute(
+        [question], [requirement], _bundle(jira), repository_roots=[]
+    )
+    assert results[0].status == ResearchWorkerStatus.AWAITING_HOST, results[0].limitations
+    assert provider.request.product_context.product == "AEM Guides"
+    assert provider.request.required_source_types == [
+        EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION
+    ]
+    assert {"attribute", "colsep"} <= set(provider.request.research_terms)
+
+
+def test_guides_doc_result_rejects_native_assets_behavior() -> None:
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+    from app.services.agent_execution_provider import validate_agent_result
+
+    record = _record(
+        "guides-ticket",
+        "A Guides-side upload path replaces a binary.",
+        EvidenceSourceType.JIRA_DESCRIPTION,
+    )
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=_question("What is the Guides upload behavior?").question_id,
+        requested_claim="What is the Guides upload behavior?",
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        product_context=ResearchRoutingProductContext(product="AEM Guides"),
+        authorized_source_refs=[record.evidence_id],
+    )
+    raw = {
+        "status": "ANSWER_FOUND",
+        "findings": [
+            {
+                "claim": "Create Version stores the uploaded binary as a new version.",
+                "source_refs": ["doc:native-assets-version"],
+                "evidence_role": "EXISTING_BEHAVIOR",
+                "provenance": {
+                    "locator": (
+                        "https://experienceleague.adobe.com/en/docs/"
+                        "experience-manager-cloud-service/content/assets/manage/"
+                        "download-assets"
+                    ),
+                    "title": "Manage assets",
+                    "query": "AEM Assets Create Version",
+                },
+            }
+        ],
+    }
+    result = validate_agent_result(request, raw, _bundle(record))
+    assert result.status == ResearchWorkerStatus.FAILED
+    assert "outside the routed product documentation tree" in result.limitations[0]
+
+
+def test_guides_doc_result_rejects_authorized_native_assets_source() -> None:
+    from app.core.schemas_canonical_test_plan_runtime import AgentResearchRequest
+    from app.services.agent_execution_provider import validate_agent_result
+
+    assets_doc = EvidenceRecord(
+        source_type=EvidenceSourceType.AEM_ASSETS_PLATFORM_DOCUMENTATION,
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+        source_reference=(
+            "https://experienceleague.adobe.com/en/docs/"
+            "experience-manager-cloud-service/content/assets/manage/download-assets"
+        ),
+        tenant_id="tenant_a5",
+        visibility=SourceVisibility(tenant_id="tenant_a5"),
+        requirement_authority=AuthorityClass.OFFICIAL_PRODUCT_CONTRACT,
+        content={"snippet": "Native asset version behavior."},
+        ownership=ProductOwnership(
+            product="AEM Assets",
+            layer="documentation",
+            contract_ownership=ProductContractOwnership.AEM_ASSETS_PLATFORM_CONTRACT,
+        ),
+    )
+    question = _question("What does the Guides upload flow do?")
+    request = AgentResearchRequest(
+        worker_role=ResearchWorkerRole.DOC_RESEARCHER,
+        question_id=question.question_id,
+        requested_claim=question.question,
+        research_requirement=ResearchRequirement.DOCUMENTATION,
+        product_context=ResearchRoutingProductContext(product="AEM Guides"),
+        authorized_source_refs=[assets_doc.evidence_id],
+    )
+    result = validate_agent_result(
+        request,
+        {
+            "status": "ANSWER_FOUND",
+            "findings": [
+                {
+                    "claim": "Create Version stores the uploaded binary as a new version.",
+                    "source_refs": [assets_doc.evidence_id],
+                    "evidence_role": "EXISTING_BEHAVIOR",
+                }
+            ],
+        },
+        _bundle(assets_doc),
+    )
+    assert result.status == ResearchWorkerStatus.FAILED
+    assert "belongs to AEM Assets" in result.limitations[0]
 
 
 def test_duplicate_candidates_across_expansions_collapse(tmp_path, monkeypatch) -> None:

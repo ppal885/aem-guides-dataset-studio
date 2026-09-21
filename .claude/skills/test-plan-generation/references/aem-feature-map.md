@@ -65,6 +65,24 @@ Important qualifications:
 
 - Native duplicate detection is disabled by default. Investigate it only under a
   configuration where it is enabled.
+- Treat content-identity duplicate detection and an existing name or path conflict as
+  separate candidates. A document that describes one does not establish the other.
+  Candidate discovery requires investigation and disposition, not an AC for both:
+  evidence may show that an untouched candidate is out of scope or preserved.
+- Record the exact deployment and product surface each retained upload document covers.
+  Cloud Service documentation does not establish On-premise behavior, and a Guides
+  upload document does not establish an AEM Assets dialog unless the source says so.
+- Name the exact affected upload/processing path and separate unaffected baseline
+  actions from that path. Do not broaden a path to a generic dialog or an inferred
+  product category. Cloud coverage and evidence-backed On-premise preservation are
+  distinct valid dispositions, not assumed parity.
+- Treat **Create Version** and the native AEM Assets overwrite/conflict control
+  **Overwrite Files** as native Assets flows; do not call the latter “Replace.” Name
+  and source them as native AEM Assets behavior; a Guides integration does not make
+  either action a Guides action. Claim a Guides-owned surface only with evidence that
+  the surface belongs to Guides.
+- A configuration provider or class name is not request-dispatch evidence. Inspect the
+  handler and upload route before using either to assert current behavior.
 - DAM Update Asset is an AEM 6.5/on-premise workflow. AEM as a Cloud Service uses
   asset microservices for native processing.
 - Smart Tags depend on deployment and supported asset type.

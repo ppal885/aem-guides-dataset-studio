@@ -132,6 +132,13 @@ Finally run the normal `run_gates.py --plan ... --combined ... --manifest ...
 
 ## 3. Execute discovery, do not hand-enumerate dimensions afterward
 
+Before executing discovery, complete the authoritative source-to-UAC comparison
+when current Jira intake includes description, comment, or analysed attachment text.
+Use `authoritative_source_coverage` to atomize each material source fact and bind it
+through `contract_facts` to an AC, a concrete out-of-scope decision, or a genuine
+Open Question. This is intake fidelity, not a discovery candidate. A hypothesis may
+widen investigation only; it cannot select, narrow, or discard a source fact.
+
 Run the installed copy's `scripts/dimension_synthesizer.py --manifest <path> --json`.
 Its `explorers` trace records all twelve family checks: CONTRACT_BOUNDARY,
 CONSUMER, STATE_PARTITION, TYPE_ABSTRACTION, REFERENCE_ARTIFACT,

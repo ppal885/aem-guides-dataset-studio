@@ -1111,6 +1111,9 @@ def check_manifest_completeness(path: str | None) -> list[str]:
         failures.append("manifest 'clones' must be a list")
     failures.extend(check_uac_fidelity(data))
     failures.extend(source_requirement_fidelity_mod.validate_manifest(data))
+    failures.extend(
+        source_requirement_fidelity_mod.validate_authoritative_source_coverage(data)
+    )
     return failures
 
 
@@ -1237,6 +1240,16 @@ def _contract_source_texts(data: dict) -> dict[str, str]:
                 and artifact_bytes == raw_text.encode("utf-8")
             ):
                 result[ref] = raw_text
+    # Source-fidelity also needs stable bindings for the exact description,
+    # comments, and analysed attachment text used by authoritative-source
+    # atomization. The aliases preserve existing contract-fact source labels.
+    for source in source_requirement_fidelity_mod.authoritative_ticket_sources(data):
+        raw_text = source.get("raw_text")
+        if not isinstance(raw_text, str) or not raw_text:
+            continue
+        for ref in source.get("aliases", set()):
+            if isinstance(ref, str) and ref.strip():
+                result.setdefault(ref, raw_text)
     return result
 
 
@@ -1333,6 +1346,20 @@ def validate_canonical_semantic_pipeline(
     ):
         return []
     problems: list[str] = []
+    plan_ac_text = _plan_ac_text_by_id(plan_text) if include_plan_checks else None
+    plan_oq_text = (
+        _plan_open_question_text_by_id(plan_text)
+        if include_plan_checks
+        else None
+    )
+    problems.extend(
+        f"[authoritative-source-coverage] {problem}"
+        for problem in source_requirement_fidelity_mod.validate_authoritative_source_coverage(
+            data,
+            ac_text_by_id=plan_ac_text,
+            open_question_text_by_id=plan_oq_text,
+        )
+    )
     oq_ids = set(_open_question_ids(data))
     problems.extend(
         f"[behavior-model] {problem}"
@@ -2006,6 +2033,42 @@ def check_source_requirement_fidelity(
     return failures, notes
 
 
+def check_authoritative_source_coverage(
+    manifest_path: str | None, plan_text: str = ""
+) -> tuple[list[str], list[str]]:
+    """Compare authoritative Jira intake directly with UAC destinations.
+
+    This runs before discovery/dimension gates. It intentionally admits only
+    AC, explicit scope, or real decision-question destinations; a discovery
+    hypothesis cannot consume a ticket fact.
+    """
+    data = _load_manifest_dict(manifest_path)
+    if not data:
+        return [], []
+    structural = source_requirement_fidelity_mod.validate_authoritative_source_coverage(
+        data
+    )
+    complete = source_requirement_fidelity_mod.validate_authoritative_source_coverage(
+        data,
+        ac_text_by_id=_plan_ac_text_by_id(plan_text),
+        open_question_text_by_id=_plan_open_question_text_by_id(plan_text),
+    )
+    remaining = list(complete)
+    for problem in structural:
+        if problem in remaining:
+            remaining.remove(problem)
+    failures = [f"[authoritative-source-coverage] {problem}" for problem in remaining]
+    required = source_requirement_fidelity_mod.authoritative_source_coverage_required(
+        data
+    )
+    notes = (
+        ["authoritative ticket source coverage validated"]
+        if required and not structural and not failures
+        else []
+    )
+    return failures, notes
+
+
 def check_ac_readability(
     plan_text: str, manifest_path: str | None = None
 ) -> tuple[list[str], list[str]]:
@@ -2293,6 +2356,9 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 for problem in completeness_messages
             ]
             notes += manifest_completeness_gate_mod.review_notes(manifest_data)
+            _asf, _asn = check_authoritative_source_coverage(manifest_path, body)
+            failures += _asf
+            notes += _asn
             failures += [
                 f"[open-questions] {problem}"
                 for problem in check_open_question_alignment(manifest_data, body)
@@ -2661,6 +2727,7 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
             self_tests.test_concurrency_race()
             self_tests.test_enumerated_coverage()
             self_tests.test_source_requirement_fidelity()
+            self_tests.test_authoritative_source_coverage()
             self_tests.test_ac_decidability()
             self_tests.test_operational_contract()
             self_tests.test_gate_receipt_and_adapter()

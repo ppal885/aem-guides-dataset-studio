@@ -10,6 +10,9 @@ Its philosophy is strict:
 
 Never "AI thinks it may matter -> add a test". A candidate is a hypothesis to be
 explored and verified later (Prompt 4); it is NOT an Acceptance Criterion.
+It also cannot select, narrow, or remove authoritative ticket scope. Source facts
+are atomized and routed directly to an AC, an explicit out-of-scope decision, or
+a genuine Open Question before discovery candidates are evaluated.
 
 The DITA semantic explorer (`semantic_relationship_explorer.py`) is the exemplar
 for the DITA_SEMANTIC_DEPENDENCY dimension; this module generalizes the same
@@ -57,6 +60,7 @@ DISCOVERY_DIMENSION_BY_AXIS = {
     "ENTRY_POINT": "CONTRACT_BOUNDARY", "REPRO_DIMENSION": "NFR_RISK",
     "DOWNSTREAM_REGRESSION": "DOWNSTREAM_REGRESSION",
     "LOCALIZATION": "NFR_RISK",
+    "ASSET_UPLOAD_CONFLICT": "CONTRACT_BOUNDARY",
 }
 
 # All explorers run; only evidence-backed signals emit candidates. These are
@@ -145,6 +149,11 @@ ALL_STATUSES = (CANDIDATE_STATUS, *TERMINAL_STATUSES)
 # Behavioural distance from the affected behaviour, most-direct first. Ranking uses
 # this, NOT keyword similarity / retrieved-chunk count / model confidence alone.
 BEHAVIORAL_DISTANCES = ("DIRECT", "ONE_HOP", "MULTI_HOP", "ANALOGOUS", "GENERIC_REGRESSION")
+_SCOPE_SELECTING_FIELDS = (
+    "scope_disposition",
+    "source_fact_destinations",
+    "authoritative_source_fact_refs",
+)
 
 
 @dataclass
@@ -252,6 +261,15 @@ def validate_coverage_block(data, *, require_ids=False):
             isinstance(value, str) and value.strip() for value in basis
         ):
             problems.append(f"hypothesis {hid!r}: no technical_basis or malformed signals - supply a non-empty list of technical signals")
+        forbidden = [
+            field for field in _SCOPE_SELECTING_FIELDS if field in item
+        ]
+        if forbidden:
+            problems.append(
+                f"hypothesis {hid!r}: {', '.join(forbidden)} cannot select or "
+                "dispose authoritative ticket scope; use the authoritative "
+                "source-to-UAC mapping instead"
+            )
     if problems:
         return problems
     hyps = [CoverageHypothesis.from_dict(x) for x in data]

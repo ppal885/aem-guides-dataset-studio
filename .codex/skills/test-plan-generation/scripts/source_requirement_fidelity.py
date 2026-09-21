@@ -53,12 +53,28 @@ from pathlib import Path
 
 
 SCHEMA_VERSION = "aem-guides-source-requirement-ledger-v1"
+AUTHORITATIVE_SOURCE_COVERAGE_SCHEMA = (
+    "aem-guides-authoritative-source-coverage-v1"
+)
 DISPOSITIONS = {"AC", "OQ", "OOS"}
 AUTHORITIES = {"Proposed", "Confirmed"}
+AUTHORITATIVE_SOURCE_KINDS = {
+    "JIRA_DESCRIPTION",
+    "JIRA_COMMENT",
+    "ANALYSED_ATTACHMENT",
+}
+AUTHORITATIVE_FACT_DESTINATIONS = {
+    "ACCEPTANCE_CRITERION",
+    "OPEN_QUESTION",
+    "OUT_OF_SCOPE",
+    "NOT_MATERIAL",
+}
 
 _SOURCE_ID_RE = re.compile(r"SRC-\d{2,}")
 _REQUIREMENT_ID_RE = re.compile(r"REQ-\d{2,}")
 _ATOM_ID_RE = re.compile(r"ATOM-\d{2,}")
+_AUTHORITATIVE_SOURCE_ID_RE = re.compile(r"TSRC-\d{2,}")
+_AUTHORITATIVE_FACT_ID_RE = re.compile(r"TSF-\d{2,}")
 _AC_ID_RE = re.compile(r"AC-\d{2}")
 _OQ_ID_RE = re.compile(r"OQ-\d{2}")
 
@@ -164,6 +180,162 @@ def is_required(manifest: object) -> bool:
         return False
     enumerated = manifest.get("enumerated_requirements")
     return isinstance(enumerated, dict) and enumerated.get("active") is True
+
+
+def _issue_key(manifest: dict) -> str:
+    issue = manifest.get("issue")
+    if isinstance(issue, dict):
+        value = issue.get("key")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    for key in ("jira_key", "issue_key"):
+        value = manifest.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _comment_records(value: object) -> list[object]:
+    if isinstance(value, dict):
+        for field in ("comments", "values"):
+            nested = value.get(field)
+            if isinstance(nested, list):
+                return nested
+        return [value]
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.strip():
+        return [value]
+    return []
+
+
+def _comment_text(record: object) -> str:
+    if isinstance(record, str):
+        return record
+    if not isinstance(record, dict):
+        return ""
+    for field in ("body_text", "body", "raw_text", "text", "comment"):
+        value = record.get(field)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _stable_source_part(record: object, index: int) -> str:
+    if isinstance(record, dict):
+        for field in ("id", "comment_id", "source_ref", "filename", "name"):
+            value = record.get(field)
+            if isinstance(value, (str, int)) and str(value).strip():
+                return str(value).strip()
+    return str(index)
+
+
+def authoritative_ticket_sources(manifest: object) -> list[dict]:
+    """Return the exact ticket sources that must be atomized before coverage.
+
+    These are current Jira intake sources, not discovery hypotheses.  A source
+    record carries aliases only to accommodate the stable source references used
+    by existing ``contract_facts`` records; the canonical ``source_ref`` remains
+    deterministic and source-specific.
+    """
+    if not isinstance(manifest, dict):
+        return []
+
+    issue = manifest.get("issue")
+    issue = issue if isinstance(issue, dict) else {}
+    issue_key = _issue_key(manifest)
+    records: list[dict] = []
+
+    description = issue.get("description")
+    if isinstance(description, str) and description:
+        aliases = {"issue.description"}
+        if issue_key:
+            aliases.add(f"Jira description {issue_key}")
+        records.append(
+            {
+                "source_ref": "issue.description",
+                "source_kind": "JIRA_DESCRIPTION",
+                "raw_text": description,
+                "aliases": aliases,
+            }
+        )
+
+    comments_value = issue.get("comments")
+    comments_prefix = "issue.comments"
+    if not _comment_records(comments_value):
+        comments_value = manifest.get("jira_comments")
+        comments_prefix = "jira_comments"
+    for index, comment in enumerate(_comment_records(comments_value), 1):
+        text = _comment_text(comment)
+        if not text:
+            continue
+        part = _stable_source_part(comment, index)
+        source_ref = f"{comments_prefix}[{part}]"
+        aliases = {source_ref}
+        if issue_key:
+            aliases.add(f"Jira comment {part} {issue_key}")
+        records.append(
+            {
+                "source_ref": source_ref,
+                "source_kind": "JIRA_COMMENT",
+                "raw_text": text,
+                "aliases": aliases,
+            }
+        )
+
+    attachments = manifest.get("attachments")
+    if isinstance(attachments, list):
+        for index, attachment in enumerate(attachments, 1):
+            if not isinstance(attachment, dict):
+                continue
+            if attachment.get("analyzed") is not True and attachment.get("analysed") is not True:
+                continue
+            part = _stable_source_part(attachment, index)
+            supplied_ref = attachment.get("source_ref")
+            source_ref = (
+                str(supplied_ref).strip()
+                if isinstance(supplied_ref, str) and supplied_ref.strip()
+                else f"attachment:{part}"
+            )
+            raw_text = next(
+                (
+                    attachment.get(field)
+                    for field in (
+                        "raw_text",
+                        "extracted_text",
+                        "ocr_text",
+                        "text",
+                        "analysis_text",
+                        "analysis",
+                    )
+                    if isinstance(attachment.get(field), str)
+                    and str(attachment.get(field)).strip()
+                ),
+                None,
+            )
+            aliases = {source_ref, str(part)}
+            for field in ("id", "name", "filename"):
+                value = attachment.get(field)
+                if isinstance(value, (str, int)) and str(value).strip():
+                    aliases.add(str(value).strip())
+            records.append(
+                {
+                    "source_ref": source_ref,
+                    "source_kind": "ANALYSED_ATTACHMENT",
+                    "raw_text": raw_text,
+                    "aliases": aliases,
+                }
+            )
+    return records
+
+
+def authoritative_source_coverage_required(manifest: object) -> bool:
+    return bool(
+        isinstance(manifest, dict)
+        and manifest.get("schema_version") == "aem-guides-evidence-manifest-v3"
+        and manifest.get("behaviour_matters", True) is not False
+        and authoritative_ticket_sources(manifest)
+    )
 
 
 def sha256_text(raw_text: str) -> str:
@@ -355,6 +527,430 @@ def _target_text(
     if missing:
         return "", [f"references unknown or empty {label}: {', '.join(missing)}"]
     return "\n".join(str(mapping[ref]) for ref in refs), []
+
+
+def _concrete_reason(value: object) -> bool:
+    text = str(value or "").strip()
+    return len(text) >= 12 and text.casefold().rstrip(".") not in {
+        "not material",
+        "out of scope",
+        "not applicable",
+        "unrelated",
+    }
+
+
+def _authoritative_fact_coverage(
+    raw_text: str, atoms: list[dict], *, tag: str
+) -> list[str]:
+    """Require atoms to account for every meaningful source clause.
+
+    This is deliberately source-completeness validation, not an NLP claim that
+    every word is an acceptance requirement. Authors can retain non-material
+    context with a concrete reason, but they cannot silently omit a clause from
+    the intake record.
+    """
+    problems: list[str] = []
+    atom_tokens: set[str] = set()
+    for atom in atoms:
+        text = atom.get("verbatim_text") if isinstance(atom, dict) else None
+        if isinstance(text, str):
+            atom_tokens.update(_semantic_tokens(text))
+    for index, clause in enumerate(_semantic_clauses(raw_text), 1):
+        clause_tokens = _semantic_tokens(clause)
+        if not clause_tokens:
+            continue
+        missing = sorted(clause_tokens - atom_tokens)
+        if missing:
+            problems.append(
+                f"{tag} source clause {index} is not fully atomized; missing "
+                f"source tokens {missing!r}"
+            )
+    return problems
+
+
+def _fact_destination_ref(fact: Mapping) -> tuple[str, list[str]]:
+    destination = str(fact.get("destination", ""))
+    if destination == "ACCEPTANCE_CRITERION":
+        value = str(fact.get("ac_ref", "")).strip()
+        return destination, [value] if value else []
+    if destination == "OPEN_QUESTION":
+        value = str(fact.get("open_question_ref", "")).strip()
+        return destination, [value] if value else []
+    if destination == "OUT_OF_SCOPE":
+        value = str(fact.get("out_of_scope_ref", "")).strip()
+        return destination, [value] if value else []
+    return destination, []
+
+
+def validate_authoritative_source_coverage(
+    manifest: object,
+    *,
+    ac_text_by_id: Mapping[str, str] | None = None,
+    open_question_text_by_id: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Verify that authoritative ticket facts reach a direct UAC destination.
+
+    This extends the existing source-fidelity path. It binds the full Jira
+    description, comments, and analysed attachment text to ``contract_facts``;
+    it does not create a hypothesis-based scope route. Discovery hypotheses may
+    widen investigation, but cannot be used as a material source fact's
+    destination.
+    """
+    if not isinstance(manifest, dict):
+        return ["manifest must be an object"]
+
+    required = authoritative_source_coverage_required(manifest)
+    block = manifest.get("authoritative_source_coverage")
+    if required and not isinstance(block, dict):
+        return [
+            "authoritative Jira intake requires authoritative_source_coverage; "
+            "atomize every material description, comment, and analysed-attachment "
+            "fact before discovery hypotheses are evaluated"
+        ]
+    if block is None:
+        return []
+    if not isinstance(block, dict):
+        return ["authoritative_source_coverage must be a versioned JSON object"]
+
+    problems: list[str] = []
+    if block.get("schema_version") != AUTHORITATIVE_SOURCE_COVERAGE_SCHEMA:
+        problems.append(
+            "authoritative_source_coverage.schema_version must be "
+            f"{AUTHORITATIVE_SOURCE_COVERAGE_SCHEMA}"
+        )
+
+    expected_sources = authoritative_ticket_sources(manifest)
+    expected_by_ref: dict[str, dict] = {}
+    for source in expected_sources:
+        ref = str(source.get("source_ref", ""))
+        if ref in expected_by_ref:
+            problems.append(
+                f"authoritative ticket intake duplicates source reference {ref!r}; "
+                "use stable distinct comment or attachment identifiers"
+            )
+        else:
+            expected_by_ref[ref] = source
+
+    sources = block.get("sources")
+    if not isinstance(sources, list) or not sources:
+        return problems + [
+            "authoritative_source_coverage.sources must be a non-empty list"
+        ]
+
+    declared_sources: dict[str, dict] = {}
+    source_by_id: dict[str, dict] = {}
+    for index, source in enumerate(sources):
+        tag = f"authoritative_source_coverage.sources[{index}]"
+        if not isinstance(source, dict):
+            problems.append(f"{tag} must be an object")
+            continue
+        source_id = str(source.get("source_id", ""))
+        if not _AUTHORITATIVE_SOURCE_ID_RE.fullmatch(source_id):
+            problems.append(f"{tag}.source_id must use stable TSRC-## form")
+        elif source_id in source_by_id:
+            problems.append(f"{tag}.source_id duplicates {source_id}")
+        source_ref = str(source.get("source_ref", "")).strip()
+        if not source_ref:
+            problems.append(f"{tag}.source_ref must name the exact Jira intake source")
+            continue
+        if source_ref in declared_sources:
+            problems.append(f"{tag}.source_ref duplicates {source_ref}")
+            continue
+        declared_sources[source_ref] = source
+        source_by_id[source_id] = source
+        expected = expected_by_ref.get(source_ref)
+        if expected is None:
+            problems.append(
+                f"{tag}.source_ref {source_ref!r} is not a current Jira description, "
+                "comment, or analysed attachment source"
+            )
+            continue
+        expected_kind = expected["source_kind"]
+        if source.get("source_kind") != expected_kind:
+            problems.append(
+                f"{tag}.source_kind must be {expected_kind} for {source_ref}"
+            )
+        if source.get("source_kind") not in AUTHORITATIVE_SOURCE_KINDS:
+            problems.append(
+                f"{tag}.source_kind must be one of {sorted(AUTHORITATIVE_SOURCE_KINDS)}"
+            )
+        expected_text = expected.get("raw_text")
+        if not isinstance(expected_text, str) or not expected_text:
+            problems.append(
+                f"{tag}: analysed attachment {source_ref!r} has no retained "
+                "analysis text; preserve the inspected facts in raw_text, "
+                "extracted_text, ocr_text, text, analysis_text, or analysis before "
+                "it can be atomized"
+            )
+            expected_text = ""
+        raw_text = source.get("raw_text")
+        if not isinstance(raw_text, str) or not raw_text:
+            problems.append(f"{tag}.raw_text must be the exact non-empty intake text")
+            raw_text = ""
+        elif raw_text != expected_text:
+            problems.append(
+                f"{tag}.raw_text must exactly equal current Jira intake source {source_ref!r}"
+            )
+        actual_hash = str(source.get("sha256", ""))
+        if not re.fullmatch(r"[0-9a-f]{64}", actual_hash):
+            problems.append(f"{tag}.sha256 must be a lower-case SHA-256 hex digest")
+        elif actual_hash != sha256_text(raw_text):
+            problems.append(f"{tag}.sha256 does not match the exact UTF-8 raw_text")
+        if source.get("inspected") is not True:
+            problems.append(
+                f"{tag}.inspected must be true; source facts cannot be inferred from "
+                "a Jira field name or attachment filename"
+            )
+        if source.get("atomization_complete") is not True:
+            problems.append(
+                f"{tag}.atomization_complete must be true after every source clause "
+                "has been classified"
+            )
+
+    missing_sources = sorted(set(expected_by_ref) - set(declared_sources))
+    if missing_sources:
+        problems.append(
+            "authoritative_source_coverage omits current Jira intake source(s): "
+            + ", ".join(missing_sources)
+        )
+
+    facts_block = manifest.get("contract_facts")
+    facts = facts_block.get("facts") if isinstance(facts_block, dict) else []
+    fact_by_id = {
+        str(fact.get("fact_id")): fact
+        for fact in facts or []
+        if isinstance(fact, Mapping) and str(fact.get("fact_id", "")).strip()
+    }
+
+    atoms = block.get("facts")
+    if not isinstance(atoms, list) or not atoms:
+        return problems + [
+            "authoritative_source_coverage.facts must be a non-empty ordered list"
+        ]
+
+    atoms_by_source: dict[str, list[dict]] = {}
+    referenced_fact_ids: set[str] = set()
+    seen_atom_ids: set[str] = set()
+    for index, atom in enumerate(atoms):
+        tag = f"authoritative_source_coverage.facts[{index}]"
+        if not isinstance(atom, dict):
+            problems.append(f"{tag} must be an object")
+            continue
+        atom_id = str(atom.get("fact_id", ""))
+        if not _AUTHORITATIVE_FACT_ID_RE.fullmatch(atom_id):
+            problems.append(f"{tag}.fact_id must use stable TSF-## form")
+        elif atom_id in seen_atom_ids:
+            problems.append(f"{tag}.fact_id duplicates {atom_id}")
+        seen_atom_ids.add(atom_id)
+
+        source_id = str(atom.get("source_id", ""))
+        source = source_by_id.get(source_id)
+        if source is None:
+            problems.append(f"{tag}.source_id must reference a declared source")
+            raw_text = ""
+            source_ref = ""
+        else:
+            raw_text = str(source.get("raw_text", ""))
+            source_ref = str(source.get("source_ref", ""))
+        atoms_by_source.setdefault(source_ref, []).append(atom)
+
+        verbatim = atom.get("verbatim_text")
+        if not isinstance(verbatim, str) or not verbatim.strip():
+            problems.append(f"{tag}.verbatim_text must be a non-empty exact source excerpt")
+            verbatim = ""
+        elif verbatim not in raw_text:
+            problems.append(
+                f"{tag}.verbatim_text is not an exact substring of source {source_id}"
+            )
+        if not isinstance(atom.get("material"), bool):
+            problems.append(f"{tag}.material must explicitly be true or false")
+            material = False
+        else:
+            material = atom["material"]
+        destination = str(atom.get("destination", ""))
+        if destination not in AUTHORITATIVE_FACT_DESTINATIONS:
+            problems.append(
+                f"{tag}.destination must be one of "
+                f"{sorted(AUTHORITATIVE_FACT_DESTINATIONS)}"
+            )
+            destination = ""
+        if atom.get("hypothesis_refs") not in (None, []):
+            problems.append(
+                f"{tag}.hypothesis_refs is not allowed: coverage hypotheses may widen "
+                "investigation but cannot select or disposition authoritative ticket scope"
+            )
+
+        if not material:
+            if destination != "NOT_MATERIAL":
+                problems.append(
+                    f"{tag}: a non-material intake atom must use destination NOT_MATERIAL"
+                )
+            if not _concrete_reason(atom.get("materiality_reason")):
+                problems.append(
+                    f"{tag}.materiality_reason must concretely explain why this exact "
+                    "source fact is not a ticket contract"
+                )
+            if atom.get("contract_fact_refs") not in (None, []):
+                problems.append(
+                    f"{tag}: a non-material intake atom must not map to contract_facts"
+                )
+            continue
+
+        if destination not in {
+            "ACCEPTANCE_CRITERION",
+            "OPEN_QUESTION",
+            "OUT_OF_SCOPE",
+        }:
+            problems.append(
+                f"{tag}: every material source fact must map to an AC, a genuine "
+                "Open Question, or an explicit out-of-scope disposition"
+            )
+        fact_refs = _string_list(atom.get("contract_fact_refs"))
+        if not fact_refs:
+            problems.append(
+                f"{tag}.contract_fact_refs must bind every material source fact to "
+                "the existing contract-facts and promotion path"
+            )
+            fact_refs = []
+
+        target_text = ""
+        refs: list[str] = []
+        if destination == "ACCEPTANCE_CRITERION":
+            refs = _string_list(atom.get("ac_refs")) or []
+            if not refs or any(not _AC_ID_RE.fullmatch(ref) for ref in refs):
+                problems.append(
+                    f"{tag}: ACCEPTANCE_CRITERION requires canonical non-empty ac_refs"
+                )
+                refs = []
+            target_text, target_problems = _target_text(
+                refs, ac_text_by_id, label="AC references"
+            )
+            problems.extend(f"{tag} {problem}" for problem in target_problems)
+        elif destination == "OPEN_QUESTION":
+            ref = str(atom.get("open_question_ref", ""))
+            if not _OQ_ID_RE.fullmatch(ref):
+                problems.append(
+                    f"{tag}: OPEN_QUESTION requires a canonical open_question_ref"
+                )
+            else:
+                refs = [ref]
+            target_text, target_problems = _target_text(
+                refs, open_question_text_by_id, label="Open Question references"
+            )
+            problems.extend(f"{tag} {problem}" for problem in target_problems)
+        elif destination == "OUT_OF_SCOPE":
+            target_text = str(atom.get("reason", ""))
+            if not _concrete_reason(target_text):
+                problems.append(
+                    f"{tag}: OUT_OF_SCOPE requires a concrete source-backed reason"
+                )
+
+        for fact_ref in fact_refs:
+            fact = fact_by_id.get(fact_ref)
+            if not isinstance(fact, Mapping):
+                problems.append(
+                    f"{tag}.contract_fact_refs references unknown contract fact {fact_ref!r}"
+                )
+                continue
+            referenced_fact_ids.add(fact_ref)
+            fact_source_ref = str(fact.get("source_ref", ""))
+            expected = expected_by_ref.get(source_ref, {})
+            aliases = set(expected.get("aliases", set()))
+            if fact_source_ref not in aliases:
+                problems.append(
+                    f"{tag}: contract fact {fact_ref} is bound to {fact_source_ref!r}, "
+                    f"not the atomized source {source_ref!r}"
+                )
+            literal = str(fact.get("literal", ""))
+            if literal and literal not in verbatim:
+                problems.append(
+                    f"{tag}: contract fact {fact_ref}.literal must remain inside this "
+                    "exact source atom"
+                )
+            fact_destination, fact_refs_for_destination = _fact_destination_ref(fact)
+            if fact_destination != destination:
+                problems.append(
+                    f"{tag}: contract fact {fact_ref} destination {fact_destination!r} "
+                    f"does not match source-fact destination {destination!r}"
+                )
+            elif destination in {"ACCEPTANCE_CRITERION", "OPEN_QUESTION"} and not set(
+                fact_refs_for_destination
+            ).issubset(set(refs)):
+                problems.append(
+                    f"{tag}: contract fact {fact_ref} destination reference must be "
+                    "preserved by the source-fact mapping"
+                )
+            elif destination == "OUT_OF_SCOPE" and not fact_refs_for_destination:
+                problems.append(
+                    f"{tag}: contract fact {fact_ref} needs its explicit "
+                    "out_of_scope_ref"
+                )
+
+        atom_for_trace = {
+            "text": verbatim,
+            "required_terms_all": atom.get("required_terms_all", []),
+            "required_terms_any": atom.get("required_terms_any", []),
+        }
+        semantic_problems = _automatic_semantic_coverage(
+            verbatim, [atom_for_trace], tag=tag
+        )
+        problems.extend(semantic_problems)
+        trace_enabled = destination == "OUT_OF_SCOPE" or (
+            destination == "ACCEPTANCE_CRITERION" and ac_text_by_id is not None
+        ) or (
+            destination == "OPEN_QUESTION" and open_question_text_by_id is not None
+        )
+        if trace_enabled:
+            problems.extend(_trace_atom(atom_for_trace, target_text, tag=tag))
+        else:
+            all_terms = _string_list(atom.get("required_terms_all", []))
+            any_terms = _string_list(atom.get("required_terms_any", []))
+            if all_terms is None or any_terms is None or not (all_terms or any_terms):
+                problems.append(
+                    f"{tag} requires required_terms_all and/or required_terms_any"
+                )
+
+        protected, protected_problems = _protected_exact(
+            verbatim, atom.get("protected_exact")
+        )
+        problems.extend(f"{tag}.{problem}" for problem in protected_problems)
+        if trace_enabled:
+            for exact in protected:
+                if exact not in target_text:
+                    problems.append(
+                        f"{tag} drops protected exact identifier/path {exact!r} "
+                        "from its AC/Open Question/out-of-scope disposition"
+                    )
+
+    for source_ref, expected in expected_by_ref.items():
+        raw_text = expected.get("raw_text")
+        source_atoms = atoms_by_source.get(source_ref, [])
+        if not source_atoms:
+            problems.append(
+                f"authoritative source {source_ref!r} has no atomized facts"
+            )
+            continue
+        if isinstance(raw_text, str) and raw_text:
+            problems.extend(
+                _authoritative_fact_coverage(
+                    raw_text,
+                    source_atoms,
+                    tag=f"authoritative source {source_ref!r}",
+                )
+            )
+
+        aliases = set(expected.get("aliases", set()))
+        for fact_id, fact in fact_by_id.items():
+            if (
+                fact.get("material") is True
+                and str(fact.get("source_ref", "")) in aliases
+                and fact_id not in referenced_fact_ids
+            ):
+                problems.append(
+                    f"material contract fact {fact_id} from {source_ref!r} is not "
+                    "represented by an authoritative source atom"
+                )
+    return problems
 
 
 def _trace_atom(atom: dict, target_text: str, *, tag: str) -> list[str]:

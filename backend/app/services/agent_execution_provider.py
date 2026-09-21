@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -37,6 +38,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
     HostAgentResultEnvelope,
     ResearchFinding,
     ResearchFindingEvidenceRole,
+    ResearchRoutingProductContext,
     ResearchWorkerResult,
     ResearchWorkerRole,
     ResearchWorkerStatus,
@@ -227,7 +229,106 @@ def _term_present(term: str, text: str) -> bool:
     )
 
 
-def _documentation_query_plan(claim: str) -> tuple[list[str], list[str]]:
+def _product_query_prefix(product_context: ResearchRoutingProductContext | None) -> str:
+    product = str(product_context.product if product_context else "").strip()
+    return product or "AEM Guides"
+
+
+def _documentation_target_product(
+    product_context: ResearchRoutingProductContext | None,
+) -> str:
+    product = str(product_context.product if product_context else "").casefold()
+    if "guides" in product:
+        return "AEM_GUIDES"
+    if "assets" in product:
+        return "AEM_PLATFORM"
+    return ""
+
+
+def _documentation_matches_product_context(
+    locator: str, product_context: ResearchRoutingProductContext | None
+) -> bool:
+    """Reject known Experience League product-tree mismatches.
+
+    Unknown locators stay available as discovery leads.  They still require
+    explicit verification by the Doc Researcher before admission.
+    """
+
+    expected = _documentation_target_product(product_context)
+    normalized = (locator or "").casefold()
+    if not expected or "experienceleague.adobe.com" not in normalized:
+        return True
+    try:
+        from app.services.guides_test_plan_generator_service import (
+            DOC_PRODUCT_AEM_GUIDES,
+            DOC_PRODUCT_AEM_PLATFORM,
+            _documentation_product_path,
+        )
+
+        actual = _documentation_product_path({"canonical_url": locator})
+    except Exception:
+        return True
+    expected_value = (
+        DOC_PRODUCT_AEM_GUIDES
+        if expected == "AEM_GUIDES"
+        else DOC_PRODUCT_AEM_PLATFORM
+    )
+    return actual == expected_value
+
+
+def _documentation_ownership_mismatch(
+    request: AgentResearchRequest,
+    refs: list[str],
+    provenance: dict,
+    bundle: CanonicalEvidenceBundle,
+) -> str:
+    """Return an ownership-boundary violation for a documentation finding."""
+
+    expected = _documentation_target_product(request.product_context)
+    if not expected:
+        return ""
+    by_id = {record.evidence_id: record for record in bundle.records}
+    for ref in refs:
+        record = by_id.get(ref)
+        if record is None or record.source_type not in {
+            EvidenceSourceType.OFFICIAL_PRODUCT_DOCUMENTATION,
+            EvidenceSourceType.AEM_ASSETS_PLATFORM_DOCUMENTATION,
+        }:
+            continue
+        owner = _documentation_target_product(
+            ResearchRoutingProductContext(product=record.ownership.product)
+        )
+        if owner and owner != expected:
+            return (
+                f"documentation source {ref} belongs to {record.ownership.product}, "
+                f"not the routed product {request.product_context.product}"
+            )
+        locator = record.source_location or record.source_reference
+        if locator and not _documentation_matches_product_context(
+            locator, request.product_context
+        ):
+            return (
+                f"documentation source {ref} is outside the routed product "
+                f"documentation tree for {request.product_context.product}"
+            )
+    if any(ref.startswith("doc:") for ref in refs):
+        locator = str(provenance.get("locator") or "")
+        if locator and not _documentation_matches_product_context(
+            locator, request.product_context
+        ):
+            return (
+                f"discovered documentation {locator} is outside the routed "
+                f"product documentation tree for {request.product_context.product}"
+            )
+    return ""
+
+
+def _documentation_query_plan(
+    claim: str,
+    *,
+    research_terms: list[str] | None = None,
+    product_context: ResearchRoutingProductContext | None = None,
+) -> tuple[list[str], list[str]]:
     """Bounded documentation query plan: the ORIGINAL claim is always the
     first query; a small set of high-value alternates follows, derived from
     the shipped product vocabulary (canonical terms + synonym groups) and
@@ -235,11 +336,17 @@ def _documentation_query_plan(claim: str) -> tuple[list[str], list[str]]:
     documentation-side terminology).  Expansion terms are retrieval hints,
     never evidence.  Returns (queries, expansion_terms_used)."""
 
-    text = (claim or "").casefold()
+    context_terms = [
+        str(term).strip()
+        for term in (research_terms or [])
+        if str(term).strip()
+    ]
+    text = " ".join([claim or "", *context_terms]).casefold()
     if not text.strip():
         return [], []
     queries = [claim]
     used: list[str] = []
+    product_prefix = _product_query_prefix(product_context)
 
     vocab = _load_guides_vocabulary()
     vocab_terms = [
@@ -270,15 +377,29 @@ def _documentation_query_plan(claim: str) -> tuple[list[str], list[str]]:
         for token in re.findall(r"[a-z][a-z0-9-]{3,}", text)
         if token not in _QUERY_STOPWORDS
     ]
-    # Alternate 1: documentation-side terminology for the matched concepts.
+    # Alternate 1 binds the question's named subject to documentation-side
+    # terminology.  This is what lets an arbitrary attribute/property reach
+    # the documented editor surfaces instead of a generic overview.
+    subject_terms = [
+        token
+        for token in context_terms
+        if re.fullmatch(r"[A-Za-z][A-Za-z0-9_:-]{1,80}", token)
+    ]
+    if used and subject_terms:
+        queries.append(
+            product_prefix + " " + " ".join(subject_terms[:4] + used[:6])
+        )
+    # Alternate 2: documentation-side terminology for the matched concepts.
     if used:
-        queries.append("AEM Guides " + " ".join(used[:6]))
-    # Alternate 2: the product's canonical names plus the claim's own
+        queries.append(product_prefix + " " + " ".join(used[:6]))
+    # Alternate 3: the product's canonical names plus the claim's own
     # significant tokens (helps when documentation uses the canonical name).
     if matched_vocab:
-        queries.append("AEM Guides " + " ".join((matched_vocab[:3] + tokens[:3])))
+        queries.append(
+            product_prefix + " " + " ".join((matched_vocab[:3] + tokens[:3]))
+        )
     elif tokens:
-        queries.append("AEM Guides " + " ".join(tokens[:6]))
+        queries.append(product_prefix + " " + " ".join(tokens[:6]))
     # Bound the plan: original + at most 3 alternates.
     seen: set[str] = set()
     plan: list[str] = []
@@ -338,7 +459,11 @@ def _corpus_phrasing_terms(
 
 
 def _rag_documentation_candidates(
-    claim: str, *, top_k: int = 5
+    claim: str,
+    *,
+    top_k: int = 5,
+    research_terms: list[str] | None = None,
+    product_context: ResearchRoutingProductContext | None = None,
 ) -> tuple[list[dict], str, list[str], list[str]]:
     """RAG discovery for the DOC researcher over the existing indexed
     product-documentation retrieval layer, run across the bounded query
@@ -350,7 +475,11 @@ def _rag_documentation_candidates(
     Candidates are discovery leads - never evidence or acceptance claims,
     and a retrieval score is never authority."""
 
-    queries, expansion_terms = _documentation_query_plan(claim)
+    queries, expansion_terms = _documentation_query_plan(
+        claim,
+        research_terms=research_terms,
+        product_context=product_context,
+    )
     if not queries:
         return [], "rag retrieval unavailable: empty claim", [], []
     try:
@@ -375,6 +504,10 @@ def _rag_documentation_candidates(
         if mode not in modes:
             modes.append(mode)
         for rank, row in enumerate(payload.get("results") or []):
+            if not _documentation_matches_product_context(
+                str(row.get("url") or ""), product_context
+            ):
+                continue
             key = (
                 str(row.get("url") or "")
                 or str(row.get("chunk_id") or row.get("id") or "")
@@ -408,7 +541,7 @@ def _rag_documentation_candidates(
     # indexed documentation itself used in the first-pass candidates.
     prf_terms = _corpus_phrasing_terms(claim, list(merged.values()))
     if prf_terms:
-        prf_query = "AEM Guides " + " ".join(prf_terms)
+        prf_query = _product_query_prefix(product_context) + " " + " ".join(prf_terms)
         if prf_query not in queries:
             queries.append(prf_query)
             _merge(prf_query)
@@ -986,6 +1119,18 @@ def _validate_agent_result(
                         for key, value in item.items()
                         if key not in _PROVENANCE_FIELDS and key != "provenance"
                     }
+                mismatch = _documentation_ownership_mismatch(
+                    request,
+                    refs,
+                    _resolved_provenance(item, refs),
+                    bundle,
+                )
+                if mismatch:
+                    return _terminal_result(
+                        request,
+                        ResearchWorkerStatus.FAILED,
+                        [f"findings[{index}] {mismatch}"],
+                    )
         try:
             role = ResearchFindingEvidenceRole(
                 str(item.get("evidence_role") or "SUPPORTING_CONTEXT")
@@ -1201,6 +1346,9 @@ class ModelAgentExecutionProvider:
             f"question_revision: {request.question_revision}\n"
             f"question: {question.question}\n"
             f"requested_claim: {request.requested_claim}\n"
+            f"required_source_types: {', '.join(row.value for row in request.required_source_types) or '(none)'}\n"
+            f"product_context: {json.dumps(request.product_context.model_dump(mode='json') if request.product_context else {}, sort_keys=True)}\n"
+            f"research_terms: {', '.join(request.research_terms) or '(none)'}\n"
             f"applicability: {request.applicability or 'current ticket'}\n"
             f"currentness: {request.currentness or 'current'}\n\n"
             "Authorized evidence (cite only these source_refs):\n"
@@ -1515,7 +1663,11 @@ class HostMediatedResearchProvider:
                     rag_status,
                     doc_queries,
                     expansion_terms,
-                ) = _rag_documentation_candidates(request.requested_claim)
+                ) = _rag_documentation_candidates(
+                    request.requested_claim,
+                    research_terms=request.research_terms,
+                    product_context=request.product_context,
+                )
                 payload["documentation_queries"] = doc_queries
                 payload["rag_candidates"] = candidates
                 payload["rag_status"] = rag_status

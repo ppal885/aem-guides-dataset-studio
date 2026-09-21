@@ -31,10 +31,15 @@ manifest blocks:
   `temporal_evidence`.
 - Populated `behavior_model.generated_artifacts` or `artifact_shapes` requires
   `generated_output_contract`.
+- A behavioral v3 manifest with retained Jira description, comment, or analysed
+  attachment text requires `authoritative_source_coverage`. This block atomizes
+  current ticket facts and routes each material fact through the existing
+  `contract_facts` destination path before hypotheses run.
 
 `behaviour_matters=false` keeps the established opt-out for the canonical behavior
 pipeline. It does not erase independent publishing, value-write, or shared-path
-signals already present in the plan.
+signals already present in the plan. Authoritative ticket-source coverage applies to
+behavioral v3 plans because it compares source facts with a UAC destination.
 
 ## Presence rule
 
