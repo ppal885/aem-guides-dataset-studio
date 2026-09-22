@@ -1193,6 +1193,165 @@ def _validate_named_surface_parity(manifest, plan_text: str) -> list[str]:
     ]
 
 
+# A shared backend collaborator: one implementation that several user-facing operations
+# reach. Deliberately class-suffix shaped so it fires on inspected implementation evidence
+# rather than on prose about a feature.
+_SHARED_SERVICE_SYMBOL_RE = re.compile(
+    r"\b[A-Z][A-Za-z0-9]*(?:Service|Servlet|Handler|Processor|Manager|Filter|Resolver|"
+    r"Repository|Provider|Listener)\b"
+)
+_NEIGHBOURHOOD_SCHEMA = "aem-guides-changed-service-neighbourhood-v1"
+_NEIGHBOURHOOD_DISPOSITIONS = frozenset({
+    "COVERED_BY_AC", "OPEN_QUESTION", "OUT_OF_SCOPE", "NOT_APPLICABLE",
+})
+# Answers that assert nothing. An axis "answered" with one of these was not investigated.
+_EMPTY_ASSERTION_RE = re.compile(
+    r"^(?:n/?a|none|tbd|unknown|not\s+applicable|no|-+|\.+)$", re.IGNORECASE
+)
+
+
+def _is_empty_assertion(value) -> bool:
+    text = str(value or "").strip()
+    return not text or bool(_EMPTY_ASSERTION_RE.fullmatch(text))
+
+
+def _validate_changed_service_neighbourhood(manifest, plan_text: str) -> list[str]:
+    """When implementation evidence puts a SHARED backend collaborator in scope, the plan
+    must have ENUMERATED that code's own neighbourhood and recorded the result.
+
+    Root cause this closes: a plan is authored from the reported operation and the diff's
+    target branch, so three things reliably go missing even though the evidence was in
+    hand. (a) The OTHER user operations that reach the same shared code are never asked
+    about, so a sibling entry point silently leaves the contract. (b) When the change makes
+    an existing path conditional, the OTHER observable outcomes that path also produced are
+    never asserted, so a fix-introduced regression has no guard. (c) When the code resolves
+    or queries on the CALLER's behalf, results are permission-filtered, so a restricted
+    user's outcome is never dispositioned and testing as an administrator hides the whole
+    dimension.
+
+    This is deliberately a MANIFEST contract, not a prose check. The signals live in the
+    code, not in the plan's wording: an author who never noticed the caller-scoped lookup
+    also never writes the word "session", and ordinary criteria mention "create" or "copy"
+    incidentally, so counting vocabulary both misses real gaps and is satisfied by
+    accident. Requiring an explicit enumeration record fails closed on the omission itself
+    and cannot be satisfied by wording. Each axis must be answered; an empty assertion
+    (n/a, none, tbd) is not an answer.
+    """
+    if not re.search(r"\bAC[-\s]?\d", _acceptance_block(plan_text), re.I):
+        return []  # no acceptance contract to judge yet
+    implementation = (
+        _plan_section(plan_text, "Code Touched")
+        + "\n" + _plan_section(plan_text, "Lines Changed")
+        + "\n" + _plan_section(plan_text, "Scope From Git")
+    )
+    if not _SHARED_SERVICE_SYMBOL_RE.search(implementation):
+        return []  # no inspected shared collaborator -> nothing to enumerate
+
+    block = manifest.get("changed_service_neighbourhood") if isinstance(manifest, dict) else None
+    if not isinstance(block, dict) or not block:
+        return [
+            "CHANGED_SERVICE_NEIGHBOURHOOD: implementation evidence puts a shared backend "
+            "collaborator in scope but the manifest declares no "
+            f"'changed_service_neighbourhood' block (schema {_NEIGHBOURHOOD_SCHEMA}). "
+            "Enumerate the changed code's own neighbourhood and record it: every user "
+            "operation that reaches the same collaborator, every observable outcome of a "
+            "path the change now skips, and every lookup the code performs on the caller's "
+            "behalf with its permission scope. Authoring from the reported operation and "
+            "the diff's target branch alone is what drops a sibling entry point, a "
+            "fix-introduced regression, and the restricted-user outcome."
+        ]
+
+    problems: list[str] = []
+    if block.get("schema_version") != _NEIGHBOURHOOD_SCHEMA:
+        problems.append(
+            "CHANGED_SERVICE_NEIGHBOURHOOD: the block must declare "
+            f"schema_version {_NEIGHBOURHOOD_SCHEMA!r}."
+        )
+
+    def _check_records(key: str, label: str, subject_field: str, extra_fields=()):
+        records = block.get(key)
+        if not isinstance(records, list):
+            problems.append(
+                f"CHANGED_SERVICE_NEIGHBOURHOOD: {key!r} must be a list of {label} records."
+            )
+            return
+        for index, record in enumerate(records):
+            where = f"{key}[{index}]"
+            if not isinstance(record, dict):
+                problems.append(f"CHANGED_SERVICE_NEIGHBOURHOOD: {where} must be a record.")
+                continue
+            if _is_empty_assertion(record.get(subject_field)):
+                problems.append(
+                    f"CHANGED_SERVICE_NEIGHBOURHOOD: {where} must name its {subject_field}."
+                )
+            disposition = str(record.get("disposition", "")).strip()
+            if disposition not in _NEIGHBOURHOOD_DISPOSITIONS:
+                problems.append(
+                    f"CHANGED_SERVICE_NEIGHBOURHOOD: {where} needs a disposition from "
+                    f"{sorted(_NEIGHBOURHOOD_DISPOSITIONS)}; omission is not a disposition."
+                )
+            elif disposition != "COVERED_BY_AC" and _is_empty_assertion(record.get("reason")):
+                problems.append(
+                    f"CHANGED_SERVICE_NEIGHBOURHOOD: {where} is {disposition} without a "
+                    "concrete reason; an empty assertion (n/a, none, tbd) is not a reason."
+                )
+            for field in extra_fields:
+                if _is_empty_assertion(record.get(field)):
+                    problems.append(
+                        f"CHANGED_SERVICE_NEIGHBOURHOOD: {where} must state its {field}."
+                    )
+
+    # (a) sibling entry points - always answered, and the enumeration must say where it
+    # looked, so "only one caller" is a finding rather than an assumption.
+    entry_points = block.get("entry_points")
+    if not isinstance(entry_points, list) or not entry_points:
+        problems.append(
+            "CHANGED_SERVICE_NEIGHBOURHOOD: 'entry_points' must list every user operation "
+            "that reaches the shared collaborator. A sibling entry point sharing the "
+            "changed code is acceptance scope, not background regression."
+        )
+    else:
+        _check_records("entry_points", "entry-point", "operation")
+    if _is_empty_assertion(block.get("enumeration_evidence")):
+        problems.append(
+            "CHANGED_SERVICE_NEIGHBOURHOOD: 'enumeration_evidence' must state where the "
+            "callers were actually enumerated (the inspected caller search), so a single "
+            "entry point is an enumerated finding rather than an assumption."
+        )
+
+    # (b) outcomes of a path the change now skips
+    skipped = block.get("skipped_branch_outcomes")
+    if isinstance(skipped, list) and skipped:
+        _check_records("skipped_branch_outcomes", "skipped-outcome", "outcome")
+    elif _is_empty_assertion(block.get("no_conditional_skip_reason")):
+        problems.append(
+            "CHANGED_SERVICE_NEIGHBOURHOOD: list every observable outcome of a path the "
+            "change now skips in 'skipped_branch_outcomes', or state in "
+            "'no_conditional_skip_reason' why the change makes no existing path "
+            "conditional. A path is rarely single purpose, and the outcomes incidental to "
+            "the reported defect are what the change silently removes."
+        )
+
+    # (c) lookups performed on the caller's behalf
+    lookups = block.get("caller_scoped_lookups")
+    if isinstance(lookups, list) and lookups:
+        _check_records(
+            "caller_scoped_lookups", "caller-scoped-lookup", "lookup",
+            extra_fields=("permission_scope",),
+        )
+    elif _is_empty_assertion(block.get("no_caller_scoped_lookup_reason")):
+        problems.append(
+            "CHANGED_SERVICE_NEIGHBOURHOOD: list every lookup the code performs on the "
+            "caller's behalf in 'caller_scoped_lookups' with its permission scope and the "
+            "restricted-user outcome, or state in 'no_caller_scoped_lookup_reason' why the "
+            "code resolves nothing as the caller. Results filtered by the caller's "
+            "permissions differ per user with no branch that mentions permissions, so "
+            "testing as an administrator hides the dimension entirely."
+        )
+
+    return problems
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
     problems += _validate_performance(manifest, plan_text)
@@ -1220,6 +1379,7 @@ def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems += _validate_link_scheme_coverage(manifest, plan_text)
     problems += _validate_negative_boundary_present(manifest, plan_text)
     problems += _validate_topic_type_coverage(manifest, plan_text)
+    problems += _validate_changed_service_neighbourhood(manifest, plan_text)
     return problems
 
 
@@ -1714,6 +1874,104 @@ def run_self_tests() -> None:
     assert _validate_named_surface_parity({}, "**Understanding From Jira**\n- Baseline Panel issue.\n") == []
     # no Panel/Dashboard surface named anywhere -> no forcing.
     assert _validate_named_surface_parity({}, plain) == []
+
+    # --- changed shared-service neighbourhood ---
+    # A plan whose inspected implementation names a shared collaborator, authored from the
+    # one reported operation. Ordinary criteria already mention create/copy/upload
+    # incidentally, which is exactly why this is a manifest contract and not a prose check.
+    neighbourhood_plan = nl.join([
+        "**Expected Behaviour**",
+        "- The overwrite now skips the heal step on an ignored path.",
+        "**Code Touched**",
+        "- FileConflictsService.findConflicts is the implicated collaborator.",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Overwriting a file replaces its binary. Evidence: J.",
+        "- AC-02 [Proposed]: (Basic) Creating a copy of the file keeps its name. Evidence: J.",
+        ""])
+    # No block at all -> fails closed, even though the ACs mention several operations.
+    found = _validate_changed_service_neighbourhood({}, neighbourhood_plan)
+    assert any("CHANGED_SERVICE_NEIGHBOURHOOD" in p for p in found), (
+        "a shared collaborator with no enumeration block must fail closed"
+    )
+    assert any("declares no" in p for p in found), "the finding must name the missing block"
+
+    def block(**overrides):
+        base = {
+            "schema_version": "aem-guides-changed-service-neighbourhood-v1",
+            "collaborator": "the upload conflict collaborator",
+            "enumeration_evidence": "callers of the conflict lookup in the inspected clone",
+            "entry_points": [
+                {"operation": "overwrite an existing file", "disposition": "COVERED_BY_AC"},
+                {"operation": "create asset", "disposition": "COVERED_BY_AC"},
+            ],
+            "skipped_branch_outcomes": [
+                {"outcome": "a version entry is still created",
+                 "disposition": "COVERED_BY_AC"},
+            ],
+            "caller_scoped_lookups": [
+                {"lookup": "identifier lookup run as the caller",
+                 "permission_scope": "results filtered by the caller's read access",
+                 "disposition": "COVERED_BY_AC"},
+            ],
+        }
+        base.update(overrides)
+        return {"changed_service_neighbourhood": base}
+
+    assert _validate_changed_service_neighbourhood(block(), neighbourhood_plan) == [], (
+        "a fully enumerated neighbourhood block passes"
+    )
+    # Each axis must actually be answered - an empty assertion is not an answer.
+    for key, reason_key in (
+        ("skipped_branch_outcomes", "no_conditional_skip_reason"),
+        ("caller_scoped_lookups", "no_caller_scoped_lookup_reason"),
+    ):
+        missing = _validate_changed_service_neighbourhood(
+            block(**{key: []}), neighbourhood_plan)
+        assert any(key in p or reason_key in p for p in missing), (
+            f"an unanswered {key} axis must fail"
+        )
+        excused = _validate_changed_service_neighbourhood(
+            block(**{key: [], reason_key: "the change adds a new path and skips none"}),
+            neighbourhood_plan)
+        assert excused == [], f"a concrete {reason_key} answers the axis"
+        hollow = _validate_changed_service_neighbourhood(
+            block(**{key: [], reason_key: "N/A"}), neighbourhood_plan)
+        assert hollow, f"an empty assertion must not satisfy {reason_key}"
+    # A non-covered entry point needs a concrete reason.
+    unreasoned = _validate_changed_service_neighbourhood(
+        block(entry_points=[{"operation": "move", "disposition": "OUT_OF_SCOPE"}]),
+        neighbourhood_plan)
+    assert any("without a concrete reason" in p for p in unreasoned), (
+        "an out-of-scope entry point must say why"
+    )
+    # Omission is not a disposition.
+    undispositioned = _validate_changed_service_neighbourhood(
+        block(entry_points=[{"operation": "move"}]), neighbourhood_plan)
+    assert any("needs a disposition" in p for p in undispositioned)
+    # The enumeration must say where it looked.
+    assumed = _validate_changed_service_neighbourhood(
+        block(enumeration_evidence=""), neighbourhood_plan)
+    assert any("enumeration_evidence" in p for p in assumed), (
+        "a single entry point must be an enumerated finding, not an assumption"
+    )
+    # A caller-scoped lookup must state its permission scope.
+    unscoped = _validate_changed_service_neighbourhood(
+        block(caller_scoped_lookups=[
+            {"lookup": "identifier lookup", "disposition": "COVERED_BY_AC"}]),
+        neighbourhood_plan)
+    assert any("permission_scope" in p for p in unscoped)
+    # No inspected shared collaborator -> gate is inert.
+    no_service = nl.join([
+        "**Code Touched**",
+        "- No code changes yet - development has not started.",
+        "**Acceptance Criteria**",
+        "- AC-01 [Proposed]: (Basic) Overwriting a file replaces its binary. Evidence: J.",
+        ""])
+    assert _validate_changed_service_neighbourhood({}, no_service) == []
+    # No acceptance contract -> inert.
+    assert _validate_changed_service_neighbourhood(
+        {}, "**Code Touched**\n- FileConflictsService.findConflicts.\n") == []
+    assert _validate_changed_service_neighbourhood({}, plain) == []
 
     print("coverage_forcing self-tests: PASS")
 

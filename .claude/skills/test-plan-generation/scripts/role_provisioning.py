@@ -9,13 +9,28 @@ from __future__ import annotations
 
 import re
 
+import ac_contract
+
 
 SCHEMA_VERSION = "aem-guides-role-provisioning-v1"
 _SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_AC_RE = re.compile(
-    r"(?m)^- (AC-\d{2}) \[(?:Confirmed|Proposed)\]: "
-    r"\((?:Basic|Negative|Integration|Performance)\) Given (?P<given>.*?) \| When "
-)
+def _plan_ac_clauses(plan_text):
+    """Return ``{ac_id: actor-bearing clause}`` for every parseable AC.
+
+    Parsing goes through the shared ``ac_contract`` reader so the canonical
+    produced v2 grammar is covered too. A local Given/When/Then-only pattern
+    matches nothing on a v2 plan, which silently disables both actor
+    cross-checks below instead of failing.
+
+    Legacy v1 lines keep using their ``Given`` clause exactly as before; v2
+    lines use the plain criterion body, which is where the actor is named.
+    """
+    clauses = {}
+    for criterion in ac_contract.parse_acceptance_criteria(plan_text or ""):
+        clause = criterion.get("given") or criterion.get("text") or ""
+        clauses[criterion["id"]] = clause
+    return clauses
+
 PRIVILEGE_CLASSES = ("FULL_ADMIN", "DELEGATED", "NON_ADMIN")
 _CODE_FILE_LINE_RE = re.compile(
     r"^(?:[A-Za-z]:)?[\\/]?(?:[^:\\/\r\n]+[\\/])*"
@@ -202,10 +217,7 @@ def validate_role_provisioning(
                 problems.append(f"{tag}.maps_to_acs contains unknown AC {ref!r}")
         valid_actors.append(actor)
 
-    plan_acs = {
-        match.group(1): match.group("given")
-        for match in _AC_RE.finditer(plan_text or "")
-    }
+    plan_acs = _plan_ac_clauses(plan_text)
     for actor in valid_actors:
         actor_id = str(actor.get("actor_id", "")).strip() or "?"
         for ac_id in actor.get("maps_to_acs") or []:

@@ -1,463 +1,569 @@
 {
- "schema_version": "aem-guides-miss-probes-v1",
- "note": "Curated Human-approved probes and separately identified LEARNED, VALIDATING historical discovery candidates. A probe is ACTIVE only from a HUMAN, APPROVED, counterexample-checked, generalized delta (see references/miss-probe-library.md). LEARNED records remain advisory SHADOW, never acceptance authority. Opaque case references resolve through the external mining ledger and never participate in matching. Never add a probe that encodes a single concrete symbol, path, or Jira key.",
- "probes": [
-  {
-   "probe_id": "MP-001",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "CODE",
-    "match": [
-     "metadata",
-     "jcr:content",
-     "repository node",
-     "property value"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "VALUE_SET_CHANNEL",
-    "candidate_template": "value provenance beyond the authoring UI - repository node (CRX/DE), source map/topic file, API/import, and migration - and assert the product uses the correct source value"
-   },
-   "provenance": {
-    "source": "HUMAN",
-    "delta_ids": [
-     "HFD-VALUE-PROVENANCE-01"
-    ],
-    "promotion_state": "APPROVED",
-    "independent_case_count": 1
-   },
-   "abstraction_note": "Any ticket where a value is written to an output must enumerate every channel the value can be set from, not only the authoring UI. The property NAME source and the property VALUE source can differ; the value is frequently read from the repository node. This generalizes beyond the originating metadata ticket to all value-write tickets.",
-   "normative_invariant": true,
-   "counterexamples_checked": true,
-   "equivalence_key": "value-provenance",
-   "status": "ACTIVE"
-  },
-  {
-   "probe_id": "MP-002",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "CODE",
-    "match": [
-     "asset upload",
-     "overwrite",
-     "upload conflict",
-     "dam upload",
-     "file upload",
-     "asset version"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "CODE_PATH_CONSUMER",
-    "candidate_template": "native platform features that share the touched asset upload, overwrite, or conflict flow - duplicate detection, versioning and timeline, DAM update-asset workflows, and processing profiles or metadata - enumerated as shared-path regression or their own acceptance criteria, not only the reported symptom"
-   },
-   "provenance": {
-    "source": "HUMAN",
-    "delta_ids": [
-     "HFD-SHARED-PLATFORM-FEATURES-01"
-    ],
-    "promotion_state": "APPROVED",
-    "independent_case_count": 1
-   },
-   "abstraction_note": "When a change touches a shared platform flow (asset upload/overwrite/conflict), the OTHER native product features that ride the same flow are shared-path consumers and must be enumerated, not just the reported symptom. Generalizes the CRX/DE value-provenance miss and the duplicate-detection miss into one shared-consumer rule.",
-   "normative_invariant": true,
-   "counterexamples_checked": true,
-   "equivalence_key": "shared-platform-feature-consumers",
-   "status": "ACTIVE"
-  },
-  {
-   "probe_id": "MP-003",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "CONTRACT",
-    "match": [
-     "steps to reproduce",
-     "drag and drop",
-     "drag-and-drop",
-     "right click",
-     "context menu",
-     "toolbar button",
-     "keyboard shortcut"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "ENTRY_POINT",
-    "candidate_template": "when the ticket names a specific UI mechanism to trigger an action (drag-and-drop, a button, right-click or context menu, a keyboard shortcut, or an API), enumerate the OTHER entry points for that same action and assert consistent behaviour across them"
-   },
-   "provenance": {
-    "source": "HUMAN",
-    "delta_ids": [
-     "HFD-STATED-MECHANISM-ENTRYPOINTS-01"
-    ],
-    "promotion_state": "APPROVED",
-    "independent_case_count": 1
-   },
-   "abstraction_note": "A mechanism named in Steps to Reproduce (e.g. drag-and-drop upload) is only one of several entry points for the action; the UAC must enumerate the sibling entry points, not only the one the reporter used. This is a stated-evidence enumeration miss, distinct from adjacent-feature discovery.",
-   "normative_invariant": true,
-   "counterexamples_checked": true,
-   "equivalence_key": "stated-mechanism-entry-points",
-   "status": "ACTIVE"
-  },
-  {
-   "probe_id": "MP-004",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "CONTRACT",
-    "match": [
-     "native pdf",
-     "generate pdf",
-     "pdf output",
-     "output preset",
-     "generate output",
-     "download as pdf",
-     "publish output",
-     "output generation"
-    ],
-    "component_scope": "Publishing"
-   },
-   "implied_dimension": {
-    "axis": "ENTRY_POINT",
-    "candidate_template": "when a ticket concerns an output-generation feature (Native PDF or any output), enumerate ALL generation entry points for that output - map/output-preset publishing, single-topic generation, editor Download-as action, generate-for-review, and baseline/versioned publishing - and assert consistent behaviour across every entry point, not only the default preset-publish path"
-   },
-   "provenance": {
-    "source": "HUMAN",
-    "delta_ids": [
-     "HFD-OUTPUT-GENERATION-ENTRYPOINTS-01"
-    ],
-    "promotion_state": "APPROVED",
-    "independent_case_count": 1
-   },
-   "abstraction_note": "Distinct from MP-003: MP-003 fires when the ticket NAMES a UI mechanism; MP-004 fires when the ticket names an OUTPUT-GENERATION feature that names NO entry point (e.g. 'Native PDF'). Such a feature always has several generation entry points sharing one engine, so the default preset-publish reading silently drops single-topic PDF, Download as PDF, review PDF, and baseline publishing.",
-   "normative_invariant": true,
-   "counterexamples_checked": true,
-   "equivalence_key": "output-generation-entry-point-enumeration",
-   "status": "ACTIVE"
-  },
-  {
-   "probe_id": "MP-005",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "CONTRACT",
-    "match": [
-     "automatically added",
-     "auto-populate",
-     "auto populate",
-     "derived from",
-     "default attribute",
-     "required attribute",
-     "populate the attribute",
-     "refresh navigation title",
-     "auto-fill",
-     "attribute is not added",
-     "attribute not added"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "VALUE_SET_CHANNEL",
-    "candidate_template": "when a feature auto-derives or auto-populates an attribute or value onto a construct (for example a navigation/label/type attribute added on reference insertion), enumerate the full derivation surface, not only the one path the reporter used: (1) every insertion or trigger entry point (dialog, drag-and-drop, source typing, API) plus any explicit refresh or recompute action; (2) the construct's specializations, applying the derivation only where it is semantically valid and skipping resource-only or non-navigation variants; (3) reuse consumers of the derived value (keyref or conref, reuse across multiple parents, and cross-reference or link-text resolution); (4) editor parity across every editor that implements the population; (5) overwrite versus preserve of an existing author-set value; (6) the storage form (attribute versus element) and which form consumers read; (7) the fallback when the derivation source is empty, missing, external, or non-native"
-   },
-   "provenance": {
-    "source": "HUMAN",
-    "delta_ids": [
-     "HFD-ATTRIBUTE-VALUE-DERIVATION-ENUMERATION-01"
-    ],
-    "promotion_state": "APPROVED",
-    "independent_case_count": 1
-   },
-   "abstraction_note": "Generic enumeration for attribute-value derivation / auto-population features. Such a feature is never a single code path: the derived value flows through several insertion entry points, several specializations of the target construct, reuse consumers that read it, more than one editor, an explicit refresh action, and an overwrite policy, and it may live as an attribute or an element. Collapsing it to the one reporter-used path silently drops the rest. Complements MP-003 (stated UI mechanism) and MP-004 (output-generation entry points).",
-   "normative_invariant": true,
-   "counterexamples_checked": true,
-   "equivalence_key": "attribute-value-derivation-enumeration",
-   "status": "ACTIVE"
-  },
-  {
-   "probe_id": "MP-006",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "CODE",
-    "match": [
-     "language variable",
-     "locale",
-     "xml:lang",
-     "translation",
-     "cross-reference title",
-     "regional locale",
-     "language code",
-     "lngvar"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "CONFIG_BRANCH",
-    "candidate_template": "locale granularity branch - a five-character regional locale (language plus region) versus the generic two-character language - assert the output uses the regional value when a regional entry exists and falls back to the generic value only when it does not"
-   },
-   "provenance": {
-    "source": "HUMAN",
-    "delta_ids": [
-     "HFD-LOCALE-REGION-01"
-    ],
-    "promotion_state": "APPROVED",
-    "independent_case_count": 2
-   },
-   "abstraction_note": "Any feature that resolves a localized value (labels, cross-reference strings, generated text) must be tested at both locale granularities: a regional locale must use its regional value when defined, not silently fall back to the generic language. Generalizes across all localized-value features and output engines.",
-   "normative_invariant": false,
-   "counterexamples_checked": true,
-   "equivalence_key": "locale-region-granularity",
-   "status": "ACTIVE"
-  },
-  {
-   "probe_id": "MP-007",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "CODE",
-    "match": [
-     "native pdf",
-     "dita-ot",
-     "output",
-     "cross-reference",
-     "xref",
-     "toc",
-     "table of contents",
-     "footnote",
-     "callout",
-     "numbering",
-     "rendering",
-     "label"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "OUTPUT_PRESET",
-    "candidate_template": "output-engine parity - for a rendering or output change, generate the same construct with Native PDF and with Direct DITA-OT and compare them; assert they agree on numbering, placement, ordering, and label text. A divergence is a defect unless an explicit product requirement documents it."
-   },
-   "provenance": {
-    "source": "HUMAN",
-    "delta_ids": [
-     "HFD-OUTPUT-PARITY-01"
-    ],
-    "promotion_state": "VALIDATING",
-    "independent_case_count": 1
-   },
-   "abstraction_note": "Cross-engine output-parity nuances (e.g. Native PDF using a TOC-local callout numbering sequence while DITA-OT preserves the shared number) produce no signal in ticket text, code grep, or spec - they only appear when both outputs are generated and diffed. This probe surfaces the parity dimension so it is not missed pre-UAC when no reviewer comment exists. VALIDATING until a second independent divergence case promotes it.",
-   "normative_invariant": false,
-   "counterexamples_checked": true,
-   "equivalence_key": "native-pdf-vs-dita-ot-parity",
-   "status": "VALIDATING"
-  },
-  {
-   "probe_id": "MP-008",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "HISTORY",
-    "match": [
-     "cjk",
-     "korean",
-     "east asian",
-     "localized text",
-     "multilingual input",
-     "input method"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "LOCALIZATION",
-    "candidate_template": "investigate localized character input and rendering, plus localized resource paths and attachment interaction, on the touched flow; establish expected behaviour from current evidence"
-   },
-   "provenance": {
-    "source": "LEARNED",
-    "delta_ids": [],
-    "promotion_state": "VALIDATING",
-    "independent_case_count": 4,
-    "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
-    "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
-    "supporting_cases": [
-     {
-      "case_id": "sha256:a115597f6e94b0cad51de63a9a7feeb2fa0c8f41a372b22e4a531e5aea659f97",
-      "incident_id": "sha256:a115597f6e94b0cad51de63a9a7feeb2fa0c8f41a372b22e4a531e5aea659f97",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=377",
-      "evidence_kind": "THEME_PRECEDENT"
-     },
-     {
-      "case_id": "sha256:fa18862a48e6c3a008b3abafec9839110a3bf30b4d4ae0a5d580b8bb3109d03f",
-      "incident_id": "sha256:fa18862a48e6c3a008b3abafec9839110a3bf30b4d4ae0a5d580b8bb3109d03f",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=432",
-      "evidence_kind": "THEME_PRECEDENT"
-     },
-     {
-      "case_id": "sha256:b061caeb449fc329b24726e9670f5555d12ced37e4fa94322338e67a7c6434d8",
-      "incident_id": "sha256:b061caeb449fc329b24726e9670f5555d12ced37e4fa94322338e67a7c6434d8",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=441",
-      "evidence_kind": "THEME_PRECEDENT"
-     },
-     {
-      "case_id": "sha256:7b832064e82a8a6b96aefa87add00b95e49d1ec26b09efee2854e074d416838d",
-      "incident_id": "sha256:7b832064e82a8a6b96aefa87add00b95e49d1ec26b09efee2854e074d416838d",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=444",
-      "evidence_kind": "THEME_PRECEDENT"
-     }
-    ]
-   },
-   "abstraction_note": "Historical theme-only incidents identify distinct localized input, snippet text, resource-path selection, and attachment interaction risks. They do not establish a shared root cause or accepted product behaviour; current applicability and expectations require investigation.",
-   "normative_invariant": false,
-   "counterexamples_checked": false,
-   "equivalence_key": "localized-input-rendering-resource-handling",
-   "status": "SHADOW",
-   "confidence": 0.2
-  },
-  {
-   "probe_id": "MP-009",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "HISTORY",
-    "match": [
-     "table header",
-     "header row",
-     "table editing",
-     "table structure",
-     "insert rows",
-     "add rows",
-     "delete columns",
-     "deleting columns",
-     "multiple columns",
-     "rows and columns"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "STATE_PARTITION",
-    "candidate_template": "investigate table header changes and multiple-row or column insertion and deletion on the touched editing flow; confirm applicable structural states and expected outcomes from current evidence"
-   },
-   "provenance": {
-    "source": "LEARNED",
-    "delta_ids": [],
-    "promotion_state": "VALIDATING",
-    "independent_case_count": 3,
-    "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
-    "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
-    "supporting_cases": [
-     {
-      "case_id": "sha256:f96640c8ce197d334fcd0a7e2b65ee17c32050332134065c64d128ff07da2e55",
-      "incident_id": "sha256:f96640c8ce197d334fcd0a7e2b65ee17c32050332134065c64d128ff07da2e55",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=131",
-      "evidence_kind": "THEME_PRECEDENT"
-     },
-     {
-      "case_id": "sha256:e38f037430d1e2da79051f2a0477cf64c4305000368a52efb3c9cad75302f355",
-      "incident_id": "sha256:e38f037430d1e2da79051f2a0477cf64c4305000368a52efb3c9cad75302f355",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=287",
-      "evidence_kind": "VALIDATED_AC"
-     },
-     {
-      "case_id": "sha256:51a82da5d0ee40f4f93b2b12a27469a58d05a9d42e1745df220ac05abde207b5",
-      "incident_id": "sha256:51a82da5d0ee40f4f93b2b12a27469a58d05a9d42e1745df220ac05abde207b5",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=288",
-      "evidence_kind": "THEME_PRECEDENT"
-     }
-    ]
-   },
-   "abstraction_note": "Separate historical reports cover header-row changes, multiple-column deletion, and multiple-row or column insertion. A generic text-alignment report is not counted as structural-table evidence. These reports suggest investigation, not automatic acceptance scope.",
-   "normative_invariant": false,
-   "counterexamples_checked": false,
-   "equivalence_key": "table-structural-editing-partitions",
-   "status": "SHADOW",
-   "confidence": 0.25
-  },
-  {
-   "probe_id": "MP-010",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "HISTORY",
-    "match": [
-     "map reference",
-     "map-reference",
-     "map references",
-     "topic reference",
-     "topicref",
-     "mapref",
-     "xref"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "REFERENCE_ARTIFACT",
-    "candidate_template": "investigate map-reference display and insertion behaviour; distinguish displayed reference text, inserted order, and error indicators using the current contract"
-   },
-   "provenance": {
-    "source": "LEARNED",
-    "delta_ids": [],
-    "promotion_state": "VALIDATING",
-    "independent_case_count": 3,
-    "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
-    "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
-    "supporting_cases": [
-     {
-      "case_id": "sha256:633ca962ba0ea23d87c7c53d2cfa50ccb81e1f5c1f62f24a1a2d5edcd345994a",
-      "incident_id": "sha256:633ca962ba0ea23d87c7c53d2cfa50ccb81e1f5c1f62f24a1a2d5edcd345994a",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=307",
-      "evidence_kind": "VALIDATED_AC"
-     },
-     {
-      "case_id": "sha256:281fe64cb0a3003a0ce9dd780be8efd2bc00980273ee4cbab317c0b1faf0ac4c",
-      "incident_id": "sha256:281fe64cb0a3003a0ce9dd780be8efd2bc00980273ee4cbab317c0b1faf0ac4c",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=297",
-      "evidence_kind": "VALIDATED_AC"
-     },
-     {
-      "case_id": "sha256:fa4ce5996d987d9f8803c321cb231793d86b921573f1b53b02a2234b7f57c5ad",
-      "incident_id": "sha256:fa4ce5996d987d9f8803c321cb231793d86b921573f1b53b02a2234b7f57c5ad",
-      "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=296",
-      "evidence_kind": "VALIDATED_AC"
-     }
-    ]
-   },
-   "abstraction_note": "Distinct reports support reference display, inserted topic order, and insertion error indicators. A duplicate display report is not counted independently. This is a reference-handling cluster, not evidence of multiple independently confirmed title-display misses or a universal title-versus-filename rule.",
-   "normative_invariant": false,
-   "counterexamples_checked": false,
-   "equivalence_key": "map-reference-display-insertion-handling",
-   "status": "SHADOW",
-   "confidence": 0.3
-  },
-  {
-   "probe_id": "MP-011",
-   "pattern_class": "DISCOVERY_PATTERN",
-   "signal_pattern": {
-    "evidence_kind": "CONTRACT",
-    "match": [
-     "asset upload",
-     "overwrite",
-     "re-upload",
-     "reupload",
-     "duplicate detection",
-     "same-name",
-     "same name",
-     "name conflict",
-     "path conflict",
-     "create asset",
-     "upload conflict",
-     "conflict endpoint"
-    ],
-    "component_scope": ""
-   },
-   "implied_dimension": {
-    "axis": "ASSET_UPLOAD_CONFLICT",
-    "candidate_template": "asset-upload conflict dimensions: investigate and disposition content-identity duplicate detection and name/path conflicts separately before deciding acceptance coverage; establish the actual request handler and upload route independently from configuration artifacts; map the exact affected path, baseline actions, product-surface ownership, every named deployment, and documentation surface from applicable evidence without assuming parity"
-   },
-   "provenance": {
-    "source": "HUMAN",
-    "delta_ids": [
-     "HFD-ASSET-UPLOAD-CONFLICT-DIMENSIONS-01"
-    ],
-    "promotion_state": "APPROVED",
-    "independent_case_count": 1
-   },
-   "abstraction_note": "Asset-upload evidence can conflate content-identity duplicate detection, a same-name or path conflict, configuration metadata, request dispatch, deployment behavior, product-surface ownership, affected path, and baseline actions. These are independent dimensions. A matched probe requires investigation and disposition, not acceptance coverage for every dimension. A source scoped to one deployment or surface cannot establish another, matching labels or class names do not prove request routing, and native Assets actions such as Create Version and Overwrite Files are not Guides actions without source-backed ownership.",
-   "normative_invariant": true,
-   "counterexamples_checked": true,
-   "equivalence_key": "asset-upload-conflict-dimension-separation",
-   "status": "ACTIVE"
-  }
- ]
+  "schema_version": "aem-guides-miss-probes-v1",
+  "note": "Curated Human-approved probes and separately identified LEARNED, VALIDATING historical discovery candidates. A probe is ACTIVE only from a HUMAN, APPROVED, counterexample-checked, generalized delta (see references/miss-probe-library.md). LEARNED records remain advisory SHADOW, never acceptance authority. Opaque case references resolve through the external mining ledger and never participate in matching. Never add a probe that encodes a single concrete symbol, path, or Jira key.",
+  "probes": [
+    {
+      "probe_id": "MP-001",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CODE",
+        "match": [
+          "metadata",
+          "jcr:content",
+          "repository node",
+          "property value"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "VALUE_SET_CHANNEL",
+        "candidate_template": "value provenance beyond the authoring UI - repository node (CRX/DE), source map/topic file, API/import, and migration - and assert the product uses the correct source value"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-VALUE-PROVENANCE-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Any ticket where a value is written to an output must enumerate every channel the value can be set from, not only the authoring UI. The property NAME source and the property VALUE source can differ; the value is frequently read from the repository node. This generalizes beyond the originating metadata ticket to all value-write tickets.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "value-provenance",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-002",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CODE",
+        "match": [
+          "asset upload",
+          "overwrite",
+          "upload conflict",
+          "dam upload",
+          "file upload",
+          "asset version"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CODE_PATH_CONSUMER",
+        "candidate_template": "native platform features that share the touched asset upload, overwrite, or conflict flow - duplicate detection, versioning and timeline, DAM update-asset workflows, and processing profiles or metadata - enumerated as shared-path regression or their own acceptance criteria, not only the reported symptom"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-SHARED-PLATFORM-FEATURES-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "When a change touches a shared platform flow (asset upload/overwrite/conflict), the OTHER native product features that ride the same flow are shared-path consumers and must be enumerated, not just the reported symptom. Generalizes the CRX/DE value-provenance miss and the duplicate-detection miss into one shared-consumer rule.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "shared-platform-feature-consumers",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-003",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "steps to reproduce",
+          "drag and drop",
+          "drag-and-drop",
+          "right click",
+          "context menu",
+          "toolbar button",
+          "keyboard shortcut"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "ENTRY_POINT",
+        "candidate_template": "when the ticket names a specific UI mechanism to trigger an action (drag-and-drop, a button, right-click or context menu, a keyboard shortcut, or an API), enumerate the OTHER entry points for that same action and assert consistent behaviour across them"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-STATED-MECHANISM-ENTRYPOINTS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A mechanism named in Steps to Reproduce (e.g. drag-and-drop upload) is only one of several entry points for the action; the UAC must enumerate the sibling entry points, not only the one the reporter used. This is a stated-evidence enumeration miss, distinct from adjacent-feature discovery.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "stated-mechanism-entry-points",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-004",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "native pdf",
+          "generate pdf",
+          "pdf output",
+          "output preset",
+          "generate output",
+          "download as pdf",
+          "publish output",
+          "output generation"
+        ],
+        "component_scope": "Publishing"
+      },
+      "implied_dimension": {
+        "axis": "ENTRY_POINT",
+        "candidate_template": "when a ticket concerns an output-generation feature (Native PDF or any output), enumerate ALL generation entry points for that output - map/output-preset publishing, single-topic generation, editor Download-as action, generate-for-review, and baseline/versioned publishing - and assert consistent behaviour across every entry point, not only the default preset-publish path"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-OUTPUT-GENERATION-ENTRYPOINTS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Distinct from MP-003: MP-003 fires when the ticket NAMES a UI mechanism; MP-004 fires when the ticket names an OUTPUT-GENERATION feature that names NO entry point (e.g. 'Native PDF'). Such a feature always has several generation entry points sharing one engine, so the default preset-publish reading silently drops single-topic PDF, Download as PDF, review PDF, and baseline publishing.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "output-generation-entry-point-enumeration",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-005",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "automatically added",
+          "auto-populate",
+          "auto populate",
+          "derived from",
+          "default attribute",
+          "required attribute",
+          "populate the attribute",
+          "refresh navigation title",
+          "auto-fill",
+          "attribute is not added",
+          "attribute not added"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "VALUE_SET_CHANNEL",
+        "candidate_template": "when a feature auto-derives or auto-populates an attribute or value onto a construct (for example a navigation/label/type attribute added on reference insertion), enumerate the full derivation surface, not only the one path the reporter used: (1) every insertion or trigger entry point (dialog, drag-and-drop, source typing, API) plus any explicit refresh or recompute action; (2) the construct's specializations, applying the derivation only where it is semantically valid and skipping resource-only or non-navigation variants; (3) reuse consumers of the derived value (keyref or conref, reuse across multiple parents, and cross-reference or link-text resolution); (4) editor parity across every editor that implements the population; (5) overwrite versus preserve of an existing author-set value; (6) the storage form (attribute versus element) and which form consumers read; (7) the fallback when the derivation source is empty, missing, external, or non-native"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-ATTRIBUTE-VALUE-DERIVATION-ENUMERATION-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Generic enumeration for attribute-value derivation / auto-population features. Such a feature is never a single code path: the derived value flows through several insertion entry points, several specializations of the target construct, reuse consumers that read it, more than one editor, an explicit refresh action, and an overwrite policy, and it may live as an attribute or an element. Collapsing it to the one reporter-used path silently drops the rest. Complements MP-003 (stated UI mechanism) and MP-004 (output-generation entry points).",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "attribute-value-derivation-enumeration",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-006",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CODE",
+        "match": [
+          "language variable",
+          "locale",
+          "xml:lang",
+          "translation",
+          "cross-reference title",
+          "regional locale",
+          "language code",
+          "lngvar"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CONFIG_BRANCH",
+        "candidate_template": "locale granularity branch - a five-character regional locale (language plus region) versus the generic two-character language - assert the output uses the regional value when a regional entry exists and falls back to the generic value only when it does not"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-LOCALE-REGION-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 2
+      },
+      "abstraction_note": "Any feature that resolves a localized value (labels, cross-reference strings, generated text) must be tested at both locale granularities: a regional locale must use its regional value when defined, not silently fall back to the generic language. Generalizes across all localized-value features and output engines.",
+      "normative_invariant": false,
+      "counterexamples_checked": true,
+      "equivalence_key": "locale-region-granularity",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-007",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CODE",
+        "match": [
+          "native pdf",
+          "dita-ot",
+          "output",
+          "cross-reference",
+          "xref",
+          "toc",
+          "table of contents",
+          "footnote",
+          "callout",
+          "numbering",
+          "rendering",
+          "label"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "OUTPUT_PRESET",
+        "candidate_template": "output-engine parity - for a rendering or output change, generate the same construct with Native PDF and with Direct DITA-OT and compare them; assert they agree on numbering, placement, ordering, and label text. A divergence is a defect unless an explicit product requirement documents it."
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-OUTPUT-PARITY-01"
+        ],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Cross-engine output-parity nuances (e.g. Native PDF using a TOC-local callout numbering sequence while DITA-OT preserves the shared number) produce no signal in ticket text, code grep, or spec - they only appear when both outputs are generated and diffed. This probe surfaces the parity dimension so it is not missed pre-UAC when no reviewer comment exists. VALIDATING until a second independent divergence case promotes it.",
+      "normative_invariant": false,
+      "counterexamples_checked": true,
+      "equivalence_key": "native-pdf-vs-dita-ot-parity",
+      "status": "VALIDATING"
+    },
+    {
+      "probe_id": "MP-008",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "HISTORY",
+        "match": [
+          "cjk",
+          "korean",
+          "east asian",
+          "localized text",
+          "multilingual input",
+          "input method"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "LOCALIZATION",
+        "candidate_template": "investigate localized character input and rendering, plus localized resource paths and attachment interaction, on the touched flow; establish expected behaviour from current evidence"
+      },
+      "provenance": {
+        "source": "LEARNED",
+        "delta_ids": [],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 4,
+        "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
+        "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
+        "supporting_cases": [
+          {
+            "case_id": "sha256:a115597f6e94b0cad51de63a9a7feeb2fa0c8f41a372b22e4a531e5aea659f97",
+            "incident_id": "sha256:a115597f6e94b0cad51de63a9a7feeb2fa0c8f41a372b22e4a531e5aea659f97",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=377",
+            "evidence_kind": "THEME_PRECEDENT"
+          },
+          {
+            "case_id": "sha256:fa18862a48e6c3a008b3abafec9839110a3bf30b4d4ae0a5d580b8bb3109d03f",
+            "incident_id": "sha256:fa18862a48e6c3a008b3abafec9839110a3bf30b4d4ae0a5d580b8bb3109d03f",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=432",
+            "evidence_kind": "THEME_PRECEDENT"
+          },
+          {
+            "case_id": "sha256:b061caeb449fc329b24726e9670f5555d12ced37e4fa94322338e67a7c6434d8",
+            "incident_id": "sha256:b061caeb449fc329b24726e9670f5555d12ced37e4fa94322338e67a7c6434d8",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=441",
+            "evidence_kind": "THEME_PRECEDENT"
+          },
+          {
+            "case_id": "sha256:7b832064e82a8a6b96aefa87add00b95e49d1ec26b09efee2854e074d416838d",
+            "incident_id": "sha256:7b832064e82a8a6b96aefa87add00b95e49d1ec26b09efee2854e074d416838d",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=444",
+            "evidence_kind": "THEME_PRECEDENT"
+          }
+        ]
+      },
+      "abstraction_note": "Historical theme-only incidents identify distinct localized input, snippet text, resource-path selection, and attachment interaction risks. They do not establish a shared root cause or accepted product behaviour; current applicability and expectations require investigation.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "localized-input-rendering-resource-handling",
+      "status": "SHADOW",
+      "confidence": 0.2
+    },
+    {
+      "probe_id": "MP-009",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "HISTORY",
+        "match": [
+          "table header",
+          "header row",
+          "table editing",
+          "table structure",
+          "insert rows",
+          "add rows",
+          "delete columns",
+          "deleting columns",
+          "multiple columns",
+          "rows and columns"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "STATE_PARTITION",
+        "candidate_template": "investigate table header changes and multiple-row or column insertion and deletion on the touched editing flow; confirm applicable structural states and expected outcomes from current evidence"
+      },
+      "provenance": {
+        "source": "LEARNED",
+        "delta_ids": [],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 3,
+        "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
+        "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
+        "supporting_cases": [
+          {
+            "case_id": "sha256:f96640c8ce197d334fcd0a7e2b65ee17c32050332134065c64d128ff07da2e55",
+            "incident_id": "sha256:f96640c8ce197d334fcd0a7e2b65ee17c32050332134065c64d128ff07da2e55",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=131",
+            "evidence_kind": "THEME_PRECEDENT"
+          },
+          {
+            "case_id": "sha256:e38f037430d1e2da79051f2a0477cf64c4305000368a52efb3c9cad75302f355",
+            "incident_id": "sha256:e38f037430d1e2da79051f2a0477cf64c4305000368a52efb3c9cad75302f355",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=287",
+            "evidence_kind": "VALIDATED_AC"
+          },
+          {
+            "case_id": "sha256:51a82da5d0ee40f4f93b2b12a27469a58d05a9d42e1745df220ac05abde207b5",
+            "incident_id": "sha256:51a82da5d0ee40f4f93b2b12a27469a58d05a9d42e1745df220ac05abde207b5",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=288",
+            "evidence_kind": "THEME_PRECEDENT"
+          }
+        ]
+      },
+      "abstraction_note": "Separate historical reports cover header-row changes, multiple-column deletion, and multiple-row or column insertion. A generic text-alignment report is not counted as structural-table evidence. These reports suggest investigation, not automatic acceptance scope.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "table-structural-editing-partitions",
+      "status": "SHADOW",
+      "confidence": 0.25
+    },
+    {
+      "probe_id": "MP-010",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "HISTORY",
+        "match": [
+          "map reference",
+          "map-reference",
+          "map references",
+          "topic reference",
+          "topicref",
+          "mapref",
+          "xref"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "REFERENCE_ARTIFACT",
+        "candidate_template": "investigate map-reference display and insertion behaviour; distinguish displayed reference text, inserted order, and error indicators using the current contract"
+      },
+      "provenance": {
+        "source": "LEARNED",
+        "delta_ids": [],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 3,
+        "source_hash": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df",
+        "independence_assessment": "MINED_DISTINCT_REPORTS_PENDING_HUMAN_REVIEW",
+        "supporting_cases": [
+          {
+            "case_id": "sha256:633ca962ba0ea23d87c7c53d2cfa50ccb81e1f5c1f62f24a1a2d5edcd345994a",
+            "incident_id": "sha256:633ca962ba0ea23d87c7c53d2cfa50ccb81e1f5c1f62f24a1a2d5edcd345994a",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=307",
+            "evidence_kind": "VALIDATED_AC"
+          },
+          {
+            "case_id": "sha256:281fe64cb0a3003a0ce9dd780be8efd2bc00980273ee4cbab317c0b1faf0ac4c",
+            "incident_id": "sha256:281fe64cb0a3003a0ce9dd780be8efd2bc00980273ee4cbab317c0b1faf0ac4c",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=297",
+            "evidence_kind": "VALIDATED_AC"
+          },
+          {
+            "case_id": "sha256:fa4ce5996d987d9f8803c321cb231793d86b921573f1b53b02a2234b7f57c5ad",
+            "incident_id": "sha256:fa4ce5996d987d9f8803c321cb231793d86b921573f1b53b02a2234b7f57c5ad",
+            "source_ref": "sha256:4fb5b76cf4e5a7e46aa0d28064de6a4e76a556011a71a2499f6b4708292621df#row=296",
+            "evidence_kind": "VALIDATED_AC"
+          }
+        ]
+      },
+      "abstraction_note": "Distinct reports support reference display, inserted topic order, and insertion error indicators. A duplicate display report is not counted independently. This is a reference-handling cluster, not evidence of multiple independently confirmed title-display misses or a universal title-versus-filename rule.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "map-reference-display-insertion-handling",
+      "status": "SHADOW",
+      "confidence": 0.3
+    },
+    {
+      "probe_id": "MP-011",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "asset upload",
+          "overwrite",
+          "re-upload",
+          "reupload",
+          "duplicate detection",
+          "same-name",
+          "same name",
+          "name conflict",
+          "path conflict",
+          "create asset",
+          "upload conflict",
+          "conflict endpoint"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "ASSET_UPLOAD_CONFLICT",
+        "candidate_template": "asset-upload conflict dimensions: investigate and disposition content-identity duplicate detection and name/path conflicts separately before deciding acceptance coverage; establish the actual request handler and upload route independently from configuration artifacts; map the exact affected path, baseline actions, product-surface ownership, every named deployment, and documentation surface from applicable evidence without assuming parity"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-ASSET-UPLOAD-CONFLICT-DIMENSIONS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Asset-upload evidence can conflate content-identity duplicate detection, a same-name or path conflict, configuration metadata, request dispatch, deployment behavior, product-surface ownership, affected path, and baseline actions. These are independent dimensions. A matched probe requires investigation and disposition, not acceptance coverage for every dimension. A source scoped to one deployment or surface cannot establish another, matching labels or class names do not prove request routing, and native Assets actions such as Create Version and Overwrite Files are not Guides actions without source-backed ownership.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "asset-upload-conflict-dimension-separation",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-012",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "IMPLEMENTATION",
+        "match": [
+          "shared service",
+          "shared collaborator",
+          "same code path",
+          "entry point",
+          "caller",
+          "callers",
+          "reached by",
+          "common handler",
+          "shared handler"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "SHARED_SERVICE_ENTRY_POINTS",
+        "candidate_template": "when inspected implementation evidence places a shared backend collaborator in scope, enumerate every user-facing operation that reaches that same code and disposition each one as acceptance coverage, an explicit scope bound, or an open question; the operation named by the report is one caller among several, and a sibling entry point that shares the changed code is acceptance scope rather than background regression"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-SHARED-SERVICE-ENTRY-POINTS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A report names the operation the reporter performed, not the code that failed. When the failing collaborator is shared, the other operations that reach it inherit the same behaviour and the same risk, so authoring only from the reported operation silently drops them. Enumerating callers is a discovery obligation, not proof that every caller is affected: each enumerated entry point still requires its own disposition, and an operation the evidence shows cannot reach the code is bounded out explicitly rather than ignored.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "shared-service-sibling-entry-point-enumeration",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-013",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "IMPLEMENTATION",
+        "match": [
+          "skip",
+          "skipped",
+          "no longer runs",
+          "short-circuit",
+          "guarded",
+          "gated",
+          "conditional",
+          "only when",
+          "bypass"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CONDITIONAL_SKIP_PRESERVED_OUTCOMES",
+        "candidate_template": "when a change makes an existing code path conditional, enumerate every observable outcome that path also produced and assert each remaining outcome explicitly; a path is rarely single purpose, so the outcomes incidental to the reported defect are the ones the change itself can silently remove"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-CONDITIONAL-SKIP-PRESERVED-OUTCOMES-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A fix that stops running a path in some case is read as removing one unwanted effect, but the same path commonly performs several effects, and only the unwanted one is under discussion. The remaining effects become fix-introduced regressions with no guard. This probe requires enumerating the skipped path's other outcomes and asserting them; it does not assert that any particular outcome is lost, which requires its own evidence.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "conditional-skip-other-outcome-preservation",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-014",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "IMPLEMENTATION",
+        "match": [
+          "session",
+          "resource resolver",
+          "query manager",
+          "lookup",
+          "search index",
+          "runs as the user",
+          "caller identity"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CALLER_SCOPED_LOOKUP_PERMISSIONS",
+        "candidate_template": "when implicated code resolves or queries data through the caller's own session or resolver, its results are filtered by that user's permissions; disposition what a user who cannot read a matched item observes, and require that the operation is not silently reported as though nothing matched"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-CALLER-SCOPED-LOOKUP-PERMISSIONS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A lookup performed on the caller's behalf returns only what that caller may read, so the same operation can observe different state for different users without any code branch that mentions permissions. Testing as an administrator hides the entire dimension. The probe requires dispositioning the restricted-user outcome and the silent-no-match risk; it does not assert that hiding the item is wrong, which is a product decision.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "caller-scoped-lookup-permission-filtering",
+      "status": "ACTIVE"
+    }
+  ]
 }
