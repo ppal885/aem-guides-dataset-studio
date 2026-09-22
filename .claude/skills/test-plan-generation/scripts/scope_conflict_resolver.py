@@ -21,6 +21,8 @@ Generic - no ticket-specific content. Stdlib only.
 
 import re
 
+import ac_contract
+
 THREAD_STATUS = ("CONFIRMED", "PROPOSED", "CURRENT_FIX", "SECONDARY_DEFECT", "UNRESOLVED", "OUT_OF_SCOPE")
 ALIGNMENT = ("FULL_SCOPE_FIX", "PARTIAL_SCOPE_FIX", "DIFFERENT_SCOPE_FIX", "SECONDARY_FIX", "UNKNOWN_FIX_SCOPE")
 # Alignments that mean the fix does NOT clearly cover the reported scope -> must be exposed.
@@ -40,11 +42,6 @@ MULTI_PROBLEM_SIGNALS = ("also ", "second issue", "another problem", "in additio
 
 IMPLEMENTATION_SCOPE_SCHEMA = "aem-guides-implementation-scope-authority-v1"
 IMPLEMENTATION_DECISIONS = ("OPEN_QUESTION", "PRODUCT_APPROVED")
-_CANONICAL_AC_RE = re.compile(
-    r"(?m)^- (?P<id>AC-\d{2}) \[(?P<status>Confirmed|Proposed)\]: "
-    r"\((?:Basic|Negative|Integration|Performance)\) .+? \| Evidence: "
-    r"(?P<evidence>.+)\.$"
-)
 _IMPLEMENTATION_EVIDENCE_RE = re.compile(
     r"\b(?:pull request|PR\s*#?\d+|commit\s+[0-9a-f]{7,40}|candidate diff|"
     r"changed-code evidence|implementation diff)\b",
@@ -78,15 +75,20 @@ def implementation_scope_candidates(plan_text=""):
     This is deliberately evidence-field based. A source path alone can support
     an implementation observation without implying that the behavior is new
     product scope; explicit PR/commit/diff evidence activates this check.
+
+    Parsing goes through the shared ``ac_contract`` reader so both the canonical
+    produced v2 grammar and the legacy v1 Given/When/Then grammar activate this
+    check. A local grammar copy here silently stops matching the moment the
+    produced AC format changes, which turns the whole gate into a no-op.
     """
     candidates = []
-    for match in _CANONICAL_AC_RE.finditer(str(plan_text or "")):
-        evidence = match.group("evidence")
+    for criterion in ac_contract.parse_acceptance_criteria(str(plan_text or "")):
+        evidence = str(criterion.get("evidence", ""))
         if _IMPLEMENTATION_EVIDENCE_RE.search(evidence) and not _PRODUCT_AUTHORITY_RE.search(evidence):
             candidates.append(
                 {
-                    "ac_ref": match.group("id"),
-                    "status": match.group("status"),
+                    "ac_ref": criterion["id"],
+                    "status": criterion["status"],
                     "evidence": evidence,
                 }
             )

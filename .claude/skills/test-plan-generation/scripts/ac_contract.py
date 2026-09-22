@@ -181,6 +181,25 @@ def acceptance_lines(text: str) -> list[str]:
 
 
 AC_HEAD_RE = re.compile(r"^- (AC-\d{2})\b")
+
+
+def parse_acceptance_criteria(text: str) -> list[AcceptanceCriterion]:
+    """Parse every AC line anywhere in ``text``, in both supported grammars.
+
+    Unlike :func:`acceptance_lines`, this does not require the lines to sit under
+    an ``Acceptance Criteria`` heading. A gate that validates a plan fragment, or
+    a plan whose heading it does not control, still sees its ACs instead of
+    silently seeing none - a gate that quietly matches nothing is worse than one
+    that fails, because it reports success.
+    """
+    criteria: list[AcceptanceCriterion] = []
+    for raw_line in (text or "").splitlines():
+        criterion = parse_ac_line(raw_line.rstrip())
+        if criterion:
+            criteria.append(criterion)
+    return criteria
+
+
 SUB_POINT_RE = re.compile(r"^\s+-\s+(.+?)\s*$")
 
 
