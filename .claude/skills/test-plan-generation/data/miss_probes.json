@@ -564,6 +564,110 @@
       "counterexamples_checked": true,
       "equivalence_key": "caller-scoped-lookup-permission-filtering",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-015",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "at the same time",
+          "simultaneously",
+          "concurrently",
+          "while another",
+          "race condition",
+          "collided",
+          "is in process",
+          "in parallel with"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CONFLICTING_OPERATION_ENTRY_POINTS",
+        "candidate_template": "when a ticket is about two user operations colliding, enumerate every way EACH operation can start - UI actions, scheduled or delayed runs, approval workflows, bulk actions and APIs - and cover both sides, not only the operation the request names"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-CONFLICTING-OPERATION-ENTRY-POINTS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A request to block operation A while operation B runs is usually written from the side of A, so the plan lists every way to start A and only the one way B happened in the incident. B's other start paths (scheduled, delayed, approved later, bulk, API) reach the same conflict and are silently untested. Cover the entry points of both operations; paths that start later than the click need their own check.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "conflicting-operation-entry-points",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-016",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "at the same time",
+          "simultaneously",
+          "concurrently",
+          "while another",
+          "race condition",
+          "collided",
+          "is in process",
+          "in parallel with"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "OPERATION_ORDER_SYMMETRY",
+        "candidate_template": "for two colliding operations, disposition both orders - B starting while A runs and A starting while B runs - and check which order the reported incident actually followed; a safeguard for one order does not protect the other"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-OPERATION-ORDER-SYMMETRY-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A requested safeguard usually blocks one order of two operations. The incident evidence (timeline, logs) can show the other order, which the safeguard does not stop. Read the evidence timeline, name the incident order, and make the uncovered order an explicit AC or Open Question instead of assuming the request covers it.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "operation-order-symmetry",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-017",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "IMPLEMENTATION",
+        "match": [
+          "orphan",
+          "delete and create",
+          "purge",
+          "delete existing",
+          "remove stale",
+          "delete previously generated",
+          "force delete"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "FAILURE_BEFORE_DESTRUCTIVE_CLEANUP",
+        "candidate_template": "when an operation ends with a destructive step (delete orphans, purge, delete and recreate), check what happens if the main step fails partway: the destructive step must not run on partial results, and existing content must survive"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "HFD-FAILURE-BEFORE-DESTRUCTIVE-CLEANUP-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Cleanup steps decide what to delete from what the current run produced. If an earlier error is only logged and the run continues, the cleanup sees an incomplete result and deletes content that should have stayed. Add a partial-failure check whenever the evidence shows a destructive step after the main work.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "failure-before-destructive-cleanup",
+      "status": "ACTIVE"
     }
   ]
 }

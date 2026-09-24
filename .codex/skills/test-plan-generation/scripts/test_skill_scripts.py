@@ -16950,6 +16950,41 @@ def test_uac_review_vocabulary_and_verdict_regressions() -> None:
     assert vtp.MAIN_FEATURE_COVERAGE_RE.match(line)
     print("test_uac_review_vocabulary_and_verdict_regressions: OK")
 
+def test_generic_uac_review_fixes() -> None:
+    import miss_probe_library as mpl
+    collision = [("issue", "A user removed pages while another run was in progress; the two collided.")]
+    axes = {c["dimension"] for c in mpl.candidates_for(collision)}
+    assert {"CONFLICTING_OPERATION_ENTRY_POINTS", "OPERATION_ORDER_SYMMETRY"} <= axes, axes
+    cleanup = [("code", "After the main step the job deletes orphan pages from the target.")]
+    assert "FAILURE_BEFORE_DESTRUCTIVE_CLEANUP" in {c["dimension"] for c in mpl.candidates_for(cleanup)}
+    unrelated = [("issue", "The dialog title uses the wrong font size.")]
+    assert not {"CONFLICTING_OPERATION_ENTRY_POINTS", "OPERATION_ORDER_SYMMETRY",
+                "FAILURE_BEFORE_DESTRUCTIVE_CLEANUP"} & {c["dimension"] for c in mpl.candidates_for(unrelated)}
+    for probe in mpl.load_library():
+        if str(probe.get("status", "")).upper() == "ACTIVE":
+            assert mpl.effective_status(probe)[0] == "ACTIVE", probe.get("probe_id")
+
+    import re
+    import validate_test_plan as vtp
+    source = open(vtp.__file__, encoding="utf-8").read()
+    pattern = re.search(r"destructive = re\.compile\(\s*r\"(.+?)\",", source, re.S).group(1)
+    destructive = re.compile(pattern, re.IGNORECASE)
+    line = ("- AC-01 [Proposed]: (Negative) Verify that existing pages survive a failed run. "
+            "Evidence: product documentation says Delete and Create will delete the page node and its children.")
+    statement = re.split(r"\bEvidence:", line, maxsplit=1)[0]
+    assert destructive.search(line) and not destructive.search(statement)
+
+    import jira_safe_text as jst
+    block = ("- Acceptance Criteria 01: Verify that the report opens.\n"
+             "  **Source:** Ticket description; ReportServlet.java line 10; file_name_v2.csv.\n"
+             "  **TBD:** Should the empty state show a message?\n")
+    body = jst.jira_field_body(block)
+    assert body.startswith("*Acceptance Criteria 01:* Verify that the report opens.")
+    assert "\n* Source: Ticket description; {{ReportServlet.java}} line 10; {{file_name_v2.csv}}." in body
+    assert body.endswith("\n* TBD: Should the empty state show a message?")
+    assert "{noformat}" not in body and "**" not in body
+    print("test_generic_uac_review_fixes: OK")
+
 def test_customer_discovery() -> None:
     import copy
     import customer_discovery as profiles
@@ -17181,6 +17216,7 @@ def main() -> int:
     test_postability_semantic_reviews()
     test_guides_vocabulary()
     test_uac_review_vocabulary_and_verdict_regressions()
+    test_generic_uac_review_fixes()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
