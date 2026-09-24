@@ -53,6 +53,17 @@ class FakeJira:
         self.calls.append(("attach", key, Path(path).name))
         return "a1"
 
+    def get_people(self, key):
+        self.calls.append(("people", key))
+        return {"assignee": "dev.lead", "reporter": "support.eng"}
+
+
+DECISIONS = (
+    "### What we found\n- The [Home page] menu does not read extensions ({{menu_service.ts}}).\n\n"
+    "### Decision needed\n1. Is a button enough?\n\n"
+    "### Impact on the Acceptance Criteria\n- Acceptance Criteria 02 depends on question 1.\n"
+)
+
 
 def make_config(out: Path) -> dict:
     return {
@@ -65,13 +76,15 @@ def make_config(out: Path) -> dict:
     }
 
 
-def fake_copilot(write_files: bool, returncode: int = 0):
+def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = ""):
     def run(cmd, **kwargs):
         prompt = cmd[cmd.index("-p") + 1]
         if write_files:
             uac_path = Path(prompt.split("1. ", 1)[1].split(": only", 1)[0].strip())
             uac_path.write_text(UAC, encoding="utf-8")
             (uac_path.parent / common.PLAN_FILE).write_text("plan", encoding="utf-8")
+            if decisions:
+                (uac_path.parent / common.DECISIONS_FILE).write_text(decisions, encoding="utf-8")
         return subprocess.CompletedProcess(cmd, returncode, "done", "")
     return run
 
@@ -191,6 +204,70 @@ class PosterTests(unittest.TestCase):
         jql = poster.approved_jql(self.config)
         self.assertIn('labels = "UAC_Approved"', jql)
         self.assertIn('labels != "UAC_Posted"', jql)
+
+
+class DecisionRequestTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self.tmp.name)
+        self.config = make_config(self.out)
+        self.config["decision_comment"] = {"enabled": True, "mention": ["assignee"], "cc": ["qa.lead"]}
+        self.log = logging.getLogger("test")
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def draft(self, decisions: str = DECISIONS) -> FakeJira:
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, decisions=decisions)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "DRAFT_POSTED")
+        return jira
+
+    def test_draft_shows_the_decision_request_for_qe_review(self) -> None:
+        jira = self.draft()
+        comment = [c for c in jira.calls if c[0] == "comment"][0][2]
+        self.assertIn("*Decision request*", comment)
+        self.assertIn("tagging the assignee, [~qa.lead]", comment)
+        self.assertIn("# Is a button enough?", comment)
+        self.assertIn("\\[Home page\\]", comment)
+        self.assertNotIn(("people", "PROJ-1"), jira.calls, "nobody is tagged before approval")
+
+    def test_tbd_without_decisions_file_warns_and_sends_nothing(self) -> None:
+        jira = self.draft(decisions="")
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertTrue(any("DECISIONS.md was not written" in w for w in status["warnings"]))
+        comment = [c for c in jira.calls if c[0] == "comment"][0][2]
+        self.assertNotIn("Decision request", comment)
+
+    def test_decisions_missing_a_section_are_not_sent(self) -> None:
+        self.draft(decisions="### Decision needed\n1. Is a button enough?\n")
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertTrue(any("missing section" in w for w in status["warnings"]))
+        self.assertFalse((self.out / "PROJ-1" / common.DECISION_BODY_FILE).exists())
+
+    def test_poster_sends_decision_request_once_with_mentions(self) -> None:
+        self.draft()
+        jira = FakeJira()
+        self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "POSTED")
+        comments = [c[2] for c in jira.calls if c[0] == "comment"]
+        request = [c for c in comments if "product decisions are still open" in c]
+        self.assertEqual(len(request), 1)
+        self.assertTrue(request[0].startswith("[~dev.lead] [~qa.lead] "))
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(poster.post_decision_request("PROJ-1", self.config, jira, self.log,
+                                                      self.out / "PROJ-1", status), "ALREADY_POSTED")
+
+    def test_poster_skips_changed_decisions_and_disabled_setting(self) -> None:
+        self.draft()
+        ticket = self.out / "PROJ-1"
+        (ticket / common.DECISIONS_FILE).write_text(DECISIONS + "- edited later\n", encoding="utf-8")
+        jira = FakeJira()
+        self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "POSTED")
+        self.assertFalse(any("product decisions are still open" in c[2] for c in jira.calls if c[0] == "comment"))
+        disabled = dict(self.config, decision_comment={"enabled": False})
+        self.assertEqual(poster.post_decision_request("PROJ-1", disabled, jira, self.log, ticket,
+                                                      common.read_status(ticket)), "NONE")
 
 
 if __name__ == "__main__":

@@ -22,6 +22,27 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
 | `UAC_Rework` | QE wants changes (leave a comment); remove `UAC_Posted`/set `regenerate_existing` to redo | QE |
 | `UAC_Posted` | Draft copied into the Acceptance Criteria field | poster |
 
+## Decision requests for open TBDs
+
+When a UAC has TBDs, Copilot also writes `DECISIONS.md`. It has three sections:
+- **What we found:** verified facts, each with its source.
+- **Decision needed:** one question per TBD.
+- **Impact on the Acceptance Criteria.**
+
+The runner shows this request at the end of the draft comment, so QE reviews the exact text.
+
+After QE adds `UAC_Approved` and the criteria are posted, the poster sends the request once, as its own comment. It tags the people named in `decision_comment`:
+- `mention` is a list of issue roles (`assignee`, `reporter`).
+- `cc` is a list of Jira usernames.
+
+The request is not sent in these cases:
+- `decision_comment.enabled` is false;
+- the UAC has no TBD;
+- `DECISIONS.md` is missing a section;
+- `DECISIONS.md` changed after the draft.
+
+A missing request is logged as a warning in `status.json` and never blocks the AC post.
+
 ## One-time VM setup
 
 1. **Clones** (already done): Dataset Studio plus the product and automation repos listed in

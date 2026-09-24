@@ -8,7 +8,10 @@ approval label and not the posted label:
      --overwrite is passed for that run;
   3. writes the field in Jira wiki format (bold labels, Source/TBD bullets);
   4. reads the rendered field back and checks the labels rendered as bold;
-  5. swaps labels (draft -> posted) and leaves a short comment.
+  5. swaps labels (draft -> posted) and leaves a short comment;
+  6. when decision_comment is enabled and the approved draft carried a decision
+     request (DECISIONS.md, unchanged since the draft), posts it once as its own
+     comment, tagging the configured people.
 """
 from __future__ import annotations
 
@@ -54,6 +57,31 @@ def post_ticket(key: str, config: dict, jira, logger, overwrite: bool) -> str:
     status.update(state="POSTED")
     common.write_status(ticket_dir, status)
     logger.info("%s: posted to the Acceptance Criteria field", key)
+    post_decision_request(key, config, jira, logger, ticket_dir, status)
+    return "POSTED"
+
+
+def post_decision_request(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict) -> str:
+    """Post the QE-approved decision request once; never blocks the AC post."""
+    settings = config.get("decision_comment") or {}
+    body_file = ticket_dir / common.DECISION_BODY_FILE
+    decisions = ticket_dir / common.DECISIONS_FILE
+    if not settings.get("enabled") or not body_file.is_file() or not decisions.is_file():
+        return "NONE"
+    if status.get("decision_comment_id"):
+        return "ALREADY_POSTED"
+    if common.sha256_file(decisions) != status.get("decisions_sha256"):
+        logger.error("%s: DECISIONS.md changed after the draft; decision request not sent", key)
+        return "DECISIONS_CHANGED"
+    people = jira.get_people(key) if settings.get("mention") else {}
+    names = [people.get(role, "") for role in settings.get("mention", [])] + list(settings.get("cc", []))
+    names = list(dict.fromkeys(n for n in names if n))
+    lead = " ".join(f"[~{name}]" for name in names)
+    intro = "The UAC is in the Acceptance Criteria field. These product decisions are still open:"
+    body = (f"{lead} {intro}" if lead else intro) + "\n\n" + body_file.read_text(encoding="utf-8")
+    status["decision_comment_id"] = jira.add_comment(key, body)
+    common.write_status(ticket_dir, status)
+    logger.info("%s: decision request posted (comment %s)", key, status["decision_comment_id"])
     return "POSTED"
 
 

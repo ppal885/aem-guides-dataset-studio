@@ -123,6 +123,16 @@
       "source": "human-correction",
       "source_context": "Human terminology correction in an AEM Sites publishing UAC review: language too complex and not in AEM Guides vocabulary",
       "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "live-site-is-publish-environment",
+      "pattern": "\\blive\\s+sites?\\b",
+      "wrong": "live site",
+      "correct": "publish environment (or published output)",
+      "message": "AEM Guides and Experience League say publish environment for where published pages are served, and published output for what was generated. Write 'unpublished from the publish environment' or 'the published output', not 'removed from the live site'. This is terminology guidance only, not an extra acceptance requirement.",
+      "source": "human-correction",
+      "source_context": "Human terminology correction in an AEM Sites publishing UAC review: live site is not AEM Guides vocabulary",
+      "governance": "HUMAN_APPROVED"
     }
   ],
   "canonical_terms": [

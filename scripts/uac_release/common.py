@@ -26,6 +26,8 @@ SKILL_SCRIPTS = REPO_ROOT / ".claude" / "skills" / "test-plan-generation" / "scr
 STATUS_FILE = "status.json"
 UAC_FILE = "UAC.md"
 PLAN_FILE = "test-plan.md"
+DECISIONS_FILE = "DECISIONS.md"
+DECISION_BODY_FILE = "decision-body.txt"
 
 
 def load_env_file(path: Path) -> None:
@@ -172,6 +174,12 @@ class JiraClient:
         data = self._json("GET", f"/rest/api/2/issue/{key}?{query}")
         section = data.get("renderedFields" if rendered else "fields") or {}
         return section.get(field)
+
+    def get_people(self, key: str) -> dict[str, str]:
+        """Usernames of the issue's assignee and reporter (empty when unset)."""
+        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=assignee,reporter")
+        fields = data.get("fields") or {}
+        return {role: str((fields.get(role) or {}).get("name") or "") for role in ("assignee", "reporter")}
 
     def set_field(self, key: str, field: str, value: str) -> None:
         self._json("PUT", f"/rest/api/2/issue/{key}", {"fields": {field: value}})
