@@ -61,7 +61,7 @@
     },
     {
       "id": "panel-not-dashboard",
-      "pattern": "(baseline|map|translation|conditions?|subject\\s+scheme)\\s+dashboard",
+      "pattern": "(baseline|map|translation|conditions?|subject\\s+scheme)\\s+dashboard(?!\\s+outputs\\s+tab)",
       "wrong": "<X> dashboard for an authoring panel",
       "correct": "Baseline Panel / Map Panel / Translation Panel / Conditions panel / Subject Scheme Panel",
       "message": "The Baseline, Map, Translation, Conditions, and Subject Scheme surfaces are PANELS, not dashboards. Use 'Baseline Panel', 'Map Panel', 'Translation Panel', etc. 'dashboard' is only for publish/output surfaces (e.g. the Bulk Publish dashboard, the Map Dashboard Outputs tab).",
@@ -111,7 +111,7 @@
       "correct": "Unpublish (Manage Publication in the Sites console)",
       "message": "In a human-facing AC, write that pages are unpublished (Manage Publication > Unpublish), not deactivated. 'Deactivate' is the replication action name in code and logs; keep it for Source lines. This is terminology guidance only, not an extra acceptance requirement.",
       "source": "human-correction",
-      "source_context": "Human terminology correction in the GUIDES-46828 UAC review: language too complex and not in AEM Guides vocabulary",
+      "source_context": "Human terminology correction in an AEM Sites publishing UAC review: language too complex and not in AEM Guides vocabulary",
       "governance": "HUMAN_APPROVED"
     },
     {
@@ -121,7 +121,7 @@
       "correct": "publish environment",
       "message": "Experience League calls the published side the publish environment. Use 'publish environment' in human-facing ACs; name a specific publish server only when the test needs it.",
       "source": "human-correction",
-      "source_context": "Human terminology correction in the GUIDES-46828 UAC review: language too complex and not in AEM Guides vocabulary",
+      "source_context": "Human terminology correction in an AEM Sites publishing UAC review: language too complex and not in AEM Guides vocabulary",
       "governance": "HUMAN_APPROVED"
     }
   ],

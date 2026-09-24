@@ -370,7 +370,7 @@ def validate(text: str) -> list[str]:
     automation = sections["Automation Coverage & Gaps"]
     recipe_terms = ("layer", "setup", "poll", "timeout", "assert", "cleanup", "tag")
     for number, line in automation:
-        if "Not covered" in line:
+        if "Not covered" in line and not MAIN_FEATURE_COVERAGE_RE.match(line):
             lowered = line.lower()
             missing = [term for term in recipe_terms if term not in lowered]
             if missing:
