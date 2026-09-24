@@ -119,6 +119,7 @@ configuration_enumeration_mod = _load(
 ui_surface_scope_mod = _load("ui_surface_scope", "ui_surface_scope.py")
 role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
+pattern_check_suggestions_mod = _load("pattern_check_suggestions", "pattern_check_suggestions.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 question_research_mod = _load("question_research", "question_research.py")
@@ -7630,6 +7631,69 @@ def test_postability_semantic_reviews() -> None:
         run_gates._postability_review_present(
             ["REVIEW feature-classification: generated artifact class is undeclared"]
         ) is True,
+    )
+
+
+def test_pattern_check_suggestions() -> None:
+    pc = pattern_check_suggestions_mod
+    on = {"SKILL_PATTERN_CHECKS_MODE": "PATTERN_CHECKS_SUGGEST"}
+    paste_ticket = "Copy paste of a table in Author view drops colwidth. Undo does not restore it."
+
+    missing = Path(tempfile.gettempdir()) / "pattern_checks_missing_for_test.json"
+    disabled = pc.suggest(paste_ticket, env={}, path=missing)
+    check(
+        "pattern checks are disabled by default and read no data",
+        disabled == {"mode": "PATTERN_CHECKS_DISABLED", "status": "DISABLED", "suggestions": []},
+    )
+    check(
+        "unknown mode value stays disabled",
+        pc.mode({"SKILL_PATTERN_CHECKS_MODE": "yes"}) == "PATTERN_CHECKS_DISABLED",
+    )
+
+    checks = pc.load_checks()
+    check("shipped pattern checks load and validate", len(checks) >= 1)
+    shipped = pc.DATA_PATH.read_text(encoding="utf-8")
+    check("shipped pattern checks carry no Jira keys", not re.search(r"\bGUIDES-\d+\b", shipped))
+    check(
+        "shipped pattern checks are train-only supporting discovery",
+        json.loads(shipped)["derivation"]["validation_or_blind_used"] is False
+        and json.loads(shipped)["authority"] == "SUPPORTING_DISCOVERY",
+    )
+
+    result = pc.suggest(paste_ticket, env=on)
+    ids = {row["check_id"] for row in result["suggestions"]}
+    check("matching ticket text triggers the paste check", result["status"] == "OK" and "EI-2" in ids)
+    check("suggestions are capped", len(result["suggestions"]) <= pc.DEFAULT_LIMIT)
+    check(
+        "every suggestion is labelled supporting discovery, not an acceptance criterion",
+        all(
+            row["authority"] == "SUPPORTING_DISCOVERY" and "not an acceptance criterion" in row["notice"]
+            for row in result["suggestions"]
+        ),
+    )
+
+    unrelated = pc.suggest("The PDF footer shows the wrong font colour.", env=on)
+    check("an irrelevant ticket gets no suggestions", unrelated["status"] == "OK" and unrelated["suggestions"] == [])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        corrupt = Path(tmp) / "pattern_checks.json"
+        corrupt.write_text("{not json", encoding="utf-8")
+        broken = pc.suggest(paste_ticket, env=on, path=corrupt)
+        check(
+            "corrupt pattern data is reported as UNAVAILABLE with no suggestions",
+            broken["status"] == "UNAVAILABLE" and broken["suggestions"] == [] and broken.get("reason"),
+        )
+        unapproved = Path(tmp) / "unapproved.json"
+        unapproved.write_text(
+            json.dumps({**json.loads(shipped), "status": "CANDIDATE"}), encoding="utf-8"
+        )
+        check(
+            "unapproved pattern data is refused",
+            pc.suggest(paste_ticket, env=on, path=unapproved)["status"] == "UNAVAILABLE",
+        )
+    check(
+        "pattern-check data no longer on disk is reported as UNAVAILABLE",
+        pc.suggest(paste_ticket, env=on, path=missing)["status"] == "UNAVAILABLE",
     )
 
 
@@ -17126,6 +17190,7 @@ def main() -> int:
     test_ui_surface_scope()
     test_role_provisioning()
     test_fluffyjaws_evidence()
+    test_pattern_check_suggestions()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
     test_question_research()

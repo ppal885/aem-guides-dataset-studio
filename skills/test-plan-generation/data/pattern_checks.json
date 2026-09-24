@@ -1,0 +1,229 @@
+{
+  "schema_version": "aem-guides-pattern-checks-v1",
+  "status": "HUMAN_QE_APPROVED",
+  "approval": {
+    "validated_by": "Prashant Pal",
+    "validated_at": "2026-09-24T18:47:49Z",
+    "decision_count": 21,
+    "review_surface": "claude.ai artifact 'Pattern check review'"
+  },
+  "derivation": {
+    "partition": "TRAIN_V2_ONLY",
+    "source_library": "benchmark/v2/train_mining/reasoning_pattern_taxonomy_train_v2.json",
+    "source_library_sha256": "b19c9a7dc4f04da2a0885b0f6fd92de362fa7f5ab3cb4529700d6b7e39dcd2ac",
+    "validation_or_blind_used": false
+  },
+  "authority": "SUPPORTING_DISCOVERY",
+  "checks": [
+    {
+      "check_id": "SP-1",
+      "pattern_id": "STATE_PARTITION",
+      "title": "Setting on and off",
+      "check": "If the change depends on a setting or option, check the result with the setting on and with it off, and confirm the off state keeps the old behavior.",
+      "applies_when": "A setting, option or config key controls the behavior.",
+      "exclude_when": "No setting is involved.",
+      "trigger": "\\b(enabled|disabled|turn(ed)? (on|off)|checked|unchecked|toggle|setting|option is|config)\\b",
+      "train_support_jiras": 32
+    },
+    {
+      "check_id": "SP-2",
+      "pattern_id": "STATE_PARTITION",
+      "title": "UUID and path-based repositories",
+      "check": "Check the result on a UUID-enabled repository and on a path-based one, including references created before the change.",
+      "applies_when": "The behavior touches file identity, references or file names.",
+      "exclude_when": "Pure UI styling with no stored reference.",
+      "trigger": "\\b(uuid|guid|path-based|path based)\\b",
+      "train_support_jiras": 3
+    },
+    {
+      "check_id": "SP-3",
+      "pattern_id": "STATE_PARTITION",
+      "title": "Earlier choices are kept",
+      "check": "Go back and forth in the dialog or wizard, and close and reopen it: earlier selections and values must stay as the user set them.",
+      "applies_when": "A multi-step dialog, wizard, panel or saved selection is involved.",
+      "exclude_when": "Single-click actions with no stored choice.",
+      "trigger": "\\b(retain|retained|previously|remain selected|kept|preserv)\\w*",
+      "train_support_jiras": 1
+    },
+    {
+      "check_id": "SP-4",
+      "pattern_id": "STATE_PARTITION",
+      "title": "Failure keeps the previous state",
+      "check": "Make the operation fail part-way (system error, post-processing failure): the previous configuration or content must stay unchanged, and the user sees an error.",
+      "applies_when": "The operation writes or replaces saved configuration or content.",
+      "exclude_when": "Read-only views.",
+      "trigger": "\\b(fail|fails|failed|failure|error)\\b.*\\b(existing|previous|unchanged|must not|retain|remain)\\b|\\b(existing|previous)\\b.*\\b(fail|error)\\w*",
+      "train_support_jiras": 2
+    },
+    {
+      "check_id": "EI-1",
+      "pattern_id": "EDITOR_INTERACTION_STABILITY",
+      "title": "Same result from every entry path",
+      "check": "Do the action from the toolbar, the context menu, the keyboard shortcut and drag-and-drop where available: each path must give the same result.",
+      "applies_when": "The action is reachable from more than one place in the Editor.",
+      "exclude_when": "Only one entry path exists.",
+      "trigger": "\\b(toolbar|context menu|keyboard|drag|drop|shortcut|ctrl)\\b",
+      "train_support_jiras": 11
+    },
+    {
+      "check_id": "EI-2",
+      "pattern_id": "EDITOR_INTERACTION_STABILITY",
+      "title": "Paste of content that is not allowed",
+      "check": "Paste content that is not allowed at the cursor position: it must fall back to allowed content or plain text, with no <foreign>, <draft-comment> or extra wrapper elements.",
+      "applies_when": "The change is about copy, cut or paste in the Editor.",
+      "exclude_when": "No paste involved.",
+      "trigger": "\\b(paste|pasting|pasted)\\b",
+      "train_support_jiras": 11
+    },
+    {
+      "check_id": "EI-3",
+      "pattern_id": "EDITOR_INTERACTION_STABILITY",
+      "title": "Undo and redo after the action",
+      "check": "After the action, use Undo and Redo: the content must return to the earlier state and back, without bringing back the defect.",
+      "applies_when": "The action edits content in the Editor.",
+      "exclude_when": "Actions that do not change content.",
+      "trigger": "\\b(undo|redo)\\b",
+      "train_support_jiras": 1
+    },
+    {
+      "check_id": "EI-4",
+      "pattern_id": "EDITOR_INTERACTION_STABILITY",
+      "title": "Author and Source view agree, also after save and reopen",
+      "check": "Check the result in Author view and Source view, then save, close and reopen the file: both views must show the same structure and nothing extra is added.",
+      "applies_when": "The action changes document structure or attributes.",
+      "exclude_when": "Pure dialog or panel changes.",
+      "trigger": "\\b(source (view|mode)|author (view|mode)|save and reopen|reopen|after save)\\b",
+      "train_support_jiras": 3
+    },
+    {
+      "check_id": "EI-5",
+      "pattern_id": "EDITOR_INTERACTION_STABILITY",
+      "title": "Dialogs and controls stay usable",
+      "check": "Open the dialog or panel at a high zoom level and small window size: all fields and buttons must be visible and usable (scroll bar where needed).",
+      "applies_when": "The change adds or changes a dialog, panel or control.",
+      "exclude_when": "No UI surface involved.",
+      "trigger": "\\b(dialog|scroll|visible|zoom|resolution|interactable)\\b",
+      "train_support_jiras": 16
+    },
+    {
+      "check_id": "RI-1",
+      "pattern_id": "RELATION_INVERSE_PARTITION",
+      "title": "Reference written in the right form",
+      "check": "Insert a reference from the toolbar, the browse dialog and drag-and-drop from the Repository panel, then check Source view: the reference must use the expected form (UUID or path) in every case.",
+      "applies_when": "The action creates or updates a reference (xref, topicref, image, conref, key).",
+      "exclude_when": "No reference is created.",
+      "trigger": "\\b(guid|uuid|path-based|href|in source)\\b",
+      "train_support_jiras": 9
+    },
+    {
+      "check_id": "RI-2",
+      "pattern_id": "RELATION_INVERSE_PARTITION",
+      "title": "Move or rename keeps references working",
+      "check": "Move or rename the referenced file or its folder: every place that uses it must still resolve, and reports must show the new location.",
+      "applies_when": "Files that are referenced elsewhere can be moved or renamed.",
+      "exclude_when": "Files are never referenced.",
+      "trigger": "\\b(move|moved|moving|rename|renamed)\\b",
+      "train_support_jiras": 5
+    },
+    {
+      "check_id": "RI-3",
+      "pattern_id": "RELATION_INVERSE_PARTITION",
+      "title": "Both sides of the relation are updated",
+      "check": "Check the other side of the relation: where-used / used-in lists, reports, baselines and translation copies must reflect the change.",
+      "applies_when": "The change affects a link between two assets.",
+      "exclude_when": "Standalone assets.",
+      "trigger": "\\b(used in|where used|report|baseline|translation|target language|referenced)\\b",
+      "train_support_jiras": 10
+    },
+    {
+      "check_id": "RI-4",
+      "pattern_id": "RELATION_INVERSE_PARTITION",
+      "title": "Inherited values follow the parent",
+      "check": "When a value can come from a parent map (for example Use map properties as fallback), check the child topic both with and without its own value.",
+      "applies_when": "Values can be inherited from a parent map or folder.",
+      "exclude_when": "No inheritance.",
+      "trigger": "\\b(fallback|parent map|inherit|propagat)\\w*",
+      "train_support_jiras": 3
+    },
+    {
+      "check_id": "VM-1",
+      "pattern_id": "VERSIONED_MODEL_EVOLUTION",
+      "title": "New version keeps label and comment",
+      "check": "Save as a new version with a label and a comment: Version History must show them, and the previous version stays unchanged.",
+      "applies_when": "The action creates or changes file versions.",
+      "exclude_when": "Unversioned content.",
+      "trigger": "\\b(version|label|comment)\\b.*\\b(save|history|new version)\\b|\\bnew version\\b",
+      "train_support_jiras": 6
+    },
+    {
+      "check_id": "VM-2",
+      "pattern_id": "VERSIONED_MODEL_EVOLUTION",
+      "title": "Baselines survive later changes",
+      "check": "After creating a baseline, move, rename, delete or update files in it: the baseline must still resolve, show broken links where expected, and keep its selection.",
+      "applies_when": "Baselines, publishing or translation use the affected content.",
+      "exclude_when": "Content never used in a baseline.",
+      "trigger": "\\bbaseline\\b",
+      "train_support_jiras": 19
+    },
+    {
+      "check_id": "VM-3",
+      "pattern_id": "VERSIONED_MODEL_EVOLUTION",
+      "title": "Create version on upload, on and off",
+      "check": "Upload files with the create-version option on and off: versions are created only when it is on, and aborted uploads change nothing.",
+      "applies_when": "Files can be uploaded or replaced.",
+      "exclude_when": "No upload path.",
+      "trigger": "\\bupload\\w*\\b",
+      "train_support_jiras": 1
+    },
+    {
+      "check_id": "VM-4",
+      "pattern_id": "VERSIONED_MODEL_EVOLUTION",
+      "title": "Content made before the upgrade",
+      "check": "Open, edit and publish content created on the previous release: it must keep working without manual migration.",
+      "applies_when": "Existing customer content predates the change.",
+      "exclude_when": "Brand-new feature with no old data.",
+      "trigger": "\\b(upgrade|existing (content|files|data)|older|previous release|migrat)\\w*",
+      "train_support_jiras": 3
+    },
+    {
+      "check_id": "AC-1",
+      "pattern_id": "API_CONTRACT_EVOLUTION",
+      "title": "UI and API give the same result",
+      "check": "Do the same operation through the UI and through the API: the result, file path and stored properties must match.",
+      "applies_when": "The operation is also available as an API or servlet.",
+      "exclude_when": "UI-only feature.",
+      "trigger": "\\bapi\\b.*\\b(ui|same|consistent)\\b|\\b(ui|user interface)\\b.*\\bapi\\b",
+      "train_support_jiras": 7
+    },
+    {
+      "check_id": "AC-2",
+      "pattern_id": "API_CONTRACT_EVOLUTION",
+      "title": "Response still has everything callers use",
+      "check": "Check the API response: fields that reports and integrations used before must still be there with the same meaning.",
+      "applies_when": "An API response shape or endpoint changes.",
+      "exclude_when": "No API change.",
+      "trigger": "\\b(response|details api|previously available|still available|return)\\w*",
+      "train_support_jiras": 10
+    },
+    {
+      "check_id": "AC-3",
+      "pattern_id": "API_CONTRACT_EVOLUTION",
+      "title": "Blocked or invalid request is refused cleanly",
+      "check": "Send a request the change should block (for example a rename that is not allowed): the API must refuse it with a clear error and change nothing.",
+      "applies_when": "The change adds a restriction or validation.",
+      "exclude_when": "No new restriction.",
+      "trigger": "\\b(reject|rejects|blocked|block|ignore|not allowed|error)\\w*",
+      "train_support_jiras": 4
+    },
+    {
+      "check_id": "AC-4",
+      "pattern_id": "API_CONTRACT_EVOLUTION",
+      "title": "Every upload and creation route",
+      "check": "Repeat with each way content enters the repository that applies: Editor, API, desktop tool, Oxygen, package or zip upload.",
+      "applies_when": "Content can be created or updated by more than one route.",
+      "exclude_when": "Only one route exists.",
+      "trigger": "\\b(oxygen|zip|package|desktop tool|upload)\\b",
+      "train_support_jiras": 4
+    }
+  ]
+}
