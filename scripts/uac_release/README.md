@@ -41,14 +41,15 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
    COPILOT_GITHUB_TOKEN=<GitHub token with Copilot access>
    ```
    Use a Jira account that can only comment, attach and edit fields on these tickets.
-6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.2701.json` and set:
-   - `jql`: which tickets need a UAC. The example picks your own tickets in the release
-     (`"QE Assignee" = currentUser()`, where current user is the owner of `JIRA_PAT`) whose
-     Acceptance Criteria field is still empty. Keep `(labels is EMPTY OR labels != UAC_Posted)`:
+6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.json` and set:
+   - `jql`: which tickets need a UAC. The example picks open tickets in the sprint
+     `AEMGuides_CurrentDevSprint` where you are QE Assignee (`currentUser()` is the owner of
+     `JIRA_PAT`) and the Acceptance Criteria field is still empty. Keep `resolution = Unresolved`:
+     closed tickets stay linked to the sprint name. Keep `(labels is EMPTY OR labels != UAC_Posted)`:
      plain `labels != X` in JQL also drops tickets that have no labels at all.
    - `tickets`: optional exact list, e.g. `["GUIDES-12345", "GUIDES-23456"]`. When it is not
-     empty it is used instead of `jql` (useful before the release version or QE Assignee is set).
-   - `approved_scope_jql`: the same release scope, without the Acceptance Criteria and label filters.
+     empty it is used instead of `jql` (useful before the sprint or QE Assignee is set).
+   - `approved_scope_jql`: the same sprint and QE Assignee scope, without the other filters.
    - `output_dir`, `add_dirs`, `mcp_health_url`.
 7. **Check the Copilot flags on your version** with `copilot --help` (the scripts use `-p`, `-s`,
    `--no-ask-user`, `--share`, `--add-dir`, `--allow-all-tools`, `--allow-tool`, `--deny-tool`),
@@ -86,14 +87,14 @@ copilot mcp list
 sudo mkdir -p /opt/uac-release && sudo chown "$USER" /opt/uac-release
 printf 'JIRA_BASE_URL=https://jira.corp.adobe.com\nJIRA_PAT=<jira-pat>\nCOPILOT_GITHUB_TOKEN=<github-token-with-copilot>\n' > /opt/uac-release/uac.env
 chmod 600 /opt/uac-release/uac.env
-cp scripts/uac_release/config.example.json /opt/uac-release/config.2701.json
-nano /opt/uac-release/config.2701.json   # set add_dirs, mcp_health_url; optionally "tickets": [...]
+cp scripts/uac_release/config.example.json /opt/uac-release/config.json
+nano /opt/uac-release/config.json   # set add_dirs, mcp_health_url; optionally "tickets": [...]
 
 # 6. Check everything offline, then one real ticket without writing to Jira
 python3 -m unittest scripts/uac_release/test_uac_release.py
-python3 scripts/uac_release/uac_release_runner.py --config /opt/uac-release/config.2701.json --env-file /opt/uac-release/uac.env --ticket GUIDES-12345 --dry-run
-cat /opt/uac-release/2701/GUIDES-12345/status.json
-grep -iE "update_jira_issue|add_jira_comment|upload_attachment" /opt/uac-release/2701/GUIDES-12345/copilot-transcript.md   # must print nothing
+python3 scripts/uac_release/uac_release_runner.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env --ticket GUIDES-12345 --dry-run
+cat /opt/uac-release/runs/GUIDES-12345/status.json
+grep -iE "update_jira_issue|add_jira_comment|upload_attachment" /opt/uac-release/runs/GUIDES-12345/copilot-transcript.md   # must print nothing
 
 # 7. Schedule it
 crontab -e        # paste the two lines from scripts/uac_release/uac-release.cron (fix REPO/CONFIG)
@@ -101,22 +102,22 @@ crontab -l
 ```
 
 Windows VM: same steps in PowerShell, then register the tasks once (elevated):
-`.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.2701.json -EnvFile C:\uac-release\uac.env`
+`.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env`
 
 Daily use: nothing to run. Review each `UAC_Draft` comment in Jira and add `UAC_Approved` (or
-`UAC_Rework` with a comment). Logs: `/opt/uac-release/2701/logs/` and `/opt/uac-release/cron.log`.
+`UAC_Rework` with a comment). Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
 
 ## Run it
 
 ```
 # First time: one ticket, nothing written to Jira
-python scripts/uac_release/uac_release_runner.py --config /opt/uac-release/config.2701.json --env-file /opt/uac-release/uac.env --ticket GUIDES-12345 --dry-run
+python scripts/uac_release/uac_release_runner.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env --ticket GUIDES-12345 --dry-run
 
 # Whole release
-python scripts/uac_release/uac_release_runner.py --config /opt/uac-release/config.2701.json --env-file /opt/uac-release/uac.env
+python scripts/uac_release/uac_release_runner.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env
 
 # Post approved drafts
-python scripts/uac_release/uac_approved_poster.py --config /opt/uac-release/config.2701.json --env-file /opt/uac-release/uac.env
+python scripts/uac_release/uac_approved_poster.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env
 ```
 
 Schedule: `uac-release.cron` (Linux) or `register_windows_tasks.ps1` (Windows).

@@ -1,8 +1,8 @@
 {
-  "jql": "project = GUIDES AND fixVersion = \"2701\" AND \"QE Assignee\" = currentUser() AND \"Acceptance Criteria\" is EMPTY AND (labels is EMPTY OR labels != UAC_Posted)",
+  "jql": "project = GUIDES AND sprint = \"AEMGuides_CurrentDevSprint\" AND \"QE Assignee\" = currentUser() AND resolution = Unresolved AND \"Acceptance Criteria\" is EMPTY AND (labels is EMPTY OR labels != UAC_Posted)",
   "tickets": [],
-  "approved_scope_jql": "project = GUIDES AND fixVersion = \"2701\" AND \"QE Assignee\" = currentUser()",
-  "output_dir": "/opt/uac-release/2701",
+  "approved_scope_jql": "project = GUIDES AND sprint = \"AEMGuides_CurrentDevSprint\" AND \"QE Assignee\" = currentUser()",
+  "output_dir": "/opt/uac-release/runs",
   "acceptance_criteria_field": "customfield_13400",
   "mcp_health_url": "http://10.42.46.78:4502/mcp/health",
   "regenerate_existing": false,

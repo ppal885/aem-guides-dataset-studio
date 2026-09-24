@@ -2,7 +2,7 @@
 # Adjust REPO, CONFIG and the Python path. Copilot CLI reads COPILOT_GITHUB_TOKEN;
 # keep it and the Jira settings in /opt/uac-release/uac.env (chmod 600); the scripts load it.
 REPO=/opt/repos/aem-guides-dataset-studio
-CONFIG=/opt/uac-release/config.2701.json
+CONFIG=/opt/uac-release/config.json
 
 # 01:30 every night: generate draft UACs and post them for QE review.
 30 1 * * * cd $REPO && /usr/bin/python3 scripts/uac_release/uac_release_runner.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1
