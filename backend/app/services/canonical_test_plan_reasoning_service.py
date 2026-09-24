@@ -4554,6 +4554,60 @@ _STRUCTURAL_ID_RE = re.compile(
 _BARE_TAG_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$")
 
 
+# Jira wiki section headings ("*+Expected Behavior:+*", "+*Issue Summary:*+",
+# "h3. Support matrix") label a section; they carry no behavior of their own.
+_MARKUP_WRAPPED_HEADING_RE = re.compile(r"[*+_]{1,3}\s*([^*+_\n]{1,80}?)\s*[*+_]{1,3}")
+_WIKI_HEADING_RE = re.compile(r"h[1-6]\.\s+([^:.!?\n]{1,80})")
+_PLAIN_SECTION_HEADING_RE = re.compile(r"([A-Za-z][A-Za-z /()-]{1,60}):")
+_REPRODUCTION_HEADING_RE = re.compile(
+    r"(?:steps?\s+to\s+reproduce|reproduction\s+steps|repro(?:duction)?\s+steps)\s*:?",
+    re.IGNORECASE,
+)
+_LIST_ITEM_LINE_RE = re.compile(r"\s*(?:#+|[*\-\u2022]|\d+[.)])\s+\S")
+
+
+def _heading_text(line: str) -> str | None:
+    """Return the label of a markup-only Jira heading line, else None."""
+
+    s = (line or "").strip()
+    match = _MARKUP_WRAPPED_HEADING_RE.fullmatch(s) or _WIKI_HEADING_RE.fullmatch(s)
+    if match is None:
+        return None
+    label = match.group(1).strip()
+    if not label or len(label.split()) > 8:
+        return None
+    return label
+
+
+def _is_markup_heading_literal(literal: str) -> bool:
+    return _heading_text(literal) is not None
+
+
+def _reproduction_step_literals(text: str) -> set[str]:
+    """List items under a "Steps to reproduce" heading, as _contract_literals emits them.
+
+    Reproduction steps describe how to observe the problem, not the requested
+    outcome, so they must not become expected-behavior facts.
+    """
+
+    steps: set[str] = set()
+    in_steps = False
+    for line in (text or "").splitlines():
+        label = _heading_text(line)
+        if label is None and not _LIST_ITEM_LINE_RE.match(line):
+            plain = _PLAIN_SECTION_HEADING_RE.fullmatch(line.strip())
+            if plain is not None and len(plain.group(1).split()) <= 5:
+                label = plain.group(1)
+        if label is not None:
+            in_steps = bool(_REPRODUCTION_HEADING_RE.fullmatch(label.strip()))
+            continue
+        if in_steps and _LIST_ITEM_LINE_RE.match(line):
+            step = line.strip(" \t-*\u2022")
+            if step:
+                steps.add(step)
+    return steps
+
+
 def _is_structural_noise_literal(literal: str) -> bool:
     """True when a literal is a traceability ID or a bare dimension tag rather than an
     acceptance sentence.
@@ -4569,6 +4623,8 @@ def _is_structural_noise_literal(literal: str) -> bool:
     s = (literal or "").strip()
     if not s:
         return False
+    if _is_markup_heading_literal(s):
+        return True
     if " " in s or "\t" in s:
         # Prose. Only reject if it is a short concatenated anchor (<=2 tokens) that is
         # still an ID, never a genuine multi-word sentence.
@@ -5246,6 +5302,7 @@ class CanonicalTestPlanReasoningService:
                 continue
             for path, source_literal in _flatten_strings(record.content):
                 source_literal = _reduce_stack_frames(source_literal)
+                reproduction_steps = _reproduction_step_literals(source_literal)
                 for literal in _contract_literals(path, source_literal):
                     if not literal.strip():
                         # A whitespace-only source value (e.g. an empty AC line or a
@@ -5296,6 +5353,8 @@ class CanonicalTestPlanReasoningService:
                         # evidence dump in the coverage sections. Accepted UAC / product
                         # decisions are never filtered.
                         continue
+                    if not _accepted_source and literal.strip() in reproduction_steps:
+                        fact_types = [ContractFactType.CONTEXT_STATEMENT]
                     if len(literal) > 2000:
                         literal = literal[:2000]
                     if record.source_type in _NON_HUMAN_TERMINOLOGY_SOURCES:
