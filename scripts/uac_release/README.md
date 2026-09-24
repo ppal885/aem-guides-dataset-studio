@@ -42,14 +42,14 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
    ```
    Use a Jira account that can only comment, attach and edit fields on these tickets.
 6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.json` and set:
-   - `jql`: which tickets need a UAC. The example picks open tickets in the sprint
-     `AEMGuides_CurrentDevSprint` where you are QE Assignee (`currentUser()` is the owner of
-     `JIRA_PAT`) and the Acceptance Criteria field is still empty. Keep `resolution = Unresolved`:
-     closed tickets stay linked to the sprint name. Keep `(labels is EMPTY OR labels != UAC_Posted)`:
+   - `jql`: which tickets need a UAC. The example picks open Customer Request tickets with
+     fix version `2701` where you are QE Assignee (`currentUser()` is the owner of `JIRA_PAT`)
+     and the Acceptance Criteria field is still empty. Change `2701` for each release. Keep
+     `resolution = Unresolved` so closed tickets are skipped. Keep `(labels is EMPTY OR labels != UAC_Posted)`:
      plain `labels != X` in JQL also drops tickets that have no labels at all.
    - `tickets`: optional exact list, e.g. `["GUIDES-12345", "GUIDES-23456"]`. When it is not
-     empty it is used instead of `jql` (useful before the sprint or QE Assignee is set).
-   - `approved_scope_jql`: the same sprint and QE Assignee scope, without the other filters.
+     empty it is used instead of `jql` (useful before the fix version or QE Assignee is set).
+   - `approved_scope_jql`: the same fix version, issue type and QE Assignee scope, without the other filters.
    - `output_dir`, `add_dirs`, `mcp_health_url`.
 7. **Check the Copilot flags on your version** with `copilot --help` (the scripts use `-p`, `-s`,
    `--no-ask-user`, `--share`, `--add-dir`, `--allow-all-tools`, `--allow-tool`, `--deny-tool`),
