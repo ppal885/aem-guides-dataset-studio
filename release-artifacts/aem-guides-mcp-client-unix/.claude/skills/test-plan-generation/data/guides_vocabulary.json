@@ -103,6 +103,26 @@
       "message": "There is no 'move to a group' operation for conditions in Guides (grouping is automatic by attribute). Do not use invented operation verbs in ACs - verify every action verb is a real Guides operation, including in negative/boundary ACs.",
       "source": "human-correction",
       "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "deactivation-is-unpublish",
+      "pattern": "\\bdeactivat(?:e|ed|es|ing|ion)\\b",
+      "wrong": "deactivation / deactivate",
+      "correct": "Unpublish (Manage Publication in the Sites console)",
+      "message": "In a human-facing AC, write that pages are unpublished (Manage Publication > Unpublish), not deactivated. 'Deactivate' is the replication action name in code and logs; keep it for Source lines. This is terminology guidance only, not an extra acceptance requirement.",
+      "source": "human-correction",
+      "source_context": "Human terminology correction in the GUIDES-46828 UAC review: language too complex and not in AEM Guides vocabulary",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "publish-instance-is-publish-environment",
+      "pattern": "\\bpublish\\s+instances?\\b",
+      "wrong": "publish instance",
+      "correct": "publish environment",
+      "message": "Experience League calls the published side the publish environment. Use 'publish environment' in human-facing ACs; name a specific publish server only when the test needs it.",
+      "source": "human-correction",
+      "source_context": "Human terminology correction in the GUIDES-46828 UAC review: language too complex and not in AEM Guides vocabulary",
+      "governance": "HUMAN_APPROVED"
     }
   ],
   "canonical_terms": [
@@ -290,7 +310,18 @@
     "Maps and Presets",
     "Configure Metadata",
     "Asset Metadata",
-    "Document State"
+    "Document State",
+    "AEM Sites",
+    "Site Name",
+    "Existing Output Pages",
+    "Overwrite Content",
+    "Delete and Create",
+    "Delete Orphan Site Pages",
+    "Run Post Generation Workflow",
+    "Quick Publish",
+    "Manage Publication",
+    "Unpublish",
+    "publish environment"
   ],
   "canonical_term_sources": [
     {
@@ -420,6 +451,51 @@
       "review_status": "DOCUMENT_VERIFIED",
       "reference": "references/condition-presets-evidence.md",
       "scope": "Condition-preset management, not the authoring Conditions panel or DITAVAL editor. Preserve console/dashboard default-action scope, duplicate suffix differences and the dashboard-section naming ambiguity. Document verification is not Human approval or an acceptance contract."
+    },
+    {
+      "terms": [
+        "AEM Sites",
+        "Site Name",
+        "Destination Path",
+        "Existing Output Pages",
+        "Overwrite Content",
+        "Delete and Create",
+        "Delete Orphan Site Pages",
+        "Run Post Generation Workflow"
+      ],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/output-presets-aemg/aem-sites/generate-output-aem-site-map-dashboard",
+      "evidence_ids": [
+        "web_fetch:2026-09-24:generate-output-aem-site-map-dashboard"
+      ],
+      "review_status": "DOCUMENT_VERIFIED",
+      "scope": "AEM Sites output preset settings on the map dashboard. Delete and Create force-deletes existing pages during publishing; Delete Orphan Site Pages removes orphan pages from published output. Document verification is not Human approval or an acceptance contract."
+    },
+    {
+      "terms": [
+        "Quick Publish",
+        "Manage Publication",
+        "publish environment"
+      ],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/bulk-activation/dita-assets-replication-aem-sites",
+      "evidence_ids": [
+        "web_fetch:2026-09-24:dita-assets-replication-aem-sites"
+      ],
+      "review_status": "DOCUMENT_VERIFIED",
+      "scope": "Publishing AEM Sites output from Guides through the native Sites publish actions. Document verification is not Human approval or an acceptance contract."
+    },
+    {
+      "terms": [
+        "Unpublish",
+        "Manage Publication",
+        "Quick Publish",
+        "publish environment"
+      ],
+      "source_url": "https://experienceleague.adobe.com/en/docs/experience-manager-65/content/sites/authoring/authoring/publishing-pages",
+      "evidence_ids": [
+        "web_fetch:2026-09-24:aem65-publishing-pages"
+      ],
+      "review_status": "DOCUMENT_VERIFIED",
+      "scope": "Native AEM Sites console behavior, not a Guides-owned surface: Unpublish removes a page from the publish environment and is reached through Manage Publication. Name it as native Sites behavior. Document verification is not Human approval or an acceptance contract."
     }
   ],
   "synonyms": [
