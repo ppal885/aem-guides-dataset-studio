@@ -1,0 +1,45 @@
+{
+  "jql": "project = GUIDES AND sprint = \"AEMGuides_CurrentDevSprint\" AND \"QE Assignee\" = currentUser() AND resolution = Unresolved AND \"Acceptance Criteria\" is EMPTY AND (labels is EMPTY OR labels != UAC_Posted)",
+  "tickets": [],
+  "approved_scope_jql": "project = GUIDES AND sprint = \"AEMGuides_CurrentDevSprint\" AND \"QE Assignee\" = currentUser()",
+  "output_dir": "/opt/uac-release/runs",
+  "acceptance_criteria_field": "customfield_13400",
+  "mcp_health_url": "http://10.42.46.78:4502/mcp/health",
+  "regenerate_existing": false,
+  "lock_max_age_minutes": 720,
+  "labels": {
+    "draft": "UAC_Draft",
+    "approved": "UAC_Approved",
+    "posted": "UAC_Posted",
+    "rework": "UAC_Rework"
+  },
+  "copilot": {
+    "command": "copilot",
+    "model": "",
+    "agent": "",
+    "timeout_minutes": 45,
+    "add_dirs": [
+      "/opt/repos/aem-guides-dataset-studio",
+      "/opt/repos/starling",
+      "/opt/repos/xmleditor",
+      "/opt/repos/guides-ui-tests",
+      "/opt/repos/dxml-it-tests"
+    ],
+    "allow_all_tools": true,
+    "allow_tools": [],
+    "deny_tools": [
+      "shell(git push)",
+      "shell(git push:*)",
+      "corp-jira(update_jira_issue)",
+      "corp-jira(bulk_update_jira_issues)",
+      "corp-jira(add_jira_comment)",
+      "corp-jira(bulk_add_jira_comments)",
+      "corp-jira(edit_jira_comment)",
+      "corp-jira(delete_jira_comment)",
+      "corp-jira(upload_attachment)",
+      "corp-jira(transition_jira_status)",
+      "corp-jira(transition_jira_status_by_name)",
+      "corp-jira(create_jira_issue)"
+    ]
+  }
+}
