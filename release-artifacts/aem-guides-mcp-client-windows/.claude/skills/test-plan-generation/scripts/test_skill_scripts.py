@@ -16936,6 +16936,20 @@ def test_guides_vocabulary() -> None:
     print("test_guides_vocabulary: OK")
 
 
+def test_uac_review_vocabulary_and_verdict_regressions() -> None:
+    import guides_vocabulary as gv
+    _, advise = gv.check("- AC-01: start Generate from the Map Dashboard Outputs tab.")
+    assert not any("panel-not-dashboard" in a for a in advise), advise
+    _, advise = gv.check("- AC-02: open the Baseline dashboard.")
+    assert any("panel-not-dashboard" in a for a in advise), advise
+    _, advise = gv.check("- AC-03: the deactivation reaches every publish instance.")
+    assert any("deactivation-is-unpublish" in a for a in advise), advise
+    assert any("publish-instance-is-publish-environment" in a for a in advise), advise
+    import validate_test_plan as vtp
+    line = "- Main feature coverage: Not covered - no test starts Generate during an unpublish."
+    assert vtp.MAIN_FEATURE_COVERAGE_RE.match(line)
+    print("test_uac_review_vocabulary_and_verdict_regressions: OK")
+
 def test_customer_discovery() -> None:
     import copy
     import customer_discovery as profiles
@@ -17166,6 +17180,7 @@ def main() -> int:
     test_content_identity_lifecycle_regression()
     test_postability_semantic_reviews()
     test_guides_vocabulary()
+    test_uac_review_vocabulary_and_verdict_regressions()
     print("\nALL SELF-TESTS PASSED")
     return 0
 
