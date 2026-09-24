@@ -4558,10 +4558,14 @@ _BARE_TAG_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$")
 # "h3. Support matrix") label a section; they carry no behavior of their own.
 _MARKUP_WRAPPED_HEADING_RE = re.compile(r"[*+_]{1,3}\s*([^*+_\n]{1,80}?)\s*[*+_]{1,3}")
 _WIKI_HEADING_RE = re.compile(r"h[1-6]\.\s+([^:.!?\n]{1,80})")
+# A wrapped heading with nested emphasis, e.g.
+# "+*Product Side Expected Behaviour* (As discussed with the team):+".
+_NESTED_MARKUP_HEADING_RE = re.compile(r"[*+_]{1,3}(.{1,120}?:)\s*[*+_]{1,3}")
 _PLAIN_SECTION_HEADING_RE = re.compile(r"([A-Za-z][A-Za-z /()-]{1,60}):")
-_REPRODUCTION_HEADING_RE = re.compile(
-    r"(?:steps?\s+to\s+reproduce|reproduction\s+steps|repro(?:duction)?\s+steps)\s*:?",
-    re.IGNORECASE,
+_REPRODUCTION_HEADING_RE = re.compile(r"\brepro(?:duce|duction|\b)", re.IGNORECASE)
+# A step that states its own expected result is a test scenario, not a bare action.
+_STEP_EXPECTATION_RE = re.compile(
+    r"\b(?:should|must|shall|expected|verify|ensure)\b", re.IGNORECASE
 )
 _LIST_ITEM_LINE_RE = re.compile(r"\s*(?:#+|[*\-\u2022]|\d+[.)])\s+\S")
 
@@ -4571,10 +4575,16 @@ def _heading_text(line: str) -> str | None:
 
     s = (line or "").strip()
     match = _MARKUP_WRAPPED_HEADING_RE.fullmatch(s) or _WIKI_HEADING_RE.fullmatch(s)
+    max_words = 8
+    if match is None:
+        # Nested emphasis is only a heading when the label ends in a colon;
+        # "*Note:* do this *now*" stays a sentence.
+        match = _NESTED_MARKUP_HEADING_RE.fullmatch(s)
+        max_words = 12
     if match is None:
         return None
-    label = match.group(1).strip()
-    if not label or len(label.split()) > 8:
+    label = re.sub(r"[*+_]", "", match.group(1)).strip()
+    if not label or len(label.split()) > max_words:
         return None
     return label
 
@@ -4599,11 +4609,11 @@ def _reproduction_step_literals(text: str) -> set[str]:
             if plain is not None and len(plain.group(1).split()) <= 5:
                 label = plain.group(1)
         if label is not None:
-            in_steps = bool(_REPRODUCTION_HEADING_RE.fullmatch(label.strip()))
+            in_steps = bool(_REPRODUCTION_HEADING_RE.search(label))
             continue
         if in_steps and _LIST_ITEM_LINE_RE.match(line):
             step = line.strip(" \t-*\u2022")
-            if step:
+            if step and not _STEP_EXPECTATION_RE.search(step):
                 steps.add(step)
     return steps
 

@@ -81,6 +81,55 @@ def test_markup_headings_and_reproduction_steps_are_not_expected_behavior() -> N
     assert any(_EXPECTED in literal for literal in behavior)
 
 
+def test_heading_variants_and_setup_to_reproduce_section() -> None:
+    nested = "+*Product Side Expected Behaviour* (As discussed with the team):+"
+    requirement = "# Replace all should skip files checked out by other users"
+    sentence = "*Note:* the dialog must close *immediately* after Cancel"
+    facts = _facts(
+        {
+            "issue_key": "GUIDES-TEST",
+            "description": "\n".join(
+                [
+                    "*Attachment / Setup to reproduce the issue*",
+                    " # Install the sample content package",
+                    " # You will notice the issue as described",
+                    nested,
+                    f" {requirement}",
+                    sentence,
+                ]
+            ),
+        }
+    )
+    literals = {row.literal.strip() for row in facts}
+    behavior = {row.literal.strip() for row in facts if row.fact_type in _BEHAVIOR_FACTS}
+
+    assert nested not in literals
+    assert "# Install the sample content package" not in behavior
+    assert "# You will notice the issue as described" not in behavior
+    assert requirement in behavior
+    assert any("must close" in literal for literal in behavior)
+
+
+def test_reproduction_scenarios_with_expected_results_stay_behavior() -> None:
+    expected_step = "Edit and save the template, the properties should keep their values"
+    facts = _facts(
+        {
+            "issue_key": "GUIDES-TEST",
+            "description": "\n".join(
+                [
+                    "*Test data and steps to reproduce the scenario*",
+                    f" * {expected_step}",
+                    " * Add this template to the folder profile",
+                ]
+            ),
+        }
+    )
+    behavior = {row.literal.strip() for row in facts if row.fact_type in _BEHAVIOR_FACTS}
+
+    assert any("should keep their values" in literal for literal in behavior)
+    assert "Add this template to the folder profile" not in behavior
+
+
 def test_accepted_criteria_keep_numbered_items_and_drop_only_bare_headings() -> None:
     facts = _facts(
         {
