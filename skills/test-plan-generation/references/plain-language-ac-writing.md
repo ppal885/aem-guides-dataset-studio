@@ -62,6 +62,13 @@ Before accepting an AC, ask:
 - Are these different contracts, or just different cases of one contract?
 - Can QE identify what to inspect and what it must show without translating implementation terminology?
 
+## Name actions the way the user sees them
+
+- Readers know the screen, not the code. Describe the action in plain words and add the exact UI name in brackets on first mention.
+- Write: "Verify that Generate does not start while pages of the site are being removed from the live site (Unpublish)."
+- Avoid: "Verify that output generation is blocked while a deactivation of the destination path is in process." (code/log words: output generation, deactivation, destination path)
+- Keep code and log names (deactivate, replication, class names, line numbers) on the Source line only.
+
 ## Group outcomes without hiding coverage
 
 Before rewriting, list each existing outcome and its named cases. Group by the required behavior and result, not by repeated words or a common product area. Keep an internal old-to-new mapping so a merged sentence cannot silently remove scope.

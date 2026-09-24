@@ -64,6 +64,34 @@ def jira_comment_body(text: str) -> str:
     return f"{_NOFORMAT_OPEN}\n{inner}\n{_NOFORMAT_CLOSE}"
 
 
+_AC_BLOCK = re.compile(
+    r"^-\s*(Acceptance Criteria \d+):\s*(.+?)\s*$"
+    r"((?:\n[ \t]+(?:\*\*)?(?:Source|TBD):(?:\*\*)?\s*.+)*)",
+    re.MULTILINE,
+)
+_SUB_LINE = re.compile(r"^[ \t]+(?:\*\*)?(Source|TBD):(?:\*\*)?\s*(.+)$", re.MULTILINE)
+_FILE_TOKEN = re.compile(r"(?<![{\w])([\w./-]+\.(?:java|js|ts|tsx|py|xml|xsl|json|csv|md|dita|ditamap))(?![}\w])")
+
+
+def jira_field_body(text: str) -> str:
+    """Render the delivered UAC block for a wiki-rendered Jira field.
+
+    Each criterion becomes a bold 'Acceptance Criteria NN:' label with its
+    Source/TBD lines as bullets. File names go in {{monospace}} so underscores
+    and dashes inside them cannot turn into italics or strikethrough. The
+    'Acceptance Criteria NN' label is not issue-key shaped, so it is not
+    auto-linked. Use jira_comment_body for free-form comments.
+    """
+    blocks = []
+    for match in _AC_BLOCK.finditer(text or ""):
+        label, statement, subs = match.groups()
+        lines = [f"*{label}:* {strip_markup(statement)}"]
+        for kind, value in _SUB_LINE.findall(subs or ""):
+            lines.append(f"* {kind}: {_FILE_TOKEN.sub(r'{{\1}}', strip_markup(value))}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def validate_jira_safe(text: str) -> list[str]:
     """Report residual hazards in a comment body that is NOT wrapped in {noformat}."""
     if isinstance(text, str) and text.lstrip().startswith(_NOFORMAT_OPEN):

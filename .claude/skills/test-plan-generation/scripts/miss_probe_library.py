@@ -43,7 +43,10 @@ VALID_AXES = {
     "TERMINAL_STATE", "LIFECYCLE", "CONFIG_BRANCH", "PERMISSION_ROLE",
     "MIGRATION_PATH", "NEGATIVE_BOUNDARY", "ENTRY_POINT", "REPRO_DIMENSION",
     "DOWNSTREAM_REGRESSION", "LOCALIZATION", "STATE_PARTITION", "REFERENCE_ARTIFACT",
-    "ASSET_UPLOAD_CONFLICT",
+    "ASSET_UPLOAD_CONFLICT", "SHARED_SERVICE_ENTRY_POINTS",
+    "CONDITIONAL_SKIP_PRESERVED_OUTCOMES", "CALLER_SCOPED_LOOKUP_PERMISSIONS",
+    "CONFLICTING_OPERATION_ENTRY_POINTS", "OPERATION_ORDER_SYMMETRY",
+    "FAILURE_BEFORE_DESTRUCTIVE_CLEANUP",
 }
 
 _JIRA_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
@@ -367,6 +370,13 @@ def run_self_tests() -> None:
         assert len([basis for basis in item["technical_basis"] if basis.startswith("case:")]) == 2
         assert candidates_for([("source-summary", "An unrelated dialog closes")], library) == []
         assert candidates_for([("source-summary", source_hash)], library) == [], "provenance never matches"
+
+    # A shipped probe declared ACTIVE must actually be ACTIVE. An unknown axis or a
+    # governance gap otherwise retires it silently and it never fires on any ticket.
+    for shipped in load_library():
+        if str(shipped.get("status", "")).upper() == "ACTIVE":
+            status, reasons = effective_status(shipped)
+            assert status == "ACTIVE", (shipped.get("probe_id"), reasons)
 
 
 def main() -> int:

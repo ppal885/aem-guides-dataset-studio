@@ -188,9 +188,10 @@ def validate(text: str) -> list[str]:
                 )
         if native_ac_empty and criterion["status"] == "Confirmed":
             errors.append(f"line {number}: derived criterion cannot be Confirmed when Jira AC is empty")
-        if destructive.search(line):
+        statement = re.split(r"\bEvidence:", line, maxsplit=1)[0]
+        if destructive.search(statement):
             errors.append(f"line {number}: destructive operational procedure is not a product acceptance criterion")
-        if prescribed.search(line):
+        if prescribed.search(statement):
             errors.append(f"line {number}: acceptance criterion prescribes an unapproved implementation choice")
         evidence = criterion["evidence"]
         if GRAPH_PATH_ONLY_RE.fullmatch(evidence):

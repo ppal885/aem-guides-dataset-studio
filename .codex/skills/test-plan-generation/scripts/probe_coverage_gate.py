@@ -859,7 +859,16 @@ def _covered_axes(manifest: dict[str, Any]) -> set[str]:
     # so it satisfies an ENTRY_POINT probe just like a clarification dimension.
     epe = manifest.get("entry_point_equivalence") if isinstance(manifest, dict) else None
     if isinstance(epe, dict) and isinstance(epe.get("candidates"), list) and epe["candidates"]:
-        axes.add("ENTRY_POINT")
+        axes.update({"ENTRY_POINT", "SHARED_SERVICE_ENTRY_POINTS"})
+    # The changed_service_neighbourhood block is the structured contract for the
+    # shared-service probes; coverage_forcing validates its shape.
+    csn = manifest.get("changed_service_neighbourhood") if isinstance(manifest, dict) else None
+    if isinstance(csn, dict) and csn:
+        axes.update({
+            "SHARED_SERVICE_ENTRY_POINTS",
+            "CONDITIONAL_SKIP_PRESERVED_OUTCOMES",
+            "CALLER_SCOPED_LOOKUP_PERMISSIONS",
+        })
     axes.discard("")
     return axes
 
