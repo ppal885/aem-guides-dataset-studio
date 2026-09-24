@@ -123,6 +123,22 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(jira.calls, [])
         self.assertEqual(common.read_status(self.out / "PROJ-1")["state"], "FAILED")
 
+    def test_config_ticket_list_overrides_jql(self) -> None:
+        config = dict(self.config, tickets=["PROJ-7", "PROJ-8"])
+        jira = FakeJira()
+        seen = []
+        with mock.patch.object(runner, "health", return_value=[]), \
+                mock.patch.object(runner.common, "load_config", return_value=config), \
+                mock.patch.object(runner.common.JiraClient, "from_env", return_value=jira), \
+                mock.patch.object(runner, "process_ticket", side_effect=lambda k, *a: seen.append(k) or "READY"):
+            runner.main(["--config", "unused.json", "--env-file", str(self.out / "missing.env")])
+        run_logger = logging.getLogger("uac-runner")
+        for handler in list(run_logger.handlers):
+            handler.close()
+            run_logger.removeHandler(handler)
+        self.assertEqual(seen, ["PROJ-7", "PROJ-8"])
+        self.assertFalse(any(c[0] == "search" for c in jira.calls))
+
     def test_check_outputs_rejects_missing_files_and_bad_ac_count(self) -> None:
         ticket = self.out / "PROJ-2"
         ticket.mkdir()

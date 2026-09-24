@@ -87,7 +87,8 @@ def jira_field_body(text: str) -> str:
         label, statement, subs = match.groups()
         lines = [f"*{label}:* {strip_markup(statement)}"]
         for kind, value in _SUB_LINE.findall(subs or ""):
-            lines.append(f"* {kind}: {_FILE_TOKEN.sub(r'{{\1}}', strip_markup(value))}")
+            value = _FILE_TOKEN.sub(r"{{\1}}", strip_markup(value))
+            lines.append(f"* {kind}: {value}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 

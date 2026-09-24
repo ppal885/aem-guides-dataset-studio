@@ -1,7 +1,7 @@
 <#
 Registers the two UAC release tasks in Windows Task Scheduler (Windows VM).
 Run once in an elevated PowerShell:
-  .\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.2701.json -EnvFile C:\uac-release\uac.env
+  .\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env
 The env file holds JIRA_BASE_URL, JIRA_PAT and COPILOT_GITHUB_TOKEN; restrict it to the task account.
 #>
 param(
