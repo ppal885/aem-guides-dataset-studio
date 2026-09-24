@@ -17034,6 +17034,8 @@ def test_uac_review_vocabulary_and_verdict_regressions() -> None:
     _, advise = gv.check("- AC-03: the deactivation reaches every publish instance.")
     assert any("deactivation-is-unpublish" in a for a in advise), advise
     assert any("publish-instance-is-publish-environment" in a for a in advise), advise
+    _, advise = gv.check("- AC-04: pages are removed from the live site while output generation runs.")
+    assert any("live-site-is-publish-environment" in a for a in advise), advise
     import validate_test_plan as vtp
     line = "- Main feature coverage: Not covered - no test starts Generate during an unpublish."
     assert vtp.MAIN_FEATURE_COVERAGE_RE.match(line)
