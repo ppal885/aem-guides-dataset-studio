@@ -42,14 +42,69 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
    ```
    Use a Jira account that can only comment, attach and edit fields on these tickets.
 6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.2701.json` and set:
-   - `jql`: which tickets need a UAC. Example for your own release tickets:
-     `project = GUIDES AND fixVersion = "2701" AND "QE Assignee" = currentUser() AND "Acceptance Criteria" is EMPTY AND labels != UAC_Posted`
-   - `approved_scope_jql`: the same release scope, without the label filters.
+   - `jql`: which tickets need a UAC. The example picks your own tickets in the release
+     (`"QE Assignee" = currentUser()`, where current user is the owner of `JIRA_PAT`) whose
+     Acceptance Criteria field is still empty. Keep `(labels is EMPTY OR labels != UAC_Posted)`:
+     plain `labels != X` in JQL also drops tickets that have no labels at all.
+   - `tickets`: optional exact list, e.g. `["GUIDES-12345", "GUIDES-23456"]`. When it is not
+     empty it is used instead of `jql` (useful before the release version or QE Assignee is set).
+   - `approved_scope_jql`: the same release scope, without the Acceptance Criteria and label filters.
    - `output_dir`, `add_dirs`, `mcp_health_url`.
 7. **Check the Copilot flags on your version** with `copilot --help` (the scripts use `-p`, `-s`,
    `--no-ask-user`, `--share`, `--add-dir`, `--allow-all-tools`, `--allow-tool`, `--deny-tool`),
    and confirm that `--deny-tool` wins over `--allow-all-tools`: run one ticket with `--dry-run`
    and check `copilot-transcript.md` shows no Jira write.
+
+## VM commands (Linux; run once, in this order)
+
+Paths below assume clones under `/opt/repos` and state under `/opt/uac-release`; change them to yours.
+
+```bash
+# 1. Copilot CLI (needs Node.js 22 or newer from your approved source)
+node --version
+npm install -g @github/copilot
+copilot --version
+copilot --help            # confirm -p, -s, --no-ask-user, --share, --add-dir, --allow-all-tools, --deny-tool
+
+# 2. Code: the automation branch of Dataset Studio
+cd /opt/repos/aem-guides-dataset-studio
+git fetch origin
+git checkout uac-release-automation     # after the PRs merge: git checkout main && git pull
+
+# 3. Researcher agents for Copilot (.github/agents/*.agent.md)
+python3 .claude/skills/test-plan-generation/scripts/sync_agent_registrations.py
+
+# 4. MCP servers for Copilot (names must match deny_tools in the config)
+#    Jira MCP: the same corp-jira server you use today, built on the VM (node dist/index.js)
+copilot mcp add corp-jira --env JIRA_API_BASE_URL=https://jira.corp.adobe.com --env JIRA_PERSONAL_ACCESS_TOKEN=<jira-pat> -- node /opt/repos/adobe-mcp-servers/src/corp-jira/dist/index.js
+#    Dataset Studio MCP (ask_dita_expert): must answer before anything else works
+curl -sf http://10.42.46.78:4502/mcp/health
+copilot mcp add --transport http --header "Authorization: Bearer <studio-token>" aem-guides-dataset-studio http://10.42.46.78:4502/mcp
+copilot mcp list
+
+# 5. Secrets and config (keep the env file private)
+sudo mkdir -p /opt/uac-release && sudo chown "$USER" /opt/uac-release
+printf 'JIRA_BASE_URL=https://jira.corp.adobe.com\nJIRA_PAT=<jira-pat>\nCOPILOT_GITHUB_TOKEN=<github-token-with-copilot>\n' > /opt/uac-release/uac.env
+chmod 600 /opt/uac-release/uac.env
+cp scripts/uac_release/config.example.json /opt/uac-release/config.2701.json
+nano /opt/uac-release/config.2701.json   # set add_dirs, mcp_health_url; optionally "tickets": [...]
+
+# 6. Check everything offline, then one real ticket without writing to Jira
+python3 -m unittest scripts/uac_release/test_uac_release.py
+python3 scripts/uac_release/uac_release_runner.py --config /opt/uac-release/config.2701.json --env-file /opt/uac-release/uac.env --ticket GUIDES-12345 --dry-run
+cat /opt/uac-release/2701/GUIDES-12345/status.json
+grep -iE "update_jira_issue|add_jira_comment|upload_attachment" /opt/uac-release/2701/GUIDES-12345/copilot-transcript.md   # must print nothing
+
+# 7. Schedule it
+crontab -e        # paste the two lines from scripts/uac_release/uac-release.cron (fix REPO/CONFIG)
+crontab -l
+```
+
+Windows VM: same steps in PowerShell, then register the tasks once (elevated):
+`.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.2701.json -EnvFile C:\uac-release\uac.env`
+
+Daily use: nothing to run. Review each `UAC_Draft` comment in Jira and add `UAC_Approved` (or
+`UAC_Rework` with a comment). Logs: `/opt/uac-release/2701/logs/` and `/opt/uac-release/cron.log`.
 
 ## Run it
 

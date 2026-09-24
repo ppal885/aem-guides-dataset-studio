@@ -1,6 +1,7 @@
 {
-  "jql": "project = GUIDES AND fixVersion = \"2701\" AND labels = UAC_Check AND \"Acceptance Criteria\" is EMPTY AND labels != UAC_Posted",
-  "approved_scope_jql": "project = GUIDES AND fixVersion = \"2701\"",
+  "jql": "project = GUIDES AND fixVersion = \"2701\" AND \"QE Assignee\" = currentUser() AND \"Acceptance Criteria\" is EMPTY AND (labels is EMPTY OR labels != UAC_Posted)",
+  "tickets": [],
+  "approved_scope_jql": "project = GUIDES AND fixVersion = \"2701\" AND \"QE Assignee\" = currentUser()",
   "output_dir": "/opt/uac-release/2701",
   "acceptance_criteria_field": "customfield_13400",
   "mcp_health_url": "http://10.42.46.78:4502/mcp/health",
