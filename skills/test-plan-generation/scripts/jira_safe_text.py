@@ -1,4 +1,4 @@
-"""Jira-safe formatting for anything the skill POSTS into a Jira comment.
+r"""Jira-safe formatting for anything the skill POSTS into a Jira comment.
 
 TWO distinct Jira hazards:
 
@@ -70,7 +70,27 @@ _AC_BLOCK = re.compile(
     re.MULTILINE,
 )
 _SUB_LINE = re.compile(r"^[ \t]+(?:\*\*)?(Source|TBD):(?:\*\*)?\s*(.+)$", re.MULTILINE)
-_FILE_TOKEN = re.compile(r"(?<![{\w])([\w./-]+\.(?:java|js|ts|tsx|py|xml|xsl|json|csv|md|dita|ditamap))(?![}\w])")
+_FILE_TOKEN = re.compile(
+    r"(?<![{\w])([\w./-]+\.(?:java|js|ts|tsx|py|xml|xsl|json|csv|md|dita|ditamap"
+    r"|feature|yaml|yml|properties|txt|sh|html|css))(?![}\w])"
+)
+_MONOSPACE_SPAN = re.compile(r"(\{\{.*?\}\})")
+_BACKSLASH = chr(92)
+
+
+def _escape_wiki_brackets(text: str) -> str:
+    """Escape [ and ] outside {{monospace}} spans. In Jira wiki a bracket pair is a
+    link, so a UI name such as [Home page] would otherwise render as a broken link."""
+    parts = _MONOSPACE_SPAN.split(text or "")
+    return "".join(
+        part if _MONOSPACE_SPAN.fullmatch(part)
+        else part.replace("[", _BACKSLASH + "[").replace("]", _BACKSLASH + "]")
+        for part in parts
+    )
+
+
+def _wiki_text(text: str) -> str:
+    return _escape_wiki_brackets(_FILE_TOKEN.sub(r"{{\1}}", strip_markup(text)))
 
 
 def jira_field_body(text: str) -> str:
@@ -78,19 +98,48 @@ def jira_field_body(text: str) -> str:
 
     Each criterion becomes a bold 'Acceptance Criteria NN:' label with its
     Source/TBD lines as bullets. File names go in {{monospace}} so underscores
-    and dashes inside them cannot turn into italics or strikethrough. The
+    and dashes inside them cannot turn into italics or strikethrough, and
+    square-bracket UI names are escaped so they do not become links. The
     'Acceptance Criteria NN' label is not issue-key shaped, so it is not
     auto-linked. Use jira_comment_body for free-form comments.
     """
     blocks = []
     for match in _AC_BLOCK.finditer(text or ""):
         label, statement, subs = match.groups()
-        lines = [f"*{label}:* {strip_markup(statement)}"]
+        lines = [f"*{label}:* {_wiki_text(statement)}"]
         for kind, value in _SUB_LINE.findall(subs or ""):
-            value = _FILE_TOKEN.sub(r"{{\1}}", strip_markup(value))
-            lines.append(f"* {kind}: {value}")
+            lines.append(f"* {kind}: {_wiki_text(value)}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
+
+
+_MD_HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$")
+_MD_BULLET = re.compile(r"^\s*[-*+]\s+(.+)$")
+_MD_NUMBERED = re.compile(r"^\s*\d+[.)]\s+(.+)$")
+
+
+def jira_wiki_from_markdown(text: str) -> str:
+    """Render a short Markdown note (headings, bullets, numbered lists, paragraphs)
+    as Jira wiki for a comment that should keep its structure, such as a
+    decision request. Headings become bold lines, bullets '*', numbered items '#';
+    brackets are escaped and file names go in {{monospace}}."""
+    out = []
+    for line in (text or "").splitlines():
+        if not line.strip():
+            out.append("")
+            continue
+        heading = _MD_HEADING.match(line)
+        numbered = _MD_NUMBERED.match(line)
+        bullet = _MD_BULLET.match(line)
+        if heading:
+            out.append(f"*{_wiki_text(heading.group(1))}*")
+        elif numbered:
+            out.append(f"# {_wiki_text(numbered.group(1))}")
+        elif bullet:
+            out.append(f"* {_wiki_text(bullet.group(1))}")
+        else:
+            out.append(_wiki_text(line))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
 def validate_jira_safe(text: str) -> list[str]:

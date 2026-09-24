@@ -7,6 +7,11 @@
   "mcp_health_url": "http://10.42.46.78:4502/mcp/health",
   "regenerate_existing": false,
   "lock_max_age_minutes": 720,
+  "decision_comment": {
+    "enabled": true,
+    "mention": ["assignee"],
+    "cc": []
+  },
   "labels": {
     "draft": "UAC_Draft",
     "approved": "UAC_Approved",

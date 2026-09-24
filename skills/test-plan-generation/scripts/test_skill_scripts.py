@@ -14591,6 +14591,31 @@ def test_jira_safe_text() -> None:
     check("wrapped body has no residual markup", "*" not in body and "`" not in body)
     check("validate passes for a noformat-wrapped body", j.validate_jira_safe(body) == [])
 
+    ui_block = (
+        "- Acceptance Criteria 01: Verify that [New] > [Map] opens the [New map] dialog.\n"
+        "  **Source:** guides-ui-tests tests/editor/context_menu_options.feature; config/app_settings.yaml.\n"
+    )
+    field = j.jira_field_body(ui_block)
+    check(
+        "jira_field_body escapes square-bracket UI names so Jira does not turn them into links",
+        "Verify that \\[New\\] > \\[Map\\] opens the \\[New map\\] dialog." in field,
+    )
+    check(
+        "jira_field_body wraps .feature and .yaml paths in monospace",
+        "{{tests/editor/context_menu_options.feature}}" in field and "{{config/app_settings.yaml}}" in field,
+    )
+    check(
+        "bracket escaping leaves monospace spans untouched",
+        j._escape_wiki_brackets("see {{a[0].json}} and [Home page]") == "see {{a[0].json}} and \\[Home page\\]",
+    )
+    note = j.jira_wiki_from_markdown(
+        "### Decision needed\n1. Is a button enough on the [Home page]?\n- Impact: `menu_service.ts` changes."
+    )
+    check(
+        "jira_wiki_from_markdown keeps headings, numbered items and bullets as Jira wiki",
+        note == "*Decision needed*\n# Is a button enough on the \\[Home page\\]?\n* Impact: {{menu_service.ts}} changes.",
+    )
+
     print("test_jira_safe_text: OK")
 
 
