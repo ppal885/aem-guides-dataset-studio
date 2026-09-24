@@ -102,7 +102,7 @@
       "check": "Open the dialog or panel at a high zoom level and small window size: all fields and buttons must be visible and usable (scroll bar where needed).",
       "applies_when": "The change adds or changes a dialog, panel or control.",
       "exclude_when": "No UI surface involved.",
-      "trigger": "\\b(dialog|scroll|visible|zoom|resolution|interactable)\\b",
+      "trigger": "\\b(dialog|pop-?up|modal)\\b[^.\\n]{0,80}\\b(scroll\\w*|zoom\\w*|resolution|cut off|overlap\\w*|not visible|hidden)\\b|\\b(zoom\\w*|resolution)\\b",
       "train_support_jiras": 16
     },
     {
@@ -212,7 +212,7 @@
       "check": "Send a request the change should block (for example a rename that is not allowed): the API must refuse it with a clear error and change nothing.",
       "applies_when": "The change adds a restriction or validation.",
       "exclude_when": "No new restriction.",
-      "trigger": "\\b(reject|rejects|blocked|block|ignore|not allowed|error)\\w*",
+      "trigger": "\\b(api|servlet|endpoint|rest call)\\b[^.\\n]{0,80}\\b(reject\\w*|block\\w*|not allowed|refus\\w*|4\\d\\d)\\b|\\b(reject\\w*|block\\w*|not allowed|refus\\w*)\\b[^.\\n]{0,80}\\b(api|servlet|endpoint)\\b",
       "train_support_jiras": 4
     },
     {
@@ -222,7 +222,7 @@
       "check": "Repeat with each way content enters the repository that applies: Editor, API, desktop tool, Oxygen, package or zip upload.",
       "applies_when": "Content can be created or updated by more than one route.",
       "exclude_when": "Only one route exists.",
-      "trigger": "\\b(oxygen|zip|package|desktop tool|upload)\\b",
+      "trigger": "\\b(oxygen|zip upload|zip extract|package manager|pkgmgr|crx package|desktop (tool|app)|webdav|assets api|upload api)\\b",
       "train_support_jiras": 4
     }
   ]
