@@ -41,6 +41,14 @@ COVERAGE = [
     {"source": "attachment:shot.png", "text": "screenshot of the report", "disposition": "AC", "ac": 1},
 ]
 
+SURFACES = [
+    {"surface": "Map console", "evidence": ["https://experienceleague.adobe.com/report", "src/views/report_panel.json:12"],
+     "disposition": "AC", "ac": 1},
+    {"surface": "Report dialog", "evidence": ["src/controllers/report_dialog.ts:40"], "disposition": "TBD", "ac": 2},
+    {"surface": "Email notification", "evidence": ["https://experienceleague.adobe.com/notify"],
+     "disposition": "OUT_OF_SCOPE", "reason": "the email is sent by another product"},
+]
+
 
 class FakeJira:
     def __init__(self, field_value: str = "", rendered_ok: bool = True, source=None) -> None:
@@ -113,7 +121,8 @@ def make_config(out: Path) -> dict:
 
 
 def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = "", doc_research=DOC_RESEARCH,
-                 transcript: str = "task agent_type=uac-doc-researcher -> result", coverage=COVERAGE):
+                 transcript: str = "task agent_type=uac-doc-researcher -> result", coverage=COVERAGE,
+                 surfaces=SURFACES):
     def run(cmd, **kwargs):
         prompt = cmd[cmd.index("-p") + 1]
         if write_files:
@@ -126,6 +135,8 @@ def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = "", do
                 (uac_path.parent / common.DOC_RESEARCH_FILE).write_text(json.dumps(doc_research), encoding="utf-8")
             if coverage is not None:
                 (uac_path.parent / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
+            if surfaces is not None:
+                (uac_path.parent / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(surfaces), encoding="utf-8")
             share = next(a.split("=", 1)[1] for a in cmd if a.startswith("--share="))
             Path(share).write_text(prompt + chr(10) + transcript, encoding="utf-8")
         return subprocess.CompletedProcess(cmd, returncode, "done", "")
@@ -288,6 +299,39 @@ class RunnerTests(unittest.TestCase):
         empty_reason = COVERAGE[:2] + [dict(COVERAGE[2], reason="n/a")] + COVERAGE[3:]
         self.assertTrue(any("needs a concrete reason" in p for p in problems(empty_reason)))
         self.assertTrue(any("not one of" in p for p in problems([dict(COVERAGE[0], disposition="MAYBE")] + COVERAGE[1:])))
+
+    def test_ticket_without_surface_inventory_is_not_posted(self) -> None:
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, surfaces=None)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "FAILED")
+        self.assertEqual(jira.calls, [])
+        problems = common.read_status(self.out / "PROJ-1")["problems"]
+        self.assertTrue(any("places the feature appears were not listed" in p for p in problems))
+
+    def test_surface_inventory_problems(self) -> None:
+        ticket = self.out / "PROJ-5"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+
+        def problems(entries):
+            (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(entries), encoding="utf-8")
+            return runner.surface_inventory_problems(ticket)
+
+        self.assertEqual(problems(SURFACES), [])
+        self.assertTrue(any("non-empty JSON list" in p for p in problems([])))
+        unnamed = [dict(SURFACES[0], surface="Review UI")] + SURFACES[1:]
+        self.assertTrue(any("does not name this surface" in p for p in problems(unnamed)))
+        self.assertTrue(any("cites no code reference" in p
+                            for p in problems([dict(s, evidence=[e for e in s["evidence"] if e.startswith("https")]
+                                                    or ["https://experienceleague.adobe.com/a"]) for s in SURFACES])))
+        self.assertTrue(any("cites no documentation page" in p
+                            for p in problems([dict(s, evidence=["src/a.ts:1"]) for s in SURFACES])))
+        self.assertTrue(any("must be a documentation URL" in p
+                            for p in problems([dict(SURFACES[0], evidence=["looked at the code"])] + SURFACES[1:])))
+        self.assertTrue(any("has no TBD line" in p for p in problems([dict(SURFACES[1], ac=1)] + SURFACES[:1])))
+        self.assertTrue(any("needs a concrete reason" in p
+                            for p in problems(SURFACES[:2] + [dict(SURFACES[2], reason="n/a")])))
 
     def test_check_outputs_rejects_missing_files_and_bad_ac_count(self) -> None:
         ticket = self.out / "PROJ-2"

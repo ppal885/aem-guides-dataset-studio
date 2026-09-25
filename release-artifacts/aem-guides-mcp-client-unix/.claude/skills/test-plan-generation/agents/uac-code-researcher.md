@@ -46,6 +46,11 @@ reasoning never rests on inference when implementation materially affects it.
 - Keep frontend and backend behavior distinct: never infer one side from the
   other; a cross-repository fix needs findings from each repository with its
   own provenance.
+- When the question or change touches a widget, panel, component, service or
+  API, search the repositories for every place it is reused (view id, component
+  name, import, route or endpoint) and return one finding per consumer screen
+  with its path and line. A shared widget changes every screen that embeds it;
+  never stop at the first screen that matches.
 
 ## Boundaries (the Researcher must NOT)
 

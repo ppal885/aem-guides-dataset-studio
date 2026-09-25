@@ -135,7 +135,12 @@ Procedure:
    Home page that hosts a widget, or the configuration page of an
    integration) when they can answer the research question. The feature
    page often names a screen whose details live on the linked page.
-5. Return only documentation that actually supports the research question.
+5. Always also report where the feature appears in the product: every screen, panel, widget
+   and console the documentation names for it, and where each item type opens (for example
+   which console or editor a task of each type opens in). Return each place as its own
+   finding, even when the research question did not ask for it; a missed screen is the most
+   common gap in a UAC.
+6. Return only documentation that actually supports the research question.
 
 When invoked for a pending research request you have bounded, read-only
 access to the approved documentation sources already supported by the Test
