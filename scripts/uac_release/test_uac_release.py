@@ -1,6 +1,7 @@
 """Offline tests for the UAC release automation (fake Jira, stubbed Copilot CLI)."""
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import sys
@@ -65,6 +66,14 @@ DECISIONS = (
 )
 
 
+DOC_RESEARCH = {
+    "status": "ANSWER_FOUND",
+    "findings": [{"claim": "The Home page lists tasks.", "evidence_role": "EXISTING_BEHAVIOR",
+                  "source_refs": ["doc:home"], "provenance": {"locator": "https://experienceleague.adobe.com/home"}}],
+    "source_refs": ["doc:home"], "applicability": "Cloud Service", "limitations": [], "conflicts": [],
+}
+
+
 def make_config(out: Path) -> dict:
     return {
         "jql": "project = PROJ",
@@ -76,7 +85,8 @@ def make_config(out: Path) -> dict:
     }
 
 
-def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = ""):
+def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = "", doc_research=DOC_RESEARCH,
+                 transcript: str = "task agent_type=uac-doc-researcher -> result"):
     def run(cmd, **kwargs):
         prompt = cmd[cmd.index("-p") + 1]
         if write_files:
@@ -85,6 +95,10 @@ def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = ""):
             (uac_path.parent / common.PLAN_FILE).write_text("plan", encoding="utf-8")
             if decisions:
                 (uac_path.parent / common.DECISIONS_FILE).write_text(decisions, encoding="utf-8")
+            if doc_research is not None:
+                (uac_path.parent / common.DOC_RESEARCH_FILE).write_text(json.dumps(doc_research), encoding="utf-8")
+            share = next(a.split("=", 1)[1] for a in cmd if a.startswith("--share="))
+            Path(share).write_text(prompt + chr(10) + transcript, encoding="utf-8")
         return subprocess.CompletedProcess(cmd, returncode, "done", "")
     return run
 
@@ -162,6 +176,42 @@ class RunnerTests(unittest.TestCase):
             handler.close()
             run_logger.removeHandler(handler)
         self.assertIn(("search", config["jql"], 10), jira.calls)
+
+    def test_ticket_without_doc_researcher_result_is_not_posted(self) -> None:
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, doc_research=None)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "FAILED")
+        self.assertEqual(jira.calls, [])
+        problems = common.read_status(self.out / "PROJ-1")["problems"]
+        self.assertTrue(any("Doc Researcher did not run" in p for p in problems))
+
+    def test_doc_researcher_must_appear_in_transcript_beyond_the_prompt(self) -> None:
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, transcript="done without research")), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "FAILED")
+        self.assertEqual(jira.calls, [])
+        problems = common.read_status(self.out / "PROJ-1")["problems"]
+        self.assertTrue(any("transcript shows no uac-doc-researcher run" in p for p in problems))
+
+    def test_doc_research_result_is_checked(self) -> None:
+        ticket = self.out / "PROJ-3"
+        ticket.mkdir()
+        (ticket / "copilot-transcript.md").write_text("uac-doc-researcher ran", encoding="utf-8")
+        cases = [
+            ({"status": "FAILED"}, "expected one of"),
+            ({"status": "ANSWER_FOUND", "findings": []}, "no findings"),
+            ({"status": "NOT_FOUND", "limitations": []}, "without limitations"),
+            ({"status": "PARTIAL", "findings": [{"claim": "x", "source_refs": ["doc:a"]}]}, "provenance locator"),
+        ]
+        for result, expected in cases:
+            (ticket / common.DOC_RESEARCH_FILE).write_text(json.dumps(result), encoding="utf-8")
+            self.assertTrue(any(expected in p for p in runner.doc_research_problems(ticket, "")), expected)
+        (ticket / common.DOC_RESEARCH_FILE).write_text(
+            json.dumps({"status": "NOT_FOUND", "limitations": ["searched Experience League Workfront pages"]}),
+            encoding="utf-8")
+        self.assertEqual(runner.doc_research_problems(ticket, ""), [])
 
     def test_check_outputs_rejects_missing_files_and_bad_ac_count(self) -> None:
         ticket = self.out / "PROJ-2"
