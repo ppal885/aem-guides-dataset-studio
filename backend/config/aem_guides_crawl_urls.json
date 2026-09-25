@@ -459,7 +459,12 @@
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-use-variables",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/native-pdf-variables",
     "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output",
-    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-use-map-collection-output-generation"
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/generate-output-use-map-collection-output-generation",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/workfront-integration/workfront-integration",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/home-page/intro-home-page",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/home-page/home-page-repository-view",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-integrations/conf-workfront",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2025-releases/2502-release/whats-new-2025-02-0"
   ],
   "recursive": {
     "enabled": false,
