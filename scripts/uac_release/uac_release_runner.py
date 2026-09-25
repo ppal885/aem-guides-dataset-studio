@@ -110,8 +110,11 @@ def doc_research_problems(ticket_dir: Path, prompt: str) -> list[str]:
         if cites_doc and not (finding.get("provenance") or {}).get("locator"):
             problems.append(f"UAC Doc Researcher finding {number} cites a doc: source without a provenance locator")
     transcript = ticket_dir / "copilot-transcript.md"
-    shown = transcript.read_text(encoding="utf-8", errors="replace").count(DOC_RESEARCHER) if transcript.is_file() else 0
-    if shown <= prompt.count(DOC_RESEARCHER):
+    text = transcript.read_text(encoding="utf-8", errors="replace") if transcript.is_file() else ""
+    echoed = prompt.count(DOC_RESEARCHER)
+    if prompt and prompt in text:
+        text, echoed = text.replace(prompt, ""), 0
+    if text.count(DOC_RESEARCHER) <= echoed:
         problems.append(f"the Copilot transcript shows no {DOC_RESEARCHER} run")
     return problems
 
