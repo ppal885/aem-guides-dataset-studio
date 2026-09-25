@@ -5,9 +5,11 @@ One scheduled run:
   1. health checks: Jira auth, Dataset Studio MCP health URL, Copilot CLI present;
   2. finds tickets with the configured JQL;
   3. runs `copilot -p` once per ticket with the test-plan-generation skill, writing
-     UAC.md, test-plan.md and the UAC Doc Researcher result into <output_dir>/<KEY>/;
-  4. checks the files (plan validator, AC count 1-10, blocked vocabulary) and that the
-     UAC Doc Researcher actually ran;
+     UAC.md, test-plan.md, the UAC Doc Researcher result and the source coverage map
+     into <output_dir>/<KEY>/;
+  4. checks the files (plan validator, AC count 1-10, blocked vocabulary), that the
+     UAC Doc Researcher actually ran, and that every sentence of the live Jira
+     description and comments, and every attachment, is mapped to the UAC;
   5. posts a draft comment with the plan attached and adds the draft label. When the
      UAC has TBDs, the draft also shows the decision request that the poster will send
      to the ticket after QE approval (DECISIONS.md).
@@ -46,7 +48,24 @@ When finished, write these files:
 4. {doc_research_path}: the result of the UAC Doc Researcher (uac-doc-researcher agent), written
    unchanged as the strict JSON object the agent returned. Run that agent for every ticket before
    writing the Acceptance Criteria; ask_dita_expert answers never replace it.
+5. {source_coverage_path}: a JSON list that maps EVERY sentence and bullet of the Jira description,
+   every sentence of every comment (skip comments posted by this automation), and every
+   attachment to the UAC, before you write it. One object per item:
+   {{"source": "description" | "comment:<id>" | "attachment:<filename>", "text": "<the exact
+   sentence, copied>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
+   "ac": <Acceptance Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE and
+   NOT_MATERIAL>"}}. A TBD must point at the Acceptance Criterion whose TBD line asks it.
 Write in simple English with AEM Guides names a QE sees on screen."""
+SOURCE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE", "NOT_MATERIAL")
+EMPTY_REASONS = {"", "n/a", "na", "none", "tbd", "-", "not material", "out of scope"}
+MIN_CLAUSE_WORDS = 4
+_SKIPPED_BLOCK = re.compile(r"\{(code|noformat)[^}]*\}.*?\{\1\}", re.S | re.I)
+_WIKI_LINK = re.compile(r"\[([^|\]]*)\|[^\]]*\]")
+_MENTION = re.compile(r"\[~[^\]]*\]")
+_EMBED = re.compile(r"![^!\s][^!]*!")
+_HEADING = re.compile(r"^h[1-6]\.\s*")
+_BULLET = re.compile(r"^\s*(?:[*#-]+)\s+")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 DOC_RESEARCHER = "uac-doc-researcher"
 DOC_RESEARCH_STATUSES = ("ANSWER_FOUND", "PARTIAL", "NOT_FOUND", "SOURCE_UNAVAILABLE", "CONFLICTED")
 DECISION_SECTIONS = ("### What we found", "### Decision needed", "### Impact on the Acceptance Criteria")
@@ -119,6 +138,71 @@ def doc_research_problems(ticket_dir: Path, prompt: str) -> list[str]:
     return problems
 
 
+def _normalize(text: str) -> str:
+    text = re.sub(r"[*_{}|+^~`\"'\u2018\u2019\u201c\u201d]", " ", text.lower())
+    return " ".join(text.split()).strip(" .,:;!?-")
+
+
+def source_clauses(source: dict, own_name: str = "") -> list[tuple[str, str]]:
+    """Split the live Jira description and human comments into sentences a UAC must cover."""
+    parts = [("description", source.get("description") or "")]
+    parts += [(f"comment:{c['id']}", c.get("body") or "") for c in source.get("comments") or []
+              if not own_name or c.get("author") != own_name]
+    clauses = []
+    for label, text in parts:
+        text = _EMBED.sub(" ", _MENTION.sub(" ", _WIKI_LINK.sub(r"\1", _SKIPPED_BLOCK.sub(" ", text))))
+        for line in text.splitlines():
+            line = _BULLET.sub("", _HEADING.sub("", line.strip()))
+            for sentence in _SENTENCE_END.split(line):
+                clause = _normalize(sentence)
+                if len(clause.split()) >= MIN_CLAUSE_WORDS:
+                    clauses.append((label, clause))
+    return clauses
+
+
+def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "") -> list[str]:
+    """Return problems unless every Jira sentence and attachment is mapped to the UAC."""
+    path = ticket_dir / common.SOURCE_COVERAGE_FILE
+    if not path.is_file():
+        return [f"{common.SOURCE_COVERAGE_FILE} was not written: the ticket was not mapped to the UAC"]
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError as exc:
+        return [f"{common.SOURCE_COVERAGE_FILE} is not valid JSON: {exc}"]
+    if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
+        return [f"{common.SOURCE_COVERAGE_FILE} must be a JSON list of objects"]
+    uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
+    blocks = {int(n): body for n, body in re.findall(
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|\Z)", uac, re.M | re.S)}
+    problems = []
+    for number, entry in enumerate(entries, 1):
+        disposition = entry.get("disposition")
+        if disposition not in SOURCE_DISPOSITIONS:
+            problems.append(f"source coverage item {number}: disposition {disposition!r} is not one of "
+                            f"{', '.join(SOURCE_DISPOSITIONS)}")
+        elif disposition in ("AC", "TBD"):
+            ac = entry.get("ac")
+            if not isinstance(ac, int) or ac not in blocks:
+                problems.append(f"source coverage item {number}: Acceptance Criteria {ac!r} does not exist in UAC.md")
+            elif disposition == "TBD" and "TBD:" not in blocks[ac]:
+                problems.append(f"source coverage item {number}: Acceptance Criteria {ac} has no TBD line")
+        elif str(entry.get("reason") or "").strip().lower() in EMPTY_REASONS:
+            problems.append(f"source coverage item {number}: {disposition} needs a concrete reason")
+    covered = [_normalize(str(e.get("text") or "")) for e in entries]
+    missing = [(label, clause) for label, clause in source_clauses(source, own_name)
+               if not any(clause in text for text in covered)]
+    if missing:
+        shown = "; ".join(f"{label}: \"{clause[:80]}\"" for label, clause in missing[:5])
+        problems.append(f"{len(missing)} Jira sentence(s) are not mapped to the UAC, e.g. {shown}")
+    mapped_files = {str(e.get("source") or "")[len("attachment:"):] for e in entries
+                    if str(e.get("source") or "").startswith("attachment:")}
+    for attachment in source.get("attachments") or []:
+        name = attachment.get("filename")
+        if name and name not in mapped_files and (not own_name or attachment.get("author") != own_name):
+            problems.append(f"attachment {name} is not mapped to the UAC")
+    return problems
+
+
 def check_outputs(ticket_dir: Path) -> list[str]:
     """Return problems with the generated files; an empty list means ready to draft."""
     problems = []
@@ -180,11 +264,12 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
-                 common.DOC_RESEARCH_FILE):
+                 common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
-                           doc_research_path=ticket_dir / common.DOC_RESEARCH_FILE)
+                           doc_research_path=ticket_dir / common.DOC_RESEARCH_FILE,
+                           source_coverage_path=ticket_dir / common.SOURCE_COVERAGE_FILE)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()
@@ -199,6 +284,16 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     status.update({"key": key, "copilot_exit": exit_code, "copilot_seconds": round(time.time() - started)})
     problems = (check_outputs(ticket_dir) + doc_research_problems(ticket_dir, prompt)
                 if exit_code == 0 else [f"Copilot CLI exit {exit_code}"])
+    if exit_code == 0:
+        try:
+            source = jira.get_source(key)
+            own_name = str((jira.myself() or {}).get("name") or "")
+        except Exception as exc:  # noqa: BLE001 - without the live ticket text the UAC cannot be checked
+            problems.append(f"could not read the Jira ticket to check source coverage: {exc}")
+        else:
+            (ticket_dir / common.JIRA_SOURCE_FILE).write_text(
+                json.dumps(source, indent=2, ensure_ascii=False), encoding="utf-8")
+            problems += source_coverage_problems(ticket_dir, source, own_name)
     if problems:
         status.update(state="FAILED", problems=problems)
         common.write_status(ticket_dir, status)

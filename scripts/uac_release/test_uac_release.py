@@ -24,11 +24,38 @@ UAC = (
 )
 
 
+SOURCE = {
+    "description": "*Requirement*\nThe report must open from the Map console.\n* An empty report should show a message.\n!shot.png!",
+    "comments": [
+        {"id": "7", "author": "support.eng", "body": "Please also check that the export button works. [~dev.lead]"},
+        {"id": "8", "author": "uac.bot", "body": "Draft UAC ready for QE review with four criteria."},
+    ],
+    "attachments": [{"filename": "shot.png", "author": "support.eng"},
+                    {"filename": "PROJ-1-test-plan.md", "author": "uac.bot"}],
+}
+COVERAGE = [
+    {"source": "description", "text": "The report must open from the Map console.", "disposition": "AC", "ac": 1},
+    {"source": "description", "text": "An empty report should show a message.", "disposition": "TBD", "ac": 2},
+    {"source": "comment:7", "text": "Please also check that the export button works.", "disposition": "OUT_OF_SCOPE",
+     "reason": "export is a separate feature with its own ticket"},
+    {"source": "attachment:shot.png", "text": "screenshot of the report", "disposition": "AC", "ac": 1},
+]
+
+
 class FakeJira:
-    def __init__(self, field_value: str = "", rendered_ok: bool = True) -> None:
+    def __init__(self, field_value: str = "", rendered_ok: bool = True, source=None) -> None:
         self.field_value = field_value
         self.rendered_ok = rendered_ok
+        self.source = SOURCE if source is None else source
         self.calls: list[tuple] = []
+
+    def myself(self):
+        return {"name": "uac.bot"}
+
+    def get_source(self, key):
+        if isinstance(self.source, Exception):
+            raise self.source
+        return self.source
 
     def search_keys(self, jql: str, max_results: int = 100) -> list[str]:
         self.calls.append(("search", jql, max_results))
@@ -86,7 +113,7 @@ def make_config(out: Path) -> dict:
 
 
 def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = "", doc_research=DOC_RESEARCH,
-                 transcript: str = "task agent_type=uac-doc-researcher -> result"):
+                 transcript: str = "task agent_type=uac-doc-researcher -> result", coverage=COVERAGE):
     def run(cmd, **kwargs):
         prompt = cmd[cmd.index("-p") + 1]
         if write_files:
@@ -97,6 +124,8 @@ def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = "", do
                 (uac_path.parent / common.DECISIONS_FILE).write_text(decisions, encoding="utf-8")
             if doc_research is not None:
                 (uac_path.parent / common.DOC_RESEARCH_FILE).write_text(json.dumps(doc_research), encoding="utf-8")
+            if coverage is not None:
+                (uac_path.parent / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
             share = next(a.split("=", 1)[1] for a in cmd if a.startswith("--share="))
             Path(share).write_text(prompt + chr(10) + transcript, encoding="utf-8")
         return subprocess.CompletedProcess(cmd, returncode, "done", "")
@@ -212,6 +241,53 @@ class RunnerTests(unittest.TestCase):
             json.dumps({"status": "NOT_FOUND", "limitations": ["searched Experience League Workfront pages"]}),
             encoding="utf-8")
         self.assertEqual(runner.doc_research_problems(ticket, ""), [])
+
+    def test_ticket_without_source_coverage_is_not_posted(self) -> None:
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, coverage=None)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "FAILED")
+        self.assertEqual(jira.calls, [])
+        problems = common.read_status(self.out / "PROJ-1")["problems"]
+        self.assertTrue(any("was not mapped to the UAC" in p for p in problems))
+
+    def test_unreadable_jira_source_fails_closed(self) -> None:
+        jira = FakeJira(source=RuntimeError("HTTP 503"))
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=True), "FAILED")
+        problems = common.read_status(self.out / "PROJ-1")["problems"]
+        self.assertTrue(any("could not read the Jira ticket" in p for p in problems))
+
+    def test_source_clauses_skip_markup_mentions_and_own_comments(self) -> None:
+        clauses = runner.source_clauses(SOURCE, own_name="uac.bot")
+        self.assertEqual(clauses, [
+            ("description", "the report must open from the map console"),
+            ("description", "an empty report should show a message"),
+            ("comment:7", "please also check that the export button works"),
+        ])
+
+    def test_source_coverage_problems(self) -> None:
+        ticket = self.out / "PROJ-4"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+
+        def problems(entries):
+            (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(entries), encoding="utf-8")
+            return runner.source_coverage_problems(ticket, SOURCE, own_name="uac.bot")
+
+        self.assertEqual(problems(COVERAGE), [])
+        found = problems(COVERAGE[1:])
+        self.assertTrue(any("1 Jira sentence(s) are not mapped" in p and "map console" in p for p in found))
+        found = problems(COVERAGE[:3])
+        self.assertIn("attachment shot.png is not mapped to the UAC", found)
+        wrong_tbd = [dict(COVERAGE[0], disposition="TBD")] + COVERAGE[1:]
+        self.assertTrue(any("has no TBD line" in p for p in problems(wrong_tbd)))
+        missing_ac = [dict(COVERAGE[0], ac=7)] + COVERAGE[1:]
+        self.assertTrue(any("does not exist in UAC.md" in p for p in problems(missing_ac)))
+        empty_reason = COVERAGE[:2] + [dict(COVERAGE[2], reason="n/a")] + COVERAGE[3:]
+        self.assertTrue(any("needs a concrete reason" in p for p in problems(empty_reason)))
+        self.assertTrue(any("not one of" in p for p in problems([dict(COVERAGE[0], disposition="MAYBE")] + COVERAGE[1:])))
 
     def test_check_outputs_rejects_missing_files_and_bad_ac_count(self) -> None:
         ticket = self.out / "PROJ-2"
