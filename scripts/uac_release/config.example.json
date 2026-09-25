@@ -1,5 +1,5 @@
 {
-  "jql": "project = GUIDES AND fixVersion = \"2701\" AND issuetype = \"Customer Request\" AND \"QE Assignee\" = currentUser() AND resolution = Unresolved AND \"Acceptance Criteria\" is EMPTY AND (labels is EMPTY OR labels != UAC_Posted)",
+  "jql": "project = GUIDES AND fixVersion = \"2701\" AND issuetype = \"Customer Request\" AND \"QE Assignee\" = currentUser() AND resolution = Unresolved AND \"Acceptance Criteria\" is EMPTY AND (labels is EMPTY OR labels != QEVision_UAC_DONE)",
   "tickets": [],
   "approved_scope_jql": "project = GUIDES AND fixVersion = \"2701\" AND issuetype = \"Customer Request\" AND \"QE Assignee\" = currentUser()",
   "output_dir": "/opt/uac-release/runs",
@@ -15,7 +15,7 @@
   "labels": {
     "draft": "UAC_Draft",
     "approved": "UAC_Approved",
-    "posted": "UAC_Posted",
+    "posted": "QEVision_UAC_DONE",
     "rework": "UAC_Rework"
   },
   "copilot": {
