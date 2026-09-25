@@ -112,9 +112,16 @@ Procedure:
    request's `documentation_queries` seeds.
 3. Bounded discovery means: refine terms and try the NEXT candidate or a
    new query when a candidate 404s, is unrelated, or fails - a failed fetch
-   is never "no documentation exists". At most 4 fetch attempts per
-   request.
-4. Return only documentation that actually supports the research question.
+   is never "no documentation exists", and neither is an empty or off-topic
+   `rag_candidates` list: the index does not hold every product page, so
+   search Experience League directly before concluding a page does not
+   exist. At most 8 fetch attempts per request.
+4. When you find the product page that documents the feature, also open the
+   pages it links to in the same product documentation (for example the
+   Home page that hosts a widget, or the configuration page of an
+   integration) when they can answer the research question. The feature
+   page often names a screen whose details live on the linked page.
+5. Return only documentation that actually supports the research question.
 
 When invoked for a pending research request you have bounded, read-only
 access to the approved documentation sources already supported by the Test
