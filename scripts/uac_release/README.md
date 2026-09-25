@@ -22,6 +22,23 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
 | `UAC_Rework` | QE wants changes (leave a comment); remove `QEVision_UAC_DONE`/set `regenerate_existing` to redo | QE |
 | `QEVision_UAC_DONE` | Draft copied into the Acceptance Criteria field | poster |
 
+## Every line of the ticket is mapped
+
+Before writing the UAC, Copilot writes `SOURCE_COVERAGE.json`: one entry for every sentence and
+bullet of the Jira description, every sentence of every comment, and every attachment, each
+marked `AC`, `TBD`, `OUT_OF_SCOPE` or `NOT_MATERIAL` (with the Acceptance Criteria number, or a
+reason). The runner reads the live ticket itself (saved as `jira-source.json`), splits it into
+sentences, and marks the ticket `FAILED` when:
+- `SOURCE_COVERAGE.json` is missing or is not a JSON list;
+- any description or comment sentence (4 words or more) is not in the map;
+- an attachment is not in the map;
+- an entry points at an Acceptance Criterion that does not exist, a `TBD` points at one with no
+  TBD line, or `OUT_OF_SCOPE` / `NOT_MATERIAL` has no concrete reason;
+- the ticket cannot be read from Jira (the check fails closed).
+
+Comments and attachments posted by the automation's own Jira account are skipped. Text inside
+`{code}` and `{noformat}` blocks is not split into sentences.
+
 ## UAC Doc Researcher is required
 
 Every ticket must run the UAC Doc Researcher (`uac-doc-researcher` agent). Copilot writes its
