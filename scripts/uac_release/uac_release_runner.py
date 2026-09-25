@@ -226,7 +226,8 @@ def main(argv: list[str] | None = None) -> int:
             for p in problems:
                 logger.error("health: %s", p)
             return 2
-        keys = args.ticket or config.get("tickets") or jira.search_keys(config["jql"])
+        keys = args.ticket or config.get("tickets") or jira.search_keys(
+            config["jql"], int(config.get("max_tickets", 100)))
         logger.info("tickets: %s", ", ".join(keys) or "none")
         results = {key: process_ticket(key, config, jira, logger, args.dry_run) for key in keys}
     logger.info("summary: %s", results)
