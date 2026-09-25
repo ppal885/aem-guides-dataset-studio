@@ -30,7 +30,7 @@ class FakeJira:
         self.calls: list[tuple] = []
 
     def search_keys(self, jql: str, max_results: int = 100) -> list[str]:
-        self.calls.append(("search", jql))
+        self.calls.append(("search", jql, max_results))
         return ["PROJ-1"]
 
     def get_field(self, key, field, rendered=False):
@@ -151,6 +151,17 @@ class RunnerTests(unittest.TestCase):
             run_logger.removeHandler(handler)
         self.assertEqual(seen, ["PROJ-7", "PROJ-8"])
         self.assertFalse(any(c[0] == "search" for c in jira.calls))
+
+    def test_jql_search_is_capped_by_max_tickets(self) -> None:
+        config = dict(self.config, max_tickets=10)
+        jira = FakeJira()
+        with mock.patch.object(runner, "health", return_value=[]),                 mock.patch.object(runner.common, "load_config", return_value=config),                 mock.patch.object(runner.common.JiraClient, "from_env", return_value=jira),                 mock.patch.object(runner, "process_ticket", return_value="READY"):
+            runner.main(["--config", "unused.json", "--env-file", str(self.out / "missing.env")])
+        run_logger = logging.getLogger("uac-runner")
+        for handler in list(run_logger.handlers):
+            handler.close()
+            run_logger.removeHandler(handler)
+        self.assertIn(("search", config["jql"], 10), jira.calls)
 
     def test_check_outputs_rejects_missing_files_and_bad_ac_count(self) -> None:
         ticket = self.out / "PROJ-2"

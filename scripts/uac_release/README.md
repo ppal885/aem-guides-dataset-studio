@@ -64,13 +64,16 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    Use a Jira account that can only comment, attach and edit fields on these tickets.
 6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.json` and set:
    - `jql`: which tickets need a UAC. The example picks open Customer Request tickets with
-     fix version `2701` where you are QE Assignee (`currentUser()` is the owner of `JIRA_PAT`)
+     fix version `2701` in the current sprint (`sprint in openSprints()`), whoever the QE is,
      and the Acceptance Criteria field is still empty. Change `2701` for each release. Keep
      `resolution = Unresolved` so closed tickets are skipped. Keep `(labels is EMPTY OR labels != QEVision_UAC_DONE)`:
      plain `labels != X` in JQL also drops tickets that have no labels at all.
    - `tickets`: optional exact list, e.g. `["GUIDES-12345", "GUIDES-23456"]`. When it is not
-     empty it is used instead of `jql` (useful before the fix version or QE Assignee is set).
-   - `approved_scope_jql`: the same fix version, issue type and QE Assignee scope, without the other filters.
+     empty it is used instead of `jql` (useful before the fix version or sprint is set).
+   - `max_tickets`: the most tickets one nightly run takes from `jql` (default 100). Tickets
+     left over are picked up the next night.
+   - `approved_scope_jql`: the same fix version and issue type, without the sprint or other filters,
+     so an approved ticket is still posted after the sprint ends.
    - `output_dir`, `add_dirs`, `mcp_health_url`.
 7. **Check the Copilot flags on your version** with `copilot --help` (the scripts use `-p`, `-s`,
    `--no-ask-user`, `--share`, `--add-dir`, `--allow-all-tools`, `--allow-tool`, `--deny-tool`),
