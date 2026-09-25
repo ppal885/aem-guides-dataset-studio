@@ -5,8 +5,9 @@ One scheduled run:
   1. health checks: Jira auth, Dataset Studio MCP health URL, Copilot CLI present;
   2. finds tickets with the configured JQL;
   3. runs `copilot -p` once per ticket with the test-plan-generation skill, writing
-     UAC.md and test-plan.md into <output_dir>/<KEY>/;
-  4. checks the files (plan validator, AC count 1-10, blocked vocabulary);
+     UAC.md, test-plan.md and the UAC Doc Researcher result into <output_dir>/<KEY>/;
+  4. checks the files (plan validator, AC count 1-10, blocked vocabulary) and that the
+     UAC Doc Researcher actually ran;
   5. posts a draft comment with the plan attached and adds the draft label. When the
      UAC has TBDs, the draft also shows the decision request that the poster will send
      to the ticket after QE approval (DECISIONS.md).
@@ -18,6 +19,7 @@ only filled later by uac_approved_poster.py, after QE adds the approval label.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import subprocess
@@ -41,7 +43,12 @@ When finished, write these files:
    or code file), "### Decision needed" (a numbered list, one question per open TBD), and
    "### Impact on the Acceptance Criteria" (bullets saying which Acceptance Criteria each answer
    changes). No greeting, no names, no mentions. Do not write this file when there is no TBD.
+4. {doc_research_path}: the result of the UAC Doc Researcher (uac-doc-researcher agent), written
+   unchanged as the strict JSON object the agent returned. Run that agent for every ticket before
+   writing the Acceptance Criteria; ask_dita_expert answers never replace it.
 Write in simple English with AEM Guides names a QE sees on screen."""
+DOC_RESEARCHER = "uac-doc-researcher"
+DOC_RESEARCH_STATUSES = ("ANSWER_FOUND", "PARTIAL", "NOT_FOUND", "SOURCE_UNAVAILABLE", "CONFLICTED")
 DECISION_SECTIONS = ("### What we found", "### Decision needed", "### Impact on the Acceptance Criteria")
 
 
@@ -75,6 +82,38 @@ def copilot_command(config: dict, prompt: str, transcript: Path) -> list[str]:
     for tool in cop.get("deny_tools", []):
         cmd.append(f"--deny-tool={tool}")
     return cmd
+
+
+def doc_research_problems(ticket_dir: Path, prompt: str) -> list[str]:
+    """Return problems unless the UAC Doc Researcher ran and returned a usable result."""
+    path = ticket_dir / common.DOC_RESEARCH_FILE
+    if not path.is_file():
+        return [f"{common.DOC_RESEARCH_FILE} was not written: the UAC Doc Researcher did not run"]
+    try:
+        result = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError as exc:
+        return [f"{common.DOC_RESEARCH_FILE} is not valid JSON: {exc}"]
+    if not isinstance(result, dict):
+        return [f"{common.DOC_RESEARCH_FILE} is not a JSON object"]
+    problems = []
+    status = result.get("status")
+    findings = result.get("findings") or []
+    if status not in DOC_RESEARCH_STATUSES:
+        problems.append(f"UAC Doc Researcher status is {status!r}, expected one of {', '.join(DOC_RESEARCH_STATUSES)}")
+    elif status in ("ANSWER_FOUND", "PARTIAL") and not findings:
+        problems.append(f"UAC Doc Researcher returned {status} with no findings")
+    elif status in ("NOT_FOUND", "SOURCE_UNAVAILABLE") and not result.get("limitations"):
+        problems.append(f"UAC Doc Researcher returned {status} without limitations naming what was searched")
+    for number, finding in enumerate(findings, 1):
+        refs = finding.get("source_refs") or []
+        cites_doc = any(str(ref).startswith("doc:") for ref in refs)
+        if cites_doc and not (finding.get("provenance") or {}).get("locator"):
+            problems.append(f"UAC Doc Researcher finding {number} cites a doc: source without a provenance locator")
+    transcript = ticket_dir / "copilot-transcript.md"
+    shown = transcript.read_text(encoding="utf-8", errors="replace").count(DOC_RESEARCHER) if transcript.is_file() else 0
+    if shown <= prompt.count(DOC_RESEARCHER):
+        problems.append(f"the Copilot transcript shows no {DOC_RESEARCHER} run")
+    return problems
 
 
 def check_outputs(ticket_dir: Path) -> list[str]:
@@ -137,10 +176,12 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         logger.info("%s: already %s, skipping", key, status["state"])
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
-    for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE):
+    for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
+                 common.DOC_RESEARCH_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
-                           decisions_path=ticket_dir / common.DECISIONS_FILE)
+                           decisions_path=ticket_dir / common.DECISIONS_FILE,
+                           doc_research_path=ticket_dir / common.DOC_RESEARCH_FILE)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()
@@ -153,7 +194,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     except subprocess.TimeoutExpired:
         exit_code = "timeout"
     status.update({"key": key, "copilot_exit": exit_code, "copilot_seconds": round(time.time() - started)})
-    problems = check_outputs(ticket_dir) if exit_code == 0 else [f"Copilot CLI exit {exit_code}"]
+    problems = (check_outputs(ticket_dir) + doc_research_problems(ticket_dir, prompt)
+                if exit_code == 0 else [f"Copilot CLI exit {exit_code}"])
     if problems:
         status.update(state="FAILED", problems=problems)
         common.write_status(ticket_dir, status)

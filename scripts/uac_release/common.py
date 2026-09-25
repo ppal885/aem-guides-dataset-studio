@@ -28,6 +28,7 @@ UAC_FILE = "UAC.md"
 PLAN_FILE = "test-plan.md"
 DECISIONS_FILE = "DECISIONS.md"
 DECISION_BODY_FILE = "decision-body.txt"
+DOC_RESEARCH_FILE = "DOC_RESEARCH.json"
 
 
 def load_env_file(path: Path) -> None:

@@ -22,6 +22,20 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
 | `UAC_Rework` | QE wants changes (leave a comment); remove `QEVision_UAC_DONE`/set `regenerate_existing` to redo | QE |
 | `QEVision_UAC_DONE` | Draft copied into the Acceptance Criteria field | poster |
 
+## UAC Doc Researcher is required
+
+Every ticket must run the UAC Doc Researcher (`uac-doc-researcher` agent). Copilot writes its
+JSON result to `DOC_RESEARCH.json` next to `UAC.md`. The runner marks the ticket `FAILED` and
+posts nothing when:
+- `DOC_RESEARCH.json` is missing, is not valid JSON, or has a status other than
+  `ANSWER_FOUND`, `PARTIAL`, `NOT_FOUND`, `SOURCE_UNAVAILABLE` or `CONFLICTED`;
+- `ANSWER_FOUND` or `PARTIAL` has no findings, or `NOT_FOUND` / `SOURCE_UNAVAILABLE` has no
+  limitations naming what was searched;
+- a finding cites a `doc:` source without a provenance locator (the page URL);
+- `copilot-transcript.md` never mentions `uac-doc-researcher` apart from the prompt itself.
+
+`ask_dita_expert` answers do not replace this step.
+
 ## Decision requests for open TBDs
 
 When a UAC has TBDs, Copilot also writes `DECISIONS.md`. It has three sections:
