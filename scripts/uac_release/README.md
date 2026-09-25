@@ -5,7 +5,7 @@ copies each draft into the **Acceptance Criteria** field once QE approves it.
 
 ```
 nightly (runner)                                   every 30 min (poster)
-JQL -> copilot -p per ticket -> checks -> draft     label UAC_Approved -> AC field -> UAC_Posted
+JQL -> copilot -p per ticket -> checks -> draft     label UAC_Approved -> AC field -> QEVision_UAC_DONE
              (UAC.md + test-plan.md)      comment + attachment + UAC_Draft
 ```
 
@@ -19,8 +19,8 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
 |---|---|---|
 | `UAC_Draft` | Draft comment + full test plan attached, waiting for QE | runner |
 | `UAC_Approved` | QE accepts the draft as written | QE |
-| `UAC_Rework` | QE wants changes (leave a comment); remove `UAC_Posted`/set `regenerate_existing` to redo | QE |
-| `UAC_Posted` | Draft copied into the Acceptance Criteria field | poster |
+| `UAC_Rework` | QE wants changes (leave a comment); remove `QEVision_UAC_DONE`/set `regenerate_existing` to redo | QE |
+| `QEVision_UAC_DONE` | Draft copied into the Acceptance Criteria field | poster |
 
 ## Decision requests for open TBDs
 
@@ -66,7 +66,7 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    - `jql`: which tickets need a UAC. The example picks open Customer Request tickets with
      fix version `2701` where you are QE Assignee (`currentUser()` is the owner of `JIRA_PAT`)
      and the Acceptance Criteria field is still empty. Change `2701` for each release. Keep
-     `resolution = Unresolved` so closed tickets are skipped. Keep `(labels is EMPTY OR labels != UAC_Posted)`:
+     `resolution = Unresolved` so closed tickets are skipped. Keep `(labels is EMPTY OR labels != QEVision_UAC_DONE)`:
      plain `labels != X` in JQL also drops tickets that have no labels at all.
    - `tickets`: optional exact list, e.g. `["GUIDES-12345", "GUIDES-23456"]`. When it is not
      empty it is used instead of `jql` (useful before the fix version or QE Assignee is set).

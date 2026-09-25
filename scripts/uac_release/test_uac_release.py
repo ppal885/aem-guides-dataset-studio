@@ -70,7 +70,7 @@ def make_config(out: Path) -> dict:
         "jql": "project = PROJ",
         "output_dir": str(out),
         "acceptance_criteria_field": "customfield_1",
-        "labels": {"draft": "UAC_Draft", "approved": "UAC_Approved", "posted": "UAC_Posted", "rework": "UAC_Rework"},
+        "labels": {"draft": "UAC_Draft", "approved": "UAC_Approved", "posted": "QEVision_UAC_DONE", "rework": "UAC_Rework"},
         "copilot": {"command": "copilot", "add_dirs": ["/repos/a"], "allow_all_tools": True,
                     "deny_tools": ["corp-jira(update_jira_issue)"], "timeout_minutes": 1},
     }
@@ -183,7 +183,7 @@ class PosterTests(unittest.TestCase):
         jira = FakeJira()
         self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "POSTED")
         self.assertIn(("set_field", "PROJ-1", "customfield_1", "*Acceptance Criteria 01:* x"), jira.calls)
-        self.assertIn(("labels", "PROJ-1", ["UAC_Posted"], ["UAC_Draft"]), jira.calls)
+        self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], ["UAC_Draft"]), jira.calls)
 
     def test_never_overwrites_human_text(self) -> None:
         jira = FakeJira(field_value="Existing text written by a person")
@@ -203,7 +203,7 @@ class PosterTests(unittest.TestCase):
     def test_approved_jql_excludes_posted(self) -> None:
         jql = poster.approved_jql(self.config)
         self.assertIn('labels = "UAC_Approved"', jql)
-        self.assertIn('labels != "UAC_Posted"', jql)
+        self.assertIn('labels != "QEVision_UAC_DONE"', jql)
 
 
 class DecisionRequestTests(unittest.TestCase):
