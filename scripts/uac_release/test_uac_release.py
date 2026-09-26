@@ -38,15 +38,17 @@ COVERAGE = [
     {"source": "description", "text": "An empty report should show a message.", "disposition": "TBD", "ac": 2},
     {"source": "comment:7", "text": "Please also check that the export button works.", "disposition": "OUT_OF_SCOPE",
      "reason": "export is a separate feature with its own ticket"},
-    {"source": "attachment:shot.png", "text": "screenshot of the report", "disposition": "AC", "ac": 1},
+    {"source": "attachment:shot.png", "text": "screenshot of the report", "disposition": "AC", "ac": 1,
+     "surfaces": ["Map console"]},
 ]
 
 SURFACES = [
     {"surface": "Map console", "evidence": ["https://experienceleague.adobe.com/report", "src/views/report_panel.json:12"],
-     "disposition": "AC", "ac": 1},
-    {"surface": "Report dialog", "evidence": ["src/controllers/report_dialog.ts:40"], "disposition": "TBD", "ac": 2},
+     "authority": "TICKET", "disposition": "AC", "ac": 1},
+    {"surface": "Report dialog", "evidence": ["src/controllers/report_dialog.ts:40"], "authority": "CODE_REUSE",
+     "disposition": "TBD", "ac": 2},
     {"surface": "Email notification", "evidence": ["https://experienceleague.adobe.com/notify"],
-     "disposition": "OUT_OF_SCOPE", "reason": "the email is sent by another product"},
+     "authority": "DOCUMENTATION", "disposition": "OUT_OF_SCOPE", "reason": "the email is sent by another product"},
 ]
 
 
@@ -332,6 +334,39 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(any("has no TBD line" in p for p in problems([dict(SURFACES[1], ac=1)] + SURFACES[:1])))
         self.assertTrue(any("needs a concrete reason" in p
                             for p in problems(SURFACES[:2] + [dict(SURFACES[2], reason="n/a")])))
+
+    def test_discovered_surface_may_only_get_a_regression_ac(self) -> None:
+        ticket = self.out / "PROJ-6"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+
+        def problems(entries):
+            (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(entries), encoding="utf-8")
+            return runner.surface_inventory_problems(ticket)
+
+        invented = [dict(SURFACES[0], authority="CODE_REUSE")] + SURFACES[1:]
+        self.assertTrue(any("may only check that it still works" in p for p in problems(invented)))
+        (ticket / common.UAC_FILE).write_text(
+            UAC.replace("Verify that the report opens from the Map console.",
+                        "Verify that the report still opens from the Map console as before."), encoding="utf-8")
+        self.assertEqual(problems(invented), [])
+        self.assertTrue(any("authority None is not one of" in p
+                            for p in problems([{k: v for k, v in SURFACES[0].items() if k != "authority"}] + SURFACES[1:])))
+
+    def test_attachment_screens_must_be_in_the_surface_inventory(self) -> None:
+        ticket = self.out / "PROJ-7"
+        ticket.mkdir()
+        (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(SURFACES), encoding="utf-8")
+
+        def problems(coverage):
+            (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
+            return runner.attachment_surface_problems(ticket, SOURCE, own_name="uac.bot")
+
+        self.assertEqual(problems(COVERAGE), [])
+        unnamed = COVERAGE[:3] + [{k: v for k, v in COVERAGE[3].items() if k != "surfaces"}]
+        self.assertTrue(any("list the product screens it shows" in p for p in problems(unnamed)))
+        unknown = COVERAGE[:3] + [dict(COVERAGE[3], surfaces=["Map console", "Your tasks widget"])]
+        self.assertIn("attachment shot.png shows Your tasks widget, which is not in the surface inventory", problems(unknown))
 
     def test_check_outputs_rejects_missing_files_and_bad_ac_count(self) -> None:
         ticket = self.out / "PROJ-2"
