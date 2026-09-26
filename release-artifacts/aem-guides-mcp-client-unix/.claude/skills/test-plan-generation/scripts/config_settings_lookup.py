@@ -30,7 +30,7 @@ from pathlib import Path
 
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "guides_config_settings.json"
 SCHEMA_VERSION = "aem-guides-config-settings-v1"
-DEFAULT_LIMIT = 15
+DEFAULT_LIMIT = 5
 NOTICE = ("Configuration candidate, not an acceptance criterion: decide whether the ticket's behaviour "
           "changes with this setting (AC for the values that matter), is unknown (TBD), or does not apply "
           "(out-of-scope reason).")

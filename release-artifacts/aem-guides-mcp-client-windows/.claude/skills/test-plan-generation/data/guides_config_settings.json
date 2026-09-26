@@ -8,7 +8,7 @@
    "triggers": [
     "FrameMaker Publishing Server",
     "FMPS",
-    "FrameMaker"
+    "FM to DITA"
    ],
    "keys": [
     "fmps.domain",
@@ -26,17 +26,18 @@
   },
   "UPLOAD_AND_VERSIONS": {
    "triggers": [
-    "upload*",
-    "re-upload*",
-    "overwrit*",
-    "duplicat*",
     "same UUID",
-    "GUID",
-    "UUID",
+    "same GUID",
+    "duplicate UUID",
     "checked out",
-    "check out",
-    "checkout",
-    "version*"
+    "checked-out",
+    "re-upload*",
+    "version on upload",
+    "new version of the uploaded",
+    "create version*",
+    "auto create version*",
+    "UUID file name*",
+    "UUID filename*"
    ],
    "keys": [
     "uuid.regex",
@@ -49,14 +50,12 @@
   },
   "FILE_NAMES_AND_TOPICS": {
    "triggers": [
-    "file name",
-    "filename",
-    "special character",
-    "invalid character",
-    "create topic",
-    "new topic",
-    "topic template",
-    "extension"
+    "special character*",
+    "invalid character*",
+    "valid character*",
+    "topic template*",
+    "topic extension",
+    "file extension"
    ],
    "keys": [
     "valid.characters",
@@ -66,12 +65,14 @@
   },
   "OUTPUT_GENERATION": {
    "triggers": [
-    "output generation",
-    "generate output",
-    "output preset",
-    "publish",
-    "outputs tab",
-    "Generate"
+    "base output",
+    "output location",
+    "element mapping",
+    "save as binary",
+    "outputs list",
+    "default template",
+    "replicate DITA",
+    "Replicate DITA assets"
    ],
    "keys": [
     "base.output.path",
@@ -87,10 +88,8 @@
   "OUTPUT_HISTORY": {
    "triggers": [
     "output history",
-    "purge",
-    "retention",
-    "output list",
-    "Failed status"
+    "purg*",
+    "retention"
    ],
    "keys": [
     "output.history.purgeperiod",
@@ -103,14 +102,12 @@
   },
   "AEM_SITES_OUTPUT": {
    "triggers": [
-    "AEM Sites",
-    "AEM Site",
-    "site pages",
     "Delete and Create",
-    "orphan",
+    "orphan site page*",
     "Existing Output Pages",
-    "unpublish*",
-    "replicat*"
+    "pages in heap",
+    "page limit",
+    "version for deleted pages"
    ],
    "keys": [
     "aemsite.pagelimit",
@@ -120,11 +117,12 @@
   },
   "DITA_OT": {
    "triggers": [
-    "DITA-OT",
-    "DITA OT",
-    "offload",
+    "DITA-OT offload*",
+    "offload DITA-OT",
+    "offloading",
     "root map metadata",
-    "command line"
+    "root-map metadata",
+    "metadata arguments"
    ],
    "keys": [
     "publishing.useditaotoffloading",
@@ -135,7 +133,9 @@
   },
   "NATIVE_PDF": {
    "triggers": [
-    "Native PDF"
+    "node options",
+    "node command",
+    "native.pdf.node"
    ],
    "keys": [
     "native.pdf.node.opts"
@@ -143,10 +143,13 @@
   },
   "TRANSLATION": {
    "triggers": [
-    "translat*",
+    "translation workflow",
+    "legacy translation",
     "language cop*",
-    "locali*",
-    "XLIFF"
+    "translation tab",
+    "translation event*",
+    "component-based translation",
+    "destination language"
    ],
    "keys": [
     "component.translation",
@@ -162,12 +165,13 @@
     "post-processing",
     "post processing",
     "postprocess*",
-    "reference*",
-    "ingest*",
-    "parent map",
-    "find and replace",
-    "report",
-    "title"
+    "guidesParentMaps",
+    "parent maps",
+    "processing event*",
+    "asset processing",
+    "btree",
+    "dynamic title",
+    "conref resolution in title*"
    ],
    "keys": [
     "postprocess.enablelaunchers",
@@ -184,9 +188,11 @@
   },
   "DELETE": {
    "triggers": [
-    "delet*",
     "referenced asset*",
-    "remov*"
+    "unsafe delet*",
+    "block delet*",
+    "delete referenced",
+    "deletion of referenced"
    ],
    "keys": [
     "block.unsafe.delete",
@@ -195,7 +201,12 @@
   },
   "BASELINE": {
    "triggers": [
-    "baseline*"
+    "baseline tab",
+    "baseline v2",
+    "faster baseline",
+    "peer link*",
+    "baseline map preview",
+    "auto create asset version*"
    ],
    "keys": [
     "hide.tabs.baseline",
@@ -207,8 +218,16 @@
   },
   "REVIEW": {
    "triggers": [
-    "review*",
-    "attachment*"
+    "review attachment*",
+    "attachment size",
+    "allowed file type*",
+    "review topic index",
+    "scroll sync",
+    "topic level completion",
+    "map hierarchy",
+    "ditaval selection",
+    "communication task*",
+    "escape special character*"
    ],
    "keys": [
     "attachmentSize",
@@ -224,9 +243,8 @@
   },
   "CONDITIONS": {
    "triggers": [
-    "condition*",
-    "DITAVAL",
-    "props attribute"
+    "compatib* mode",
+    "conditional attribute*"
    ],
    "keys": [
     "cond.attr.compatibility.mode",
@@ -236,9 +254,8 @@
   "EDITOR": {
    "triggers": [
     "Editor 2.0",
-    "Web Editor",
     "track changes",
-    "find and replace",
+    "markup find",
     "load files",
     "gzip"
    ],
@@ -252,9 +269,8 @@
   },
   "MAP_CONSOLE_AND_DASHBOARD": {
    "triggers": [
-    "map dashboard",
-    "map console",
-    "map collection",
+    "old map dashboard",
+    "new map collection*",
     "baseline tab",
     "translation tab"
    ],
@@ -267,9 +283,9 @@
   },
   "SEARCH_AND_METADATA": {
    "triggers": [
-    "search",
-    "index",
-    "metadata extraction"
+    "metadata extraction",
+    "DITA metadata",
+    "serializ*"
    ],
    "keys": [
     "dita.serialization"
@@ -286,7 +302,8 @@
   },
   "KNOWLEDGE_AI": {
    "triggers": [
-    "Knowledge AI"
+    "Knowledge AI",
+    "Flameback"
    ],
    "keys": [
     "enable.knowledge.ai",
@@ -295,7 +312,8 @@
   },
   "BRANCHING": {
    "triggers": [
-    "branch*"
+    "branching",
+    "branch management"
    ],
    "keys": [
     "enable.guides.branch.management"
@@ -303,13 +321,13 @@
   },
   "PERFORMANCE_AND_PLATFORM": {
    "triggers": [
-    "performance",
-    "slow",
-    "timeout",
-    "thread",
-    "heap",
-    "database",
-    "vault"
+    "thread pool",
+    "executor",
+    "keyspace",
+    "Vault",
+    "DB usage",
+    "FMPS timeout",
+    "task execution wait"
    ],
    "keys": [
     "guides.sync.executor.thread.pool.size",
@@ -326,7 +344,6 @@
   },
   "CONTENT_HEALTH": {
    "triggers": [
-    "health check",
     "content health"
    ],
    "keys": [
@@ -335,8 +352,7 @@
   },
   "BULK_IMPORT": {
    "triggers": [
-    "bulk import",
-    "bulk importer"
+    "bulk import*"
    ],
    "keys": [
     "enable.bulk.importer"
@@ -344,8 +360,9 @@
   },
   "NOTIFICATIONS": {
    "triggers": [
-    "notification*",
-    "email*"
+    "notification on completion",
+    "generation is complete",
+    "completion notification"
    ],
    "keys": [
     "output.notification"
