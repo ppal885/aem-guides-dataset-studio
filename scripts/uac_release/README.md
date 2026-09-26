@@ -22,6 +22,22 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
 | `UAC_Rework` | QE wants changes (leave a comment); remove `QEVision_UAC_DONE`/set `regenerate_existing` to redo | QE |
 | `QEVision_UAC_DONE` | Draft copied into the Acceptance Criteria field | poster |
 
+## Every place the feature appears is covered
+
+Copilot also writes `SURFACE_INVENTORY.json`: every place in the product where the feature
+appears or where its items open. It is found in the documentation AND by searching the code for
+every reuse of each widget, panel, component, service or API the change touches. Each entry has
+the on-screen name, its evidence (a documentation URL or a `<file>:<line>` code reference) and
+`AC`, `TBD` or `OUT_OF_SCOPE`. The runner marks the ticket `FAILED` when:
+- the file is missing, empty, or not a JSON list;
+- an entry has no evidence, or evidence that is neither a URL nor `<file>:<line>`;
+- the inventory has no documentation URL at all, or no code reference at all;
+- an `AC` entry points at an Acceptance Criterion whose text does not name the surface, a `TBD`
+  points at one with no TBD line, or `OUT_OF_SCOPE` has no concrete reason.
+
+A shared widget changes every screen that embeds it, so each of those screens must be named in
+an Acceptance Criterion or a TBD.
+
 ## Every line of the ticket is mapped
 
 Before writing the UAC, Copilot writes `SOURCE_COVERAGE.json`: one entry for every sentence and

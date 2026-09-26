@@ -9,7 +9,8 @@ One scheduled run:
      into <output_dir>/<KEY>/;
   4. checks the files (plan validator, AC count 1-10, blocked vocabulary), that the
      UAC Doc Researcher actually ran, and that every sentence of the live Jira
-     description and comments, and every attachment, is mapped to the UAC;
+     description and comments, and every attachment, is mapped to the UAC, and that every
+     place the feature appears (from documentation and code) is covered;
   5. posts a draft comment with the plan attached and adds the draft label. When the
      UAC has TBDs, the draft also shows the decision request that the poster will send
      to the ticket after QE approval (DECISIONS.md).
@@ -55,7 +56,16 @@ When finished, write these files:
    sentence, copied>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
    "ac": <Acceptance Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE and
    NOT_MATERIAL>"}}. A TBD must point at the Acceptance Criterion whose TBD line asks it.
+6. {surface_inventory_path}: a JSON list of every place in the product where the feature appears or
+   where its items open, found in the documentation AND by searching the code for every reuse of each
+   widget, panel, component, service or API the change touches. One object per place:
+   {{"surface": "<on-screen name, e.g. Review UI>", "evidence": ["<documentation URL>" or
+   "<repo file>:<line>", ...], "disposition": "AC" | "TBD" | "OUT_OF_SCOPE", "ac": <Acceptance
+   Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE>"}}. For AC, the Acceptance
+   Criterion text must name the surface.
 Write in simple English with AEM Guides names a QE sees on screen."""
+SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
+_CODE_REF = re.compile(r"^\S+\.[A-Za-z0-9]+:\d+(?:-\d+)?$")
 SOURCE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE", "NOT_MATERIAL")
 EMPTY_REASONS = {"", "n/a", "na", "none", "tbd", "-", "not material", "out of scope"}
 MIN_CLAUSE_WORDS = 4
@@ -203,6 +213,55 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
     return problems
 
 
+def surface_inventory_problems(ticket_dir: Path) -> list[str]:
+    """Return problems unless every place the feature appears is found in docs and code and covered."""
+    path = ticket_dir / common.SURFACE_INVENTORY_FILE
+    if not path.is_file():
+        return [f"{common.SURFACE_INVENTORY_FILE} was not written: the places the feature appears were not listed"]
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError as exc:
+        return [f"{common.SURFACE_INVENTORY_FILE} is not valid JSON: {exc}"]
+    if not isinstance(entries, list) or not entries or not all(isinstance(e, dict) for e in entries):
+        return [f"{common.SURFACE_INVENTORY_FILE} must be a non-empty JSON list of objects"]
+    uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
+    lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
+    blocks = {int(n): body for n, body in re.findall(
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|\Z)", uac, re.M | re.S)}
+    problems, has_doc, has_code = [], False, False
+    for number, entry in enumerate(entries, 1):
+        surface = str(entry.get("surface") or "").strip()
+        label = f"surface {number} ({surface or 'unnamed'})"
+        if not surface:
+            problems.append(f"{label}: no surface name")
+        evidence = [str(e).strip() for e in entry.get("evidence") or [] if str(e).strip()]
+        docs = [e for e in evidence if e.startswith(("https://", "http://"))]
+        code = [e for e in evidence if _CODE_REF.match(e)]
+        has_doc, has_code = has_doc or bool(docs), has_code or bool(code)
+        if not evidence:
+            problems.append(f"{label}: no evidence")
+        elif len(docs) + len(code) < len(evidence):
+            problems.append(f"{label}: evidence must be a documentation URL or a <file>:<line> code reference")
+        disposition = entry.get("disposition")
+        if disposition not in SURFACE_DISPOSITIONS:
+            problems.append(f"{label}: disposition {disposition!r} is not one of {', '.join(SURFACE_DISPOSITIONS)}")
+        elif disposition in ("AC", "TBD"):
+            ac = entry.get("ac")
+            if not isinstance(ac, int) or ac not in lines:
+                problems.append(f"{label}: Acceptance Criteria {ac!r} does not exist in UAC.md")
+            elif disposition == "AC" and _normalize(surface) not in _normalize(lines[ac]):
+                problems.append(f"{label}: Acceptance Criteria {ac} does not name this surface")
+            elif disposition == "TBD" and "TBD:" not in blocks[ac]:
+                problems.append(f"{label}: Acceptance Criteria {ac} has no TBD line")
+        elif str(entry.get("reason") or "").strip().lower() in EMPTY_REASONS:
+            problems.append(f"{label}: OUT_OF_SCOPE needs a concrete reason")
+    if not has_doc:
+        problems.append("the surface inventory cites no documentation page")
+    if not has_code:
+        problems.append("the surface inventory cites no code reference: search the code for every reuse")
+    return problems
+
+
 def check_outputs(ticket_dir: Path) -> list[str]:
     """Return problems with the generated files; an empty list means ready to draft."""
     problems = []
@@ -264,12 +323,14 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
-                 common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE):
+                 common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
+                 common.SURFACE_INVENTORY_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
                            doc_research_path=ticket_dir / common.DOC_RESEARCH_FILE,
-                           source_coverage_path=ticket_dir / common.SOURCE_COVERAGE_FILE)
+                           source_coverage_path=ticket_dir / common.SOURCE_COVERAGE_FILE,
+                           surface_inventory_path=ticket_dir / common.SURFACE_INVENTORY_FILE)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()
@@ -283,6 +344,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         exit_code = "timeout"
     status.update({"key": key, "copilot_exit": exit_code, "copilot_seconds": round(time.time() - started)})
     problems = (check_outputs(ticket_dir) + doc_research_problems(ticket_dir, prompt)
+                + surface_inventory_problems(ticket_dir)
                 if exit_code == 0 else [f"Copilot CLI exit {exit_code}"])
     if exit_code == 0:
         try:
