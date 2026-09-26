@@ -1,0 +1,1897 @@
+{
+ "schema_version": "aem-guides-config-settings-v1",
+ "governance": "CODE_AND_DOC_VERIFIED",
+ "note": "Settings of the Publish Configuration Manager OSGi configuration (PID com.adobe.fmdita.config.ConfigManager, AEM Web Console /system/console/configMgr; Cloud Service sets them through Cloud Manager configuration). Defaults come from the AEM Guides product source; behaviour and URLs come only from Experience League pages that were fetched. A setting without a documentation page is still a real configuration branch. A match is a configuration candidate for discovery, never an Acceptance Criterion by itself.",
+ "pid": "com.adobe.fmdita.config.ConfigManager",
+ "areas": {
+  "FMPS_PUBLISHING": {
+   "triggers": [
+    "FrameMaker Publishing Server",
+    "FMPS",
+    "FrameMaker"
+   ],
+   "keys": [
+    "fmps.domain",
+    "fmps.url",
+    "fmps.version",
+    "fmps.user",
+    "fmps.password",
+    "fmps.timeout",
+    "fmps.taskwaittimeout",
+    "aem.serverurl",
+    "aem.adminuname",
+    "aem.adminpwd",
+    "fm2dita.usexref"
+   ]
+  },
+  "UPLOAD_AND_VERSIONS": {
+   "triggers": [
+    "upload*",
+    "re-upload*",
+    "overwrit*",
+    "duplicat*",
+    "same UUID",
+    "GUID",
+    "UUID",
+    "checked out",
+    "check out",
+    "checkout",
+    "version*"
+   ],
+   "keys": [
+    "uuid.regex",
+    "uuid.duplicate.move.old",
+    "create.ver.new.content",
+    "overwrite.checkout.onupload",
+    "fm2dita.auocreateversion",
+    "valid.characters"
+   ]
+  },
+  "FILE_NAMES_AND_TOPICS": {
+   "triggers": [
+    "file name",
+    "filename",
+    "special character",
+    "invalid character",
+    "create topic",
+    "new topic",
+    "topic template",
+    "extension"
+   ],
+   "keys": [
+    "valid.characters",
+    "topic.extension",
+    "topic.templates"
+   ]
+  },
+  "OUTPUT_GENERATION": {
+   "triggers": [
+    "output generation",
+    "generate output",
+    "output preset",
+    "publish",
+    "outputs tab",
+    "Generate"
+   ],
+   "keys": [
+    "base.output.path",
+    "output.historylimit",
+    "output.notification",
+    "output.savebinary.threshold",
+    "output.defaulttemplate",
+    "publish.replicate",
+    "output.mapping",
+    "aemsite.pagelimit"
+   ]
+  },
+  "OUTPUT_HISTORY": {
+   "triggers": [
+    "output history",
+    "purge",
+    "retention",
+    "output list",
+    "Failed status"
+   ],
+   "keys": [
+    "output.history.purgeperiod",
+    "output.history.purgetime",
+    "output.history.retention.mode",
+    "output.history.retention.count",
+    "output.history.retention.action",
+    "output.historylimit"
+   ]
+  },
+  "AEM_SITES_OUTPUT": {
+   "triggers": [
+    "AEM Sites",
+    "AEM Site",
+    "site pages",
+    "Delete and Create",
+    "orphan",
+    "Existing Output Pages",
+    "unpublish*",
+    "replicat*"
+   ],
+   "keys": [
+    "aemsite.pagelimit",
+    "no.version.creation.on.deletion",
+    "publish.replicate"
+   ]
+  },
+  "DITA_OT": {
+   "triggers": [
+    "DITA-OT",
+    "DITA OT",
+    "offload",
+    "root map metadata",
+    "command line"
+   ],
+   "keys": [
+    "publishing.useditaotoffloading",
+    "publishing.offloaditaotserverurl",
+    "publishing.offloadditaotmntfileloc",
+    "pass.metadata.args.cmd.line"
+   ]
+  },
+  "NATIVE_PDF": {
+   "triggers": [
+    "Native PDF"
+   ],
+   "keys": [
+    "native.pdf.node.opts"
+   ]
+  },
+  "TRANSLATION": {
+   "triggers": [
+    "translat*",
+    "language cop*",
+    "locali*",
+    "XLIFF"
+   ],
+   "keys": [
+    "component.translation",
+    "translation.workflow.version.legacy",
+    "translation.workflow.propagate.source.content",
+    "postprocess.temporary.langcopies",
+    "tabs.translation",
+    "fire.translation.events"
+   ]
+  },
+  "POST_PROCESSING": {
+   "triggers": [
+    "post-processing",
+    "post processing",
+    "postprocess*",
+    "reference*",
+    "ingest*",
+    "parent map",
+    "find and replace",
+    "report",
+    "title"
+   ],
+   "keys": [
+    "postprocess.enablelaunchers",
+    "postprocess.threads",
+    "ignored.post.processing.paths",
+    "enabled.post.processing.paths",
+    "disable.guidesparentmaps.processing",
+    "enable.post.processing.dynamic.title.processing",
+    "fire.processing.events",
+    "enable.asset.processing.scheduler",
+    "btree.deletion.enabled",
+    "dita.serialization"
+   ]
+  },
+  "DELETE": {
+   "triggers": [
+    "delet*",
+    "referenced asset*",
+    "remov*"
+   ],
+   "keys": [
+    "block.unsafe.delete",
+    "btree.deletion.enabled"
+   ]
+  },
+  "BASELINE": {
+   "triggers": [
+    "baseline*"
+   ],
+   "keys": [
+    "hide.tabs.baseline",
+    "fm2dita.auocreateversion",
+    "enable.baseline.v2",
+    "guides.baseline.v1.skip.peer.links",
+    "enable.editor.baseline.map.preview"
+   ]
+  },
+  "REVIEW": {
+   "triggers": [
+    "review*",
+    "attachment*"
+   ],
+   "keys": [
+    "attachmentSize",
+    "allowedFileTypes",
+    "enable.review.comtasks.access",
+    "enable.review.topic.index",
+    "enable.review.escape.spl.chars",
+    "enable.review.scroll.sync",
+    "enable.review.topic.level.completion",
+    "enable.review.show.map.hierarchy",
+    "enable.review.ditaval"
+   ]
+  },
+  "CONDITIONS": {
+   "triggers": [
+    "condition*",
+    "DITAVAL",
+    "props attribute"
+   ],
+   "keys": [
+    "cond.attr.compatibility.mode",
+    "enable.review.ditaval"
+   ]
+  },
+  "EDITOR": {
+   "triggers": [
+    "Editor 2.0",
+    "Web Editor",
+    "track changes",
+    "find and replace",
+    "load files",
+    "gzip"
+   ],
+   "keys": [
+    "enable.markup.editor",
+    "enable.track.changes",
+    "enable.markup.findreplace",
+    "xmleditor.enableloadfilespagination",
+    "disable.gzip.response.filters"
+   ]
+  },
+  "MAP_CONSOLE_AND_DASHBOARD": {
+   "triggers": [
+    "map dashboard",
+    "map console",
+    "map collection",
+    "baseline tab",
+    "translation tab"
+   ],
+   "keys": [
+    "enable.old.map.dashboard",
+    "enable.new.map.collections",
+    "hide.tabs.baseline",
+    "tabs.translation"
+   ]
+  },
+  "SEARCH_AND_METADATA": {
+   "triggers": [
+    "search",
+    "index",
+    "metadata extraction"
+   ],
+   "keys": [
+    "dita.serialization"
+   ]
+  },
+  "SALESFORCE": {
+   "triggers": [
+    "Salesforce"
+   ],
+   "keys": [
+    "enable.new.sf.publishing",
+    "enable.sf.token.refresh"
+   ]
+  },
+  "KNOWLEDGE_AI": {
+   "triggers": [
+    "Knowledge AI"
+   ],
+   "keys": [
+    "enable.knowledge.ai",
+    "knowledge.ai.output.url"
+   ]
+  },
+  "BRANCHING": {
+   "triggers": [
+    "branch*"
+   ],
+   "keys": [
+    "enable.guides.branch.management"
+   ]
+  },
+  "PERFORMANCE_AND_PLATFORM": {
+   "triggers": [
+    "performance",
+    "slow",
+    "timeout",
+    "thread",
+    "heap",
+    "database",
+    "vault"
+   ],
+   "keys": [
+    "guides.sync.executor.thread.pool.size",
+    "guides.async.executor.thread.pool.size",
+    "guides.debug.executor.thread.pool.size",
+    "enable.vault.use",
+    "enable.db.usage",
+    "db.keyspace.old.query",
+    "postprocess.threads",
+    "aemsite.pagelimit",
+    "fmps.timeout",
+    "fmps.taskwaittimeout"
+   ]
+  },
+  "CONTENT_HEALTH": {
+   "triggers": [
+    "health check",
+    "content health"
+   ],
+   "keys": [
+    "Content Health"
+   ]
+  },
+  "BULK_IMPORT": {
+   "triggers": [
+    "bulk import",
+    "bulk importer"
+   ],
+   "keys": [
+    "enable.bulk.importer"
+   ]
+  },
+  "NOTIFICATIONS": {
+   "triggers": [
+    "notification*",
+    "email*"
+   ],
+   "keys": [
+    "output.notification"
+   ]
+  }
+ },
+ "settings": [
+  {
+   "key": "fmps.domain",
+   "label": "FrameMaker Publishing Server Login Domain",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "The domain name of FMPS. Use the network domain  the machine belongs to or workgroup name if the machine is not on a domain.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "On-prem only FMPS section: domain or workgroup hosting FMPS; for FMPS 2020 give the IP address, for 2019 and earlier IP or domain name. No default stated.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fmps.url",
+   "label": "FrameMaker Publishing Server URL",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "Example : For FMPS 2020 and above sample url http://fmpsip:port/ and for FMPS 2019 and lower sample url http://fmpsip:port/fmserver/v1/",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "On-prem only: URL of FMPS; FMPS 2020 uses http://<fmps_ip>:<port>, FMPS 2019 and earlier append /fmserver/v1/. No default stated.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fmps.version",
+   "label": "FMPS Version",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "2017"
+   },
+   "options": [],
+   "source_description": "FMPS version to be used for publishing",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "On-prem only: FMPS version number, 2020 for FMPS 2020, 2019 or 2017 for earlier versions. Default not stated on the page.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fmps.user",
+   "label": "FrameMaker Publishing Server Username",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "FrameMaker Publishing Server Username",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "On-prem only: username used to access the FrameMaker Publishing Server (documented together with the password).",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fmps.password",
+   "label": "FrameMaker Publishing Server Password",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "FrameMaker Publishing Server Password",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "On-prem only: password used to access the FrameMaker Publishing Server (documented together with the username).",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fmps.timeout",
+   "label": "FMPS Timeout",
+   "areas": [
+    "FMPS_PUBLISHING",
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "Time (in seconds) after which FMPS processes should be killed",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/knowledge-base/kb-articles/publishing/fmpsandguides"
+   ],
+   "doc_behavior": "Optional, on-prem: seconds AEM Guides waits for an FMPS response before terminating the task; doc default 300 seconds. KB advises increasing it when FMPS publishing times out.",
+   "doc_code_conflict": "Documentation gives a default of 300 seconds; the source default is empty."
+  },
+  {
+   "key": "aem.serverurl",
+   "label": "External AEM URL",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "AEM Server URL which is accessible from FrameMaker Publishing Server.  This will be used by FrameMaker Publishing Server to post generated files.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "Optional, on-prem FMPS section: external AEM URL (http://<server-name>:<port>/) where FMPS places the generated output files.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "aem.adminuname",
+   "label": "AEM Admin Username",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "Admin username. Example admin",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "Optional, on-prem FMPS section: AEM administrator username used for FMPS-to-AEM communication.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "aem.adminpwd",
+   "label": "AEM Admin Password",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "Admin password. Example admin",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "Optional, on-prem FMPS section: AEM administrator password used for FMPS-to-AEM communication.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "uuid.regex",
+   "label": "UUID Filename Patterns",
+   "areas": [
+    "UPLOAD_AND_VERSIONS"
+   ],
+   "defaults": {
+    "uuid_build": "^GUID-(?<id>.*)",
+    "non_uuid_build": ""
+   },
+   "options": [],
+   "source_description": "Allowed regular expressions for UUID-based filenames",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/migrate-content-cs/conf-uuid-filename-pattern"
+   ],
+   "doc_behavior": "Imported file names are checked against this regex; non-matching files get an auto-generated UUID and references are updated. Default ^GUID-(?<id>.*). Cloud via cfg.json override, on-prem via Web Console.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fmps.taskwaittimeout",
+   "label": "FMPS Task Execution Wait Timeout",
+   "areas": [
+    "FMPS_PUBLISHING",
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "Time (in seconds) after which FMPS process will stop waiting for this process to be executed. Only for FMPS2020",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "On-prem, FMPS 2020 only: seconds after which FMPS stops waiting for the process to be executed. No default stated.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "topic.templates",
+   "label": "Templates Location",
+   "areas": [
+    "FILE_NAMES_AND_TOPICS"
+   ],
+   "defaults": {
+    "all": "source constant TemplatesConfig.DEFAULT_TEMPLATE_PATH"
+   },
+   "options": [],
+   "source_description": "Location where templates are stored. By default ",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/topic-map-template/conf-template-tags-custom-dita-topic-template"
+   ],
+   "doc_behavior": "Location for topic and map templates, default /content/dam/dita-templates (topics and maps subfolders). A custom location receives copies of default templates and is created if missing. Cloud override or on-prem Web Console.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "base.output.path",
+   "label": "Base Output Location",
+   "areas": [
+    "OUTPUT_GENERATION"
+   ],
+   "defaults": {
+    "all": "source constant DAM_OUTPUT_PATH"
+   },
+   "options": [],
+   "source_description": "Location where generated files are stored. By default ",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/conf-output-generation",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "Default repository path for generated output, default /content/dam/fmdita-outputs; an invalid path reverts to the default. Documented for Cloud (cfg.json) and on-prem.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "output.mapping",
+   "label": "Override Element Mapping",
+   "areas": [
+    "OUTPUT_GENERATION"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "Override Element Mapping XML file path.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/conf-aem-sites-output/customize-dita-element-mapping-aem-components"
+   ],
+   "doc_behavior": "After creating a custom element-mapping XML in a custom location, set Override Element Mapping to it so it is used instead of the default elementmapping.xml. No default or deployment detail stated.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "output.historylimit",
+   "label": "Outputs List Limit",
+   "areas": [
+    "OUTPUT_GENERATION",
+    "OUTPUT_HISTORY"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "Maximum number of last generated outputs to display. (Default is 25)",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/conf-output-generation",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "Maximum number of recently generated outputs listed in the map Outputs tab; default 25. Documented for Cloud and on-prem.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "component.translation",
+   "label": "Component-based DITA Translation Workflow",
+   "areas": [
+    "TRANSLATION"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable/Disable Component-based DITA Translation Workflow",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-integrations/conf-translation"
+   ],
+   "doc_behavior": "Component-based translation workflow toggle: disable for human translation, enable for machine translation (content sent as asset metadata). Cloud override or on-prem Web Console; default not stated.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "translation.workflow.version.legacy",
+   "label": "Run legacy translation workflow",
+   "areas": [
+    "TRANSLATION"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable/Disable Translation latest version optimisations",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-integrations/conf-translation"
+   ],
+   "doc_behavior": "Switches to the legacy translation workflow; default false (latest workflow, recommended for performance). Cloud override; on-prem available from 4.6.0, disabled by default.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "translation.workflow.propagate.source.content",
+   "label": "Initialize destination language copy with source content",
+   "areas": [
+    "TRANSLATION"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable/Disable initialization of destination copies with source content in translation workflow.  This is applicable only when legacy translation workflow is disabled.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "publish.replicate",
+   "label": "Replicate DITA assets",
+   "areas": [
+    "OUTPUT_GENERATION",
+    "AEM_SITES_OUTPUT"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable replication of DITA source files during Quick Publish for AEM Sites pages",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-system-settings/conf-dita-asset-replication"
+   ],
+   "doc_behavior": "Controls replication of DITA assets during publishing; enabled (true) by default. Cloud via override in the ConfigManager PID, on-prem via Web Console toggle.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "postprocess.temporary.langcopies",
+   "label": "Post-process language copies",
+   "areas": [
+    "TRANSLATION"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable post-processing of language copies before translation.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-integrations/conf-translation"
+   ],
+   "doc_behavior": "Whether post-processing (reference resolution, document state) runs on temporary language copies created by translation; default false; enabling can slow translation. Cloud and on-prem.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "output.defaulttemplate",
+   "label": "Default Template",
+   "areas": [
+    "OUTPUT_GENERATION"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "The default template used while generating an AEM Site output.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "postprocess.enablelaunchers",
+   "label": "Enable Post Processing Workflow Launchers",
+   "areas": [
+    "POST_PROCESSING"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable post-processing workflow launchers when Configuration Manager is saved.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "postprocess.threads",
+   "label": "Post Process Threads",
+   "areas": [
+    "POST_PROCESSING",
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "1"
+   },
+   "options": [],
+   "source_description": "Number of post processing threads",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/workflow/conf-customize-workflows"
+   ],
+   "doc_behavior": "Number of threads used for the post-processing workflow; default 1. Documented under an On-Premise-only section.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "aemsite.pagelimit",
+   "label": "Limit AEM Site pages in heap",
+   "areas": [
+    "OUTPUT_GENERATION",
+    "AEM_SITES_OUTPUT",
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "500"
+   },
+   "options": [],
+   "source_description": "Writes AEM Site pages to disk after the given number of site pages have been generated",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/performance-optimization-aemg/perf-optimization-on-prem"
+   ],
+   "doc_behavior": "Batch size of AEM Site pages committed during AEM Site output generation; default 500; raising it can optimise generation on larger CPU/heap systems. On-prem performance guidance.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "publishing.useditaotoffloading",
+   "label": "Offload DITA-OT processing",
+   "areas": [
+    "DITA_OT"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable this option to reduce the output generation processing load on the authoring instance. If true define remote server details and mount file location",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "publishing.offloaditaotserverurl",
+   "label": "Remote server location",
+   "areas": [
+    "DITA_OT"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "If DITA-OT offloading is enabled above, provide the server information where DITA-OT processing will be offloaded. e.g. http://localhost:8081/fmdita/offloadditaot",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "publishing.offloadditaotmntfileloc",
+   "label": "Mount location on remote server",
+   "areas": [
+    "DITA_OT"
+   ],
+   "defaults": {
+    "all": "(empty)"
+   },
+   "options": [],
+   "source_description": "If DITA-OT offloading is enabled above, provide the mount location on remote server where, crx-quickstart/profiles folder from the authoring instance will be accessible. Foe e.g. Z:\\\\DITA-OT Offloading\\\\crx-quickstart\\\\profiles",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fm2dita.usexref",
+   "label": "Use xref to refer to inset files during FM to DITA transformation",
+   "areas": [
+    "FMPS_PUBLISHING"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "If true files will be referred through xref, else through conref",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "topic.extension",
+   "label": "Default topic extension",
+   "areas": [
+    "FILE_NAMES_AND_TOPICS"
+   ],
+   "defaults": {
+    "all": ".dita"
+   },
+   "options": [],
+   "source_description": "Default extension to be used when creating DITA topics",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "output.notification",
+   "label": "Send notification on completion of output generation",
+   "areas": [
+    "OUTPUT_GENERATION",
+    "NOTIFICATIONS"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "If enabled, initiator and admin will get a notification once generation is complete",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "dita.serialization",
+   "label": "Enable DITA Metadata Extraction",
+   "areas": [
+    "POST_PROCESSING",
+    "SEARCH_AND_METADATA"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "If enabled, selective content from DITA files is extracted and serialized for indexing",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/aem-asset-search/conf-dita-search"
+   ],
+   "doc_behavior": "Enables DITA metadata extraction so existing DITA content becomes searchable (then run the metadata extraction workflow); default false. Cloud key dita.serialization via override; on-prem checkbox.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fm2dita.auocreateversion",
+   "label": "Auto create asset versions",
+   "areas": [
+    "UPLOAD_AND_VERSIONS",
+    "BASELINE"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "If true a version will be created for all assets while creating or editing baseline, if no version already exists.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/output-gen/work-with-baseline/generate-output-use-baseline-for-publishing"
+   ],
+   "doc_behavior": "Page describes an auto-create version setting, enabled by default: creating a baseline versions unversioned referenced files, needed for translation. Property key and configuration location not named.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "tabs.translation",
+   "label": "Hide translation tab",
+   "areas": [
+    "TRANSLATION",
+    "MAP_CONSOLE_AND_DASHBOARD"
+   ],
+   "defaults": {
+    "cloud_service": "true",
+    "on_premise": "false"
+   },
+   "options": [],
+   "source_description": "Hide translation tab in map dashboard",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-integrations/conf-translation"
+   ],
+   "doc_behavior": "Hides the Translation tab on the DITA map dashboard. Cloud: enabled by default so the tab is hidden; on-prem: disabled by default so the tab is shown.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "hide.tabs.baseline",
+   "label": "Hide Baseline Tab",
+   "areas": [
+    "BASELINE",
+    "MAP_CONSOLE_AND_DASHBOARD"
+   ],
+   "defaults": {
+    "cloud_service": "true",
+    "on_premise": "false"
+   },
+   "options": [],
+   "source_description": "Hide baseline tab in map dashboard",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/conf-output-generation",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "Hides the Baseline tab on the DITA map dashboard. Cloud: enabled by default (tab hidden); on-prem: disabled by default (tab shown).",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "valid.characters",
+   "label": "Regex for valid characters",
+   "areas": [
+    "UPLOAD_AND_VERSIONS",
+    "FILE_NAMES_AND_TOPICS"
+   ],
+   "defaults": {
+    "all": "[-a-zA-Z0-9_]"
+   },
+   "options": [],
+   "source_description": "Regex for valid characters in file names. Following characters should not be used in file names: '*/:[\\\\]|#%{}?&<>\"/+ '. By default, the valid names can have only alphanumeric characters, hyphen and underscore.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/conf-non-uuid-filename-cs/conf-file-names-valid-regx"
+   ],
+   "doc_behavior": "Regex of allowed file-name characters, default [-a-zA-Z0-9_], must start with a hyphen; other characters become hyphens; some characters always disallowed. On-prem label in ConfigManager; Cloud tab names XmlEditorConfig PID.",
+   "doc_code_conflict": "The documentation's Cloud Service tab places this under the XmlEditorConfig PID, not ConfigManager."
+  },
+  {
+   "key": "output.savebinary.threshold",
+   "label": "Save as Binary Threshold",
+   "areas": [
+    "OUTPUT_GENERATION"
+   ],
+   "defaults": {
+    "all": "512"
+   },
+   "options": [],
+   "source_description": "During output generation, string properties larger than this length (in bytes) will be saved as type Binary.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "output.history.purgeperiod",
+   "label": "Output History Purging Period",
+   "areas": [
+    "OUTPUT_HISTORY"
+   ],
+   "defaults": {
+    "all": "5"
+   },
+   "options": [],
+   "source_description": "Number of days the output history and ditamap exports will be kept. (Default is 5)",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/conf-output-generation",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "Days after which output history and output logs are purged, default 5; 0 disables purging; applies to all maps and does not affect generated output. Cloud and on-prem.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "output.history.purgetime",
+   "label": "Output History Purging Time",
+   "areas": [
+    "OUTPUT_HISTORY"
+   ],
+   "defaults": {
+    "all": "source constant Constants.OUTPUT_PURGE_TIME_DEFAULT"
+   },
+   "options": [],
+   "source_description": "Time of the day on the server when purging of the output history and ditamap exports has to be started. Format HH:MM (example 15:30) ",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/conf-output-generation",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/output-gen-config/conf-output-generation"
+   ],
+   "doc_behavior": "Daily time at which output history purging starts; doc default 0:00 (midnight). Cloud and on-prem.",
+   "doc_code_conflict": "Documentation says midnight (0:00); the source uses a named constant."
+  },
+  {
+   "key": "output.history.retention.mode",
+   "label": "Output History Retention Mode",
+   "areas": [
+    "OUTPUT_HISTORY"
+   ],
+   "defaults": {
+    "all": "source constant Constants.OUTPUT_HISTORY_RETENTION_MODE_AGE"
+   },
+   "options": [],
+   "source_description": "Retention strategy for output history: AGE keeps entries newer than the Output History Purging Period; COUNT keeps only the most-recent N entries per (map, preset). The two modes are mutually exclusive. (Default is AGE)",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "output.history.retention.count",
+   "label": "Output History Retention Count (per preset)",
+   "areas": [
+    "OUTPUT_HISTORY"
+   ],
+   "defaults": {
+    "all": "source constant Constants.OUTPUT_HISTORY_RETENTION_COUNT_DEFAULT"
+   },
+   "options": [],
+   "source_description": "Number of most-recent output history entries to keep per (map, preset). Used only when Retention Mode = COUNT. (Default is 25)",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "output.history.retention.action",
+   "label": "Output History Retention Action",
+   "areas": [
+    "OUTPUT_HISTORY"
+   ],
+   "defaults": {
+    "all": "source constant Constants.OUTPUT_HISTORY_RETENTION_ACTION_DELETE_ENTRY"
+   },
+   "options": [],
+   "source_description": "What to do with output history entries removed by retention (either mode): DELETE_ENTRY removes the whole entry; LOGS_ONLY removes only the log asset and keeps the entry. (Default is DELETE_ENTRY)",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "uuid.duplicate.move.old",
+   "label": "Move old file with same UUID to new folder",
+   "areas": [
+    "UPLOAD_AND_VERSIONS"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "When uploading an asset, if an asset with the same UUID exists, the existing asset is moved to the new location and overwritten",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/migrate-content-cs/upload-dita-content"
+   ],
+   "doc_behavior": "Label Move old file with Same UUID to New Folder, default ON: on upload (e.g. WinSCP) the existing same-UUID file is moved to the new location and overwritten; OFF overwrites in place. Key not named.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "attachmentSize",
+   "label": "Max Attachment Size(in Mb)",
+   "areas": [
+    "REVIEW"
+   ],
+   "defaults": {
+    "all": "5"
+   },
+   "options": [],
+   "source_description": "Maximum size (in Mb) of the file that can be uploaded as an attachment while giving review comments",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "allowedFileTypes",
+   "label": "Allowed File Types",
+   "areas": [
+    "REVIEW"
+   ],
+   "defaults": {
+    "all": "source constant Constants.ATTACHMENT_TYPES"
+   },
+   "options": [],
+   "source_description": "Allowed file Categories for Review Attachment",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "block.unsafe.delete",
+   "label": "Block deletion for referenced Assets",
+   "areas": [
+    "DELETE"
+   ],
+   "defaults": {
+    "cloud_service": "allow_unsafe_delete_for_delete_assets_group",
+    "on_premise": "allow_unsafe_delete_for_all"
+   },
+   "options": [],
+   "source_description": "This property has three levels of permission 1. allow_unsafe_delete_for_all 2. allow_unsafe_delete_for_delete_assets_group 3. block_unsafe_delete_for_all",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-system-settings/version-management"
+   ],
+   "doc_behavior": "Controls deletion of referenced files: allow_unsafe_delete_for_all, allow_unsafe_delete_for_delete_assets_group, block_unsafe_delete_for_all. Doc default allow_unsafe_delete_for_delete_assets_group. Cloud and on-prem.",
+   "doc_code_conflict": "Documentation gives one default (allow_unsafe_delete_for_delete_assets_group); the source default differs between Cloud Service and on-premise."
+  },
+  {
+   "key": "cond.attr.compatibility.mode",
+   "label": "Enable compatible Mode for conditional attributes",
+   "areas": [
+    "CONDITIONS"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable compatible Mode for conditional attributes.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "no.version.creation.on.deletion",
+   "label": "Do not create version for deleted pages",
+   "areas": [
+    "AEM_SITES_OUTPUT"
+   ],
+   "defaults": {
+    "cloud_service": "true",
+    "on_premise": "false"
+   },
+   "options": [],
+   "source_description": "When output is generated using \"Delete and Create\" option with this config as True, then no version will be created for pages being deleted",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2022-releases/release-notes-2022-1-0"
+   ],
+   "doc_behavior": "Release note only, key not named: a configuration was added to retain or not create versions of pages deleted when AEM Site output uses the Delete and Create option. No default or config page documented.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "create.ver.new.content",
+   "label": "Create new version for uploaded file",
+   "areas": [
+    "UPLOAD_AND_VERSIONS"
+   ],
+   "defaults": {
+    "cloud_service": "true",
+    "on_premise": "false"
+   },
+   "options": [],
+   "source_description": "Override default upload behavior. Create a version of uploaded file. (by default this value is disabled. If this property is disabled, then a version of uploaded file is not created)",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-system-settings/version-management",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/version-mgt-cs/version-management",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/version-mgt/version-management"
+   ],
+   "doc_behavior": "ConfigManager option 'Create New Version for Uploaded File': when enabled, re-uploading a file saves it as a new version instead of overwriting. Docs state default true (conflicts with source default Environment.ISCLOUD); Cloud via config override, on-prem via Web Console.",
+   "doc_code_conflict": "Documentation says true by default; the source default is true only on Cloud Service."
+  },
+  {
+   "key": "overwrite.checkout.onupload",
+   "label": "Overwrite checked out file on upload",
+   "areas": [
+    "UPLOAD_AND_VERSIONS"
+   ],
+   "defaults": {
+    "cloud_service": "false",
+    "on_premise": "true"
+   },
+   "options": [],
+   "source_description": "Allows the file to be overwritten if it is checked out by another user. If the value is false, then the file is prevented from being uploaded if it is checked out by another user. This only works for the asset options from UI interface",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/aemg-system-settings/version-management",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/version-mgt-cs/version-management",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/version-mgt/version-management"
+   ],
+   "doc_behavior": "'Overwrite Checked Out File on Upload': controls whether an upload may overwrite a file checked out by another user; false blocks it. Applies only to Assets UI uploads, not WebDAV. Default false on Cloud, true on-prem (install-conf page).",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "disable.guidesparentmaps.processing",
+   "label": "Disable guidesParentMaps Processing",
+   "areas": [
+    "POST_PROCESSING"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Disable guidesParentMaps processing. This would improve post processing performance, but features like map level find and replace and metadata reports would not work and require manually running guidesParentMaps processing job.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "ignored.post.processing.paths",
+   "label": "Ignored Paths for Post Processing",
+   "areas": [
+    "POST_PROCESSING"
+   ],
+   "defaults": {
+    "all": "source constant DxmlConstants.TRANSLATION_OUTPUT_PATH"
+   },
+   "options": [],
+   "source_description": "Paths that are ignored for post processing",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/conf-folder-post-processing"
+   ],
+   "doc_behavior": "Multivalued folder paths (no trailing slash) excluded from post-processing and UUID generation; default /content/dam/projects/translation_output. A path in both ignored and enabled lists is ignored; child rules override parent. Cloud via override, on-prem via Web Console.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enabled.post.processing.paths",
+   "label": "Enabled Paths for Post Processing",
+   "areas": [
+    "POST_PROCESSING"
+   ],
+   "defaults": {
+    "all": "/content/dam"
+   },
+   "options": [],
+   "source_description": "Paths that are enabled for post processing",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/on-prem-ig/conf-folder-post-processing"
+   ],
+   "doc_behavior": "Multivalued folder paths (no trailing slash) where post-processing runs; default /content/dam. An enabled child under an ignored parent is processed; ignored list wins if a path is in both. Cloud via override, on-prem via Web Console.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "native.pdf.node.opts",
+   "label": "Node Command line options for native pdf",
+   "areas": [
+    "NATIVE_PDF"
+   ],
+   "defaults": {
+    "all": ""
+   },
+   "options": [],
+   "source_description": "Node command line options to be passed to native pdf publishing",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "disable.gzip.response.filters",
+   "label": "Disable guides gzip response filter",
+   "areas": [
+    "EDITOR"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Disable gzip response filter for guides",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "pass.metadata.args.cmd.line",
+   "label": "Pass root-map metadata arguments to DITA-OT command line",
+   "areas": [
+    "DITA_OT"
+   ],
+   "defaults": {
+    "cloud_service": "true",
+    "on_premise": "false"
+   },
+   "options": [],
+   "source_description": "Pass root-map metadata arguments to DITA-OT command line",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/conf-output-generation",
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-guide/cs-ig/output-gen-config-cs/conf-output-generation"
+   ],
+   "doc_behavior": "Cloud Service only. When true (documented default), root-map metadata is passed to DITA-OT through command-line arguments; when false, metadata must be supplied via the Property field in the DITA-OT preset.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.post.processing.dynamic.title.processing",
+   "label": "Enable proactive conref resolution in DITA files title",
+   "areas": [
+    "POST_PROCESSING"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Set this to \"true\" to use the proactively resolve conref used in title with any changes in the referenced file, or \"false\" to skip this processing in favour of performance.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fire.processing.events",
+   "label": "Fire Post Processing Events",
+   "areas": [
+    "POST_PROCESSING"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable firing of post-processing events.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/api-reference/post-process-event"
+   ],
+   "doc_behavior": "ConfigManager flag; when true, AEM Guides fires com/adobe/guides/postprocess/complete events after post-processing of created/modified files (path, eventType, status, uuid). Default false.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "fire.translation.events",
+   "label": "Fire Translation Events",
+   "areas": [
+    "TRANSLATION"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable firing of translation events.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "btree.deletion.enabled",
+   "label": "Guides btree deletion enabled",
+   "areas": [
+    "POST_PROCESSING",
+    "DELETE"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable delete operation on guides btree",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.asset.processing.scheduler",
+   "label": "Enable Guides asset processing scheduled job",
+   "areas": [
+    "POST_PROCESSING"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable Guides asset processing scheduled job",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "db.keyspace.old.query",
+   "label": "Use old query for keyspace generation on database",
+   "areas": [
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Use old query for keyspace generation on database",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.baseline.v2",
+   "label": "Enable faster Baseline (v2)",
+   "areas": [
+    "BASELINE"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable faster Baseline (v2)",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2026-releases/2605-release/whats-new-2026-05-0"
+   ],
+   "doc_behavior": "Feature-level only, key not named: new faster, more stable baseline experience (beta) is enabled by contacting the AEM Guides Customer Success team. No default or OSGi instructions documented.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.markup.findreplace",
+   "label": "Enable markup find and replace",
+   "areas": [
+    "EDITOR"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable markup find and replace",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "Content Health",
+   "label": "Enable content health",
+   "areas": [
+    "CONTENT_HEALTH"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable content health",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.new.sf.publishing",
+   "label": "Enable server-side Salesforce publishing",
+   "areas": [
+    "SALESFORCE"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable server-side (native) Salesforce Knowledge publishing instead of the client-side path",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.markup.editor",
+   "label": "Enable Editor 2.0",
+   "areas": [
+    "EDITOR"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable Editor 2.0",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/release-info/release-notes/cloud-release-notes/2026-releases/2605-release/whats-new-2026-05-0"
+   ],
+   "doc_behavior": "Feature-level only, key not named: Editor 2.0 (redesigned UI, dark theme, simplified tag/non-tag authoring) is enabled by contacting the AEM Guides Customer Success team.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "xmleditor.enableloadfilespagination",
+   "label": "Enable paginated load files API",
+   "areas": [
+    "EDITOR"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable paginated loading of files in the XML Editor",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.vault.use",
+   "label": "Enable Vault use",
+   "areas": [
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Use secrets from Vault for database configuration",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.db.usage",
+   "label": "Enable DB usage",
+   "areas": [
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable database usage",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.old.map.dashboard",
+   "label": "Enable old Map Dashboard",
+   "areas": [
+    "MAP_CONSOLE_AND_DASHBOARD"
+   ],
+   "defaults": {
+    "all": "true"
+   },
+   "options": [],
+   "source_description": "Enable the legacy Map Dashboard UI, enabled by default",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "guides.sync.executor.thread.pool.size",
+   "label": "Guides sync executor thread pool size",
+   "areas": [
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "0.5"
+   },
+   "options": [],
+   "source_description": "Guides sync executor thread pool size",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "guides.async.executor.thread.pool.size",
+   "label": "Guides async executor thread pool size",
+   "areas": [
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "0.5"
+   },
+   "options": [],
+   "source_description": "Guides async executor thread pool size",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "guides.debug.executor.thread.pool.size",
+   "label": "Guides debug executor thread pool size",
+   "areas": [
+    "PERFORMANCE_AND_PLATFORM"
+   ],
+   "defaults": {
+    "all": "0.25"
+   },
+   "options": [],
+   "source_description": "Guides debug executor thread pool size",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "guides.baseline.v1.skip.peer.links",
+   "label": "Skip peer links for Baseline V1",
+   "areas": [
+    "BASELINE"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enables skipping of peer links during Baseline V1 generation (default-enabled baselines)",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.bulk.importer",
+   "label": "Enable Bulk importer",
+   "areas": [
+    "BULK_IMPORT"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable Bulk importer",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.sf.token.refresh",
+   "label": "Enable Salesforce token refresh",
+   "areas": [
+    "SALESFORCE"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable rotatable OAuth refresh-token support for the client-side Salesforce publishing flow",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.review.comtasks.access",
+   "label": "Enable Review Communication Tasks Access",
+   "areas": [
+    "REVIEW"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable access to communication tasks in the review flow.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.editor.baseline.map.preview",
+   "label": "Enable Baseline Map Preview in Editor",
+   "areas": [
+    "BASELINE"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable previewing maps using baselines in the editor.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.review.topic.index",
+   "label": "Enable Review Topic Index",
+   "areas": [
+    "REVIEW"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable writing of guides:reviewTopicGuids property on review nodes for Oak-indexed topic GUID lookups.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.review.escape.spl.chars",
+   "label": "Enable Review Escape Special Characters",
+   "areas": [
+    "REVIEW"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable escaping of special characters in the review flow.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.track.changes",
+   "label": "Enable Track Changes",
+   "areas": [
+    "EDITOR"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable the track changes feature.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.review.scroll.sync",
+   "label": "Enable Horizontal Scroll Sync in Side-By-Side view",
+   "areas": [
+    "REVIEW"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable horizontal scroll synchronization in Side-By-Side view of review panel.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.review.topic.level.completion",
+   "label": "Enable Review Topic Level Completion",
+   "areas": [
+    "REVIEW"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable per-topic done-status tracking for reviewers.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.review.show.map.hierarchy",
+   "label": "Enable Map Hierarchy in Review Creation",
+   "areas": [
+    "REVIEW"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable display of DITA Map hierarchy structure in the review creation panel.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-send-topics-for-review"
+   ],
+   "doc_behavior": "Feature-level only, key not named: map hierarchy display when creating a review is disabled by default; enabled by contacting Customer Success.",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.review.ditaval",
+   "label": "Enable ditaval selection in review tasks",
+   "areas": [
+    "REVIEW",
+    "CONDITIONS"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable ditaval file selection when creating or editing review tasks.",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/review/review-send-topics-for-review"
+   ],
+   "doc_behavior": "Feature-level only, key not named: attaching DITAVAL files to review tasks; doc says enabled by default and Customer Success disables it (conflicts with source default false).",
+   "doc_code_conflict": "Documentation says enabled by default; the source default is false."
+  },
+  {
+   "key": "enable.new.map.collections",
+   "label": "Enable new map collections",
+   "areas": [
+    "MAP_CONSOLE_AND_DASHBOARD"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable new map collections",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.guides.branch.management",
+   "label": "Enable Branching Support in Guides",
+   "areas": [
+    "BRANCHING"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable branching and merging capabilities in AEM Guides.",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "enable.knowledge.ai",
+   "label": "Enable Knowledge AI",
+   "areas": [
+    "KNOWLEDGE_AI"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [],
+   "source_description": "Enable Knowledge AI",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  },
+  {
+   "key": "knowledge.ai.output.url",
+   "label": "Flameback URL",
+   "areas": [
+    "KNOWLEDGE_AI"
+   ],
+   "defaults": {
+    "all": "https://guidesai.adobe.io/domains"
+   },
+   "options": [],
+   "source_description": "Flameback URL output",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "",
+   "doc_code_conflict": ""
+  }
+ ]
+}

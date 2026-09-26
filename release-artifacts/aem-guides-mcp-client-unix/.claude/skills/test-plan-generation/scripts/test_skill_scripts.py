@@ -120,6 +120,7 @@ ui_surface_scope_mod = _load("ui_surface_scope", "ui_surface_scope.py")
 role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 pattern_check_suggestions_mod = _load("pattern_check_suggestions", "pattern_check_suggestions.py")
+config_settings_lookup_mod = _load("config_settings_lookup", "config_settings_lookup.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 question_research_mod = _load("question_research", "question_research.py")
@@ -7695,6 +7696,50 @@ def test_pattern_check_suggestions() -> None:
         "pattern-check data no longer on disk is reported as UNAVAILABLE",
         pc.suggest(paste_ticket, env=on, path=missing)["status"] == "UNAVAILABLE",
     )
+
+
+def test_config_settings_lookup() -> None:
+    cs = config_settings_lookup_mod
+    data = cs.load()
+    check("shipped config settings load and validate", len(data["settings"]) >= 80)
+    shipped = cs.DATA_PATH.read_text(encoding="utf-8")
+    check("shipped config settings carry no Jira keys", not re.search(r"\bGUIDES-\d+\b", shipped))
+    check("every setting belongs to at least one product area", all(s["areas"] for s in data["settings"]))
+    check(
+        "documented settings cite only Experience League or helpx pages",
+        all(u.startswith(("https://experienceleague.adobe.com/", "https://helpx.adobe.com/"))
+            for s in data["settings"] for u in s["doc_urls"]),
+    )
+
+    upload = cs.suggest("A DITA topic uploaded again with the same UUID is not versioned and the checked-out file is overwritten.", data)
+    keys = [s["key"] for s in upload]
+    check("an upload ticket lists the upload and versioning settings",
+          {"create.ver.new.content", "overwrite.checkout.onupload", "uuid.duplicate.move.old"} <= set(keys))
+    by_key = {s["key"]: s for s in data["settings"]}
+    check("Cloud Service and on-premise defaults are kept apart",
+          by_key["overwrite.checkout.onupload"]["defaults"] == {"cloud_service": "false", "on_premise": "true"})
+    check("an issue key does not match a short trigger word", cs.suggest("GUIDES-12345 GUIDEBOOK", data) == [])
+    check("an unrelated ticket lists nothing", cs.suggest("The page footer uses the wrong font colour.", data) == [])
+    check("results are capped", len(cs.suggest("upload delete review baseline translation output history", data, limit=5)) <= 5)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        corrupt = Path(tmp) / "guides_config_settings.json"
+        corrupt.write_text("{not json", encoding="utf-8")
+        try:
+            cs.load(corrupt)
+            refused = False
+        except ValueError:
+            refused = True
+        check("corrupt config settings data is refused", refused)
+        broken = Path(tmp) / "broken.json"
+        broken.write_text(json.dumps({**data, "areas": {"X": {"triggers": ["x"], "keys": ["no.such.key"]}}}),
+                          encoding="utf-8")
+        try:
+            cs.load(broken)
+            refused = False
+        except ValueError:
+            refused = True
+        check("an area naming an unknown setting is refused", refused)
 
 
 def test_fluffyjaws_evidence() -> None:
@@ -17218,6 +17263,7 @@ def main() -> int:
     test_role_provisioning()
     test_fluffyjaws_evidence()
     test_pattern_check_suggestions()
+    test_config_settings_lookup()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
     test_question_research()
