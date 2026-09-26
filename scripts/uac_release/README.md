@@ -38,6 +38,12 @@ the on-screen name, its evidence (a documentation URL or a `<file>:<line>` code 
 A shared widget changes every screen that embeds it, so each of those screens must be named in
 an Acceptance Criterion or a TBD.
 
+Each entry also records its `authority`: `TICKET`, `ATTACHMENT`, `PRODUCT_DECISION`,
+`DOCUMENTATION` or `CODE_REUSE`. A surface found only in documentation or code may get an AC
+only when that AC checks the screen still works as before; asking for new behaviour there needs a
+TBD. Every attachment entry in `SOURCE_COVERAGE.json` lists the screens it shows in `surfaces`,
+and each of those screens must be in the surface inventory.
+
 ## Every line of the ticket is mapped
 
 Before writing the UAC, Copilot writes `SOURCE_COVERAGE.json`: one entry for every sentence and

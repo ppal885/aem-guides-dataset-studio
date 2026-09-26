@@ -55,16 +55,23 @@ When finished, write these files:
    {{"source": "description" | "comment:<id>" | "attachment:<filename>", "text": "<the exact
    sentence, copied>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
    "ac": <Acceptance Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE and
-   NOT_MATERIAL>"}}. A TBD must point at the Acceptance Criterion whose TBD line asks it.
+   NOT_MATERIAL>"}}. A TBD must point at the Acceptance Criterion whose TBD line asks it. An
+   attachment entry also has "surfaces": ["<every product screen the attachment shows>"].
 6. {surface_inventory_path}: a JSON list of every place in the product where the feature appears or
    where its items open, found in the documentation AND by searching the code for every reuse of each
    widget, panel, component, service or API the change touches. One object per place:
    {{"surface": "<on-screen name, e.g. Review UI>", "evidence": ["<documentation URL>" or
-   "<repo file>:<line>", ...], "disposition": "AC" | "TBD" | "OUT_OF_SCOPE", "ac": <Acceptance
+   "<repo file>:<line>", ...], "authority": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" |
+   "DOCUMENTATION" | "CODE_REUSE", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE", "ac": <Acceptance
    Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE>"}}. For AC, the Acceptance
-   Criterion text must name the surface.
+   Criterion text must name the surface. A DOCUMENTATION or CODE_REUSE surface may only get an AC
+   that checks it still works as before, or a TBD.
 Write in simple English with AEM Guides names a QE sees on screen."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
+SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
+DISCOVERED_AUTHORITIES = ("DOCUMENTATION", "CODE_REUSE")
+REGRESSION_MARKERS = ("still", "as before", "as they do today", "as it does today", "unchanged", "not changed",
+                      "does not change", "keeps", "keep working")
 _CODE_REF = re.compile(r"^\S+\.[A-Za-z0-9]+:\d+(?:-\d+)?$")
 SOURCE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE", "NOT_MATERIAL")
 EMPTY_REASONS = {"", "n/a", "na", "none", "tbd", "-", "not material", "out of scope"}
@@ -213,6 +220,33 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
     return problems
 
 
+def attachment_surface_problems(ticket_dir: Path, source: dict, own_name: str = "") -> list[str]:
+    """Return problems unless every screen shown in an attachment is named and in the surface inventory."""
+    try:
+        coverage = json.loads((ticket_dir / common.SOURCE_COVERAGE_FILE).read_text(encoding="utf-8-sig"))
+        inventory = json.loads((ticket_dir / common.SURFACE_INVENTORY_FILE).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(coverage, list) or not isinstance(inventory, list):
+        return []
+    known = {_normalize(str(e.get("surface") or "")) for e in inventory if isinstance(e, dict)}
+    own_files = {a.get("filename") for a in source.get("attachments") or [] if own_name and a.get("author") == own_name}
+    problems = []
+    for entry in coverage:
+        if not isinstance(entry, dict) or not str(entry.get("source") or "").startswith("attachment:"):
+            continue
+        name = str(entry["source"])[len("attachment:"):]
+        if name in own_files:
+            continue
+        surfaces = [str(s).strip() for s in entry.get("surfaces") or [] if str(s).strip()]
+        if not surfaces:
+            problems.append(f"attachment {name}: list the product screens it shows in \"surfaces\"")
+        for surface in surfaces:
+            if _normalize(surface) not in known:
+                problems.append(f"attachment {name} shows {surface}, which is not in the surface inventory")
+    return problems
+
+
 def surface_inventory_problems(ticket_dir: Path) -> list[str]:
     """Return problems unless every place the feature appears is found in docs and code and covered."""
     path = ticket_dir / common.SURFACE_INVENTORY_FILE
@@ -242,6 +276,9 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
             problems.append(f"{label}: no evidence")
         elif len(docs) + len(code) < len(evidence):
             problems.append(f"{label}: evidence must be a documentation URL or a <file>:<line> code reference")
+        authority = entry.get("authority")
+        if authority not in SURFACE_AUTHORITIES:
+            problems.append(f"{label}: authority {authority!r} is not one of {', '.join(SURFACE_AUTHORITIES)}")
         disposition = entry.get("disposition")
         if disposition not in SURFACE_DISPOSITIONS:
             problems.append(f"{label}: disposition {disposition!r} is not one of {', '.join(SURFACE_DISPOSITIONS)}")
@@ -251,6 +288,10 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
                 problems.append(f"{label}: Acceptance Criteria {ac!r} does not exist in UAC.md")
             elif disposition == "AC" and _normalize(surface) not in _normalize(lines[ac]):
                 problems.append(f"{label}: Acceptance Criteria {ac} does not name this surface")
+            elif (disposition == "AC" and authority in DISCOVERED_AUTHORITIES
+                  and not any(f" {m} " in f" {_normalize(lines[ac])} " for m in REGRESSION_MARKERS)):
+                problems.append(f"{label}: found only by {authority}, so Acceptance Criteria {ac} may only check that it "
+                                "still works as before; ask about new behaviour there in a TBD")
             elif disposition == "TBD" and "TBD:" not in blocks[ac]:
                 problems.append(f"{label}: Acceptance Criteria {ac} has no TBD line")
         elif str(entry.get("reason") or "").strip().lower() in EMPTY_REASONS:
@@ -356,6 +397,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
             (ticket_dir / common.JIRA_SOURCE_FILE).write_text(
                 json.dumps(source, indent=2, ensure_ascii=False), encoding="utf-8")
             problems += source_coverage_problems(ticket_dir, source, own_name)
+            problems += attachment_surface_problems(ticket_dir, source, own_name)
     if problems:
         status.update(state="FAILED", problems=problems)
         common.write_status(ticket_dir, status)
