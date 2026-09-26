@@ -46,11 +46,14 @@ and each of those screens must be in the surface inventory.
 
 ## Every Acceptance Criterion is asked for
 
-The runner also fails a ticket when an Acceptance Criterion is not driven by anything: it must be
+The runner also adds a review note to the draft (it does not fail the ticket) when an Acceptance
+Criterion is not driven by anything: it should be
 the target of a ticket sentence or attachment in `SOURCE_COVERAGE.json` (one sentence may list
 several criteria, e.g. `"ac": [1, 4, 5]`), name a surface the ticket, an attachment or a product
 decision asks for, be a still-works check on an inventoried surface, or carry a TBD for the product
-owner. A criterion whose only source is `QE reasoning` must carry a TBD.
+owner. A criterion whose only source is `QE reasoning` gets a note too. These stay notes because good
+UACs often carry QE-judgment criteria (a quarter of human UAC requirements in the benchmark
+validation split had no explicit ticket source); the reviewer decides.
 
 Rules only run when the runner generates a UAC. After editing a UAC by hand, check the folder again
 before posting (it must also contain `jira-source.json`):

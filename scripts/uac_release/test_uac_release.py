@@ -376,6 +376,19 @@ class RunnerTests(unittest.TestCase):
         (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(surfaces), encoding="utf-8")
         return ticket
 
+    def test_orphan_notes_go_to_the_draft_and_do_not_fail_the_ticket(self) -> None:
+        jira = FakeJira()
+        note = "Acceptance Criteria 2 is not tied to any ticket sentence"
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]), \
+                mock.patch.object(runner, "orphan_ac_problems", return_value=[note]):
+            result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
+        self.assertEqual(result, "DRAFT_POSTED")
+        comment = [c for c in jira.calls if c[0] == "comment"][0][2]
+        self.assertIn("*Please check before approving*", comment)
+        self.assertIn(note, comment)
+        self.assertEqual(common.read_status(self.out / "PROJ-1")["review_notes"], [note])
+
     def test_orphan_acceptance_criterion_fails(self) -> None:
         self.assertEqual(runner.orphan_ac_problems(self._ticket_with("PROJ-8", UAC)), [])
         extra = UAC + ("- Acceptance Criteria 03: Verify that an export with no rows shows an empty file.\n"

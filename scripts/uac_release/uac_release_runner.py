@@ -303,7 +303,7 @@ def orphan_ac_problems(ticket_dir: Path) -> list[str]:
 def ticket_problems(ticket_dir: Path, prompt: str, source: dict | None, own_name: str = "") -> list[str]:
     """Every check the runner applies to a generated UAC folder."""
     problems = (check_outputs(ticket_dir) + doc_research_problems(ticket_dir, prompt)
-                + surface_inventory_problems(ticket_dir) + orphan_ac_problems(ticket_dir))
+                + surface_inventory_problems(ticket_dir))
     if source is not None:
         problems += source_coverage_problems(ticket_dir, source, own_name)
         problems += attachment_surface_problems(ticket_dir, source, own_name)
@@ -393,7 +393,8 @@ def check_outputs(ticket_dir: Path) -> list[str]:
     return problems
 
 
-def draft_comment(field_body: str, plan_name: str, decision_body: str = "", mention_note: str = "") -> str:
+def draft_comment(field_body: str, plan_name: str, decision_body: str = "", mention_note: str = "",
+                  review_notes: list[str] | None = None) -> str:
     text = (
         "*Draft UAC ready for QE review* (generated automatically, not yet in the Acceptance Criteria field)\n"
         "* To approve, add the label *UAC_Approved*. The criteria below are then copied into the "
@@ -401,6 +402,9 @@ def draft_comment(field_body: str, plan_name: str, decision_body: str = "", ment
         "* To request changes, add the label *UAC_Rework* and leave a comment.\n"
         f"* Full test plan: [^{plan_name}]\n\n" + field_body
     )
+    if review_notes:
+        text += ("\n\n----\n*Please check before approving* (automatic review notes)\n"
+                 + "".join(f"* {note}\n" for note in review_notes))
     if decision_body:
         text += (
             "\n\n----\n*Decision request* (posted as its own comment after approval"
@@ -477,7 +481,9 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         (ticket_dir / common.DECISION_BODY_FILE).write_text(decision_body, encoding="utf-8")
         status["decisions_sha256"] = common.sha256_file(ticket_dir / common.DECISIONS_FILE)
     status["warnings"] = warnings
-    for warning in warnings:
+    review_notes = orphan_ac_problems(ticket_dir)
+    status["review_notes"] = review_notes
+    for warning in warnings + review_notes:
         logger.warning("%s: %s", key, warning)
     if dry_run:
         common.write_status(ticket_dir, status)
@@ -488,7 +494,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     shutil.copyfile(ticket_dir / common.PLAN_FILE, plan_copy)
     attachment_id = jira.attach_file(key, plan_copy)
     comment_id = jira.add_comment(key, draft_comment(field_body, plan_copy.name, decision_body,
-                                                     decision_mention_note(config)))
+                                                     decision_mention_note(config), review_notes))
     jira.update_labels(key, add=[labels["draft"]], remove=[labels.get("rework", "")] if labels.get("rework") else [])
     status.update(state="DRAFT_POSTED", comment_id=comment_id, attachment_id=attachment_id)
     common.write_status(ticket_dir, status)
@@ -521,6 +527,8 @@ def check_dir(ticket_dir: Path, own_name: str = "") -> int:
     problems = ticket_problems(ticket_dir, "", source, own_name)
     if source is None:
         problems.append(f"{common.JIRA_SOURCE_FILE} is missing, so ticket coverage was not checked")
+    for note in orphan_ac_problems(ticket_dir):
+        print(f"WARN: {note}")
     for problem in problems:
         print(f"FAIL: {problem}")
     print("PASS: every runner check passed" if not problems else f"{len(problems)} problem(s)")
