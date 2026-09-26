@@ -54,8 +54,10 @@ When finished, write these files:
    attachment to the UAC, before you write it. One object per item:
    {{"source": "description" | "comment:<id>" | "attachment:<filename>", "text": "<the exact
    sentence, copied>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
-   "ac": <Acceptance Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE and
-   NOT_MATERIAL>"}}. A TBD must point at the Acceptance Criterion whose TBD line asks it. An
+   "ac": <Acceptance Criteria number, or a list when one sentence drives several criteria, for AC
+   and TBD>, "reason": "<why, for OUT_OF_SCOPE and NOT_MATERIAL>"}}. A TBD must point at the
+   Acceptance Criterion whose TBD line asks it. Every Acceptance Criterion must be driven by a
+   ticket sentence, an attachment or a requested screen, or carry a TBD. An
    attachment entry also has "surfaces": ["<every product screen the attachment shows>"].
 6. {surface_inventory_path}: a JSON list of every place in the product where the feature appears or
    where its items open, found in the documentation AND by searching the code for every reuse of each
@@ -198,11 +200,12 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
             problems.append(f"source coverage item {number}: disposition {disposition!r} is not one of "
                             f"{', '.join(SOURCE_DISPOSITIONS)}")
         elif disposition in ("AC", "TBD"):
-            ac = entry.get("ac")
-            if not isinstance(ac, int) or ac not in blocks:
-                problems.append(f"source coverage item {number}: Acceptance Criteria {ac!r} does not exist in UAC.md")
-            elif disposition == "TBD" and "TBD:" not in blocks[ac]:
-                problems.append(f"source coverage item {number}: Acceptance Criteria {ac} has no TBD line")
+            acs = _ac_numbers(entry.get("ac"))
+            missing_acs = [ac for ac in acs if ac not in blocks]
+            if not acs or missing_acs:
+                problems.append(f"source coverage item {number}: Acceptance Criteria {entry.get('ac')!r} does not exist in UAC.md")
+            elif disposition == "TBD" and not any("TBD:" in blocks[ac] for ac in acs):
+                problems.append(f"source coverage item {number}: Acceptance Criteria {entry.get('ac')} has no TBD line")
         elif str(entry.get("reason") or "").strip().lower() in EMPTY_REASONS:
             problems.append(f"source coverage item {number}: {disposition} needs a concrete reason")
     covered = [_normalize(str(e.get("text") or "")) for e in entries]
@@ -244,6 +247,66 @@ def attachment_surface_problems(ticket_dir: Path, source: dict, own_name: str = 
         for surface in surfaces:
             if _normalize(surface) not in known:
                 problems.append(f"attachment {name} shows {surface}, which is not in the surface inventory")
+    return problems
+
+
+def _load_list(path: Path) -> list:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return []
+    return [e for e in data if isinstance(e, dict)] if isinstance(data, list) else []
+
+
+def _ac_numbers(value) -> list[int]:
+    """An entry's "ac" may be one Acceptance Criteria number or a list of them."""
+    values = value if isinstance(value, list) else [value]
+    return [v for v in values if isinstance(v, int) and not isinstance(v, bool)]
+
+
+def _is_regression(text: str) -> bool:
+    return any(f" {m} " in f" {_normalize(text)} " for m in REGRESSION_MARKERS)
+
+
+def orphan_ac_problems(ticket_dir: Path) -> list[str]:
+    """Return problems for Acceptance Criteria that no ticket line, attachment or in-scope surface asks for."""
+    uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
+    lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
+    blocks = {int(n): body for n, body in re.findall(
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|\Z)", uac, re.M | re.S)}
+    coverage = _load_list(ticket_dir / common.SOURCE_COVERAGE_FILE)
+    inventory = _load_list(ticket_dir / common.SURFACE_INVENTORY_FILE)
+    from_ticket = {ac for e in coverage if e.get("disposition") in ("AC", "TBD") for ac in _ac_numbers(e.get("ac"))}
+    in_scope = [e for e in inventory if e.get("disposition") in ("AC", "TBD")]
+    requested = [e for e in in_scope if e.get("authority") not in DISCOVERED_AUTHORITIES]
+
+    def names(entries, number, text):
+        return any(number in _ac_numbers(e.get("ac")) or _normalize(str(e.get("surface") or "")) in _normalize(text)
+                   for e in entries if str(e.get("surface") or "").strip())
+
+    problems = []
+    for number, text in sorted(lines.items()):
+        if number in from_ticket or names(requested, number, text) or "TBD:" in blocks.get(number, ""):
+            continue
+        if names(in_scope, number, text) and _is_regression(text):
+            continue
+        problems.append(f"Acceptance Criteria {number} is not tied to any ticket sentence, attachment or requested "
+                        "surface; remove it, tie it to the ticket, or add a TBD for the product owner")
+    for number, body in sorted(blocks.items()):
+        source = re.search(r"Source:\**\s*(.+)", body)
+        if source and _normalize(source.group(1)).startswith("qe reasoning") and "TBD:" not in body:
+            problems.append(f"Acceptance Criteria {number} rests only on QE reasoning; add a TBD that asks the "
+                            "product owner, or remove it")
+    return problems
+
+
+def ticket_problems(ticket_dir: Path, prompt: str, source: dict | None, own_name: str = "") -> list[str]:
+    """Every check the runner applies to a generated UAC folder."""
+    problems = (check_outputs(ticket_dir) + doc_research_problems(ticket_dir, prompt)
+                + surface_inventory_problems(ticket_dir))
+    if source is not None:
+        problems += source_coverage_problems(ticket_dir, source, own_name)
+        problems += attachment_surface_problems(ticket_dir, source, own_name)
     return problems
 
 
@@ -330,7 +393,8 @@ def check_outputs(ticket_dir: Path) -> list[str]:
     return problems
 
 
-def draft_comment(field_body: str, plan_name: str, decision_body: str = "", mention_note: str = "") -> str:
+def draft_comment(field_body: str, plan_name: str, decision_body: str = "", mention_note: str = "",
+                  review_notes: list[str] | None = None) -> str:
     text = (
         "*Draft UAC ready for QE review* (generated automatically, not yet in the Acceptance Criteria field)\n"
         "* To approve, add the label *UAC_Approved*. The criteria below are then copied into the "
@@ -338,6 +402,9 @@ def draft_comment(field_body: str, plan_name: str, decision_body: str = "", ment
         "* To request changes, add the label *UAC_Rework* and leave a comment.\n"
         f"* Full test plan: [^{plan_name}]\n\n" + field_body
     )
+    if review_notes:
+        text += ("\n\n----\n*Please check before approving* (automatic review notes)\n"
+                 + "".join(f"* {note}\n" for note in review_notes))
     if decision_body:
         text += (
             "\n\n----\n*Decision request* (posted as its own comment after approval"
@@ -384,20 +451,19 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     except subprocess.TimeoutExpired:
         exit_code = "timeout"
     status.update({"key": key, "copilot_exit": exit_code, "copilot_seconds": round(time.time() - started)})
-    problems = (check_outputs(ticket_dir) + doc_research_problems(ticket_dir, prompt)
-                + surface_inventory_problems(ticket_dir)
-                if exit_code == 0 else [f"Copilot CLI exit {exit_code}"])
-    if exit_code == 0:
+    if exit_code != 0:
+        problems = [f"Copilot CLI exit {exit_code}"]
+    else:
+        source, own_name, fetch_problem = None, "", []
         try:
             source = jira.get_source(key)
             own_name = str((jira.myself() or {}).get("name") or "")
         except Exception as exc:  # noqa: BLE001 - without the live ticket text the UAC cannot be checked
-            problems.append(f"could not read the Jira ticket to check source coverage: {exc}")
+            fetch_problem = [f"could not read the Jira ticket to check source coverage: {exc}"]
         else:
             (ticket_dir / common.JIRA_SOURCE_FILE).write_text(
                 json.dumps(source, indent=2, ensure_ascii=False), encoding="utf-8")
-            problems += source_coverage_problems(ticket_dir, source, own_name)
-            problems += attachment_surface_problems(ticket_dir, source, own_name)
+        problems = ticket_problems(ticket_dir, prompt, source, own_name) + fetch_problem
     if problems:
         status.update(state="FAILED", problems=problems)
         common.write_status(ticket_dir, status)
@@ -415,7 +481,9 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         (ticket_dir / common.DECISION_BODY_FILE).write_text(decision_body, encoding="utf-8")
         status["decisions_sha256"] = common.sha256_file(ticket_dir / common.DECISIONS_FILE)
     status["warnings"] = warnings
-    for warning in warnings:
+    review_notes = orphan_ac_problems(ticket_dir)
+    status["review_notes"] = review_notes
+    for warning in warnings + review_notes:
         logger.warning("%s: %s", key, warning)
     if dry_run:
         common.write_status(ticket_dir, status)
@@ -426,7 +494,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     shutil.copyfile(ticket_dir / common.PLAN_FILE, plan_copy)
     attachment_id = jira.attach_file(key, plan_copy)
     comment_id = jira.add_comment(key, draft_comment(field_body, plan_copy.name, decision_body,
-                                                     decision_mention_note(config)))
+                                                     decision_mention_note(config), review_notes))
     jira.update_labels(key, add=[labels["draft"]], remove=[labels.get("rework", "")] if labels.get("rework") else [])
     status.update(state="DRAFT_POSTED", comment_id=comment_id, attachment_id=attachment_id)
     common.write_status(ticket_dir, status)
@@ -452,13 +520,35 @@ def health(config: dict, jira, logger) -> list[str]:
     return problems
 
 
+def check_dir(ticket_dir: Path, own_name: str = "") -> int:
+    """Run every runner check on an existing UAC folder, e.g. one edited by hand before posting."""
+    source_file = ticket_dir / common.JIRA_SOURCE_FILE
+    source = json.loads(source_file.read_text(encoding="utf-8")) if source_file.is_file() else None
+    problems = ticket_problems(ticket_dir, "", source, own_name)
+    if source is None:
+        problems.append(f"{common.JIRA_SOURCE_FILE} is missing, so ticket coverage was not checked")
+    for note in orphan_ac_problems(ticket_dir):
+        print(f"WARN: {note}")
+    for problem in problems:
+        print(f"FAIL: {problem}")
+    print("PASS: every runner check passed" if not problems else f"{len(problems)} problem(s)")
+    return 1 if problems else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--check-dir", type=Path,
+                        help="only run every check on an existing UAC folder and exit (no Copilot, no Jira writes)")
+    parser.add_argument("--own-name", default="", help="with --check-dir: the automation's Jira user, to skip its comments")
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--env-file", type=Path, default=common.REPO_ROOT / "backend" / ".env")
     parser.add_argument("--ticket", action="append", help="process only these keys (repeatable)")
     parser.add_argument("--dry-run", action="store_true", help="generate and check, but write nothing to Jira")
     args = parser.parse_args(argv)
+    if args.check_dir:
+        return check_dir(args.check_dir, args.own_name)
+    if not args.config:
+        parser.error("--config is required unless --check-dir is used")
 
     common.load_env_file(args.env_file)
     config = common.load_config(args.config)
