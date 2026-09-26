@@ -44,6 +44,21 @@ only when that AC checks the screen still works as before; asking for new behavi
 TBD. Every attachment entry in `SOURCE_COVERAGE.json` lists the screens it shows in `surfaces`,
 and each of those screens must be in the surface inventory.
 
+## Every Acceptance Criterion is asked for
+
+The runner also fails a ticket when an Acceptance Criterion is not driven by anything: it must be
+the target of a ticket sentence or attachment in `SOURCE_COVERAGE.json` (one sentence may list
+several criteria, e.g. `"ac": [1, 4, 5]`), name a surface the ticket, an attachment or a product
+decision asks for, be a still-works check on an inventoried surface, or carry a TBD for the product
+owner. A criterion whose only source is `QE reasoning` must carry a TBD.
+
+Rules only run when the runner generates a UAC. After editing a UAC by hand, check the folder again
+before posting (it must also contain `jira-source.json`):
+
+```
+python3 scripts/uac_release/uac_release_runner.py --check-dir /opt/uac-release/runs/GUIDES-12345 --own-name <jira user>
+```
+
 ## Every line of the ticket is mapped
 
 Before writing the UAC, Copilot writes `SOURCE_COVERAGE.json`: one entry for every sentence and

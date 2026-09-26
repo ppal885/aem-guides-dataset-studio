@@ -368,6 +368,56 @@ class RunnerTests(unittest.TestCase):
         unknown = COVERAGE[:3] + [dict(COVERAGE[3], surfaces=["Map console", "Your tasks widget"])]
         self.assertIn("attachment shot.png shows Your tasks widget, which is not in the surface inventory", problems(unknown))
 
+    def _ticket_with(self, name, uac, coverage=COVERAGE, surfaces=SURFACES):
+        ticket = self.out / name
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(uac, encoding="utf-8")
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
+        (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(surfaces), encoding="utf-8")
+        return ticket
+
+    def test_orphan_acceptance_criterion_fails(self) -> None:
+        self.assertEqual(runner.orphan_ac_problems(self._ticket_with("PROJ-8", UAC)), [])
+        extra = UAC + ("- Acceptance Criteria 03: Verify that an export with no rows shows an empty file.\n"
+                       "  **Source:** Ticket description.\n")
+        found = runner.orphan_ac_problems(self._ticket_with("PROJ-9", extra))
+        self.assertEqual(len(found), 1)
+        self.assertIn("Acceptance Criteria 3 is not tied to any ticket sentence", found[0])
+
+    def test_regression_ac_on_a_discovered_surface_is_not_an_orphan(self) -> None:
+        extra = UAC + ("- Acceptance Criteria 03: Verify that the Report dialog still opens as before.\n"
+                       "  **Source:** src/controllers/report_dialog.ts line 40.\n")
+        surfaces = SURFACES + [{"surface": "Report dialog", "evidence": ["src/controllers/report_dialog.ts:40"],
+                                "authority": "CODE_REUSE", "disposition": "AC", "ac": 3}]
+        self.assertEqual(runner.orphan_ac_problems(self._ticket_with("PROJ-10", extra, surfaces=surfaces)), [])
+
+    def test_one_ticket_sentence_can_drive_several_criteria(self) -> None:
+        extra = UAC + ("- Acceptance Criteria 03: Verify that an export with no rows shows an empty file.\n"
+                       "  **Source:** Ticket description.\n")
+        coverage = [dict(COVERAGE[0], ac=[1, 3])] + COVERAGE[1:]
+        ticket = self._ticket_with("PROJ-14", extra, coverage=coverage)
+        self.assertEqual(runner.orphan_ac_problems(ticket), [])
+        self.assertEqual(runner.source_coverage_problems(ticket, SOURCE, own_name="uac.bot"), [])
+
+    def test_qe_reasoning_only_needs_a_tbd(self) -> None:
+        uac = UAC.replace("  **Source:** Ticket description; ReportServlet.java line 10.\n",
+                          "  **Source:** QE reasoning: nothing in the ticket defines this.\n")
+        found = runner.orphan_ac_problems(self._ticket_with("PROJ-11", uac))
+        self.assertTrue(any("rests only on QE reasoning" in p for p in found))
+        with_tbd = uac.replace("- Acceptance Criteria 02:", "  **TBD:** Is this in scope?\n- Acceptance Criteria 02:")
+        self.assertFalse(any("QE reasoning" in p for p in runner.orphan_ac_problems(self._ticket_with("PROJ-12", with_tbd))))
+
+    def test_check_dir_runs_every_check_on_an_existing_folder(self) -> None:
+        ticket = self._ticket_with("PROJ-13", UAC)
+        (ticket / common.JIRA_SOURCE_FILE).write_text(json.dumps(SOURCE), encoding="utf-8")
+        ok = subprocess.CompletedProcess([], 0, "PASS", "")
+        with mock.patch.object(runner.subprocess, "run", return_value=ok):
+            self.assertEqual(runner.main(["--check-dir", str(ticket), "--own-name", "uac.bot"]), 1)
+            (ticket / common.PLAN_FILE).write_text("plan", encoding="utf-8")
+            (ticket / common.DOC_RESEARCH_FILE).write_text(json.dumps(DOC_RESEARCH), encoding="utf-8")
+            (ticket / "copilot-transcript.md").write_text("uac-doc-researcher ran", encoding="utf-8")
+            self.assertEqual(runner.main(["--check-dir", str(ticket), "--own-name", "uac.bot"]), 0)
+
     def test_check_outputs_rejects_missing_files_and_bad_ac_count(self) -> None:
         ticket = self.out / "PROJ-2"
         ticket.mkdir()
