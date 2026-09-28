@@ -430,6 +430,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         logger.info("%s: already %s, skipping", key, status["state"])
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
+    common.archive_attempt(ticket_dir, int(config.get("keep_attempts", 5)))
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
                  common.SURFACE_INVENTORY_FILE):
@@ -552,20 +553,53 @@ def main(argv: list[str] | None = None) -> int:
 
     common.load_env_file(args.env_file)
     config = common.load_config(args.config)
-    logger = common.setup_logging(Path(config["output_dir"]) / "logs", "uac-runner")
-    jira = common.JiraClient.from_env()
-    with common.RunLock(Path(config["output_dir"]) / "runner.lock", int(config.get("lock_max_age_minutes", 720)) * 60):
-        problems = health(config, jira, logger)
-        if problems:
-            for p in problems:
+    out = Path(config["output_dir"])
+    logger = common.setup_logging(out / "logs", "uac-runner")
+    run_id, started = common.new_run_id(), time.time()
+    logger.info("run %s started%s", run_id, " (dry run)" if args.dry_run else "")
+    common.prune_logs(out / "logs", int(config.get("log_retention_days", 30)), logger)
+    results: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    health_problems: list[str] = []
+    alerts: list[str] = []
+    jira = None
+    try:
+        jira = common.JiraClient.from_env()
+        with common.RunLock(out / "runner.lock", int(config.get("lock_max_age_minutes", 720)) * 60):
+            health_problems = health(config, jira, logger)
+            for p in health_problems:
                 logger.error("health: %s", p)
-            return 2
-        keys = args.ticket or config.get("tickets") or jira.search_keys(
-            config["jql"], int(config.get("max_tickets", 100)))
-        logger.info("tickets: %s", ", ".join(keys) or "none")
-        results = {key: process_ticket(key, config, jira, logger, args.dry_run) for key in keys}
+            if not health_problems:
+                keys = args.ticket or config.get("tickets") or jira.search_keys(
+                    config["jql"], int(config.get("max_tickets", 100)))
+                logger.info("tickets: %s", ", ".join(keys) or "none")
+                results, errors = common.run_each(
+                    keys, lambda key: process_ticket(key, config, jira, logger, args.dry_run), logger, out)
+        exit_code = 2 if health_problems else 1 if any(v in ("FAILED", "ERROR") for v in results.values()) else 0
+    except Exception as exc:  # noqa: BLE001 - record and alert on anything that stops the run
+        logger.exception("run %s stopped", run_id)
+        alerts.append(f"The run stopped before finishing: {type(exc).__name__}: {exc}")
+        exit_code = 3
+    alerts = [f"Health check failed, no tickets processed: {p}" for p in health_problems] + alerts
+    for key, result in results.items():
+        if result == "ERROR":
+            alerts.append(f"{key}: unexpected error - {errors.get(key, 'see the log')}")
+        elif result == "FAILED":
+            problems = common.read_status(out / key).get("problems") or ["see status.json"]
+            more = f" (and {len(problems) - 1} more)" if len(problems) > 1 else ""
+            alerts.append(f"{key}: draft not posted - {problems[0]}{more}")
     logger.info("summary: %s", results)
-    return 1 if any(v == "FAILED" for v in results.values()) else 0
+    common.append_run_record(out, {
+        "run_id": run_id, "tool": "uac-runner", "dry_run": args.dry_run,
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(started)),
+        "seconds": round(time.time() - started), "exit_code": exit_code, "tickets": results,
+        "errors": errors, "health_problems": health_problems, "alerts": alerts})
+    if args.dry_run:
+        for line in alerts:
+            logger.warning("alert (dry run, not sent): %s", line)
+    elif jira is not None:
+        common.send_alert(config, jira, logger, "uac-runner", run_id, alerts)
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -8,6 +8,13 @@
   "mcp_health_url": "http://10.42.46.78:4502/mcp/health",
   "regenerate_existing": false,
   "lock_max_age_minutes": 720,
+  "log_retention_days": 30,
+  "keep_attempts": 5,
+  "alerts": {
+    "ticket": "",
+    "mention": [],
+    "repeat_hours": 24
+  },
   "decision_comment": {
     "enabled": true,
     "mention": ["assignee"],

@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -547,6 +549,188 @@ class DecisionRequestTests(unittest.TestCase):
         disabled = dict(self.config, decision_comment={"enabled": False})
         self.assertEqual(poster.post_decision_request("PROJ-1", disabled, jira, self.log, ticket,
                                                       common.read_status(ticket)), "NONE")
+
+
+def close_logger(name: str) -> None:
+    run_logger = logging.getLogger(name)
+    for handler in list(run_logger.handlers):
+        handler.close()
+        run_logger.removeHandler(handler)
+
+
+class RunLoggingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self.tmp.name)
+        self.config = dict(make_config(self.out), tickets=["PROJ-1", "PROJ-2"],
+                           alerts={"ticket": "OPS-1", "mention": ["qe.lead"]})
+        self.log = logging.getLogger("test")
+        self.env = ["--env-file", str(self.out / "missing.env")]
+
+    def tearDown(self) -> None:
+        close_logger("uac-runner")
+        close_logger("uac-poster")
+        self.tmp.cleanup()
+
+    def run_runner(self, jira, process=None, health=(), extra=()):
+        with mock.patch.object(runner, "health", return_value=list(health)), \
+                mock.patch.object(runner.common, "load_config", return_value=self.config), \
+                mock.patch.object(runner.common.JiraClient, "from_env", return_value=jira), \
+                mock.patch.object(runner, "process_ticket", side_effect=process or (lambda k, *a: "READY")):
+            return runner.main(["--config", "unused.json", *self.env, *extra])
+
+    def runs(self) -> list[dict]:
+        lines = (self.out / common.RUNS_FILE).read_text(encoding="utf-8").splitlines()
+        return [json.loads(line) for line in lines]
+
+    def alert_comments(self, jira) -> list[str]:
+        return [c[2] for c in jira.calls if c[0] == "comment" and c[1] == "OPS-1"]
+
+    def test_one_ticket_crashing_does_not_stop_the_others(self) -> None:
+        seen = []
+
+        def process(key, *args):
+            seen.append(key)
+            if key == "PROJ-1":
+                raise ConnectionError("Jira returned 500")
+            return "DRAFT_POSTED"
+
+        jira = FakeJira()
+        self.assertEqual(self.run_runner(jira, process), 1)
+        self.assertEqual(seen, ["PROJ-1", "PROJ-2"])
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], "ERROR")
+        self.assertIn("Jira returned 500", status["last_error"])
+        record = self.runs()[-1]
+        self.assertEqual(record["tickets"], {"PROJ-1": "ERROR", "PROJ-2": "DRAFT_POSTED"})
+        self.assertEqual(record["exit_code"], 1)
+        log_text = "".join(p.read_text(encoding="utf-8") for p in (self.out / "logs").glob("uac-runner-*.log"))
+        self.assertIn("Traceback", log_text, "the traceback goes to the daily log, not only cron.log")
+        [alert] = self.alert_comments(jira)
+        self.assertIn("[~qe.lead]", alert)
+        self.assertIn("PROJ-1: unexpected error - ConnectionError: Jira returned 500", alert)
+
+    def test_error_after_the_draft_keeps_the_posted_state(self) -> None:
+        common.write_status(self.out / "PROJ-1", {"state": "DRAFT_POSTED"})
+        results, errors = common.run_each(["PROJ-1"], lambda k: 1 / 0, self.log, self.out)
+        self.assertEqual(results, {"PROJ-1": "ERROR"})
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], "DRAFT_POSTED")
+        self.assertIn("ZeroDivisionError", status["last_error"])
+
+    def test_failed_ticket_is_alerted_with_its_first_problem(self) -> None:
+        def process(key, *args):
+            if key == "PROJ-2":
+                common.write_status(self.out / key, {"state": "FAILED", "problems": ["no doc researcher run", "x"]})
+                return "FAILED"
+            return "DRAFT_POSTED"
+
+        jira = FakeJira()
+        self.run_runner(jira, process)
+        [alert] = self.alert_comments(jira)
+        self.assertIn("PROJ-2: draft not posted - no doc researcher run (and 1 more)", alert)
+        self.assertNotIn("PROJ-1", alert)
+
+    def test_health_failure_is_alerted_and_no_ticket_runs(self) -> None:
+        jira = FakeJira()
+        process = mock.Mock(return_value="READY")
+        self.assertEqual(self.run_runner(jira, process, health=["Copilot CLI not found on PATH"]), 2)
+        process.assert_not_called()
+        [alert] = self.alert_comments(jira)
+        self.assertIn("Health check failed, no tickets processed: Copilot CLI not found on PATH", alert)
+        self.assertEqual(self.runs()[-1]["health_problems"], ["Copilot CLI not found on PATH"])
+
+    def test_a_run_that_stops_is_recorded_and_alerted(self) -> None:
+        self.config.pop("tickets")
+        jira = FakeJira()
+        jira.search_keys = mock.Mock(side_effect=TimeoutError("search timed out"))
+        self.assertEqual(self.run_runner(jira), 3)
+        [alert] = self.alert_comments(jira)
+        self.assertIn("The run stopped before finishing: TimeoutError: search timed out", alert)
+        self.assertEqual(self.runs()[-1]["exit_code"], 3)
+
+    def test_clean_run_is_recorded_without_an_alert(self) -> None:
+        jira = FakeJira()
+        self.assertEqual(self.run_runner(jira), 0)
+        self.assertEqual(self.alert_comments(jira), [])
+        record = self.runs()[-1]
+        self.assertEqual(record["tool"], "uac-runner")
+        self.assertEqual(record["tickets"], {"PROJ-1": "READY", "PROJ-2": "READY"})
+        self.assertTrue(record["run_id"])
+
+    def test_dry_run_never_sends_the_alert(self) -> None:
+        jira = FakeJira()
+        self.run_runner(jira, health=["Jira: 401"], extra=["--dry-run"])
+        self.assertEqual(self.alert_comments(jira), [])
+        self.assertEqual(self.runs()[-1]["alerts"], ["Health check failed, no tickets processed: Jira: 401"])
+
+    def test_same_alert_is_not_repeated_until_the_problem_clears(self) -> None:
+        jira = FakeJira()
+        send = lambda lines: common.send_alert(self.config, jira, self.log, "uac-poster", "r1", lines)  # noqa: E731
+        self.assertEqual(send(["PROJ-1: approved but not posted"]), "POSTED")
+        self.assertEqual(send(["PROJ-1: approved but not posted"]), "SUPPRESSED")
+        self.assertEqual(send(["PROJ-1: approved but not posted", "PROJ-2: x"]), "POSTED")
+        self.assertEqual(send([]), "NONE")
+        self.assertEqual(send(["PROJ-1: approved but not posted"]), "POSTED")
+        self.assertEqual(len(self.alert_comments(jira)), 3)
+
+    def test_alert_without_a_ticket_is_only_logged(self) -> None:
+        jira = FakeJira()
+        config = dict(self.config, alerts={})
+        self.assertEqual(common.send_alert(config, jira, self.log, "uac-runner", "r1", ["x"]), "NOT_CONFIGURED")
+        self.assertEqual(jira.calls, [])
+
+    def test_alert_that_jira_rejects_does_not_crash(self) -> None:
+        jira = FakeJira()
+        jira.add_comment = mock.Mock(side_effect=ConnectionError("down"))
+        self.assertEqual(common.send_alert(self.config, jira, self.log, "uac-runner", "r1", ["x"]), "FAILED")
+
+    def test_rerun_keeps_the_previous_attempt(self) -> None:
+        ticket = self.out / "PROJ-1"
+        common.write_status(ticket, {"state": "FAILED", "problems": ["old"]})
+        (ticket / "copilot-transcript.md").write_text("first run", encoding="utf-8")
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            runner.process_ticket("PROJ-1", self.config, FakeJira(), self.log, dry_run=True)
+        [attempt] = list((ticket / common.ATTEMPTS_DIR).iterdir())
+        self.assertEqual((attempt / "copilot-transcript.md").read_text(encoding="utf-8"), "first run")
+        self.assertEqual(json.loads((attempt / common.STATUS_FILE).read_text(encoding="utf-8"))["problems"], ["old"])
+        self.assertEqual(common.read_status(ticket)["state"], "READY")
+
+    def test_only_the_newest_attempts_are_kept(self) -> None:
+        ticket = self.out / "PROJ-1"
+        for n in range(4):
+            (ticket / common.ATTEMPTS_DIR / f"2026010{n}-000000").mkdir(parents=True)
+        common.write_status(ticket, {"state": "FAILED"})
+        common.archive_attempt(ticket, keep=3)
+        kept = sorted(p.name for p in (ticket / common.ATTEMPTS_DIR).iterdir())
+        self.assertEqual(len(kept), 3)
+        self.assertNotIn("20260100-000000", kept)
+        self.assertNotIn("20260101-000000", kept)
+
+    def test_old_log_files_are_deleted(self) -> None:
+        logs = self.out / "logs"
+        logs.mkdir()
+        old, new = logs / "uac-runner-20250101.log", logs / "uac-runner-20260101.log"
+        old.write_text("x", encoding="utf-8")
+        new.write_text("x", encoding="utf-8")
+        long_ago = time.time() - 40 * 86400
+        os.utime(old, (long_ago, long_ago))
+        self.assertEqual(common.prune_logs(logs, 30), [old.name])
+        self.assertTrue(new.exists())
+        self.assertEqual(common.prune_logs(logs, 0), [])
+
+    def test_poster_alerts_on_tickets_it_could_not_post(self) -> None:
+        jira = FakeJira()
+        jira.search_keys = lambda jql, max_results=100: ["PROJ-1", "PROJ-2"]
+        results = {"PROJ-1": "FIELD_NOT_EMPTY", "PROJ-2": "POSTED"}
+        with mock.patch.object(poster.common, "load_config", return_value=self.config), \
+                mock.patch.object(poster.common.JiraClient, "from_env", return_value=jira), \
+                mock.patch.object(poster, "post_ticket", side_effect=lambda k, *a: results[k]):
+            self.assertEqual(poster.main(["--config", "unused.json", *self.env]), 1)
+        [alert] = self.alert_comments(jira)
+        self.assertIn("PROJ-1: approved but not posted - the Acceptance Criteria field already has other text", alert)
+        self.assertEqual(self.runs()[-1]["tool"], "uac-poster")
 
 
 if __name__ == "__main__":

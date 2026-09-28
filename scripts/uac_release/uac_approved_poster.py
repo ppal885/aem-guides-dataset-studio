@@ -17,10 +17,19 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
+
+
+NOT_POSTED = {
+    "NO_DRAFT": "no posted draft on the VM for this ticket",
+    "DRAFT_CHANGED": "UAC.md changed after the draft; re-run the runner",
+    "FIELD_NOT_EMPTY": "the Acceptance Criteria field already has other text",
+    "RENDER_CHECK_FAILED": "the field was written but did not render as expected",
+}
 
 
 def approved_jql(config: dict) -> str:
@@ -95,14 +104,41 @@ def main(argv: list[str] | None = None) -> int:
 
     common.load_env_file(args.env_file)
     config = common.load_config(args.config)
-    logger = common.setup_logging(Path(config["output_dir"]) / "logs", "uac-poster")
-    jira = common.JiraClient.from_env()
-    with common.RunLock(Path(config["output_dir"]) / "poster.lock", int(config.get("lock_max_age_minutes", 720)) * 60):
-        keys = jira.search_keys(approved_jql(config))
-        logger.info("approved tickets: %s", ", ".join(keys) or "none")
-        results = {key: post_ticket(key, config, jira, logger, args.overwrite) for key in keys}
+    out = Path(config["output_dir"])
+    logger = common.setup_logging(out / "logs", "uac-poster")
+    run_id, started = common.new_run_id(), time.time()
+    logger.info("run %s started", run_id)
+    common.prune_logs(out / "logs", int(config.get("log_retention_days", 30)), logger)
+    results: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    alerts: list[str] = []
+    jira = None
+    try:
+        jira = common.JiraClient.from_env()
+        with common.RunLock(out / "poster.lock", int(config.get("lock_max_age_minutes", 720)) * 60):
+            keys = jira.search_keys(approved_jql(config))
+            logger.info("approved tickets: %s", ", ".join(keys) or "none")
+            results, errors = common.run_each(
+                keys, lambda key: post_ticket(key, config, jira, logger, args.overwrite), logger, out)
+        exit_code = 0 if all(v == "POSTED" for v in results.values()) else 1
+    except Exception as exc:  # noqa: BLE001 - record and alert on anything that stops the run
+        logger.exception("run %s stopped", run_id)
+        alerts.append(f"The run stopped before finishing: {type(exc).__name__}: {exc}")
+        exit_code = 3
+    for key, result in results.items():
+        if result == "ERROR":
+            alerts.append(f"{key}: unexpected error - {errors.get(key, 'see the log')}")
+        elif result != "POSTED":
+            alerts.append(f"{key}: approved but not posted - {NOT_POSTED.get(result, result)}")
     logger.info("summary: %s", results)
-    return 0 if all(v == "POSTED" for v in results.values()) else 1
+    common.append_run_record(out, {
+        "run_id": run_id, "tool": "uac-poster",
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(started)),
+        "seconds": round(time.time() - started), "exit_code": exit_code, "tickets": results,
+        "errors": errors, "alerts": alerts})
+    if jira is not None:
+        common.send_alert(config, jira, logger, "uac-poster", run_id, alerts)
+    return exit_code
 
 
 if __name__ == "__main__":
