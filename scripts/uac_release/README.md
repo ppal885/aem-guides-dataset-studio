@@ -232,6 +232,45 @@ Anything else is marked `FAILED` in `<output_dir>/<KEY>/status.json` and nothing
 `UAC.md`, `test-plan.md`, `field-body.txt` (exact text the poster will write),
 `copilot-transcript.md`, `copilot-output.txt`, `status.json`. Logs are in `<output_dir>/logs/`.
 
+A re-run first moves the previous `copilot-transcript.md` and `copilot-output.txt`, and a copy of
+`status.json`, into `attempts/<time>/`. The newest `keep_attempts` (default 5) are kept.
+
+## Logs, run history and alerts
+
+- `<output_dir>/logs/uac-runner-YYYYMMDD.log` and `uac-poster-YYYYMMDD.log`: one file per day,
+  including the traceback of any error. Files older than `log_retention_days` (default 30; 0 keeps
+  everything) are deleted at the start of each run.
+- `<output_dir>/runs.jsonl`: one JSON line per run with `run_id`, `tool`, `started`, `seconds`,
+  `exit_code`, the result of every ticket, errors, health problems and the alert lines.
+  `tail -n 5 /opt/uac-release/runs/runs.jsonl` shows the last runs.
+- One ticket failing with an unexpected error (for example Jira returning 500) never stops the
+  other tickets. That ticket gets result `ERROR`, and `status.json` gets `last_error`. A ticket
+  whose draft was already posted keeps its state, so the poster retries it on its next run.
+- Exit codes: 0 all good, 1 a ticket failed, 2 health check failed (runner), 3 the run stopped.
+
+Alerts: when something needs attention, the script posts one Jira comment on `alerts.ticket`,
+mentioning the users in `alerts.mention` (Jira user names). It is sent for a failed health check,
+a run that stopped, a ticket with `ERROR`, a runner ticket that was not drafted (`FAILED`), and an
+approved ticket the poster could not post. The same alert is not repeated within
+`alerts.repeat_hours` (default 24), so the 30-minute poster does not flood the ticket; once a run
+is clean, the next problem alerts again at once. `--dry-run` never sends an alert; it only logs it.
+With no `alerts.ticket`, the alert is only logged. If Jira itself is down, the alert cannot be
+posted; that failure is in the daily log.
+
+`cron.log` only receives what the scripts print. Rotate it with logrotate:
+
+```
+# /etc/logrotate.d/uac-release
+/opt/uac-release/cron.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+```
+
 ## Tests
 
 `python -m unittest scripts/uac_release/test_uac_release.py` (offline: fake Jira, stubbed Copilot).

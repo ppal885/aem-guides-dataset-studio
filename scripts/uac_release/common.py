@@ -10,6 +10,8 @@ import hashlib
 import json
 import logging
 import os
+import shutil
+import socket
 import ssl
 import sys
 import time
@@ -112,6 +114,131 @@ def write_status(ticket_dir: Path, status: dict[str, Any]) -> None:
     ticket_dir.mkdir(parents=True, exist_ok=True)
     status["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     (ticket_dir / STATUS_FILE).write_text(json.dumps(status, indent=2), encoding="utf-8")
+
+
+RUNS_FILE = "runs.jsonl"
+ALERT_STATE_FILE = "alerts-state.json"
+ATTEMPTS_DIR = "attempts"
+ATTEMPT_FILES = (STATUS_FILE, "copilot-transcript.md", "copilot-output.txt")
+
+
+def new_run_id() -> str:
+    return time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
+
+
+def prune_logs(log_dir: Path, retention_days: int, logger: logging.Logger | None = None) -> list[str]:
+    """Delete daily log files older than retention_days (0 keeps everything)."""
+    if retention_days <= 0 or not log_dir.is_dir():
+        return []
+    cutoff = time.time() - retention_days * 86400
+    removed = []
+    for path in log_dir.glob("*.log"):
+        if path.stat().st_mtime < cutoff:
+            try:
+                path.unlink()
+                removed.append(path.name)
+            except OSError as exc:
+                if logger:
+                    logger.warning("could not delete old log %s: %s", path, exc)
+    if removed and logger:
+        logger.info("deleted %d log file(s) older than %d days", len(removed), retention_days)
+    return removed
+
+
+def archive_attempt(ticket_dir: Path, keep: int) -> Path | None:
+    """Move the previous run's status and Copilot output into attempts/<stamp>/ so a
+    re-run never erases what happened before. Keeps the newest `keep` attempts."""
+    present = [name for name in ATTEMPT_FILES if (ticket_dir / name).is_file()]
+    if not present or keep <= 0:
+        return None
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime((ticket_dir / present[0]).stat().st_mtime))
+    target = ticket_dir / ATTEMPTS_DIR / stamp
+    suffix = 1
+    while target.exists():
+        suffix += 1
+        target = ticket_dir / ATTEMPTS_DIR / f"{stamp}-{suffix}"
+    target.mkdir(parents=True)
+    for name in present:
+        if name == STATUS_FILE:
+            shutil.copy2(ticket_dir / name, target / name)
+        else:
+            (ticket_dir / name).replace(target / name)
+    old = sorted(p for p in (ticket_dir / ATTEMPTS_DIR).iterdir() if p.is_dir())
+    for stale in old[:-keep]:
+        shutil.rmtree(stale, ignore_errors=True)
+    return target
+
+
+def run_each(keys: list[str], handle, logger: logging.Logger, output_dir: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """Run handle(key) for every key. One ticket raising never stops the others: the
+    traceback goes to the log, the ticket's status.json records the error, and the
+    result for that ticket is ERROR."""
+    results: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    for key in keys:
+        try:
+            results[key] = handle(key)
+        except Exception as exc:  # noqa: BLE001 - isolate every ticket
+            logger.exception("%s: unexpected error", key)
+            message = f"{type(exc).__name__}: {exc}"
+            results[key] = "ERROR"
+            errors[key] = message
+            try:
+                ticket_dir = output_dir / key
+                status = read_status(ticket_dir)
+                status["last_error"] = message
+                if status.get("state") not in {"DRAFT_POSTED", "POSTED"}:
+                    status["state"] = "ERROR"
+                write_status(ticket_dir, status)
+            except Exception:  # noqa: BLE001 - never let status bookkeeping hide the real error
+                logger.exception("%s: could not record the error in status.json", key)
+    return results, errors
+
+
+def append_run_record(output_dir: Path, record: dict[str, Any]) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with (output_dir / RUNS_FILE).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def send_alert(config: dict, jira, logger: logging.Logger, tool: str, run_id: str, lines: list[str]) -> str:
+    """Post one Jira comment listing what went wrong, on the configured alert ticket,
+    mentioning the configured people. The same alert is not repeated within
+    alerts.repeat_hours, so the 30-minute poster does not flood the ticket."""
+    settings = config.get("alerts") or {}
+    state_file = Path(config["output_dir"]) / ALERT_STATE_FILE
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8")) if state_file.is_file() else {}
+    except (OSError, ValueError):
+        state = {}
+    if not lines:
+        if state.pop(tool, None) is not None:  # healthy again: the next problem alerts at once
+            state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        return "NONE"
+    ticket = settings.get("ticket")
+    if not ticket:
+        logger.warning("alert not sent: no alerts.ticket in the config")
+        return "NOT_CONFIGURED"
+    digest = hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+    previous = state.get(tool) or {}
+    repeat_seconds = float(settings.get("repeat_hours", 24)) * 3600
+    if previous.get("hash") == digest and time.time() - float(previous.get("at", 0)) < repeat_seconds:
+        logger.info("alert unchanged since the last one; not posted again")
+        return "SUPPRESSED"
+    mentions = " ".join(f"[~{name}]" for name in settings.get("mention", []))
+    head = f"*UAC automation alert* ({tool}, run {run_id}, host {socket.gethostname()})"
+    log_dir = Path(config["output_dir"]) / "logs"
+    body = "\n".join([f"{mentions} {head}".strip(), ""] + [f"* {line}" for line in lines]
+                     + ["", f"Logs: {{{{{log_dir}}}}} and {{{{{Path(config['output_dir']) / RUNS_FILE}}}}}"])
+    try:
+        comment_id = jira.add_comment(ticket, body)
+    except Exception:  # noqa: BLE001 - Jira itself may be the problem
+        logger.exception("alert could not be posted to %s", ticket)
+        return "FAILED"
+    state[tool] = {"hash": digest, "at": time.time(), "comment_id": comment_id}
+    state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    logger.info("alert posted to %s (comment %s)", ticket, comment_id)
+    return "POSTED"
 
 
 def import_skill_module(name: str):
