@@ -256,6 +256,20 @@ it and when.
 `<output_dir>/learning/report-YYYY-MM.md`: per component, the counts, what QE removed (we wrote too
 much) and what QE added (we missed). The harvester only reads Jira; it never writes to it.
 
+### Backfill hand-posted UACs
+
+A UAC posted by hand (not by this automation) has no `field-body.txt`, so the nightly harvest skips it.
+Backfill it from the Jira history, read-only:
+
+```
+python3 scripts/uac_release/uac_learning_harvester.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env --backfill GUIDES-12345 GUIDES-23456 --generator-user <jira user who posted the UAC> --dry-run
+```
+
+The last Acceptance Criteria change by a generator user (the automation's Jira user, the users in
+`learning_generator_users`, and every `--generator-user`) is the posted version; changes after it by
+anyone else are QE's edits. Drop `--dry-run` to append the records. A ticket where the last write is
+still the generator's and the status has not reached an accepted status has nothing to learn yet.
+
 ## Stale UAC alert
 
 `uac_staleness_watch.py` (cron 07:30 Mon-Fri) checks tickets that carry the posted label and were updated

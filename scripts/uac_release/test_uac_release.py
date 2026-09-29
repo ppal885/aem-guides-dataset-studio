@@ -592,6 +592,55 @@ class LearningHarvesterTests(unittest.TestCase):
         jira._json = mock.Mock(return_value=issue)
         return jira
 
+    def test_backfill_reads_the_posted_version_from_jira_history(self) -> None:
+        issue = _issue(HUMAN_FIELD, "In Progress", [])
+        issue["changelog"]["histories"] = [
+            {"created": "2026-01-01T10:00:00.000+0000", "author": {"name": "dev.lead"},
+             "items": [{"fieldId": "customfield_1", "toString": "* PKCE check should work"}]},
+            {"created": "2026-01-02T10:00:00.000+0000", "author": {"name": "qe.author"},
+             "items": [{"fieldId": "customfield_1", "toString": POSTED_FIELD}]},
+            {"created": "2026-01-05T09:30:00.000+0000", "author": {"name": "qe.lead"},
+             "items": [{"fieldId": "customfield_1", "toString": HUMAN_FIELD}]},
+        ]
+        jira = self.jira_with(issue)
+        generators = harvester.generator_users(self.config, "uac.bot", ["qe.author"])
+        [record] = harvester.backfill(self.config, jira, self.log, generators, ["PROJ-9"])
+        self.assertEqual((record["source"], record["posted_by"], record["editor"]), ("backfill", "qe.author", "qe.lead"))
+        self.assertEqual(record["posted_text"], POSTED_FIELD, "the generator's last write is the posted version")
+        self.assertEqual(record["counts"], {"accepted": 1, "changed": 1, "removed": 1, "added": 1})
+        self.assertEqual(jira.calls, [], "the backfill only reads Jira")
+        self.assertEqual(harvester.backfill(self.config, jira, self.log, generators, ["PROJ-9"]), [],
+                         "the same version is recorded once")
+
+    def test_backfill_waits_while_the_generator_wrote_last(self) -> None:
+        issue = _issue(POSTED_FIELD, "Open", [])
+        issue["changelog"]["histories"] = [
+            {"created": "2026-01-02T10:00:00.000+0000", "author": {"name": "qe.author"},
+             "items": [{"fieldId": "customfield_1", "toString": POSTED_FIELD}]}]
+        jira = self.jira_with(issue)
+        generators = harvester.generator_users(self.config, "uac.bot", ["qe.author"])
+        self.assertEqual(harvester.backfill(self.config, jira, self.log, generators, ["PROJ-9"]), [])
+        no_generator = harvester.generator_users(self.config, "uac.bot")
+        self.assertEqual(harvester.backfill(self.config, jira, self.log, no_generator, ["PROJ-9"]), [],
+                         "without a generator write there is no posted version")
+
+    def test_backfill_dry_run_writes_nothing(self) -> None:
+        issue = _issue(HUMAN_FIELD, "UAT", [])
+        issue["changelog"]["histories"] = [
+            {"created": "2026-01-02T10:00:00.000+0000", "author": {"name": "qe.author"},
+             "items": [{"fieldId": "customfield_1", "toString": POSTED_FIELD}]},
+            {"created": "2026-01-05T09:30:00.000+0000", "author": {"name": "qe.lead"},
+             "items": [{"fieldId": "customfield_1", "toString": HUMAN_FIELD}]}]
+        generators = harvester.generator_users(self.config, "uac.bot", ["qe.author"])
+        records = harvester.backfill(self.config, self.jira_with(issue), self.log, generators, ["PROJ-9"], dry_run=True)
+        self.assertEqual(len(records), 1)
+        self.assertFalse((self.out / "learning" / "records.jsonl").exists())
+
+    def test_generator_users_from_config_are_not_counted_as_qe_edits(self) -> None:
+        config = dict(self.config, learning_generator_users=["qe.author"])
+        issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-01T10:00:00.000+0000", "qe.author")])
+        self.assertEqual(harvester.harvest(config, self.jira_with(issue), self.log, "uac.bot"), [])
+
     def test_labels_in_every_format_are_criteria(self) -> None:
         text = ("AC-01: A folder profile Admin User can add an Admin User.\n"
                 "AC-02: The same user can remove an Admin User.\n\n"
