@@ -199,7 +199,11 @@ Windows VM: same steps in PowerShell, then register the tasks once (elevated):
 `.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env`
 
 Daily use: nothing to run. Review each `UAC_Draft` comment in Jira and add `UAC_Approved`. To change
-the criteria, edit the Acceptance Criteria field after it is posted; no label is needed. Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
+the criteria, edit the Acceptance Criteria field after it is posted; no label is needed. The draft
+comment lists *Suggested checks (QE decide)* below the criteria: checks found only by our own research
+(documentation, code, a similar ticket). They are never copied into the field; add the ones you want to
+the field after approving, and the monthly report counts them as promoted. When the root cause is not
+confirmed yet, the UAC starts with a note saying so. Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
 
 ## Run it
 

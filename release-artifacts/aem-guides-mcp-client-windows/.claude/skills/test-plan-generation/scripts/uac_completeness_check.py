@@ -20,13 +20,14 @@ WHAT IT CHECKS in a UAC folder
    with source, exact query, result (ok, empty or unavailable) and count.
 5. "doc_findings": every Doc Researcher finding that cites a documentation source (doc: ref) is
    dispositioned exactly once - AC (the listed Acceptance Criteria exist and their Source line
-   names the documentation) or SET_ASIDE (with a concrete reason of at least five words). A rewrite
+   names the documentation), SUGGESTED (the listed suggested check exists) or SET_ASIDE (with a
+   concrete reason of at least five words). A rewrite
    that drops the documentation from a Source line fails here.
 6. "scenario": the reporter's own steps or requested outcome (text copied from the ticket) and, for
    every Acceptance Criterion, the step it follows (CUSTOMER), the step it guards as a QE regression or
-   edge-case check (REGRESSION, no TBD needed) - or ADJACENT with a TBD when it follows a scenario the
-   reporter did not hit (for example one an investigator found). At least one criterion follows the
-   reporter's scenario.
+   edge-case check (REGRESSION, no TBD needed). A check that follows a scenario the reporter did not
+   hit (ADJACENT, for example one an investigator found) is a suggested check, never a criterion. At
+   least one criterion follows the reporter's scenario.
 7. "failure_path": when the ticket says that items inside a job, queue or batch fail, get stuck or
    are left unprocessed, what happens to the item that fails, to the remaining items, and how the user
    learns which items failed - each an AC, a TBD or not applicable with a reason. A batch ticket that
@@ -38,6 +39,16 @@ WHAT IT CHECKS in a UAC folder
    "none_found" needs the queries tried; "unavailable" needs the reason.
 9. Hotfix or backport tickets (from jira-source.json): HOTFIX_SCOPE.json passes
    hotfix_scope_check.py.
+10. "fix_basis": whether the root cause or fix is known. CONFIRMED needs the ticket text that says it.
+   UNCONFIRMED is fine - many tickets never get a root-cause comment or a linked pull request - but
+   then UAC.md starts with a "Note:" line saying the root cause is not confirmed yet, and no Acceptance
+   Criterion other than a REGRESSION check rests only on code. When the ticket does report a root cause
+   or fix, UNCONFIRMED needs a reason why that text is not the fix.
+11. "Suggested checks (QE decide):": checks found only by our own research (documentation, code, a
+   similar or parent ticket, an investigator's other scenario) go below the Acceptance Criteria as
+   "- Suggested check NN:" lines, each with a Source line and a "Why suggested:" line, at most five.
+   They are not posted as Acceptance Criteria: QE moves the ones they want into the criteria. A
+   criterion that follows a scenario the reporter did not hit (ADJACENT) must be a suggested check.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -66,7 +77,12 @@ MIN_RAG_PROBES = 3
 MIN_HISTORY_ATTEMPTS = 2
 DOC_MARKERS = ("experience league", "experienceleague", "helpx.adobe.com", "doc:")
 EMPTY_REASONS = {"", "n/a", "na", "none", "tbd", "-", "not relevant", "not needed", "out of scope"}
-_AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|\Z)", re.M | re.S)
+_AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)",
+                       re.M | re.S)
+SUGGESTED_HEADER = "Suggested checks (QE decide):"
+_SUGGESTED_HEADER = re.compile(r"^Suggested checks\b.*$", re.M)
+_SUGGESTED_BLOCK = re.compile(r"^- Suggested check (\d+):(.*?)(?=^- Suggested check \d+:|\Z)", re.M | re.S)
+MAX_SUGGESTED = 5
 
 
 def _load(path: Path):
@@ -171,8 +187,10 @@ def doc_finding_problems(evidence: dict, doc_research: dict, uac_text: str) -> l
         elif entry.get("disposition") == "SET_ASIDE":
             if len(str(entry.get("reason") or "").split()) < 5:
                 problems.append(f"documentation finding {index} is set aside without a concrete reason")
+        elif entry.get("disposition") == "SUGGESTED":
+            problems += _suggested_ref_problems(f"documentation finding {index}", entry, uac_text)
         else:
-            problems.append(f"documentation finding {index}: disposition must be AC or SET_ASIDE")
+            problems.append(f"documentation finding {index}: disposition must be AC, SUGGESTED or SET_ASIDE")
     for index in sorted(set(entries) - set(documented)):
         problems.append(f"doc_findings names finding {index}, which is not a documentation finding in "
                         f"{DOC_RESEARCH_FILE}")
@@ -180,7 +198,7 @@ def doc_finding_problems(evidence: dict, doc_research: dict, uac_text: str) -> l
 
 
 def evidence_problems(folder: Path) -> list[str]:
-    """Checks 2-7: the evidence record the runner also enforces."""
+    """Checks 2-8, 10 and 11: the evidence record the runner also enforces."""
     path = folder / EVIDENCE_FILE
     if not path.is_file():
         return [f"{EVIDENCE_FILE} was not written: record the evidence preflight, RAG probes, Jira history "
@@ -204,7 +222,8 @@ def evidence_problems(folder: Path) -> list[str]:
         source = None
     return (preflight_problems(evidence.get("preflight")) + rag_problems(evidence) + history_problems(evidence)
             + doc_finding_problems(evidence, doc_research, uac) + scenario_problems(evidence, uac, source)
-            + failure_path_problems(evidence, uac, source) + similar_uac_problems(evidence, uac))
+            + failure_path_problems(evidence, uac, source) + similar_uac_problems(evidence, uac)
+            + suggested_problems(uac) + fix_basis_problems(evidence, uac, source))
 
 
 def check(folder: Path) -> list[str]:
@@ -248,11 +267,11 @@ def _ticket_text(source: dict) -> str:
 
 
 def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
-    """Every Acceptance Criterion follows the reporter's own scenario, or is marked ADJACENT and asks a TBD.
+    """Every Acceptance Criterion follows the reporter's own scenario (CUSTOMER) or guards it (REGRESSION).
 
     An investigator's comment often finds a different scenario from the one the reporter hit (for example
-    a deleted project when the reporter's job completed). Criteria built on that other scenario must not
-    become the core contract silently."""
+    a deleted project when the reporter's job completed). A criterion built on that other scenario is
+    ADJACENT: it must not become the core contract, so it goes to the suggested checks for QE to decide."""
     scenario = evidence.get("scenario")
     if not isinstance(scenario, dict):
         return ["scenario is missing: copy the reporter's own steps or requested outcome into "
@@ -280,9 +299,8 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
             if _normalize(entry.get("step")) not in steps:
                 problems.append(f"Acceptance Criteria {ac:02d}: its step is not one of scenario.customer_steps")
         elif kind == "ADJACENT":
-            if "TBD:" not in blocks[ac]:
-                problems.append(f"Acceptance Criteria {ac:02d} follows a scenario the reporter did not hit; add a TBD "
-                                "asking whether it belongs in this ticket, or move it to its own ticket")
+            problems.append(f"Acceptance Criteria {ac:02d} follows a scenario the reporter did not hit; move it to "
+                            f"\"{SUGGESTED_HEADER}\" so QE decides whether it belongs in this ticket")
         else:
             problems.append(f"Acceptance Criteria {ac:02d}: scenario must be {', '.join(SCENARIO_KINDS)}")
     if blocks and customer_acs == 0:
@@ -348,7 +366,7 @@ def failure_path_problems(evidence: dict, uac_text: str, source: dict | None) ->
 
 # --- similar human UACs ---------------------------------------------------------------------------------
 SIMILAR_STATES = ("compared", "none_found", "unavailable")
-SIMILAR_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
+SIMILAR_DISPOSITIONS = ("AC", "TBD", "SUGGESTED", "NOT_APPLICABLE")
 
 
 def similar_uac_problems(evidence: dict, uac_text: str) -> list[str]:
@@ -372,16 +390,131 @@ def similar_uac_problems(evidence: dict, uac_text: str) -> list[str]:
             name = f"similar UAC {uac.get('key')}: \"{entry.get('dimension')}\""
             disposition = entry.get("disposition")
             if disposition not in SIMILAR_DISPOSITIONS:
-                problems.append(f"{name} has no answer; say AC, TBD or NOT_APPLICABLE")
+                problems.append(f"{name} has no answer; say AC, TBD, SUGGESTED or NOT_APPLICABLE")
             elif disposition == "NOT_APPLICABLE":
                 if len(str(entry.get("reason") or "").split()) < 5:
                     problems.append(f"{name} is not applicable without a concrete reason")
+            elif disposition == "SUGGESTED":
+                problems += _suggested_ref_problems(name, entry, uac_text)
             else:
                 ac = entry.get("ac")
                 if not isinstance(ac, int) or ac not in blocks:
                     problems.append(f"{name}: Acceptance Criteria {ac!r} does not exist")
                 elif disposition == "TBD" and "TBD:" not in blocks[ac]:
                     problems.append(f"{name}: Acceptance Criteria {ac:02d} has no TBD line")
+    return problems
+
+
+# --- suggested checks ----------------------------------------------------------------------------------
+def suggested_blocks(uac_text: str) -> dict[int, str]:
+    """The "- Suggested check NN:" blocks below the "Suggested checks" heading."""
+    header = _SUGGESTED_HEADER.search(uac_text or "")
+    if not header:
+        return {}
+    return {int(n): body for n, body in _SUGGESTED_BLOCK.findall(uac_text[header.end():])}
+
+
+def _suggested_ref_problems(name: str, entry: dict, uac_text: str) -> list[str]:
+    number = entry.get("suggested")
+    if not isinstance(number, int) or isinstance(number, bool) or number not in suggested_blocks(uac_text):
+        return [f"{name}: Suggested check {number!r} does not exist"]
+    return []
+
+
+def suggested_problems(uac_text: str) -> list[str]:
+    """Suggested checks sit below every Acceptance Criterion, each with its source and why it is suggested."""
+    text = uac_text or ""
+    header = _SUGGESTED_HEADER.search(text)
+    if not header:
+        if re.search(r"^- Suggested check \d+:", text, re.M):
+            return [f"suggested checks need the heading \"{SUGGESTED_HEADER}\" above them"]
+        return []
+    problems = []
+    if re.search(r"^- Acceptance Criteria \d+:", text[header.end():], re.M):
+        problems.append(f"every Acceptance Criterion must come before \"{SUGGESTED_HEADER}\"")
+    blocks = suggested_blocks(text)
+    if not blocks:
+        problems.append(f"\"{SUGGESTED_HEADER}\" has no \"- Suggested check NN:\" line; remove the heading")
+    if len(blocks) > MAX_SUGGESTED:
+        problems.append(f"{len(blocks)} suggested checks; keep the {MAX_SUGGESTED} that matter most - QE reads "
+                        "every one")
+    for number, body in sorted(blocks.items()):
+        if not re.search(r"Source:\**\s*\S", body):
+            problems.append(f"Suggested check {number:02d} has no Source line")
+        why = re.search(r"Why suggested:\**\s*(.+)", body)
+        if not why or len(why.group(1).split()) < 5:
+            problems.append(f"Suggested check {number:02d} needs a \"Why suggested:\" line saying what it guards "
+                            "and why it is not an Acceptance Criterion")
+    return problems
+
+
+# --- root cause or fix known ---------------------------------------------------------------------------
+# Ticket text that reports a root cause, a fix or a pull request. The VM staleness watcher uses it too.
+FIX_SIGNAL = re.compile(
+    r"\broot[\s-]*cause\b|\bRCA\b|\bcaused by\b|\bfix(?:ed)? in\b|\bthe fix\b|/pull/\d+|\bpull request\b"
+    r"|\bPR\s*#?\d+|\bmerged\b|\bcherry[\s-]*pick", re.IGNORECASE)
+FIX_STATES = ("CONFIRMED", "UNCONFIRMED")
+UNCONFIRMED_NOTE = ("Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer "
+                    "reported and will be checked again when the fix is known.")
+_CODE_SOURCE = re.compile(
+    r"\b[\w./-]+\.(?:java|jsx?|tsx?|py|xslt?|scss|css|html?|groovy|kt|jsp)\b|\bcommit\s+[0-9a-f]{7,}\b|/pull/\d+",
+    re.IGNORECASE)
+_NON_CODE_SOURCE = ("jira", "ticket", "description", "comment", "attachment", "screenshot", "customer", "reporter",
+                    "experience league", "experienceleague", "doc:", "product decision")
+
+
+def fix_signals(source: dict | None) -> list[str]:
+    """Sentences of the ticket description and comments that report a root cause, a fix or a pull request."""
+    if not source:
+        return []
+    texts = [source.get("description") or ""] + [c.get("body") or "" for c in source.get("comments") or []
+                                                 if isinstance(c, dict)]
+    found: list[str] = []
+    for text in texts:
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+            if FIX_SIGNAL.search(sentence) and sentence.strip() not in found:
+                found.append(sentence.strip())
+    return found
+
+
+def _code_only(body: str) -> bool:
+    source = re.search(r"Source:\**\s*(.+)", body)
+    text = (source.group(1) if source else "").lower()
+    return bool(_CODE_SOURCE.search(text)) and not any(marker in text for marker in _NON_CODE_SOURCE)
+
+
+def fix_basis_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
+    """Say whether the root cause or fix is known and, when it is not, keep guesses out of the criteria.
+
+    Posting is never blocked for want of a root cause: many tickets never get one. A UAC written without
+    it says so at the top, and a criterion that rests only on code (a guess at the mechanism) becomes a
+    suggested check. A REGRESSION check around the reporter's scenario may still cite code."""
+    block = evidence.get("fix_basis")
+    if not isinstance(block, dict) or block.get("status") not in FIX_STATES:
+        return [f"fix_basis is missing: say whether the root cause or fix is known ({', '.join(FIX_STATES)})"]
+    problems = []
+    if block["status"] == "CONFIRMED":
+        signal = _normalize(block.get("signal"))
+        if not signal:
+            problems.append("fix_basis is CONFIRMED without the ticket text that reports the root cause or fix")
+        elif source and signal not in _ticket_text(source):
+            problems.append("fix_basis.signal is not text from the ticket; copy the comment that reports the root "
+                            "cause or fix")
+        return problems
+    signals = fix_signals(source)
+    if signals and not _reason_ok(block.get("reason")):
+        problems.append(f"the ticket reports a root cause or fix (\"{signals[0][:80]}\"); record fix_basis "
+                        "CONFIRMED with that text, or give a reason why it is not the fix")
+    text = uac_text or ""
+    first_ac = re.search(r"^- Acceptance Criteria \d+:", text, re.M)
+    if not re.search(r"^Note:.*not confirmed", text[:first_ac.start()] if first_ac else text, re.M | re.I):
+        problems.append(f"the root cause is not confirmed, so UAC.md must start with: {UNCONFIRMED_NOTE}")
+    kinds = {e.get("ac"): e.get("scenario") for e in (evidence.get("scenario") or {}).get("acs") or []
+             if isinstance(e, dict)}
+    for number, body in sorted((int(n), b) for n, b in _AC_BLOCK.findall(text)):
+        if kinds.get(number) != "REGRESSION" and _code_only(body):
+            problems.append(f"Acceptance Criteria {number:02d} rests only on code while the root cause is not "
+                            f"confirmed; tie it to what the customer reported, or move it to \"{SUGGESTED_HEADER}\"")
     return problems
 
 

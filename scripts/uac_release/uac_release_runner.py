@@ -39,6 +39,14 @@ agents, and Experience League documentation. Do not write anything to Jira.
 When finished, write these files:
 1. {uac_path}: only the delivered UAC block - a flat list of "- Acceptance Criteria NN: ..." lines,
    each followed by an indented "**Source:** ..." line and, when a decision is open, a "**TBD:** ...?" line.
+   Acceptance Criteria are only what the ticket, an attachment, a product decision or the confirmed fix
+   asks for, and QE regression checks around the reporter's scenario. Checks found only by your own
+   research (documentation, code, a similar or parent ticket, an investigator's other scenario) go after
+   them under the line "Suggested checks (QE decide):" as "- Suggested check NN: ..." lines, each with an
+   indented "**Source:** ..." and "**Why suggested:** ..." line - at most five, only ones that matter.
+   When the root cause or fix is not confirmed (see fix_basis below), the first line is exactly:
+   "Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer
+   reported and will be checked again when the fix is known."
 2. {plan_path}: the full eleven-section test plan record that passes scripts/validate_test_plan.py.
 3. {decisions_path}: ONLY when the UAC has at least one TBD - a short decision request for the
    developer or product owner, in Markdown with exactly these three sections:
@@ -83,14 +91,20 @@ When finished, write these files:
    "ac": [<numbers>]}} or {{"finding": <index>, "disposition": "SET_ASIDE", "reason": "..."}}.
    Also "scenario": {{"customer_steps": [<the reporter's own steps or requested outcome, copied>], "acs":
    [{{"ac": <number>, "scenario": "CUSTOMER" | "REGRESSION", "step": "<one of customer_steps>"}} or
-   {{"ac": <number>, "scenario": "ADJACENT"}} (only with a TBD)]}}, and, when the ticket says items inside
+   {{"ac": <number>, "scenario": "ADJACENT"}} is not allowed: move such a check to the suggested checks]}}.
+   Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
+   cause, fix or pull request>"}} or {{"status": "UNCONFIRMED", "reason": "<why, when the ticket has a
+   root-cause or fix comment that is not the fix>"}}. Many tickets never get a root cause: UNCONFIRMED is
+   fine, but then no Acceptance Criterion except a REGRESSION check may rest only on code. And, when the
+   ticket says items inside
    a job, queue or batch fail or get stuck,
    "failure_path": {{"failing_item_outcome" | "remaining_items" | "user_notice": {{"disposition": "AC" |
    "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason": "..."}}}}.
    Also "similar_uacs": run the skill's scripts/similar_uac_compare.py (--ticket-source the ticket's
    jira-source.json, --key, --component, --evidence this file; for a hotfix or backport add --also with its
    parent ticket) and answer every listed dimension of the
-   similar human UACs with "disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac" and "reason".
+   similar human UACs with "disposition": "AC" | "TBD" | "SUGGESTED" | "NOT_APPLICABLE", "ac" (or
+   "suggested": <Suggested check number>) and "reason". A documentation finding may also be "SUGGESTED".
 Write in simple English with AEM Guides names a QE sees on screen."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
 SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
@@ -215,7 +229,7 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
         return [f"{common.SOURCE_COVERAGE_FILE} must be a JSON list of objects"]
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
     blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|\Z)", uac, re.M | re.S)}
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)", uac, re.M | re.S)}
     problems = []
     for number, entry in enumerate(entries, 1):
         disposition = entry.get("disposition")
@@ -296,7 +310,7 @@ def orphan_ac_problems(ticket_dir: Path) -> list[str]:
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
     lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
     blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|\Z)", uac, re.M | re.S)}
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)", uac, re.M | re.S)}
     coverage = _load_list(ticket_dir / common.SOURCE_COVERAGE_FILE)
     inventory = _load_list(ticket_dir / common.SURFACE_INVENTORY_FILE)
     from_ticket = {ac for e in coverage if e.get("disposition") in ("AC", "TBD") for ac in _ac_numbers(e.get("ac"))}
@@ -367,7 +381,7 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
     lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
     blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|\Z)", uac, re.M | re.S)}
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)", uac, re.M | re.S)}
     problems, has_doc, has_code = [], False, False
     for number, entry in enumerate(entries, 1):
         surface = str(entry.get("surface") or "").strip()
@@ -426,18 +440,19 @@ def check_outputs(ticket_dir: Path) -> list[str]:
         problems.append("test plan failed validate_test_plan.py: " + (result.stdout + result.stderr).strip()[-600:])
     text = uac.read_text(encoding="utf-8")
     count = len(re.findall(r"^- Acceptance Criteria \d+:", text, re.MULTILINE))
+    suggested = re.findall(r"^- Suggested check \d+:\s*(.+)$", text, re.MULTILINE)
     if not 1 <= count <= 10:
         problems.append(f"UAC.md has {count} Acceptance Criteria (expected 1-10)")
     vocabulary = common.import_skill_module("guides_vocabulary")
     lines = "\n".join(f"- AC-{i:02d}: {m}" for i, m in enumerate(
-        re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", text, re.MULTILINE), 1))
+        re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", text, re.MULTILINE) + suggested, 1))
     blocked, _ = vocabulary.check(lines)
     problems.extend(f"vocabulary: {b}" for b in blocked)
     return problems
 
 
 def draft_comment(field_body: str, plan_name: str, decision_body: str = "", mention_note: str = "",
-                  review_notes: list[str] | None = None) -> str:
+                  review_notes: list[str] | None = None, suggested_body: str = "") -> str:
     text = (
         "*Draft UAC ready for QE review* (generated automatically, not yet in the Acceptance Criteria field)\n"
         "* To approve, add the label *UAC_Approved*. The criteria below are then copied into the "
@@ -446,6 +461,10 @@ def draft_comment(field_body: str, plan_name: str, decision_body: str = "", ment
         "learned automatically.\n"
         f"* Full test plan: [^{plan_name}]\n\n" + field_body
     )
+    if suggested_body:
+        text += ("\n\n----\n*Suggested checks (QE decide)* - found by our own research, not by the ticket. "
+                 "They are not copied into the Acceptance Criteria field. To use one, add it to the field "
+                 "after approving; ignore the rest.\n\n" + suggested_body)
     if review_notes:
         text += ("\n\n----\n*Please check before approving* (automatic review notes)\n"
                  + "".join(f"* {note}\n" for note in review_notes))
@@ -517,8 +536,11 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         logger.error("%s: not drafted - %s", key, "; ".join(problems))
         return "FAILED"
     jira_text = common.import_skill_module("jira_safe_text")
-    field_body = jira_text.jira_field_body((ticket_dir / common.UAC_FILE).read_text(encoding="utf-8"))
+    uac_text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
+    field_body = jira_text.jira_field_body(uac_text)
+    suggested_body = jira_text.suggested_checks_body(uac_text)
     (ticket_dir / "field-body.txt").write_text(field_body, encoding="utf-8")
+    status["suggested"] = re.findall(r"^- Suggested check \d+:\s*(.+?)\s*$", uac_text, re.MULTILINE)
     status.update(state="READY", problems=[], uac_sha256=common.sha256_file(ticket_dir / common.UAC_FILE))
     warnings = decision_problems(ticket_dir)
     decision_body = ""
@@ -541,7 +563,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     shutil.copyfile(ticket_dir / common.PLAN_FILE, plan_copy)
     attachment_id = jira.attach_file(key, plan_copy)
     comment_id = jira.add_comment(key, draft_comment(field_body, plan_copy.name, decision_body,
-                                                     decision_mention_note(config), review_notes))
+                                                     decision_mention_note(config), review_notes, suggested_body))
     jira.update_labels(key, add=[labels["draft"]])
     status.update(state="DRAFT_POSTED", comment_id=comment_id, attachment_id=attachment_id)
     common.write_status(ticket_dir, status)

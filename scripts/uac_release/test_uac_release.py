@@ -20,11 +20,17 @@ import uac_staleness_watch as staleness  # noqa: E402
 import uac_release_runner as runner  # noqa: E402
 
 UAC = (
+    "Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer reported and "
+    "will be checked again when the fix is known.\n\n"
     "- Acceptance Criteria 01: Verify that the report opens from the Map console.\n"
     "  **Source:** Ticket description; ReportServlet.java line 10.\n"
     "- Acceptance Criteria 02: Verify that an empty report shows a message.\n"
     "  **Source:** Ticket description.\n"
     "  **TBD:** Which message text should be shown?\n"
+    "\nSuggested checks (QE decide):\n"
+    "- Suggested check 01: Verify that the report also opens from the Map dashboard.\n"
+    "  **Source:** Experience League report page.\n"
+    "  **Why suggested:** the documentation lists a second entry point the ticket does not name.\n"
 )
 
 
@@ -129,6 +135,7 @@ EVIDENCE = {
     "scenario": {"customer_steps": ["The report must open from the Map console."], "acs": [
         {"ac": 1, "scenario": "CUSTOMER", "step": "The report must open from the Map console."},
         {"ac": 2, "scenario": "CUSTOMER", "step": "The report must open from the Map console."}]},
+    "fix_basis": {"status": "UNCONFIRMED"},
 }
 
 
@@ -196,9 +203,14 @@ class RunnerTests(unittest.TestCase):
         comment = jira.calls[1][2]
         self.assertIn("*Acceptance Criteria 01:*", comment)
         self.assertIn("{{ReportServlet.java}}", comment)
+        self.assertIn("*Suggested check 01:*", comment)
+        field_body = (self.out / "PROJ-1" / "field-body.txt").read_text(encoding="utf-8")
+        self.assertTrue(field_body.startswith("_Note: The root cause"))
+        self.assertNotIn("Suggested", field_body, "suggested checks never go into the Acceptance Criteria field")
         self.assertNotIn(("set_field",), [c[:1] for c in jira.calls], "runner never fills the AC field")
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["state"], "DRAFT_POSTED")
+        self.assertEqual(status["suggested"], ["Verify that the report also opens from the Map dashboard."])
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
 
     def test_dry_run_writes_nothing_to_jira(self) -> None:
@@ -608,7 +620,7 @@ class LearningHarvesterTests(unittest.TestCase):
         [record] = harvester.backfill(self.config, jira, self.log, generators, ["PROJ-9"])
         self.assertEqual((record["source"], record["posted_by"], record["editor"]), ("backfill", "qe.author", "qe.lead"))
         self.assertEqual(record["posted_text"], POSTED_FIELD, "the generator's last write is the posted version")
-        self.assertEqual(record["counts"], {"accepted": 1, "changed": 1, "removed": 1, "added": 1})
+        self.assertEqual(record["counts"], {"accepted": 1, "changed": 1, "removed": 1, "added": 1, "promoted": 0})
         self.assertEqual(jira.calls, [], "the backfill only reads Jira")
         self.assertEqual(harvester.backfill(self.config, jira, self.log, generators, ["PROJ-9"]), [],
                          "the same version is recorded once")
@@ -672,6 +684,22 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertIn("Missed screens (named by a QE-added criterion, never named in our UAC):", report)
         self.assertEqual(report.count("PROJ-1: right panel -"), 1)
         self.assertIn("PROJ-1: map dashboard -", report)
+
+    def test_a_suggested_check_qe_moved_into_the_field_is_promoted_not_missed(self) -> None:
+        common.write_status(self.out / "PROJ-1", {"state": "POSTED",
+                                                  "suggested": ["Verify that the report opens from the Map dashboard."]})
+        jira = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        self.assertEqual((record["counts"]["added"], record["counts"]["promoted"]), (0, 1))
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("QE added 0, promoted 1 suggested", report)
+        self.assertIn("Suggested checks QE moved into the criteria:", report)
+
+    def test_suggested_checks_in_the_field_are_not_criteria(self) -> None:
+        text = ("- Acceptance Criteria 01: The report opens from the Map console.\n\n"
+                "Suggested checks (QE decide):\n"
+                "- Suggested check 01: The report opens from the Map dashboard.\n")
+        self.assertEqual([c["text"] for c in harvester.parse_criteria(text)], ["The report opens from the Map console."])
 
     def test_labels_in_every_format_are_criteria(self) -> None:
         text = ("AC-01: A folder profile Admin User can add an Admin User.\n"
