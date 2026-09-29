@@ -22,7 +22,14 @@ WHAT IT CHECKS in a UAC folder
    dispositioned exactly once - AC (the listed Acceptance Criteria exist and their Source line
    names the documentation) or SET_ASIDE (with a concrete reason of at least five words). A rewrite
    that drops the documentation from a Source line fails here.
-6. Hotfix or backport tickets (from jira-source.json): HOTFIX_SCOPE.json passes
+6. "scenario": the reporter's own steps or requested outcome (text copied from the ticket) and, for
+   every Acceptance Criterion, the step it follows (CUSTOMER) - or ADJACENT with a TBD when it follows
+   a scenario the reporter did not hit (for example one an investigator found). At least one criterion
+   follows the reporter's scenario.
+7. "failure_path": when the ticket describes a job, queue or batch, what happens to the item that
+   fails, to the remaining items, and how the user learns which items failed - each an AC, a TBD or
+   not applicable with a reason.
+8. Hotfix or backport tickets (from jira-source.json): HOTFIX_SCOPE.json passes
    hotfix_scope_check.py.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
@@ -166,7 +173,7 @@ def doc_finding_problems(evidence: dict, doc_research: dict, uac_text: str) -> l
 
 
 def evidence_problems(folder: Path) -> list[str]:
-    """Checks 2-5: the evidence record the runner also enforces."""
+    """Checks 2-7: the evidence record the runner also enforces."""
     path = folder / EVIDENCE_FILE
     if not path.is_file():
         return [f"{EVIDENCE_FILE} was not written: record the evidence preflight, RAG probes, Jira history "
@@ -183,8 +190,14 @@ def evidence_problems(folder: Path) -> list[str]:
     except ValueError:
         doc_research = {}
     uac = (folder / UAC_FILE).read_text(encoding="utf-8") if (folder / UAC_FILE).is_file() else ""
+    source_path = folder / JIRA_SOURCE_FILE
+    try:
+        source = _load(source_path) if source_path.is_file() else None
+    except ValueError:
+        source = None
     return (preflight_problems(evidence.get("preflight")) + rag_problems(evidence) + history_problems(evidence)
-            + doc_finding_problems(evidence, doc_research, uac))
+            + doc_finding_problems(evidence, doc_research, uac) + scenario_problems(evidence, uac, source)
+            + failure_path_problems(evidence, uac, source))
 
 
 def check(folder: Path) -> list[str]:
@@ -209,6 +222,108 @@ def check(folder: Path) -> list[str]:
                 problems += [f"hotfix scope: {p}" for p in hotfix_scope_check.check(_load(scope_path), uac)]
     else:
         problems.append(f"{JIRA_SOURCE_FILE} is missing: save the live ticket text so hotfix scope can be checked")
+    return problems
+
+
+# --- customer scenario ---------------------------------------------------------------------------------
+SCENARIO_KINDS = ("CUSTOMER", "ADJACENT")
+_NORMALIZE = re.compile(r"[*_{}|`\"'‘’“”]")
+
+
+def _normalize(text) -> str:
+    return " ".join(_NORMALIZE.sub(" ", str(text or "").lower()).split()).strip(" .,:;!?-")
+
+
+def _ticket_text(source: dict) -> str:
+    parts = [source.get("summary") or "", source.get("description") or ""]
+    parts += [c.get("body") or "" for c in source.get("comments") or [] if isinstance(c, dict)]
+    return _normalize("\n".join(parts))
+
+
+def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
+    """Every Acceptance Criterion follows the reporter's own scenario, or is marked ADJACENT and asks a TBD.
+
+    An investigator's comment often finds a different scenario from the one the reporter hit (for example
+    a deleted project when the reporter's job completed). Criteria built on that other scenario must not
+    become the core contract silently."""
+    scenario = evidence.get("scenario")
+    if not isinstance(scenario, dict):
+        return ["scenario is missing: copy the reporter's own steps or requested outcome into "
+                "scenario.customer_steps and say for every Acceptance Criterion which step it follows"]
+    steps = [_normalize(s) for s in scenario.get("customer_steps") or [] if str(s).strip()]
+    problems = []
+    if not steps:
+        problems.append("scenario.customer_steps is empty: copy the reporter's own steps or requested outcome")
+    if source:
+        ticket = _ticket_text(source)
+        for step in steps:
+            if step not in ticket:
+                problems.append(f"scenario step \"{step[:60]}\" is not text from the ticket")
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text)}
+    entries = {e["ac"]: e for e in scenario.get("acs") or [] if isinstance(e, dict) and isinstance(e.get("ac"), int)}
+    customer_acs = 0
+    for ac in sorted(blocks):
+        entry = entries.get(ac)
+        if entry is None:
+            problems.append(f"Acceptance Criteria {ac:02d}: say in scenario.acs which customer step it follows")
+            continue
+        kind = entry.get("scenario")
+        if kind == "CUSTOMER":
+            customer_acs += 1
+            if _normalize(entry.get("step")) not in steps:
+                problems.append(f"Acceptance Criteria {ac:02d}: its step is not one of scenario.customer_steps")
+        elif kind == "ADJACENT":
+            if "TBD:" not in blocks[ac]:
+                problems.append(f"Acceptance Criteria {ac:02d} follows a scenario the reporter did not hit; add a TBD "
+                                "asking whether it belongs in this ticket, or move it to its own ticket")
+        else:
+            problems.append(f"Acceptance Criteria {ac:02d}: scenario must be {' or '.join(SCENARIO_KINDS)}")
+    if blocks and customer_acs == 0:
+        problems.append("no Acceptance Criterion follows the reporter's own scenario")
+    return problems
+
+
+# --- batch and queue failure path ----------------------------------------------------------------------
+BATCH_SIGNAL = re.compile(
+    r"\b(?:job|jobs|queue|queued|batch|batches|bulk)\b|\b\d[\d,]*\s+(?:files|assets|topics|items|articles|pages)\b",
+    re.IGNORECASE)
+FAILURE_DIMENSIONS = ("failing_item_outcome", "remaining_items", "user_notice")
+FAILURE_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
+
+
+def is_batch(source: dict | None) -> bool:
+    return bool(source) and bool(BATCH_SIGNAL.search(_ticket_text(source)))
+
+
+def failure_path_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
+    """A job that processes many items must say what happens when one item fails.
+
+    Dimensions: the failing item's own outcome (status it ends in), the remaining items (the job continues
+    or stops), and how the user learns which items failed. Each is covered by an Acceptance Criterion,
+    asked in a TBD, or not applicable with a reason."""
+    if not is_batch(source):
+        return []
+    block = evidence.get("failure_path")
+    if not isinstance(block, dict):
+        return ["the ticket describes a job, queue or batch, so failure_path must say what happens to the item that "
+                "fails, to the remaining items, and how the user learns which items failed"]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text)}
+    problems = []
+    for dimension in FAILURE_DIMENSIONS:
+        entry = block.get(dimension)
+        if not isinstance(entry, dict) or entry.get("disposition") not in FAILURE_DISPOSITIONS:
+            problems.append(f"failure_path.{dimension} needs disposition {', '.join(FAILURE_DISPOSITIONS)}")
+            continue
+        disposition = entry["disposition"]
+        if disposition == "NOT_APPLICABLE":
+            if len(str(entry.get("reason") or "").split()) < 5:
+                problems.append(f"failure_path.{dimension} is not applicable without a concrete reason")
+            continue
+        ac = entry.get("ac")
+        if not isinstance(ac, int) or ac not in blocks:
+            problems.append(f"failure_path.{dimension}: Acceptance Criteria {ac!r} does not exist")
+        elif disposition == "TBD" and "TBD:" not in blocks[ac]:
+            problems.append(f"failure_path.{dimension}: Acceptance Criteria {ac:02d} has no TBD line")
     return problems
 
 
