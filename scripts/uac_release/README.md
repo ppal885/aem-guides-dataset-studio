@@ -227,6 +227,17 @@ Schedule: `uac-release.cron` (Linux) or `register_windows_tasks.ps1` (Windows).
 
 Anything else is marked `FAILED` in `<output_dir>/<KEY>/status.json` and nothing is posted.
 
+## Hotfix and backport scope
+
+When the ticket summary or description says it is a hotfix or a backport (for example `HOTFIX`,
+`backport`, `release-hotfix-5.2.2`), Copilot must also write `HOTFIX_SCOPE.json`, and the runner checks
+it with the skill script `hotfix_scope_check.py`. Every Acceptance Criterion must rest on a line of the
+hotfix ticket itself, or on lines the hotfix diff actually adds or changes (read with
+`git diff -U0 <base>...<hotfix>` in the clone named in the file). A generic "No regression should be
+introduced" line scopes nothing by itself, and a criterion that rests only on the parent (mainline)
+ticket or on behaviour the hotfix does not change fails unless it carries a TBD. The clones named in
+the file must exist on the VM.
+
 ## Files per ticket (`<output_dir>/<KEY>/`)
 
 `UAC.md`, `test-plan.md`, `field-body.txt` (exact text the poster will write),

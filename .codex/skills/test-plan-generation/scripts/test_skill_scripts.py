@@ -121,6 +121,7 @@ role_provisioning_mod = _load("role_provisioning", "role_provisioning.py")
 fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 pattern_check_suggestions_mod = _load("pattern_check_suggestions", "pattern_check_suggestions.py")
 config_settings_lookup_mod = _load("config_settings_lookup", "config_settings_lookup.py")
+hotfix_scope_check_mod = _load("hotfix_scope_check", "hotfix_scope_check.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 question_research_mod = _load("question_research", "question_research.py")
@@ -7696,6 +7697,71 @@ def test_pattern_check_suggestions() -> None:
         "pattern-check data no longer on disk is reported as UNAVAILABLE",
         pc.suggest(paste_ticket, env=on, path=missing)["status"] == "UNAVAILABLE",
     )
+
+
+def test_hotfix_scope_check() -> None:
+    hs = hotfix_scope_check_mod
+    check("a hotfix summary is recognised", hs.is_hotfix("[On-prem]HOTFIX : Add PKCE", ""))
+    check("a backport description is recognised", hs.is_hotfix("", "Backported from develop to release-hotfix-5.2.2"))
+    check("an ordinary ticket is not a hotfix", not hs.is_hotfix("Fix the preview title", "Steps to reproduce"))
+
+    diff = (
+        "diff --git a/core/Servlet.java b/core/Servlet.java\n"
+        "--- a/core/Servlet.java\n+++ b/core/Servlet.java\n"
+        "@@ -40 +40 @@\n-GET\n+POST\n"
+        "@@ -51,0 +52,3 @@\n+a\n+b\n+c\n"
+        "@@ -90,2 +93,0 @@\n-x\n-y\n"
+        "diff --git a/src/new.ts b/src/new.ts\n--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1,2 @@\n+x\n+y\n"
+    )
+    changed = hs.parse_changed_lines(diff)
+    check("added and changed head lines are parsed", changed["core/Servlet.java"] >= {40, 52, 53, 54})
+    check("a pure deletion marks the lines around the gap", {93, 94} <= changed["core/Servlet.java"])
+    check("an unchanged line is not marked", 84 not in changed["core/Servlet.java"])
+    check("a new file is fully marked", changed["src/new.ts"] == {1, 2})
+
+    uac = (
+        "- Acceptance Criteria 01: Verify that Validate works for an org that requires PKCE.\n"
+        "  **Source:** hotfix ticket.\n"
+        "- Acceptance Criteria 02: Verify that a request without a code verifier is rejected.\n"
+        "  **Source:** Servlet.java lines 51-54.\n"
+    )
+    base = {
+        "ticket_lines": ["PKCE check should be working on the fixed build", "No regression should be introduced."],
+        "diffs": [{"repo": "r", "base": "b", "head": "h"}],
+        "acs": [
+            {"ac": 1, "basis": "TICKET_LINE", "ticket_line": "PKCE check should be working on the fixed build"},
+            {"ac": 2, "basis": "CHANGED_CODE", "files": [{"path": "Servlet.java", "lines": "51-54"}]},
+        ],
+    }
+    fake = lambda repo, b, h: {"core/Servlet.java": {40, 52, 53, 54}}  # noqa: E731
+    check("a ticket line and a changed line pass", hs.check(base, uac, fake) == [])
+
+    generic = json.loads(json.dumps(base))
+    generic["acs"][0] = {"ac": 1, "basis": "TICKET_LINE", "ticket_line": "No regression should be introduced."}
+    check("a generic no-regression line cannot scope a criterion",
+          any("generic no-regression" in p for p in hs.check(generic, uac, fake)))
+
+    unchanged = json.loads(json.dumps(base))
+    unchanged["acs"][1]["files"] = [{"path": "Servlet.java", "lines": "84"}]
+    check("an unchanged line in a changed file is not a hotfix regression",
+          any("not a hotfix regression" in p for p in hs.check(unchanged, uac, fake)))
+
+    parent = json.loads(json.dumps(base))
+    parent["acs"][1] = {"ac": 2, "basis": "PARENT_TICKET", "reason": "mainline Acceptance Criteria 7"}
+    check("a parent-ticket-only criterion fails", any("parent ticket" in p for p in hs.check(parent, uac, fake)))
+    with_tbd = uac + "  **TBD:** Does the hotfix need this?\n"
+    check("a parent-ticket-only criterion with a TBD passes", hs.check(parent, with_tbd, fake) == [])
+
+    missing = json.loads(json.dumps(base))
+    missing["acs"] = missing["acs"][:1]
+    check("a criterion with no scope entry fails",
+          any("Acceptance Criteria 02: no entry" in p for p in hs.check(missing, uac, fake)))
+
+    def broken(repo, b, h):
+        raise RuntimeError("unknown revision")
+    check("an unreadable hotfix diff fails closed", any("could not read" in p for p in hs.check(base, uac, broken)))
+    no_diff = dict(base, diffs=[])
+    check("a scope file without the hotfix diff fails", any("diffs" in p for p in hs.check(no_diff, uac, fake)))
 
 
 def test_config_settings_lookup() -> None:
@@ -17264,6 +17330,7 @@ def main() -> int:
     test_fluffyjaws_evidence()
     test_pattern_check_suggestions()
     test_config_settings_lookup()
+    test_hotfix_scope_check()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
     test_question_research()

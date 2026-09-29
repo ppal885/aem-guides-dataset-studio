@@ -378,6 +378,26 @@ class RunnerTests(unittest.TestCase):
         (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(surfaces), encoding="utf-8")
         return ticket
 
+    def test_hotfix_ticket_needs_a_scope_file(self) -> None:
+        ticket = self.out / "PROJ-1"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+        hotfix = dict(SOURCE, summary="[On-prem]HOTFIX : Add PKCE")
+        problems = runner.hotfix_scope_problems(ticket, hotfix)
+        self.assertTrue(any(common.HOTFIX_SCOPE_FILE in p for p in problems))
+        self.assertEqual(runner.hotfix_scope_problems(ticket, SOURCE), [], "ordinary tickets are not checked")
+
+    def test_hotfix_scope_problems_come_from_the_skill_check(self) -> None:
+        ticket = self.out / "PROJ-1"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+        (ticket / common.HOTFIX_SCOPE_FILE).write_text(json.dumps({"acs": []}), encoding="utf-8")
+        hotfix = dict(SOURCE, description="Backport to release-hotfix-5.2.2")
+        scope_check = common.import_skill_module("hotfix_scope_check")
+        with mock.patch.object(scope_check, "check", return_value=["Acceptance Criteria 02: not a hotfix regression"]):
+            problems = runner.hotfix_scope_problems(ticket, hotfix)
+        self.assertEqual(problems, ["hotfix scope: Acceptance Criteria 02: not a hotfix regression"])
+
     def test_orphan_notes_go_to_the_draft_and_do_not_fail_the_ticket(self) -> None:
         jira = FakeJira()
         note = "Acceptance Criteria 2 is not tied to any ticket sentence"
