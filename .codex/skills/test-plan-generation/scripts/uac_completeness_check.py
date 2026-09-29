@@ -23,12 +23,15 @@ WHAT IT CHECKS in a UAC folder
    names the documentation) or SET_ASIDE (with a concrete reason of at least five words). A rewrite
    that drops the documentation from a Source line fails here.
 6. "scenario": the reporter's own steps or requested outcome (text copied from the ticket) and, for
-   every Acceptance Criterion, the step it follows (CUSTOMER) - or ADJACENT with a TBD when it follows
-   a scenario the reporter did not hit (for example one an investigator found). At least one criterion
-   follows the reporter's scenario.
-7. "failure_path": when the ticket describes a job, queue or batch, what happens to the item that
-   fails, to the remaining items, and how the user learns which items failed - each an AC, a TBD or
-   not applicable with a reason.
+   every Acceptance Criterion, the step it follows (CUSTOMER), the step it guards as a QE regression or
+   edge-case check (REGRESSION, no TBD needed) - or ADJACENT with a TBD when it follows a scenario the
+   reporter did not hit (for example one an investigator found). At least one criterion follows the
+   reporter's scenario.
+7. "failure_path": when the ticket says that items inside a job, queue or batch fail, get stuck or
+   are left unprocessed, what happens to the item that fails, to the remaining items, and how the user
+   learns which items failed - each an AC, a TBD or not applicable with a reason. A batch ticket that
+   reports no item failure needs no failure_path (in the human UAC corpus, 43% of item-failure batch
+   tickets covered it, against 9% of other batch tickets).
 8. Hotfix or backport tickets (from jira-source.json): HOTFIX_SCOPE.json passes
    hotfix_scope_check.py.
 
@@ -226,7 +229,7 @@ def check(folder: Path) -> list[str]:
 
 
 # --- customer scenario ---------------------------------------------------------------------------------
-SCENARIO_KINDS = ("CUSTOMER", "ADJACENT")
+SCENARIO_KINDS = ("CUSTOMER", "REGRESSION", "ADJACENT")
 _NORMALIZE = re.compile(r"[*_{}|`\"'‘’“”]")
 
 
@@ -268,8 +271,8 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
             problems.append(f"Acceptance Criteria {ac:02d}: say in scenario.acs which customer step it follows")
             continue
         kind = entry.get("scenario")
-        if kind == "CUSTOMER":
-            customer_acs += 1
+        if kind in ("CUSTOMER", "REGRESSION"):
+            customer_acs += kind == "CUSTOMER"
             if _normalize(entry.get("step")) not in steps:
                 problems.append(f"Acceptance Criteria {ac:02d}: its step is not one of scenario.customer_steps")
         elif kind == "ADJACENT":
@@ -277,7 +280,7 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
                 problems.append(f"Acceptance Criteria {ac:02d} follows a scenario the reporter did not hit; add a TBD "
                                 "asking whether it belongs in this ticket, or move it to its own ticket")
         else:
-            problems.append(f"Acceptance Criteria {ac:02d}: scenario must be {' or '.join(SCENARIO_KINDS)}")
+            problems.append(f"Acceptance Criteria {ac:02d}: scenario must be {', '.join(SCENARIO_KINDS)}")
     if blocks and customer_acs == 0:
         problems.append("no Acceptance Criterion follows the reporter's own scenario")
     return problems
@@ -287,6 +290,13 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
 BATCH_SIGNAL = re.compile(
     r"\b(?:job|jobs|queue|queued|batch|batches|bulk)\b|\b\d[\d,]*\s+(?:files|assets|topics|items|articles|pages)\b",
     re.IGNORECASE)
+# The ticket's own text reports items failing, stuck or left unprocessed inside the job.
+ITEM_FAILURE_SIGNAL = re.compile(
+    r"\b(?:one|a single|some|few|several|remaining|other|rest of the|\d[\d,]*)\s+(?:of the\s+)?"
+    r"(?:files?|assets?|topics?|items?|articles?|pages?|maps?)\b[^.\n]{0,80}\b(?:fail\w*|stuck|error\w*|"
+    r"not (?:processed|published|translated|generated)|skipped|remain\w*|missing|block\w*|halt\w*)"
+    r"|\b(?:fail\w*|error|stuck|halt\w*|abort\w*)\b[^.\n]{0,60}\b(?:remaining|rest of the|other|whole|entire|all)"
+    r"\s+(?:files?|assets?|topics?|items?|articles?|pages?|job|batch|queue)", re.IGNORECASE)
 FAILURE_DIMENSIONS = ("failing_item_outcome", "remaining_items", "user_notice")
 FAILURE_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
 
@@ -295,18 +305,23 @@ def is_batch(source: dict | None) -> bool:
     return bool(source) and bool(BATCH_SIGNAL.search(_ticket_text(source)))
 
 
+def is_item_failure_batch(source: dict | None) -> bool:
+    """A batch ticket whose own text says items fail, get stuck or are left unprocessed."""
+    return is_batch(source) and bool(ITEM_FAILURE_SIGNAL.search(_ticket_text(source)))
+
+
 def failure_path_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
-    """A job that processes many items must say what happens when one item fails.
+    """A job whose items fail must say what happens to the failing item and to the rest.
 
     Dimensions: the failing item's own outcome (status it ends in), the remaining items (the job continues
     or stops), and how the user learns which items failed. Each is covered by an Acceptance Criterion,
     asked in a TBD, or not applicable with a reason."""
-    if not is_batch(source):
+    if not is_item_failure_batch(source):
         return []
     block = evidence.get("failure_path")
     if not isinstance(block, dict):
-        return ["the ticket describes a job, queue or batch, so failure_path must say what happens to the item that "
-                "fails, to the remaining items, and how the user learns which items failed"]
+        return ["the ticket says items inside a job, queue or batch fail or get stuck, so failure_path must say what "
+                "happens to the item that fails, to the remaining items, and how the user learns which items failed"]
     blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text)}
     problems = []
     for dimension in FAILURE_DIMENSIONS:

@@ -7732,7 +7732,25 @@ def test_scenario_and_failure_path() -> None:
           any("not text from the ticket" in p for p in uc.scenario_problems({"scenario": invented}, with_tbd, source)))
     check("a missing scenario block fails", any("scenario is missing" in p for p in uc.scenario_problems({}, uac, source)))
 
+    regression = {"customer_steps": [step], "acs": [
+        {"ac": 1, "scenario": "CUSTOMER", "step": step},
+        {"ac": 2, "scenario": "REGRESSION", "step": step},
+    ]}
+    check("a QE regression criterion that names the reporter step needs no TBD",
+          uc.scenario_problems({"scenario": regression}, uac, source) == [])
+    unanchored = {"customer_steps": [step], "acs": [
+        {"ac": 1, "scenario": "CUSTOMER", "step": step},
+        {"ac": 2, "scenario": "REGRESSION", "step": "Something the reporter never said."},
+    ]}
+    check("a regression criterion must name one of the reporter steps",
+          any("not one of scenario.customer_steps" in p for p in uc.scenario_problems({"scenario": unanchored}, uac, source)))
     check("a job with many files is a batch ticket", uc.is_batch(source))
+    check("a batch ticket whose files stay stuck is an item-failure batch", uc.is_item_failure_batch(source))
+    quiet_batch = {"summary": "Bulk publish shows the wrong start time",
+                   "description": "The bulk publish job lists 40 topics and shows the start time in UTC."}
+    check("a batch ticket that reports no item failure needs no failure path",
+          uc.is_batch(quiet_batch) and not uc.is_item_failure_batch(quiet_batch)
+          and uc.failure_path_problems({}, uac, quiet_batch) == [])
     check("a single-screen ticket is not a batch ticket",
           not uc.is_batch({"summary": "Preview title is wrong", "description": "The preview shows the file name."}))
     check("a batch ticket without failure_path fails",
