@@ -74,7 +74,34 @@ AXES: dict[str, re.Pattern] = {
     "regression_unchanged": re.compile(
         r"\b(regression|unchanged|still\s+works?|not\s+affected|existing\s+behaviou?r|"
         r"backward)\b", re.I),
+    "batch_failure_path (one item fails, the rest continue)": re.compile(
+        r"\b(remaining|rest\s+of\s+the|other)\s+(assets?|files?|topics?|articles?|items?|maps?|jobs?)\b"
+        r"|\b(one|a\s+single|each)\s+(asset|file|topic|article|item)\s+that\s+fails?\b"
+        r"|\bdoes\s+not\s+(fail|stop|block|halt)\s+the\s+(whole|entire|rest)", re.I),
+    "hotfix_build (hotfix / fixed build / backport)": re.compile(
+        r"\b(hot\s*-?fix|fixed\s+build|patch\s+build|service\s+pack|backport)", re.I),
 }
+
+# Ticket-level signals (from summary + description, not the UAC): a dimension is most useful when
+# measured on the tickets it applies to, not on the whole corpus.
+TICKET_SIGNALS: dict[str, re.Pattern] = {
+    "item-failure batch ticket": re.compile(
+        r"\b(?:job|jobs|queue|queued|batch|batches|bulk)\b|\b\d[\d,]*\s+(?:files|assets|topics|items|articles|pages)\b",
+        re.I),
+    "hotfix or backport ticket": re.compile(r"\bhot\s*-?\s*fix\b|\bbackport(?:ed|ing)?\b|release-hotfix", re.I),
+}
+ITEM_FAILURE = re.compile(
+    r"\b(?:one|a single|some|few|several|remaining|other|rest of the|\d[\d,]*)\s+(?:of the\s+)?"
+    r"(?:files?|assets?|topics?|items?|articles?|pages?|maps?)\b[^.\n]{0,80}\b(?:fail\w*|stuck|error\w*|"
+    r"not (?:processed|published|translated|generated)|skipped|remain\w*|missing|block\w*|halt\w*)"
+    r"|\b(?:fail\w*|error|stuck|halt\w*|abort\w*)\b[^.\n]{0,60}\b(?:remaining|rest of the|other|whole|entire|all)"
+    r"\s+(?:files?|assets?|topics?|items?|articles?|pages?|job|batch|queue)", re.I)
+SIGNAL_AXIS = {
+    "item-failure batch ticket": "batch_failure_path (one item fails, the rest continue)",
+    "hotfix or backport ticket": "hotfix_build (hotfix / fixed build / backport)",
+}
+_STOP = set("the a an and or of to in on for with that this is are be as by it its from at when then should "
+            "shall must will can not no verify user users".split())
 
 # Axes already forced by a fail-closed skill gate (across ALL gate scripts, not just
 # coverage_forcing) so the report flags only GENUINELY ungated axes as learning targets.
@@ -98,7 +125,44 @@ GATED_AXES = {
     "permissions_role",                  # security_coverage.py (AUTHZ)
     # structurally required by the 11-section plan (validate_test_plan Regression Areas)
     "regression_unchanged",
+    # uac_completeness_check.py failure_path (item-failure batch tickets)
+    "batch_failure_path (one item fails, the rest continue)",
+    # hotfix_scope_check.py (hotfix and backport tickets)
+    "hotfix_build (hotfix / fixed build / backport)",
 }
+
+
+def _words(text: str) -> set:
+    return {w for w in re.findall(r"[a-z][a-z0-9]{2,}", (text or "").lower()) if w not in _STOP}
+
+
+def ticket_signals(rows: list[dict]) -> dict:
+    """Prevalence of an axis among the tickets it applies to, and how much of a human UAC stays with the
+    reporter's own words (the reporter-scenario proxy: an AC line sharing >=3 content words with the
+    summary and description)."""
+    applies: Counter = Counter()
+    covered: Counter = Counter()
+    shares = []
+    for row in rows:
+        ac = (row.get("human_ac") or "").strip()
+        if len(ac) < 20:
+            continue
+        text = f"{row.get('summary') or ''}\n{row.get('description') or ''}"
+        for signal, rx in TICKET_SIGNALS.items():
+            hit = rx.search(text) and (signal != "item-failure batch ticket" or ITEM_FAILURE.search(text))
+            if hit:
+                applies[signal] += 1
+                covered[signal] += bool(AXES[SIGNAL_AXIS[signal]].search(ac))
+        reporter = _words(text)
+        lines = [l.strip(" *#-\t") for l in ac.splitlines()]
+        lines = [l for l in lines if len(l.split()) >= 5 and not re.match(r"(?i)^(source|tbd|evidence)\s*:", l)]
+        if lines and reporter:
+            shares.append(sum(1 for l in lines if len(_words(l) & reporter) >= 3) / len(lines))
+    shares.sort()
+    median = shares[len(shares) // 2] if shares else 0.0
+    beyond = sum(1 for s in shares if s < 0.5)
+    return {"applies": applies, "covered": covered, "median_reporter_share": median,
+            "tickets_mostly_beyond_reporter": beyond, "measured": len(shares)}
 
 
 def _component(row: dict) -> str:
@@ -143,6 +207,20 @@ def run_self_tests() -> None:
     assert out["axis_freq"]["link_schemes (http/ftp/mailto)"] >= 1
     assert out["axis_freq"]["table_structure (nested/merged/header/simple)"] == 1
     assert out["axis_freq"]["topic_types (concept/reference/task)"] == 1
+    signal_rows = [
+        {"summary": "310 files remain In Progress after the translation job", "description": "",
+         "human_ac": "A processing error on one asset does not fail the whole job; the remaining assets are processed."},
+        {"summary": "Bulk publish shows the wrong start time", "description": "The job lists 40 topics.",
+         "human_ac": "Verify that the bulk publish job shows the start time in the user's time zone."},
+        {"summary": "[On-prem] HOTFIX: add PKCE", "description": "",
+         "human_ac": "PKCE check should be working on the fixed build and existing profiles keep working."},
+    ]
+    sig = ticket_signals(signal_rows)
+    assert sig["applies"]["item-failure batch ticket"] == 1, sig["applies"]
+    assert sig["covered"]["item-failure batch ticket"] == 1
+    assert sig["applies"]["hotfix or backport ticket"] == 1
+    assert sig["covered"]["hotfix or backport ticket"] == 1
+    assert sig["measured"] == 3
     print("mine_uac_dimensions self-tests: PASS")
 
 
@@ -169,6 +247,15 @@ def main() -> int:
     print("\nTop UNGATED recurring axes (next learning targets):")
     for axis, count in ungated[:8]:
         print(f"  - {axis}: {count} tickets ({100*count/n:.1f}%)")
+    sig = ticket_signals(rows)
+    print("\nAxis prevalence on the tickets it applies to:")
+    for signal, axis in SIGNAL_AXIS.items():
+        applies, covered = sig["applies"][signal], sig["covered"][signal]
+        pct = 100 * covered / applies if applies else 0
+        print(f"  {signal:28s}: {applies:3d} tickets, human UAC covers {axis.split(' ')[0]} in {covered} ({pct:.0f}%)")
+    print(f"  reporter scenario (proxy)   : median {100 * sig['median_reporter_share']:.0f}% of a human UAC's "
+          f"criteria reuse the reporter's words; {sig['tickets_mostly_beyond_reporter']} of {sig['measured']} tickets "
+          "have most criteria beyond them")
     if args.by_component:
         print("\nBy component (top axis per component):")
         for comp, ctr in sorted(out["by_component"].items(), key=lambda kv: -kv[1].get("_tickets_total", 0)):
