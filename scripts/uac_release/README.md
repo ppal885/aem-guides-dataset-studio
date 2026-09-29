@@ -19,7 +19,6 @@ adds the `UAC_Approved` label, and a field that already holds other text is neve
 |---|---|---|
 | `UAC_Draft` | Draft comment + full test plan attached, waiting for QE | runner |
 | `UAC_Approved` | QE accepts the draft as written | QE |
-| `UAC_Rework` | QE wants changes (leave a comment); remove `QEVision_UAC_DONE`/set `regenerate_existing` to redo | QE |
 | `QEVision_UAC_DONE` | Draft copied into the Acceptance Criteria field | poster |
 
 ## Every place the feature appears is covered
@@ -199,8 +198,8 @@ crontab -l
 Windows VM: same steps in PowerShell, then register the tasks once (elevated):
 `.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env`
 
-Daily use: nothing to run. Review each `UAC_Draft` comment in Jira and add `UAC_Approved` (or
-`UAC_Rework` with a comment). Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
+Daily use: nothing to run. Review each `UAC_Draft` comment in Jira and add `UAC_Approved`. To change
+the criteria, edit the Acceptance Criteria field after it is posted; no label is needed. Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
 
 ## Run it
 
@@ -236,6 +235,22 @@ the UAC Doc Researcher (used in the named Acceptance Criteria, whose Source line
 or set aside with a reason). A tool missing from the Copilot session is not an unavailable source: the
 skill script `vm_evidence_call.py` calls the backend at `$AEM_STUDIO_URL/mcp`, so set `AEM_STUDIO_URL` in
 `uac.env`. `--check-dir` runs the same check, so run it again after editing a UAC by hand.
+
+## Learning from QE edits
+
+`uac_learning_harvester.py` (cron 02:30 nightly) reads every ticket this automation posted to the
+Acceptance Criteria field (`status.json` state `POSTED`, exact text in `field-body.txt`). It compares
+the posted criteria with the current field, one criterion at a time: **accepted** (unchanged),
+**removed** (QE deleted it), **added** (QE wrote one we did not have) or **changed** (wording or
+expected result edited). Only a human's edit counts; edits by the automation's own Jira user are
+ignored. An untouched field counts as accepted only once the ticket status is in
+`learning_accepted_statuses` (default `UAT`, `Closed`, `Resolved`, `Done`). Each new ticket version is
+appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
+it and when.
+
+`uac_learning_harvester.py --report last` (cron 06:00 on the 1st) writes
+`<output_dir>/learning/report-YYYY-MM.md`: per component, the counts, what QE removed (we wrote too
+much) and what QE added (we missed). The harvester only reads Jira; it never writes to it.
 
 ## Stale UAC alert
 

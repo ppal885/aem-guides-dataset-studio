@@ -63,7 +63,8 @@ def post_ticket(key: str, config: dict, jira, logger, overwrite: bool) -> str:
     labels = config["labels"]
     jira.update_labels(key, add=[labels["posted"]], remove=[labels["draft"]])
     jira.add_comment(key, "*UAC posted:* the QE-approved draft is now in the Acceptance Criteria field.")
-    status.update(state="POSTED")
+    status.update(state="POSTED", posted_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                  posted_sha256=common.sha256_file(body_file))
     common.write_status(ticket_dir, status)
     logger.info("%s: posted to the Acceptance Criteria field", key)
     post_decision_request(key, config, jira, logger, ticket_dir, status)
