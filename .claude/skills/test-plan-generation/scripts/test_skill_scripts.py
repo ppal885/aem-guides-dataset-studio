@@ -124,6 +124,7 @@ config_settings_lookup_mod = _load("config_settings_lookup", "config_settings_lo
 hotfix_scope_check_mod = _load("hotfix_scope_check", "hotfix_scope_check.py")
 uac_completeness_check_mod = _load("uac_completeness_check", "uac_completeness_check.py")
 vm_evidence_call_mod = _load("vm_evidence_call", "vm_evidence_call.py")
+similar_uac_compare_mod = _load("similar_uac_compare", "similar_uac_compare.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 question_research_mod = _load("question_research", "question_research.py")
@@ -7701,6 +7702,75 @@ def test_pattern_check_suggestions() -> None:
     )
 
 
+def test_similar_uac_compare() -> None:
+    sc = similar_uac_compare_mod
+    uc = uac_completeness_check_mod
+    terms = sc.key_terms("Add PKCE support to the Salesforce publish profile",
+                         "See https://example.com/x and {{code}} build 5.2.2; cm-p12345 environment")
+    check("key terms come from the summary first and skip URLs, ids and noise words",
+          terms[:3] == ["pkce", "support", "salesforce"] and not any(any(c.isdigit() for c in t) for t in terms))
+    human = ("1. Validating a profile whose org requires PKCE succeeds and the error no longer occurs. "
+             "2. An org that does not require PKCE keeps working (backward compatibility). "
+             "3. The Conditions panel and the right panel list conditions by label after reloading the page.")
+    dims = sc.dimensions_of(human)
+    check("dimensions list the kinds of check a human UAC makes",
+          {"negative or error case", "upgrade or migration", "saved and reloaded"} <= set(dims))
+    check("dimensions list the screens a human UAC names",
+          "screen: conditions panel" in dims and "screen: right panel" in dims)
+    check("refresh tokens are not a reload check", "saved and reloaded" not in sc.dimensions_of(
+        "Refresh tokens are never shown in the UI or the logs of the profile."))
+    check("a decision note is not a UAC", not sc.is_real_uac("UAC: Not reproducible; confirmed by the reporter.") )
+
+    class FakeJira:
+        def __init__(self, issues):
+            self.issues, self.paths = issues, []
+
+        def get(self, path):
+            self.paths.append(path)
+            if path.startswith("/rest/api/2/field"):
+                return [{"id": "customfield_1", "name": "Acceptance Criteria"}]
+            return {"issues": self.issues}
+
+    similar = {"key": "PROJ-2", "fields": {"summary": "PKCE support for the Salesforce publish profile login",
+                                           "description": "", "customfield_1": human}}
+    unrelated = {"key": "PROJ-3", "fields": {"summary": "Native PDF title ignores child elements",
+                                             "description": "", "customfield_1": human}}
+    fake = FakeJira([similar, unrelated])
+    found, queries = sc.from_jira(fake, terms, "PROJ-1", "Publishing", 3, ("Needs_Human_Review",))
+    check("only tickets that share enough key terms are similar", [f["key"] for f in found] == ["PROJ-2"])
+    check("the search stays in the component and skips the ticket and machine-posted UACs",
+          'component = "Publishing"' in queries[0] and 'key != "PROJ-1"' in queries[0]
+          and "Needs_Human_Review" in queries[0] and '"Acceptance Criteria" is not EMPTY' in queries[0])
+    check("the ticket's own component is searched before any other",
+          all('component = "Publishing"' in q for q in queries))
+    record = sc.build_record(found, queries, "jira", terms)
+    check("every dimension starts unanswered", all(d["disposition"] == "" for u in record["uacs"] for d in u["dimensions"]))
+    check("no similar ticket is an honest none_found", sc.build_record([], queries, "jira", terms)["status"] == "none_found")
+
+    uac = ("- Acceptance Criteria 01: Verify that validation succeeds for an org that requires PKCE.\n"
+           "  **Source:** ticket.\n"
+           "- Acceptance Criteria 02: Verify that an org without PKCE still validates.\n"
+           "  **Source:** ticket.\n  **TBD:** Must older URL forms still work?\n")
+    answered = json.loads(json.dumps(record))
+    for d in answered["uacs"][0]["dimensions"]:
+        d.update({"disposition": "NOT_APPLICABLE", "reason": "the ticket has no screen or reload step"})
+    answered["uacs"][0]["dimensions"][0].update({"disposition": "AC", "ac": 1})
+    answered["uacs"][0]["dimensions"][1].update({"disposition": "TBD", "ac": 2})
+    check("a fully answered comparison passes", uc.similar_uac_problems({"similar_uacs": answered}, uac) == [])
+    check("an unanswered dimension fails", any("has no answer" in p for p in uc.similar_uac_problems({"similar_uacs": record}, uac)))
+    lazy = json.loads(json.dumps(answered))
+    lazy["uacs"][0]["dimensions"][2]["reason"] = "n/a"
+    check("a not-applicable dimension needs a concrete reason",
+          any("concrete reason" in p for p in uc.similar_uac_problems({"similar_uacs": lazy}, uac)))
+    wrong_tbd = json.loads(json.dumps(answered))
+    wrong_tbd["uacs"][0]["dimensions"][1]["ac"] = 1
+    check("a TBD answer needs a TBD on its criterion",
+          any("has no TBD line" in p for p in uc.similar_uac_problems({"similar_uacs": wrong_tbd}, uac)))
+    check("a missing comparison fails", any("similar_uacs is missing" in p for p in uc.similar_uac_problems({}, uac)))
+    check("none_found needs the queries tried",
+          uc.similar_uac_problems({"similar_uacs": {"status": "none_found", "queries": []}}, uac) != [])
+
+
 def test_scenario_and_failure_path() -> None:
     uc = uac_completeness_check_mod
     source = {
@@ -7793,6 +7863,7 @@ def test_uac_completeness_check() -> None:
                              for n in range(2)],
         "doc_findings": [{"finding": 1, "disposition": "AC", "ac": [1]},
                          {"finding": 2, "disposition": "SET_ASIDE", "reason": "the hotfix keeps the same HTTP client"}],
+        "similar_uacs": {"status": "none_found", "queries": ["component = X AND text ~ preview"], "uacs": []},
         "scenario": {"customer_steps": ["Fix the preview"], "acs": [
             {"ac": 1, "scenario": "CUSTOMER", "step": "Fix the preview"},
             {"ac": 2, "scenario": "CUSTOMER", "step": "Fix the preview"}]},
@@ -17509,6 +17580,7 @@ def main() -> int:
     test_hotfix_scope_check()
     test_uac_completeness_check()
     test_scenario_and_failure_path()
+    test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
     test_question_research()

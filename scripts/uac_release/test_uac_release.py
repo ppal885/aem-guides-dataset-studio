@@ -125,6 +125,7 @@ EVIDENCE = {
                          for n in range(2)],
     "doc_findings": [{"finding": 1, "disposition": "SET_ASIDE",
                       "reason": "the Home page task list is not the screen this ticket changes"}],
+    "similar_uacs": {"status": "none_found", "queries": ["component = Publishing AND text ~ report"], "uacs": []},
     "scenario": {"customer_steps": ["The report must open from the Map console."], "acs": [
         {"ac": 1, "scenario": "CUSTOMER", "step": "The report must open from the Map console."},
         {"ac": 2, "scenario": "CUSTOMER", "step": "The report must open from the Map console."}]},

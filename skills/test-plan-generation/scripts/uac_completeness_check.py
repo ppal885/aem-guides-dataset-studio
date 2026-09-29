@@ -32,7 +32,11 @@ WHAT IT CHECKS in a UAC folder
    learns which items failed - each an AC, a TBD or not applicable with a reason. A batch ticket that
    reports no item failure needs no failure_path (in the human UAC corpus, 43% of item-failure batch
    tickets covered it, against 9% of other batch tickets).
-8. Hotfix or backport tickets (from jira-source.json): HOTFIX_SCOPE.json passes
+8. "similar_uacs" (written by similar_uac_compare.py): the human UACs of the most similar resolved
+   tickets and the dimensions each covers. "compared" needs every dimension answered - AC (an existing
+   Acceptance Criterion covers it), TBD (that criterion asks it) or NOT_APPLICABLE with a reason;
+   "none_found" needs the queries tried; "unavailable" needs the reason.
+9. Hotfix or backport tickets (from jira-source.json): HOTFIX_SCOPE.json passes
    hotfix_scope_check.py.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
@@ -200,7 +204,7 @@ def evidence_problems(folder: Path) -> list[str]:
         source = None
     return (preflight_problems(evidence.get("preflight")) + rag_problems(evidence) + history_problems(evidence)
             + doc_finding_problems(evidence, doc_research, uac) + scenario_problems(evidence, uac, source)
-            + failure_path_problems(evidence, uac, source))
+            + failure_path_problems(evidence, uac, source) + similar_uac_problems(evidence, uac))
 
 
 def check(folder: Path) -> list[str]:
@@ -339,6 +343,45 @@ def failure_path_problems(evidence: dict, uac_text: str, source: dict | None) ->
             problems.append(f"failure_path.{dimension}: Acceptance Criteria {ac!r} does not exist")
         elif disposition == "TBD" and "TBD:" not in blocks[ac]:
             problems.append(f"failure_path.{dimension}: Acceptance Criteria {ac:02d} has no TBD line")
+    return problems
+
+
+# --- similar human UACs ---------------------------------------------------------------------------------
+SIMILAR_STATES = ("compared", "none_found", "unavailable")
+SIMILAR_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
+
+
+def similar_uac_problems(evidence: dict, uac_text: str) -> list[str]:
+    """Every dimension of the most similar human UACs is covered, asked or set aside with a reason."""
+    block = evidence.get("similar_uacs")
+    if not isinstance(block, dict):
+        return ["similar_uacs is missing: run similar_uac_compare.py and answer every dimension of the similar "
+                "human UACs (AC, TBD or NOT_APPLICABLE with a reason)"]
+    status = block.get("status")
+    if status not in SIMILAR_STATES:
+        return [f"similar_uacs.status must be {', '.join(SIMILAR_STATES)}"]
+    if status == "none_found":
+        return [] if block.get("queries") else ["similar_uacs is none_found without the queries tried"]
+    if status == "unavailable":
+        return [] if _reason_ok(block.get("reason")) else ["similar_uacs is unavailable without a concrete reason"]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text)}
+    uacs = [u for u in block.get("uacs") or [] if isinstance(u, dict)]
+    problems = [] if uacs else ["similar_uacs is compared but lists no similar UAC"]
+    for uac in uacs:
+        for entry in uac.get("dimensions") or []:
+            name = f"similar UAC {uac.get('key')}: \"{entry.get('dimension')}\""
+            disposition = entry.get("disposition")
+            if disposition not in SIMILAR_DISPOSITIONS:
+                problems.append(f"{name} has no answer; say AC, TBD or NOT_APPLICABLE")
+            elif disposition == "NOT_APPLICABLE":
+                if len(str(entry.get("reason") or "").split()) < 5:
+                    problems.append(f"{name} is not applicable without a concrete reason")
+            else:
+                ac = entry.get("ac")
+                if not isinstance(ac, int) or ac not in blocks:
+                    problems.append(f"{name}: Acceptance Criteria {ac!r} does not exist")
+                elif disposition == "TBD" and "TBD:" not in blocks[ac]:
+                    problems.append(f"{name}: Acceptance Criteria {ac:02d} has no TBD line")
     return problems
 
 
