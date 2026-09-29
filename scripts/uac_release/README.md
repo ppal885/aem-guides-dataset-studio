@@ -242,8 +242,12 @@ skill script `vm_evidence_call.py` calls the backend at `$AEM_STUDIO_URL/mcp`, s
 Acceptance Criteria field (`status.json` state `POSTED`, exact text in `field-body.txt`). It compares
 the posted criteria with the current field, one criterion at a time: **accepted** (unchanged),
 **removed** (QE deleted it), **added** (QE wrote one we did not have) or **changed** (wording or
-expected result edited). Only a human's edit counts; edits by the automation's own Jira user are
-ignored. An untouched field counts as accepted only once the ticket status is in
+expected result edited). A criterion QE struck through in Jira (`-text-` or `{-}text{-}`) counts
+as **removed**, and the text QE left unstruck next to it (usually a note in brackets) is kept as the
+reason; a partly struck criterion counts as changed with the struck part and reason. Criteria are found
+by `Acceptance Criteria NN:` or `AC-NN:` labels (also after a bullet) or by top-level bullets; a plain
+note after a blank line belongs to no criterion. Only a human's edit counts; edits by the automation's
+own Jira user are ignored. An untouched field counts as accepted only once the ticket status is in
 `learning_accepted_statuses` (default `UAT`, `Closed`, `Resolved`, `Done`). Each new ticket version is
 appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
 it and when.
