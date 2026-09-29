@@ -70,6 +70,38 @@ _AC_BLOCK = re.compile(
     re.MULTILINE,
 )
 _SUB_LINE = re.compile(r"^[ \t]+(?:\*\*)?(Source|TBD):(?:\*\*)?\s*(.+)$", re.MULTILINE)
+_NOTE_LINE = re.compile(r"^Note:\s*(.+?)\s*$", re.MULTILINE)
+_SUGGESTED_HEADING = re.compile(r"^Suggested checks\b.*$", re.MULTILINE)
+_SUGGESTED = re.compile(
+    r"^-\s*(Suggested check \d+):\s*(.+?)\s*$"
+    r"((?:\n[ \t]+(?:\*\*)?(?:Source|Why suggested):(?:\*\*)?\s*.+)*)",
+    re.MULTILINE,
+)
+_SUGGESTED_SUB = re.compile(r"^[ \t]+(?:\*\*)?(Source|Why suggested):(?:\*\*)?\s*(.+)$", re.MULTILINE)
+
+
+def _split_suggested(text: str) -> tuple[str, str]:
+    """(criteria part, suggested-checks part) of a delivered UAC block."""
+    heading = _SUGGESTED_HEADING.search(text or "")
+    if not heading:
+        return text or "", ""
+    return text[:heading.start()], text[heading.start():]
+
+
+def suggested_checks_body(text: str) -> str:
+    """Render the "Suggested checks (QE decide)" part of a UAC block as Jira wiki, or "" when it has none.
+
+    Suggested checks are never copied into the Acceptance Criteria field; they are shown in the draft
+    comment so QE can move the ones they want into the criteria."""
+    _, part = _split_suggested(text)
+    blocks = []
+    for match in _SUGGESTED.finditer(part):
+        label, statement, subs = match.groups()
+        lines = [f"*{label}:* {_wiki_text(statement)}"]
+        for kind, value in _SUGGESTED_SUB.findall(subs or ""):
+            lines.append(f"* {kind}: {_wiki_text(value)}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
 _FILE_TOKEN = re.compile(
     r"(?<![{\w])([\w./-]+\.(?:java|js|ts|tsx|py|xml|xsl|json|csv|md|dita|ditamap"
     r"|feature|yaml|yml|properties|txt|sh|html|css))(?![}\w])"
@@ -102,9 +134,15 @@ def jira_field_body(text: str) -> str:
     square-bracket UI names are escaped so they do not become links. The
     'Acceptance Criteria NN' label is not issue-key shaped, so it is not
     auto-linked. Use jira_comment_body for free-form comments.
+
+    A "Note:" line before the first criterion (for example that the root cause is not confirmed yet)
+    is kept as an italic line on top. The "Suggested checks" part is left out: see
+    suggested_checks_body.
     """
-    blocks = []
-    for match in _AC_BLOCK.finditer(text or ""):
+    text, _ = _split_suggested(text or "")
+    first = _AC_BLOCK.search(text)
+    blocks = [f"_Note: {_wiki_text(note)}_" for note in _NOTE_LINE.findall(text[:first.start()] if first else text)]
+    for match in _AC_BLOCK.finditer(text):
         label, statement, subs = match.groups()
         lines = [f"*{label}:* {_wiki_text(statement)}"]
         for kind, value in _SUB_LINE.findall(subs or ""):

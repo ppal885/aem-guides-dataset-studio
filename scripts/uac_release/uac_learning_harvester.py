@@ -62,7 +62,8 @@ _BULLET = re.compile(r"^(?:[*#-]|\d+[.)])\s+(.*)$")
 # Jira wiki strikethrough: {-}text{-} or -text- (a dash touching text on the inside, not inside a word).
 _STRIKE = re.compile(r"\{-\}(.*?)(?:\{-\}|$)|(?<![\w-])-(?=\S)(.+?)(?<=\S)-(?![\w-])")
 # An Open Questions heading or an OQ-NN line (optionally bulleted, struck or tagged like "[To Confirm]").
-_QUESTION = re.compile(r"^(?:[-*#]\s*)*(?:\[[^\]]*\]\s*)?\*?\s*(?:OQ[\s-]*\d+\b|Open Questions?\b)", re.IGNORECASE)
+_QUESTION = re.compile(r"^(?:[-*#]\s*)*(?:\[[^\]]*\]\s*)?\*?\s*(?:OQ[\s-]*\d+\b|Open Questions?\b|Suggested checks?\b)",
+                       re.IGNORECASE)
 # A screen named in a criterion: a word followed by panel, console, dashboard, ... ("right panel", "Review app").
 _SCREEN = re.compile(r"\b([a-z][\w-]*)\s+(panel|console|dashboard|dialog|app|view|tab|page|editor|toolbar|menu|"
                      r"preview|widget|screen|inbox)\b", re.IGNORECASE)
@@ -189,6 +190,19 @@ def similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, _norm(a).split(), _norm(b).split()).ratio()
 
 
+def mark_promoted(entries: list[dict], suggested: list[str]) -> list[dict]:
+    """An added criterion that matches one of our suggested checks was promoted by QE, not missed by us."""
+    left = list(suggested or [])
+    for entry in entries:
+        if entry["kind"] != "added" or not left:
+            continue
+        best = max(left, key=lambda s: similarity(s, entry["new"]))
+        if similarity(best, entry["new"]) >= MATCH_THRESHOLD:
+            entry.update(kind="promoted", old=best, similarity=round(similarity(best, entry["new"]), 2))
+            left.remove(best)
+    return entries
+
+
 def compare(posted: list[dict], current: list[dict]) -> list[dict]:
     """One entry per criterion: accepted, changed, removed (posted only, or struck through by QE with its
     reason) or added (current only). A criterion QE struck through counts as removed, not changed."""
@@ -256,7 +270,7 @@ def _issue(jira, key: str, field_id: str) -> dict:
 
 
 def _record(key: str, fields: dict, config: dict, posted_text: str, current_text: str, human: list[dict],
-            state: dict, extra: dict | None = None) -> dict | None:
+            state: dict, extra: dict | None = None, suggested: list[str] | None = None) -> dict | None:
     """Build the learning record, or None when nothing new can be learned yet."""
     ticket_status = str((fields.get("status") or {}).get("name") or "")
     components = [str(c.get("name")) for c in fields.get("components") or [] if c.get("name")] or ["(none)"]
@@ -274,14 +288,15 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
     if state.get(key) == version:
         return None
     state[key] = version
-    entries = compare(parse_criteria(posted_text), parse_criteria(current_text))
+    entries = mark_promoted(compare(parse_criteria(posted_text), parse_criteria(current_text)), suggested or [])
     record = {
         "harvested_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "key": key, "summary": str(fields.get("summary") or ""), "components": components,
         "ticket_status": ticket_status, "outcome": outcome, "editor": editor, "edited_at": edited_at,
         "posted_sha256": posted_sha, "current_sha256": current_sha,
         "posted_text": posted_text, "current_text": current_text,
-        "counts": {k: sum(1 for e in entries if e["kind"] == k) for k in ("accepted", "changed", "removed", "added")},
+        "counts": {k: sum(1 for e in entries if e["kind"] == k)
+                   for k in ("accepted", "changed", "removed", "added", "promoted")},
         "criteria": entries,
     }
     record.update(extra or {})
@@ -343,7 +358,8 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, sta
     fields = issue.get("fields") or {}
     generators = own_name if isinstance(own_name, set) else generator_users(config, own_name)
     human = [c for c in ac_field_changes(issue, field_id) if c["by"] and c["by"] not in generators]
-    return _record(key, fields, config, posted_text, fields.get(field_id) or "", human, state)
+    return _record(key, fields, config, posted_text, fields.get(field_id) or "", human, state,
+                   suggested=status.get("suggested") or [])
 
 
 def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
@@ -387,7 +403,7 @@ def monthly_report(config: dict, month: str) -> Path:
             if str(record.get("harvested_at") or "").startswith(month):
                 records.append(record)
     by_component: dict[str, dict] = defaultdict(lambda: {"tickets": set(), "accepted": 0, "changed": 0,
-                                                          "removed": [], "added": [], "screens": []})
+                                                          "removed": [], "added": [], "promoted": [], "screens": []})
     for record in records:
         for component in record.get("components") or ["(none)"]:
             bucket = by_component[component]
@@ -406,11 +422,12 @@ def monthly_report(config: dict, month: str) -> Path:
                                 bucket["screens"].append((record["key"], screen, entry["new"]))
     lines = [f"# UAC learning report {month}", "",
              f"{len(records)} ticket version(s) harvested. Accepted = kept unchanged; changed = wording or "
-             "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it). "
+             "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it); promoted = QE moved one "
+             "of our suggested checks into the criteria. "
              "Missed screens = screens (panel, console, dashboard, app, ...) that a QE-added criterion names and our "
              "posted UAC never mentioned, counted so a recurring screen miss shows up in the data before any rule changes.",
              ""]
-    totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "missed_screens")}
+    totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "promoted", "missed_screens")}
     for component in sorted(by_component):
         b = by_component[component]
         screens = b["screens"]
@@ -418,22 +435,27 @@ def monthly_report(config: dict, month: str) -> Path:
             totals[kind] += b[kind]
         totals["removed"] += len(b["removed"])
         totals["added"] += len(b["added"])
+        totals["promoted"] += len(b["promoted"])
         totals["missed_screens"] += len(screens)
         lines += [f"## {component}", "",
                   f"- Tickets: {len(b['tickets'])}",
                   f"- Criteria accepted {b['accepted']}, changed {b['changed']}, removed {len(b['removed'])}, "
-                  f"added {len(b['added'])}, missed screens {len(screens)}", ""]
+                  f"added {len(b['added'])}, promoted {len(b['promoted'])}, missed screens {len(screens)}", ""]
         if b["removed"]:
             lines += ["What we wrote that QE removed:", ""] + [f"- {k}: {t}" for k, t in b["removed"]] + [""]
         if b["added"]:
             lines += ["What QE added that we missed:", ""] + [f"- {k}: {t}" for k, t in b["added"]] + [""]
+        if b["promoted"]:
+            lines += ["Suggested checks QE moved into the criteria:", ""] + [f"- {k}: {t}" for k, t in b["promoted"]] + [""]
         if screens:
             lines += ["Missed screens (named by a QE-added criterion, never named in our UAC):", ""] + \
                 [f"- {k}: {s} - {t}" for k, s, t in screens] + [""]
     if records:
         posted = totals["accepted"] + totals["changed"] + totals["removed"]
         lines[3:3] = [f"Overall: {posted} posted criteria - accepted {totals['accepted']}, changed {totals['changed']}, "
-                      f"removed {totals['removed']}; QE added {totals['added']} (missed screens "
+                      f"removed {totals['removed']}; QE added {totals['added']}"
+                      + (f", promoted {totals['promoted']} suggested" if totals["promoted"] else "")
+                      + f" (missed screens "
                       f"{totals['missed_screens']}).", ""]
     if not records:
         lines.append("No ticket versions were harvested this month.")

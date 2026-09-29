@@ -27,9 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 
 STATE_FILE = "staleness-state.json"
-FIX_SIGNAL = re.compile(
-    r"\broot[\s-]*cause\b|\bRCA\b|\bcaused by\b|\bfix(?:ed)? in\b|\bthe fix\b|/pull/\d+|\bpull request\b"
-    r"|\bPR\s*#?\d+|\bmerged\b|\bcherry[\s-]*pick", re.IGNORECASE)
+# The same signal the skill uses to decide whether a UAC was written with the root cause known.
+FIX_SIGNAL = common.import_skill_module("uac_completeness_check").FIX_SIGNAL
 AC_FIELD_NAME = "Acceptance Criteria"
 
 

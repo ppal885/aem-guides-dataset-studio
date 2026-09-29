@@ -7822,9 +7822,10 @@ def test_scenario_and_failure_path() -> None:
         {"ac": 2, "scenario": "ADJACENT"},
     ]}
     adjacent = uc.scenario_problems({"scenario": scenario}, uac, source)
-    check("an adjacent-scenario criterion without a TBD fails", any("did not hit" in p for p in adjacent))
+    check("an adjacent-scenario criterion fails", any("did not hit" in p for p in adjacent))
     with_tbd = uac + "  **TBD:** Is project deletion part of this ticket?\n"
-    check("an adjacent-scenario criterion with a TBD passes", uc.scenario_problems({"scenario": scenario}, with_tbd, source) == [])
+    check("an adjacent-scenario criterion fails even with a TBD: it is a suggested check",
+          any("Suggested checks" in p for p in uc.scenario_problems({"scenario": scenario}, with_tbd, source)))
     only_adjacent = {"customer_steps": [step], "acs": [{"ac": 1, "scenario": "ADJACENT"}, {"ac": 2, "scenario": "ADJACENT"}]}
     check("a UAC with no criterion on the reporter's scenario fails",
           any("reporter's own scenario" in p for p in uac_completeness_check_mod.scenario_problems(
@@ -7873,6 +7874,89 @@ def test_scenario_and_failure_path() -> None:
           uc.failure_path_problems({}, uac, {"summary": "Preview title", "description": "wrong title"}) == [])
 
 
+def test_fix_basis_and_suggested_checks() -> None:
+    uc = uac_completeness_check_mod
+    jst = jira_safe_text_mod
+    step = "The translation job shows Completed but 310 files stay In Progress."
+    source = {"summary": "Files stay In Progress", "description": step,
+              "comments": [{"id": "1", "author": "dev", "body": "Looking into it."}]}
+    scenario = {"customer_steps": [step], "acs": [{"ac": 1, "scenario": "CUSTOMER", "step": step},
+                                                   {"ac": 2, "scenario": "REGRESSION", "step": step}]}
+    body = (
+        "- Acceptance Criteria 01: Verify that files leave In Progress when the translation job completes.\n"
+        "  **Source:** ticket description.\n"
+        "- Acceptance Criteria 02: Verify that files still in translation stay In Progress.\n"
+        "  **Source:** TranslationStatus.java:40.\n"
+    )
+    note = uc.UNCONFIRMED_NOTE + "\n\n"
+    unconfirmed = {"scenario": scenario, "fix_basis": {"status": "UNCONFIRMED"}}
+    check("a missing fix_basis fails", any("fix_basis is missing" in p for p in uc.fix_basis_problems(
+        {"scenario": scenario}, note + body, source)))
+    check("an unconfirmed root cause with the note passes", uc.fix_basis_problems(unconfirmed, note + body, source) == [])
+    check("an unconfirmed root cause without the note fails",
+          any("must start with" in p for p in uc.fix_basis_problems(unconfirmed, body, source)))
+    guess = body.replace("ticket description.", "TranslationProjectListener.java:88.")
+    check("a customer criterion resting only on code fails while the root cause is unconfirmed",
+          any("rests only on code" in p for p in uc.fix_basis_problems(unconfirmed, note + guess, source)))
+    check("a regression check may cite code while the root cause is unconfirmed",
+          not any("Acceptance Criteria 02" in p for p in uc.fix_basis_problems(unconfirmed, note + guess, source)))
+    confirmed = {"scenario": scenario, "fix_basis": {"status": "CONFIRMED", "signal": "The fix is in PR 12."}}
+    fixed = dict(source, comments=[{"id": "2", "author": "dev", "body": "Root cause found. The fix is in PR 12."}])
+    check("a confirmed fix quoted from the ticket passes, and a code-only criterion is allowed",
+          uc.fix_basis_problems(confirmed, guess, fixed) == [])
+    check("a confirmed fix that is not ticket text fails",
+          any("not text from the ticket" in p for p in uc.fix_basis_problems(confirmed, guess, source)))
+    check("the ticket's root-cause comment is found", uc.fix_signals(fixed) == ["Root cause found.", "The fix is in PR 12."])
+    check("unconfirmed while the ticket reports a root cause needs a reason",
+          any("reports a root cause" in p for p in uc.fix_basis_problems(unconfirmed, note + body, fixed)))
+    reasoned = {"scenario": scenario, "fix_basis": {"status": "UNCONFIRMED",
+                                                    "reason": "that comment names a different ticket's fix"}}
+    check("unconfirmed with a reason for the ticket's fix comment passes",
+          uc.fix_basis_problems(reasoned, note + body, fixed) == [])
+
+    suggested = body + (
+        "\nSuggested checks (QE decide):\n"
+        "- Suggested check 01: Verify that deleting a translation project clears its In Progress entries.\n"
+        "  **Source:** investigation comment.\n"
+        "  **Why suggested:** an investigator found this path; the reporter did not delete a project.\n"
+    )
+    check("well-formed suggested checks pass", uc.suggested_problems(suggested) == [])
+    check("a suggested check is not an Acceptance Criterion",
+          sorted(int(n) for n, _ in uc._AC_BLOCK.findall(suggested)) == [1, 2]
+          and "Suggested" not in dict((int(n), b) for n, b in uc._AC_BLOCK.findall(suggested))[2])
+    check("a suggested check without why fails",
+          any("Why suggested" in p for p in uc.suggested_problems(suggested.replace("  **Why suggested:**", "  Note:"))))
+    loose = body + "- Suggested check 01: something.\n  **Source:** x.\n"
+    check("suggested checks without the heading fail", any("heading" in p for p in uc.suggested_problems(loose)))
+    late = suggested + "- Acceptance Criteria 03: Verify something else.\n  **Source:** ticket.\n"
+    check("an Acceptance Criterion after the suggested checks fails",
+          any("must come before" in p for p in uc.suggested_problems(late)))
+    many = body + "\nSuggested checks (QE decide):\n" + "".join(
+        f"- Suggested check {n:02d}: check {n}.\n  **Source:** doc.\n  **Why suggested:** found only in the documentation page.\n"
+        for n in range(1, 7))
+    check("more than five suggested checks fails", any("6 suggested checks" in p for p in uc.suggested_problems(many)))
+    adjacent = {"customer_steps": [step], "acs": [{"ac": 1, "scenario": "CUSTOMER", "step": step},
+                                                  {"ac": 2, "scenario": "ADJACENT"}]}
+    check("an adjacent criterion must be a suggested check",
+          any("move it to" in p for p in uc.scenario_problems({"scenario": adjacent}, suggested, source)))
+    doc_research = {"findings": [{"claim": "Deleting a project rejects its jobs.", "source_refs": ["doc:translation"]}]}
+    check("a documentation finding can be answered by a suggested check",
+          uc.doc_finding_problems({"doc_findings": [{"finding": 1, "disposition": "SUGGESTED", "suggested": 1}]},
+                                  doc_research, suggested) == [])
+    check("a documentation finding pointing at a missing suggested check fails",
+          any("does not exist" in p for p in uc.doc_finding_problems(
+              {"doc_findings": [{"finding": 1, "disposition": "SUGGESTED", "suggested": 4}]}, doc_research, suggested)))
+
+    field = jst.jira_field_body(note + suggested)
+    check("the Jira field keeps the not-confirmed note on top", field.startswith("_Note: The root cause"))
+    check("the Jira field leaves the suggested checks out",
+          "Suggested" not in field and "*Acceptance Criteria 02:*" in field)
+    rendered = jst.suggested_checks_body(note + suggested)
+    check("the suggested checks render for the draft comment",
+          rendered.startswith("*Suggested check 01:*") and "* Why suggested:" in rendered)
+    check("a UAC without suggested checks renders none", jst.suggested_checks_body(body) == "")
+
+
 def test_uac_completeness_check() -> None:
     uc = uac_completeness_check_mod
     vm = vm_evidence_call_mod
@@ -7899,6 +7983,7 @@ def test_uac_completeness_check() -> None:
         "scenario": {"customer_steps": ["Fix the preview"], "acs": [
             {"ac": 1, "scenario": "CUSTOMER", "step": "Fix the preview"},
             {"ac": 2, "scenario": "CUSTOMER", "step": "Fix the preview"}]},
+        "fix_basis": {"status": "UNCONFIRMED"},
     }
 
     def problems(ev, text=uac):
@@ -7937,7 +8022,7 @@ def test_uac_completeness_check() -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp)
-        (folder / "UAC.md").write_text(uac, encoding="utf-8")
+        (folder / "UAC.md").write_text(uc.UNCONFIRMED_NOTE + "\n\n" + uac, encoding="utf-8")
         (folder / "DOC_RESEARCH.json").write_text(json.dumps(doc_research), encoding="utf-8")
         (folder / "UAC_EVIDENCE.json").write_text(json.dumps(evidence), encoding="utf-8")
         (folder / "jira-source.json").write_text(json.dumps({"summary": "Fix the preview", "description": ""}),
@@ -17612,6 +17697,7 @@ def main() -> int:
     test_hotfix_scope_check()
     test_uac_completeness_check()
     test_scenario_and_failure_path()
+    test_fix_basis_and_suggested_checks()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
