@@ -122,6 +122,8 @@ fluffyjaws_evidence_mod = _load("fluffyjaws_evidence", "fluffyjaws_evidence.py")
 pattern_check_suggestions_mod = _load("pattern_check_suggestions", "pattern_check_suggestions.py")
 config_settings_lookup_mod = _load("config_settings_lookup", "config_settings_lookup.py")
 hotfix_scope_check_mod = _load("hotfix_scope_check", "hotfix_scope_check.py")
+uac_completeness_check_mod = _load("uac_completeness_check", "uac_completeness_check.py")
+vm_evidence_call_mod = _load("vm_evidence_call", "vm_evidence_call.py")
 temporal_evidence_mod = _load("temporal_evidence", "temporal_evidence.py")
 evidence_conflict_resolver_mod = _load("evidence_conflict_resolver", "evidence_conflict_resolver.py")
 question_research_mod = _load("question_research", "question_research.py")
@@ -7697,6 +7699,107 @@ def test_pattern_check_suggestions() -> None:
         "pattern-check data no longer on disk is reported as UNAVAILABLE",
         pc.suggest(paste_ticket, env=on, path=missing)["status"] == "UNAVAILABLE",
     )
+
+
+def test_uac_completeness_check() -> None:
+    uc = uac_completeness_check_mod
+    vm = vm_evidence_call_mod
+    uac = (
+        "- Acceptance Criteria 01: Verify that Validate works in Workspace settings.\n"
+        "  **Source:** hotfix ticket; Experience League Workspace settings page.\n"
+        "- Acceptance Criteria 02: Verify that publishing still works.\n"
+        "  **Source:** hotfix ticket.\n"
+    )
+    doc_research = {"status": "PARTIAL", "findings": [
+        {"claim": "Validate then Save stores the profile.", "source_refs": ["doc:workspace-settings"]},
+        {"claim": "Proxy publishing needs the proxy configuration.", "source_refs": ["doc:workspace-settings"]},
+        {"claim": "The ticket asks for PKCE.", "source_refs": ["jira:ticket"]},
+    ]}
+    available = {"status": "available", "route": "backend"}
+    evidence = {
+        "preflight": {s: dict(available) for s in ("product_rag", "jira_history", "live_jira", "clones")},
+        "rag_probes": [{"question": f"q{n}", "result": "ok", "summary": "a"} for n in range(3)],
+        "history_attempts": [{"source": "search_jira_history", "query": f"h{n}", "result": "empty", "count": 0}
+                             for n in range(2)],
+        "doc_findings": [{"finding": 1, "disposition": "AC", "ac": [1]},
+                         {"finding": 2, "disposition": "SET_ASIDE", "reason": "the hotfix keeps the same HTTP client"}],
+    }
+
+    def problems(ev, text=uac):
+        return uc.preflight_problems(ev.get("preflight")) + uc.rag_problems(ev) + uc.history_problems(ev) \
+            + uc.doc_finding_problems(ev, doc_research, text)
+
+    check("a complete evidence record passes", problems(evidence) == [])
+
+    one_route = json.loads(json.dumps(evidence))
+    one_route["preflight"]["product_rag"] = {"status": "unavailable", "attempted_routes": ["session MCP tool"],
+                                             "reason": "tool not in the session"}
+    check("RAG unavailable after only the missing session tool fails",
+          any("backend route" in p for p in problems(one_route)))
+    both_routes = json.loads(json.dumps(one_route))
+    both_routes["preflight"]["product_rag"]["attempted_routes"].append("backend JSON-RPC")
+    both_routes["rag_probes"] = []
+    check("RAG unavailable after both routes needs no probes", problems(both_routes) == [])
+
+    no_rag = dict(evidence, rag_probes=evidence["rag_probes"][:1])
+    check("available RAG with fewer than three probes fails", any("probe(s)" in p for p in problems(no_rag)))
+    no_history = dict(evidence, history_attempts=[])
+    check("reachable Jira history with no searches fails", any("attempt(s)" in p for p in problems(no_history)))
+    bad_count = dict(evidence, history_attempts=[{"source": "x", "query": "y", "result": "ok", "count": -1}] * 2)
+    check("a history attempt with a negative count fails", any("non-negative count" in p for p in problems(bad_count)))
+
+    dropped = uac.replace("; Experience League Workspace settings page", "")
+    check("a rewrite that drops the documentation from the Source line fails",
+          any("does not name the documentation" in p for p in problems(evidence, dropped)))
+    unused = dict(evidence, doc_findings=evidence["doc_findings"][:1])
+    check("a documentation finding neither used nor set aside fails",
+          any("documentation finding 2" in p for p in problems(unused)))
+    lazy = json.loads(json.dumps(evidence))
+    lazy["doc_findings"][1]["reason"] = "not relevant"
+    check("a set-aside finding needs a concrete reason", any("concrete reason" in p for p in problems(lazy)))
+    check("a Jira-only finding needs no disposition", not any("finding 3" in p for p in problems(evidence)))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        (folder / "UAC.md").write_text(uac, encoding="utf-8")
+        (folder / "DOC_RESEARCH.json").write_text(json.dumps(doc_research), encoding="utf-8")
+        (folder / "UAC_EVIDENCE.json").write_text(json.dumps(evidence), encoding="utf-8")
+        (folder / "jira-source.json").write_text(json.dumps({"summary": "Fix the preview", "description": ""}),
+                                                 encoding="utf-8")
+        check("a complete folder passes the whole check", uc.check(folder) == [])
+        (folder / "jira-source.json").write_text(json.dumps({"summary": "[On-prem]HOTFIX : Add PKCE"}),
+                                                 encoding="utf-8")
+        check("a hotfix folder without a scope file fails",
+              any("HOTFIX_SCOPE.json" in p for p in uc.check(folder)))
+        (folder / "UAC_EVIDENCE.json").unlink()
+        check("a folder without the evidence record fails",
+              any("UAC_EVIDENCE.json was not written" in p for p in uc.check(folder)))
+
+    def transport(result=None, error=None):
+        def send(url, payload):
+            if error:
+                raise OSError(error)
+            if payload["method"] == "tools/list":
+                return {"result": {"tools": [{"name": "ask_dita_expert"}]}}
+            return {"result": {"content": [{"type": "text", "text": result}]}}
+        return send
+
+    state = vm.preflight("http://x/mcp", transport())
+    check("the backend route marks RAG available", state["product_rag"]["status"] == "available")
+    check("a tool the backend does not serve is unavailable with both routes named",
+          state["jira_history"]["status"] == "unavailable" and len(state["jira_history"]["attempted_routes"]) == 2)
+    down = vm.preflight("http://x/mcp", transport(error="connection refused"))
+    check("an unreachable backend is recorded with its error", "connection refused" in down["product_rag"]["reason"])
+    check("the endpoint is derived from the base URL", vm.endpoint("http://host:4502/") == "http://host:4502/mcp")
+    check("a RAG answer is recorded as ok", vm.rag_probe("u", "q", transport("An answer."))["result"] == "ok")
+    check("a failed RAG call is recorded as an error", vm.rag_probe("u", "q", transport(error="boom"))["result"] == "error")
+    structured = json.dumps({"results": [{"jira_key": "PROJ-2"}], "rejected_candidates": [{"jira_key": "PROJ-9"}]})
+    attempt = vm.history_attempt("u", "q", "", transport(structured))
+    check("only qualified history matches are counted", attempt["count"] == 1 and attempt["keys"] == ["PROJ-2"])
+    check("rejected history candidates are kept apart", attempt["rejected_keys"] == ["PROJ-9"])
+    empty = vm.history_attempt("u", "q", "", transport(json.dumps({"results": [], "rejected_candidates": []})))
+    check("an empty history search is recorded as empty with count zero",
+          empty["result"] == "empty" and empty["count"] == 0)
 
 
 def test_hotfix_scope_check() -> None:
@@ -17331,6 +17434,7 @@ def main() -> int:
     test_pattern_check_suggestions()
     test_config_settings_lookup()
     test_hotfix_scope_check()
+    test_uac_completeness_check()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
     test_question_research()
