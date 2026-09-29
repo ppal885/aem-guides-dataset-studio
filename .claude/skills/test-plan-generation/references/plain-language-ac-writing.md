@@ -7,7 +7,7 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 ## Required Style
 
 - Use the canonical one-line format `AC-## [Confirmed|Proposed]: (<Sphere>) <plain-English criterion>. Evidence: <source>.` in the validated record. Never use Given/When/Then labels or pipes anywhere - not in the record, chat, Jira, or the linked markdown.
-- In the human-facing UAC, lead with `Verify that` followed by the named product item and its observable result. Keep the underlying record as a product outcome; do not squeeze a setup procedure, action sequence, and result into one sentence.
+- In the human-facing UAC, state the named product item and its observable result directly, the way human QE UACs do; a `Verify that` lead is allowed but not required. Keep the underlying record as a product outcome; do not squeeze a setup procedure, action sequence, and result into one sentence.
 - Never show sphere, status, or Evidence in human-facing AC text. Chat and Jira show `AC-##: <criterion>` plus optional sub-points. Keep `[Proposed]` / `[Confirmed]` and evidence in the validated record only.
 - Consolidate to at most ten AC points in the presented UAC, but consolidation is LOSS-LESS: it reorganizes coverage, it never removes a checkable point. List every distinct point first; after merging, each one must survive as a clause of a merged AC, a sub-point under it, or an entry in the linked full-record markdown. If you synthesized more (say twenty), merge related criteria into a single AC the way a senior human QA does and express the merged detail as sub-points. Never drop a point to hit the cap, and never split one idea into many thin ACs to pad the list.
 - Give each AC one purpose.
@@ -46,9 +46,9 @@ The renderer and Jira poster produce this deterministic view from the record - o
   **TBD:** are custom user-defined conditions in scope for the same dropdown refresh?
 ```
 
-The delivered chat view is a flat list: no section headings, no ticket title line, no content sub-points, and no separate Open Questions section. A criterion that covers several cases keeps them as a compact clause list inside its single line. Do not manually paraphrase this view. Render each concrete outcome with the `Verify that` QE prefix, keep the underlying terms unchanged, keep the criterion body free of bold, backticks and links so it pastes cleanly into Jira, and strip the `**Source:**` / `**TBD:**` emphasis to plain labels before any Jira write.
+The delivered chat view is a list of criteria: no ticket title line and no separate Open Questions section; the only other lines are the optional Note, Scope line and Out of scope list (see SKILL.md "Acceptance Scope And The Delivered UAC"). A criterion that covers several cases of the same outcome lists them as up to five short indented sub-points. Do not manually paraphrase this view. Render each concrete outcome as written, keep the underlying terms unchanged, keep the criterion body free of bold, backticks and links so it pastes cleanly into Jira, and strip the `**Source:**` / `**TBD:**` emphasis to plain labels before any Jira write.
 
-Once a user has confirmed this shape, reuse it verbatim on every later revision of the same UAC. Re-deriving a different layout - adding headings back, splitting clauses into sub-bullets, or restoring an Open Questions section - is a format defect, not an improvement.
+Once a user has confirmed this shape, reuse it verbatim on every later revision of the same UAC. Re-deriving a different layout - adding headings, splitting one outcome into several criteria, or restoring an Open Questions section - is a format defect, not an improvement.
 
 ## Quick Review
 

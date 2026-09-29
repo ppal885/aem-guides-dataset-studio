@@ -44,6 +44,12 @@ When finished, write these files:
    research (documentation, code, a similar or parent ticket, an investigator's other scenario) go after
    them under the line "Suggested checks (QE decide):" as "- Suggested check NN: ..." lines, each with an
    indented "**Source:** ..." and "**Why suggested:** ..." line - at most five, only ones that matter.
+   State each criterion as the expected outcome in plain words (no "Verify that" prefix is needed), and
+   under a criterion list up to five short cases of the same outcome as indented "  - ..." lines when it
+   has a construct or case matrix. A fact the ticket or a developer comment already decided (a feature
+   flag, a preset argument, a default, a parity target such as "same as AEM Sites") is written as a
+   criterion, not a TBD. When the ticket or a product decision sets the scope, add a "Scope: ..." line
+   before the first criterion and an "Out of scope:" line with "- ..." items right after the criteria.
    When the root cause or fix is not confirmed (see fix_basis below), the first line is exactly:
    "Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer
    reported and will be checked again when the fix is known."
@@ -230,7 +236,7 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
         return [f"{common.SOURCE_COVERAGE_FILE} must be a JSON list of objects"]
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
     blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)", uac, re.M | re.S)}
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", uac, re.M | re.S)}
     problems = []
     for number, entry in enumerate(entries, 1):
         disposition = entry.get("disposition")
@@ -311,7 +317,7 @@ def orphan_ac_problems(ticket_dir: Path) -> list[str]:
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
     lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
     blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)", uac, re.M | re.S)}
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", uac, re.M | re.S)}
     coverage = _load_list(ticket_dir / common.SOURCE_COVERAGE_FILE)
     inventory = _load_list(ticket_dir / common.SURFACE_INVENTORY_FILE)
     from_ticket = {ac for e in coverage if e.get("disposition") in ("AC", "TBD") for ac in _ac_numbers(e.get("ac"))}
@@ -400,7 +406,7 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
     lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
     blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)", uac, re.M | re.S)}
+        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", uac, re.M | re.S)}
     problems, has_doc, has_code = [], False, False
     for number, entry in enumerate(entries, 1):
         surface = str(entry.get("surface") or "").strip()

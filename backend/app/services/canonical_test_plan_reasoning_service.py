@@ -1483,11 +1483,14 @@ _QE_FOR_CONTEXT_RE = re.compile(
 
 
 def _as_manual_qe_check(text: str) -> str:
-    """Present an outcome as a concrete manual-QE verification check.
+    """Present an outcome the way human QE UACs state it: the outcome itself.
 
-    The Writer retains the underlying product outcome.  This presentation-only
-    wrapper gives testers the requested ``Verify that <named item> ...`` voice
-    without admitting generic ``Verify that the system ...`` wording.
+    The Writer retains the underlying product outcome.  Human UACs state the
+    expected result directly; only 17% of the 386 human UACs in the corpus use
+    ``Verify that``, and the prefix made generated criteria much longer, so no
+    prefix is added (a criterion the author wrote as ``Verify that ...`` keeps it).
+    The skill projector ``ac_presentation._as_manual_qe_check`` applies the same
+    rule, so the skill, CLI, REST and MCP paths render the same text.
     """
 
     value = _QE_STATUS_PREFIX_RE.sub("", text.strip())
@@ -1499,29 +1502,28 @@ def _as_manual_qe_check(text: str) -> str:
         return value
     add_view = _QE_ADD_VIEW_RE.match(value)
     if add_view:
-        return (
-            f"Verify that {add_view.group('subject')} has "
+        value = (
+            f"{add_view.group('subject')} has "
             f"{add_view.group('view')} that "
             f"{add_view.group('behavior').rstrip('.!?')}."
         )
-    preserve = _QE_PRESERVE_RE.match(value)
-    if preserve:
-        subject = preserve.group("subject").strip()
-        if not re.match(r"^(?:the|a|an|each|all)\b", subject, re.I):
-            subject = f"the {subject}"
-        detail = (preserve.group("detail") or "").strip().rstrip(".!?")
-        suffix = f"; {detail[0].lower() + detail[1:]}" if detail else ""
-        return f"Verify that {subject} stay unchanged{suffix}."
-    context = _QE_FOR_CONTEXT_RE.match(value)
-    if context:
-        statement = context.group("statement").strip().rstrip(".!?")
-        return (
-            f"Verify that for {context.group('context').strip()}, {statement}."
-        )
-    article = _QE_ARTICLE_PREFIX_RE.match(value)
-    if article:
-        value = article.group(0).lower() + value[article.end():]
-    return f"Verify that {value}"
+    else:
+        preserve = _QE_PRESERVE_RE.match(value)
+        context = _QE_FOR_CONTEXT_RE.match(value)
+        if preserve:
+            subject = preserve.group("subject").strip()
+            if not re.match(r"^(?:the|a|an|each|all)\b", subject, re.I):
+                subject = f"the {subject}"
+            detail = (preserve.group("detail") or "").strip().rstrip(".!?")
+            suffix = f"; {detail[0].lower() + detail[1:]}" if detail else ""
+            value = f"{subject} stay unchanged{suffix}."
+        elif context:
+            statement = context.group("statement").strip().rstrip(".!?")
+            value = f"For {context.group('context').strip()}, {statement}."
+    first = value.split(" ", 1)[0]
+    if first.isalpha() and first.islower():
+        value = value[0].upper() + value[1:]
+    return value
 
 
 def _render_written_criterion(criterion: "WrittenAcceptanceCriterion") -> str:

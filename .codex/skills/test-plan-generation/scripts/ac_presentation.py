@@ -92,22 +92,25 @@ def _mid(value: str) -> str:
 
 
 def _as_manual_qe_check(value: str) -> str:
-    """Wrap a concrete outcome in the human-requested manual-QE voice."""
+    """Present a concrete outcome the way human QE UACs state it: the outcome itself.
+
+    Human UACs state the expected result directly ("Ph tag in map title resolves with ditaval
+    conditioning"); only 17% of the 386 human UACs in the corpus use "Verify that", and the
+    prefix made our criteria about 60% longer. So no prefix is added. A criterion the author
+    already wrote as "Verify that ..." keeps it. A lowercase plain first word is capitalized;
+    a technical token such as largeFileTagCount is left exactly as written."""
 
     text = _QE_STATUS_PREFIX_RE.sub("", value.strip())
-    if (
-        not text
-        or _QE_CHECK_LEAD_RE.match(text)
-        or _QE_TBD_QUESTION_RE.search(text)
-    ):
+    if not text or _QE_CHECK_LEAD_RE.match(text) or _QE_TBD_QUESTION_RE.search(text):
         return text
-    article = _QE_ARTICLE_PREFIX_RE.match(text)
-    if article:
-        text = article.group(0).lower() + text[article.end():]
-    return f"Verify that {text}"
+    first = text.split(" ", 1)[0]
+    if first.isalpha() and first.islower():
+        text = text[0].upper() + text[1:]
+    return text
 
 
 _AC_ID_RE = re.compile(r"^AC-(\d+)$", re.IGNORECASE)
+MAX_SUB_POINTS = 5
 
 
 def human_ac_label(ac_id: str) -> str:
@@ -138,7 +141,7 @@ def project_ac_for_people(
     Expected result scaffolding), no forced Given / When / Then labels, and never the
     [Proposed]/[Confirmed] status tag in human-facing text (include_status must be False
     for chat and Jira; the Needs_Human_Review label conveys status). The underlying
-    clause stays unchanged after the concrete ``Verify that`` presentation wrapper.
+    clause is shown as written; no ``Verify that`` prefix is added.
     The visible label is spelled out as ``Acceptance Criteria ##`` while the
     internal id remains ``AC-##``.
     """
@@ -168,18 +171,20 @@ def project_ac_block_for_people(
     header_bullet: bool = True,
     for_jira: bool = False,
 ) -> str:
-    """Render the delivered chat block for one AC: criterion, source, optional TBD.
+    """Render the delivered chat block for one AC: criterion, short sub-points, source, optional TBD.
 
-    The delivered UAC is a FLAT list. This block is the only structure allowed
-    around a criterion:
+    This block is the only structure allowed around a criterion:
 
         - Acceptance Criteria 01: <verbatim criterion>.
+          - <short case of the same outcome>        (optional, at most five)
           **Source:** <underlying source>.
           **TBD:** <undecided product decision>?
 
-    No section headings, no ticket title line, no content sub-points, and no
-    separate Open Questions section: an undecided decision rides on the AC it
-    governs so the unknown stays attached to the contract it blocks. The
+    Sub-points list the cases of one outcome (for example each construct inside a map
+    title), the way human UACs nest them; a different outcome is a different criterion.
+    No section headings other than the optional Scope / Out of scope lines of the UAC,
+    no ticket title line, and no separate Open Questions section: an undecided decision
+    rides on the AC it governs so the unknown stays attached to the contract it blocks. The
     criterion body itself stays paste-safe plain text; ``**Source:**`` and
     ``**TBD:**`` are chat-only labels and are emitted as plain ``Source:`` /
     ``TBD:`` when ``for_jira`` is True, because Jira renders markdown emphasis
@@ -200,6 +205,13 @@ def project_ac_block_for_people(
             "delivered AC must show the authority it rests on"
         )
     validate_ac_source_specificity(str(criterion.get("id")), source)
+    sub_points = [str(p).strip() for p in criterion.get("sub_points") or [] if str(p).strip()]
+    if len(sub_points) > MAX_SUB_POINTS:
+        raise ValueError(
+            f"acceptance criterion {criterion.get('id')!r} has {len(sub_points)} sub-points; keep at most "
+            f"{MAX_SUB_POINTS} short cases, or split a different outcome into its own criterion"
+        )
+    lines += [f"  - {_clause(p)}" for p in sub_points]
     tbd = str(criterion.get("tbd") or "").strip()
     source_label = "Source:" if for_jira else "**Source:**"
     tbd_label = "TBD:" if for_jira else "**TBD:**"
