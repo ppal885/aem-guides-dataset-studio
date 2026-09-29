@@ -7733,14 +7733,18 @@ def test_similar_uac_compare() -> None:
 
     similar = {"key": "PROJ-2", "fields": {"summary": "PKCE support for the Salesforce publish profile login",
                                            "description": "", "customfield_1": human}}
+    ours = {"key": "PROJ-4", "fields": {"summary": "PKCE support for the Salesforce publish profile validate",
+                                        "description": "", "labels": ["Needs_Human_Review"], "customfield_1": human}}
     unrelated = {"key": "PROJ-3", "fields": {"summary": "Native PDF title ignores child elements",
                                              "description": "", "customfield_1": human}}
-    fake = FakeJira([similar, unrelated])
+    fake = FakeJira([similar, unrelated, ours])
     found, queries = sc.from_jira(fake, terms, "PROJ-1", "Publishing", 3, ("Needs_Human_Review",))
     check("only tickets that share enough key terms are similar", [f["key"] for f in found] == ["PROJ-2"])
-    check("the search stays in the component and skips the ticket and machine-posted UACs",
+    check("our own posted UAC that nobody edited is not a similar human UAC", not any(f["key"] == "PROJ-4" for f in found))
+    check("the search stays in the component and skips the ticket itself",
           'component = "Publishing"' in queries[0] and 'key != "PROJ-1"' in queries[0]
-          and "Needs_Human_Review" in queries[0] and '"Acceptance Criteria" is not EMPTY' in queries[0])
+          and '"Acceptance Criteria" is not EMPTY' in queries[0])
+    check("machine labels are checked per result, not dropped by the query", "Needs_Human_Review" not in queries[0])
     check("the ticket's own component is searched before any other",
           all('component = "Publishing"' in q for q in queries))
     record = sc.build_record(found, queries, "jira", terms)
@@ -7778,6 +7782,44 @@ def test_similar_uac_compare() -> None:
     check("keys from another project are not related tickets", not any(p.startswith("/rest/api/2/issue/OTHER-5") for p in linked.paths))
     check("the related tickets are recorded as queries", queries[:2] == ["PROJ-10 (given by the author)", "PROJ-7 (linked (clones))"])
     check("the record says how each UAC was found", sc.build_record(found, queries, "jira", terms)["uacs"][0]["via"] == "given by the author")
+
+    def history(author, created, items):
+        return {"author": {"name": author}, "created": created, "items": items}
+
+    posted = [history("bot", "2026-01-01T10:00", [{"fieldId": "customfield_1", "field": "Acceptance Criteria"}]),
+              history("bot", "2026-01-01T10:01", [{"field": "labels", "fromString": "Triaged",
+                                                   "toString": "Triaged QEVision_UAC_DONE"}])]
+    changelogs = {
+        "PROJ-12": posted + [history("qe.lead", "2026-01-05T09:00", [{"fieldId": "customfield_1"}])],
+        "PROJ-13": posted,
+        "PROJ-14": posted + [history("qe.lead", "2026-01-05T09:00", [{"fieldId": "customfield_1"}]),
+                             history("bot", "2026-01-06T09:00", [{"fieldId": "customfield_1"}])],
+        "PROJ-15": [history("qe.lead", "2025-12-01T09:00", [{"fieldId": "customfield_1"}])] + posted,
+    }
+
+    class EditedJira:
+        def get(self, path):
+            if path.startswith("/rest/api/2/field"):
+                return [{"id": "customfield_1", "name": "Acceptance Criteria"}]
+            if path.startswith("/rest/api/2/issue/PROJ-1?"):
+                return {"fields": {"issuelinks": []}}
+            if not path.startswith("/rest/api/2/issue/"):
+                return {"issues": []}
+            other = path.split("/")[5].split("?")[0]
+            if "expand=changelog" in path:
+                return {"changelog": {"histories": changelogs.get(other, [])}}
+            if path.startswith("/rest/api/2/issue/"):
+                return {"fields": {"summary": f"{other} summary", "labels": ["QEVision_UAC_DONE"], "customfield_1": human}}
+            return {"issues": []}
+
+    labels = ("Needs_Human_Review", "QEVision_UAC_DONE")
+    found, _ = sc.from_jira(EditedJira(), terms, "PROJ-1", "", 5, labels, "",
+                            ["PROJ-12", "PROJ-13", "PROJ-14", "PROJ-15"])
+    check("a machine-labelled UAC that a person rewrote afterwards is compared as a human UAC",
+          [f["key"] for f in found] == ["PROJ-12"] and "edited by qe.lead" in found[0]["via"])
+    check("a machine-labelled UAC nobody edited is still skipped", not any(f["key"] == "PROJ-13" for f in found))
+    check("a later re-post by the automation replaces the human edit", not any(f["key"] == "PROJ-14" for f in found))
+    check("an edit before the automation label does not count", not any(f["key"] == "PROJ-15" for f in found))
 
     uac = ("- Acceptance Criteria 01: Verify that validation succeeds for an org that requires PKCE.\n"
            "  **Source:** ticket.\n"

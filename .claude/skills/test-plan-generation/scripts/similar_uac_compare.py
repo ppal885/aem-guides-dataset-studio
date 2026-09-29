@@ -20,8 +20,10 @@ from the summary first, without URLs, ids or code blocks). When nothing qualifie
 SOURCES
 -------
   live Jira (default), read-only: resolved tickets with a non-empty Acceptance Criteria field, same
-      component first, whose text matches the key terms; machine-posted UACs (labels in --exclude-label)
-      and the ticket itself are skipped.
+      component first, whose text matches the key terms; the ticket itself is skipped, and so is a
+      machine-posted UAC (a label in --exclude-label) unless the Jira history shows that a different person
+      edited the Acceptance Criteria field after that label was added - a QE who rewrote our UAC made it a
+      human UAC, and those are the most useful ones to compare against.
   --corpus FILE: an offline JSONL corpus with key, summary, description, component, human_ac.
 
 Usage:
@@ -192,6 +194,32 @@ def related_keys(jira, key: str, ticket_text: str, also: list[str]) -> list[tupl
     return found
 
 
+def human_editor(jira, key: str, ac_field: str, machine_labels: tuple[str, ...]) -> str:
+    """The person who edited the Acceptance Criteria field after a machine label was added, or "".
+
+    The label marks a UAC our automation posted. When someone other than whoever added the label changed
+    the field afterwards, the field now holds that person's UAC. The latest label addition counts; an
+    edit by the labeller itself (for example a re-post) is not a human edit."""
+    if not machine_labels:
+        return ""
+    try:
+        data = jira.get(f"/rest/api/2/issue/{key}?expand=changelog&fields=labels")
+    except Exception:  # noqa: BLE001 - no history means no proof of a human edit
+        return ""
+    histories = sorted((data.get("changelog") or {}).get("histories") or [], key=lambda h: str(h.get("created") or ""))
+    labeller, editor = "", ""
+    for history in histories:
+        author = str((history.get("author") or {}).get("name") or "")
+        for item in history.get("items") or []:
+            if item.get("field") == "labels":
+                added = set(str(item.get("toString") or "").split()) - set(str(item.get("fromString") or "").split())
+                if added & set(machine_labels):
+                    labeller, editor = author, ""
+            elif labeller and (item.get("fieldId") == ac_field or item.get("field") == "Acceptance Criteria"):
+                editor = author if author and author != labeller else ""
+    return editor
+
+
 def from_jira(jira, terms: list[str], key: str, component: str, top: int,
               exclude_labels: tuple[str, ...], ticket_text: str = "",
               also: list[str] | None = None) -> tuple[list[dict], list[str]]:
@@ -210,9 +238,15 @@ def from_jira(jira, terms: list[str], key: str, component: str, top: int,
         except Exception:  # noqa: BLE001 - a missing or private linked ticket is skipped, not fatal
             continue
         ac = fields.get(ac_field) or ""
-        if is_real_uac(ac) and not set(fields.get("labels") or []) & set(exclude_labels):
-            rows[other] = {"key": other, "summary": fields.get("summary") or "", "score": 1.0, "via": via,
-                           "human_ac": ac}
+        if not is_real_uac(ac):
+            continue
+        if set(fields.get("labels") or []) & set(exclude_labels):
+            editor = human_editor(jira, other, ac_field, exclude_labels)
+            if not editor:
+                continue
+            via = f"{via}; edited by {editor} after the automation posted it"
+        rows[other] = {"key": other, "summary": fields.get("summary") or "", "score": 1.0, "via": via,
+                       "human_ac": ac}
     passes = [(3, True), (2, True)] if component else []
     for n_terms, use_component in passes + [(3, False), (2, False)]:
         if len(terms) < n_terms or (not use_component and component and rows):
@@ -224,11 +258,9 @@ def from_jira(jira, terms: list[str], key: str, component: str, top: int,
                     f'key != "{key}"', f'text ~ "{" ".join(terms[:n_terms])}"']
         if use_component:
             clauses.append(f'component = "{component}"')
-        if exclude_labels:
-            clauses.append(f'(labels is EMPTY OR labels not in ({", ".join(exclude_labels)}))')
         jql = " AND ".join(clauses)
         queries.append(jql)
-        result = jira.get("/rest/api/2/search?maxResults=20&fields=summary,description," + ac_field
+        result = jira.get("/rest/api/2/search?maxResults=20&fields=summary,description,labels," + ac_field
                           + "&jql=" + urllib.parse.quote(jql))
         for issue in result.get("issues", []):
             fields = issue.get("fields") or {}
@@ -236,10 +268,17 @@ def from_jira(jira, terms: list[str], key: str, component: str, top: int,
             if not is_real_uac(ac) or issue["key"] in rows:
                 continue
             score = similarity(terms, f"{fields.get('summary') or ''} {fields.get('description') or ''}")
-            if score >= MIN_SIMILARITY:
-                rows[issue["key"]] = {"key": issue["key"], "summary": fields.get("summary") or "",
-                                      "score": round(score + (COMPONENT_BONUS if use_component else 0), 3),
-                                      "via": "similar text", "human_ac": ac}
+            if score < MIN_SIMILARITY:
+                continue
+            via = "similar text"
+            if set(fields.get("labels") or []) & set(exclude_labels):
+                editor = human_editor(jira, issue["key"], ac_field, exclude_labels)
+                if not editor:
+                    continue  # our own posted UAC, never edited by a person
+                via = f"similar text; edited by {editor} after the automation posted it"
+            rows[issue["key"]] = {"key": issue["key"], "summary": fields.get("summary") or "",
+                                  "score": round(score + (COMPONENT_BONUS if use_component else 0), 3),
+                                  "via": via, "human_ac": ac}
     return sorted(rows.values(), key=lambda r: -r["score"])[:top], queries
 
 
