@@ -592,6 +592,56 @@ class LearningHarvesterTests(unittest.TestCase):
         jira._json = mock.Mock(return_value=issue)
         return jira
 
+    def test_labels_in_every_format_are_criteria(self) -> None:
+        text = ("AC-01: A folder profile Admin User can add an Admin User.\n"
+                "AC-02: The same user can remove an Admin User.\n\n"
+                " - Acceptance Criteria 03: Verify that the Global Profile is unchanged.\n"
+                "Source: FolderProfilesAPI.java:639.\n\n"
+                "Automation UI or API is required")
+        criteria = harvester.parse_criteria(text)
+        self.assertEqual([c["text"] for c in criteria], [
+            "A folder profile Admin User can add an Admin User.",
+            "The same user can remove an Admin User.",
+            "Verify that the Global Profile is unchanged."])
+        self.assertIn("FolderProfilesAPI.java", criteria[2]["source"])
+
+    def test_struck_criteria_are_removed_with_the_qe_reason(self) -> None:
+        posted = harvester.parse_criteria(
+            "*Acceptance Criteria 01:* Verify that an Admin User can add another Admin User.\n\n"
+            "*Acceptance Criteria 02:* Verify that a new Admin User has the license to open the content.\n\n"
+            "*Acceptance Criteria 03:* Verify that Admin Users are kept after upgrading to the new release.\n\n"
+            "*Acceptance Criteria 04:* Verify that another user cannot change the list. The request returns HTTP 200.")
+        current = harvester.parse_criteria(
+            " - Acceptance Criteria 01: Verify that an Admin User can add another Admin User.\n\n"
+            " - -Acceptance Criteria 02: Verify that a new Admin User has the license to open the content.-\n"
+            "{-}Source: reviewer comment. ({-}not needed, the groups are mutually exclusive)\n\n"
+            " - Acceptance Criteria 03: -Verify that Admin Users are kept after upgrading to the new release.-\n"
+            "{-}Source: fix version.{-}(confirmed with the dev, upgrade is not impacted)\n\n"
+            " - Acceptance Criteria 04: Verify that another user cannot change the list.\n"
+            "-The request returns HTTP 200.-\n"
+            "{-}TBD: Should it return an error?({-}not relevant for UI)\n\n"
+            "Automation UI or API is required")
+        self.assertEqual([c["struck"] for c in current], [False, True, True, False])
+        entries = harvester.compare(posted, current)
+        kinds = {e["old"][:31]: (e["kind"], e.get("reason", "")) for e in entries}
+        self.assertEqual(kinds["Verify that an Admin User can a"][0], "accepted")
+        self.assertEqual(kinds["Verify that a new Admin User ha"],
+                         ("removed", "not needed, the groups are mutually exclusive"))
+        self.assertEqual(kinds["Verify that Admin Users are kep"],
+                         ("removed", "confirmed with the dev, upgrade is not impacted"))
+        self.assertEqual(kinds["Verify that another user cannot"], ("changed", "not relevant for UI"))
+        self.assertFalse(any(e["kind"] == "added" for e in entries), "the closing note is not a new criterion")
+
+    def test_monthly_report_shows_the_qe_reason(self) -> None:
+        struck = ("*Acceptance Criteria 01:* Verify that the report opens from the Map console.\n\n"
+                  "*Acceptance Criteria 02:* -Verify that an empty report shows a message.-\n"
+                  "{-}Source: Ticket description.{-}(not in scope for this fix)\n\n"
+                  "*Acceptance Criteria 03:* Verify that the export button still downloads a CSV file.")
+        jira = self.jira_with(_issue(struck, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("Verify that an empty report shows a message. (QE: not in scope for this fix)", report)
+
     def test_parse_reads_our_labels_and_human_bullets(self) -> None:
         ours = harvester.parse_criteria(POSTED_FIELD)
         self.assertEqual([c["text"] for c in ours][0], "Verify that the report opens from the Map console.")

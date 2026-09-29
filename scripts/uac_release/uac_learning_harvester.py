@@ -47,10 +47,13 @@ AC_FIELD_NAME = "Acceptance Criteria"
 DEFAULT_ACCEPTED_STATUSES = ("UAT", "Closed", "Resolved", "Done")
 MATCH_THRESHOLD = 0.5
 
-_LABEL = re.compile(r"^\*?\s*Acceptance Criteri(?:a|on)[\s-]*(\d+)\s*:?\s*\*?\s*:?\s*(.*)$", re.IGNORECASE)
+_LABEL = re.compile(r"^(?:[-*#]\s+)?\*?\s*(?:Acceptance Criteri(?:a|on)|AC)[\s-]*(\d+)\s*:?\s*\*?\s*:?\s*(.*)$",
+                    re.IGNORECASE)
 _META = re.compile(r"^(?:[*#-]+\s*)?\*?(Source|TBD)\*?\s*:\s*(.*)$", re.IGNORECASE)
 _NESTED = re.compile(r"^(?:\*\*+|##+|--+)\s+(.*)$")
 _BULLET = re.compile(r"^(?:[*#-]|\d+[.)])\s+(.*)$")
+# Jira wiki strikethrough: {-}text{-} or -text- (a dash touching text on the inside, not inside a word).
+_STRIKE = re.compile(r"\{-\}(.*?)(?:\{-\}|$)|(?<![\w-])-(?=\S)(.+?)(?<=\S)-(?![\w-])")
 
 
 def _clean(text: str) -> str:
@@ -64,30 +67,88 @@ def _norm(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", _clean(text).lower()).split())
 
 
+def _unstrike(line: str) -> str:
+    """The line with its strikethrough markers removed (the text a reader sees, struck or not)."""
+    return _STRIKE.sub(lambda m: m.group(1) if m.group(1) is not None else m.group(2), line)
+
+
+def _kept(line: str) -> str:
+    """The part of the line that is not struck through."""
+    return _STRIKE.sub(" ", line)
+
+
+def _reason(text: str) -> str:
+    return " ".join(text.replace("(", " ").replace(")", " ").split()).strip(" .;:-")
+
+
 def parse_criteria(field_text: str) -> list[dict]:
     """Split an Acceptance Criteria field into criteria.
 
-    A criterion starts at an 'Acceptance Criteria NN:' label or at a top-level bullet/numbered line.
-    Source and TBD lines and nested bullets belong to the criterion above them. Text before the first
-    criterion (for example a summary paragraph) is ignored."""
+    A criterion starts at an 'Acceptance Criteria NN:' or 'AC-NN:' label (optionally after a bullet) or
+    at a top-level bullet/numbered line. Source and TBD lines and nested bullets belong to the criterion
+    above them. Text before the first criterion (for example a summary paragraph) is ignored.
+
+    A plain line that follows a blank line (for example a closing note such as "Automation UI or API
+    is required") is not part of the criterion above it.
+
+    Strikethrough is how QE rejects a criterion in Jira: a criterion whose statement is fully struck is
+    marked struck, and any text QE left unstruck in its lines (usually a note in brackets) is its reason.
+    A partly struck criterion keeps only its unstruck text and records what was struck."""
     criteria: list[dict] = []
+    after_blank = False
     for raw in (field_text or "").replace("\r\n", "\n").split("\n"):
         line = raw.strip()
         if not line:
+            after_blank = True
             continue
-        label, meta, nested, bullet = _LABEL.match(line), _META.match(line), _NESTED.match(line), _BULLET.match(line)
+        was_blank, after_blank = after_blank, False
+        plain = _unstrike(line)
+        label, meta, nested, bullet = _LABEL.match(plain), _META.match(plain), _NESTED.match(plain), _BULLET.match(plain)
         if label:
-            criteria.append({"text": _clean(label.group(2)), "source": "", "tbd": ""})
-        elif meta and criteria:
+            kept_label = _LABEL.match(_kept(line).strip()) if _kept(line).strip() else None
+            kept_text = _clean(kept_label.group(2)) if kept_label else ""
+            full = _clean(label.group(2))
+            criteria.append({"text": kept_text, "full": full, "source": "", "tbd": "",
+                             "struck_parts": [] if kept_text == full else [full], "notes": []})
+            continue
+        if not criteria and not bullet:
+            continue
+        if meta and criteria:
             key = meta.group(1).lower()
+            kept = _kept(line)
+            if _clean(kept) != _clean(line):
+                criteria[-1]["struck_parts"].append(_clean(plain))
+                note = _reason(_clean(_META.sub(r"\2", kept.strip())) if _META.match(kept.strip()) else _clean(kept))
+                if note:
+                    criteria[-1]["notes"].append(note)
+                continue
             criteria[-1][key] = (criteria[-1][key] + " " + _clean(meta.group(2))).strip()
-        elif nested and criteria:
-            criteria[-1]["text"] = (criteria[-1]["text"] + " " + _clean(nested.group(1))).strip()
+        elif not nested and not bullet and was_blank:
+            continue  # a free-standing note after a blank line belongs to no criterion
+        elif (nested or not bullet) and criteria:
+            body = nested.group(1) if nested else plain
+            kept = _clean(_kept(line))
+            criteria[-1]["full"] = (criteria[-1]["full"] + " " + _clean(body)).strip()
+            if kept != _clean(line):
+                criteria[-1]["struck_parts"].append(_clean(body))
+                if kept and not _BULLET.match(kept):
+                    criteria[-1]["notes"].append(_reason(kept))
+            else:
+                criteria[-1]["text"] = (criteria[-1]["text"] + " " + _clean(body)).strip()
         elif bullet:
-            criteria.append({"text": _clean(bullet.group(1)), "source": "", "tbd": ""})
-        elif criteria:
-            criteria[-1]["text"] = (criteria[-1]["text"] + " " + _clean(line)).strip()
-    return [c for c in criteria if c["text"]]
+            text = _clean(_BULLET.match(plain).group(1))
+            kept = _clean(_kept(line))
+            kept_text = _clean(_BULLET.match(kept).group(1)) if _BULLET.match(kept) else ""
+            criteria.append({"text": kept_text, "full": text, "source": "", "tbd": "",
+                             "struck_parts": [] if kept_text == text else [text], "notes": []})
+    result = []
+    for c in criteria:
+        if not c["full"]:
+            continue
+        c["struck"] = not _norm(c["text"])
+        c["reason"] = "; ".join(n for n in c.pop("notes") if n)
+        result.append(c)
+    return result
 
 
 def similarity(a: str, b: str) -> float:
@@ -95,10 +156,19 @@ def similarity(a: str, b: str) -> float:
 
 
 def compare(posted: list[dict], current: list[dict]) -> list[dict]:
-    """One entry per criterion: accepted, changed, removed (posted only) or added (current only)."""
+    """One entry per criterion: accepted, changed, removed (posted only, or struck through by QE with its
+    reason) or added (current only). A criterion QE struck through counts as removed, not changed."""
     entries: list[dict] = []
     left = list(range(len(posted)))
-    right = list(range(len(current)))
+    struck = [j for j, c in enumerate(current) if c.get("struck")]
+    right = [j for j in range(len(current)) if j not in struck]
+
+    for j in struck:
+        best = max(left, key=lambda i: similarity(posted[i]["text"], current[j]["full"]), default=None)
+        if best is not None and similarity(posted[best]["text"], current[j]["full"]) >= MATCH_THRESHOLD:
+            left.remove(best)
+            entries.append({"kind": "removed", "old": posted[best]["text"], "new": "", "similarity": 0.0,
+                            "struck": True, "reason": current[j].get("reason", "")})
     for i in list(left):
         for j in list(right):
             if _norm(posted[i]["text"]) == _norm(current[j]["text"]):
@@ -107,13 +177,17 @@ def compare(posted: list[dict], current: list[dict]) -> list[dict]:
                 left.remove(i)
                 right.remove(j)
                 break
-    pairs = sorted(((similarity(posted[i]["text"], current[j]["text"]), i, j) for i in left for j in right),
+    pairs = sorted(((similarity(posted[i]["text"], current[j]["full"]), i, j) for i in left for j in right),
                    reverse=True)
     for score, i, j in pairs:
         if score < MATCH_THRESHOLD or i not in left or j not in right:
             continue
-        entries.append({"kind": "changed", "old": posted[i]["text"], "new": current[j]["text"],
-                        "similarity": round(score, 2)})
+        entry = {"kind": "changed", "old": posted[i]["text"], "new": current[j]["text"],
+                 "similarity": round(score, 2)}
+        if current[j].get("struck_parts"):
+            entry["struck_parts"] = current[j]["struck_parts"]
+            entry["reason"] = current[j].get("reason", "")
+        entries.append(entry)
         left.remove(i)
         right.remove(j)
     entries += [{"kind": "removed", "old": posted[i]["text"], "new": "", "similarity": 0.0} for i in left]
@@ -227,7 +301,10 @@ def monthly_report(config: dict, month: str) -> Path:
                 if entry["kind"] in ("accepted", "changed"):
                     bucket[entry["kind"]] += 1
                 else:
-                    bucket[entry["kind"]].append((record["key"], entry["old"] or entry["new"]))
+                    text = entry["old"] or entry["new"]
+                    if entry.get("reason"):
+                        text += f" (QE: {entry['reason']})"
+                    bucket[entry["kind"]].append((record["key"], text))
     lines = [f"# UAC learning report {month}", "",
              f"{len(records)} ticket version(s) harvested. Accepted = kept unchanged; changed = wording or "
              "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it).",
