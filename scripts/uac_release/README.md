@@ -237,6 +237,15 @@ or set aside with a reason). A tool missing from the Copilot session is not an u
 skill script `vm_evidence_call.py` calls the backend at `$AEM_STUDIO_URL/mcp`, so set `AEM_STUDIO_URL` in
 `uac.env`. `--check-dir` runs the same check, so run it again after editing a UAC by hand.
 
+## Stale UAC alert
+
+`uac_staleness_watch.py` (cron 07:30 Mon-Fri) checks tickets that carry the posted label and were updated
+in the last `staleness_days` days (default 7; or set `staleness_jql`). When a human comment reporting a
+root cause, a fix, a pull request or a merge was added after the Acceptance Criteria field last changed,
+it sends one alert on `alerts.ticket` listing the ticket. Each comment is alerted once
+(`<output_dir>/staleness-state.json`). It never comments on or edits the ticket or its UAC; QE decides
+whether to re-run the UAC. `--dry-run` only logs.
+
 ## Hotfix and backport scope
 
 When the ticket summary or description says it is a hotfix or a backport (for example `HOTFIX`,

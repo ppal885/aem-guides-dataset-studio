@@ -9,3 +9,6 @@ CONFIG=/opt/uac-release/config.json
 
 # Every 30 minutes, 08:00-20:00 Mon-Fri: copy QE-approved drafts into the Acceptance Criteria field.
 */30 8-20 * * 1-5 cd $REPO && /usr/bin/python3 scripts/uac_release/uac_approved_poster.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1
+
+# 07:30 Mon-Fri: alert QE when a root cause or fix arrives after a UAC was posted (read-only on tickets).
+30 7 * * 1-5 cd $REPO && /usr/bin/python3 scripts/uac_release/uac_staleness_watch.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1

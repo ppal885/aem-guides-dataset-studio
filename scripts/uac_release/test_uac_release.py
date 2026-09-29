@@ -15,6 +15,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 import uac_approved_poster as poster  # noqa: E402
+import uac_staleness_watch as staleness  # noqa: E402
 import uac_release_runner as runner  # noqa: E402
 
 UAC = (
@@ -123,6 +124,9 @@ EVIDENCE = {
                          for n in range(2)],
     "doc_findings": [{"finding": 1, "disposition": "SET_ASIDE",
                       "reason": "the Home page task list is not the screen this ticket changes"}],
+    "scenario": {"customer_steps": ["The report must open from the Map console."], "acs": [
+        {"ac": 1, "scenario": "CUSTOMER", "step": "The report must open from the Map console."},
+        {"ac": 2, "scenario": "CUSTOMER", "step": "The report must open from the Map console."}]},
 }
 
 
@@ -392,6 +396,46 @@ class RunnerTests(unittest.TestCase):
         (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
         (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(surfaces), encoding="utf-8")
         return ticket
+
+    def test_staleness_finds_fix_comments_after_the_uac_changed(self) -> None:
+        issue = {
+            "changelog": {"histories": [
+                {"created": "2026-01-10T10:00:00.000+0000", "items": [{"field": "Acceptance Criteria"}]},
+                {"created": "2026-01-11T10:00:00.000+0000", "items": [{"field": "labels"}]},
+            ]},
+            "fields": {"comment": {"comments": [
+                {"id": "1", "author": {"name": "dev"}, "created": "2026-01-09T09:00:00.000+0000", "body": "Root cause: x"},
+                {"id": "2", "author": {"name": "dev"}, "created": "2026-01-12T09:00:00.000+0000", "body": "Root cause: bad XML"},
+                {"id": "3", "author": {"name": "qa"}, "created": "2026-01-12T10:00:00.000+0000", "body": "Any update?"},
+                {"id": "4", "author": {"name": "uac.bot"}, "created": "2026-01-12T11:00:00.000+0000", "body": "the fix is in"},
+                {"id": "5", "author": {"name": "dev"}, "created": "2026-01-13T09:00:00.000+0000",
+                 "body": "PR: https://git.example.com/org/repo/pull/8295"},
+            ]}},
+        }
+        since = staleness.last_ac_change(issue, "customfield_1")
+        self.assertEqual(since, "2026-01-10T10:00:00.000+0000", "only Acceptance Criteria changes count")
+        found = [c["id"] for c in staleness.fix_comments_after(issue, since, "uac.bot")]
+        self.assertEqual(found, ["2", "5"], "before the UAC, plain questions and own comments are ignored")
+
+    def test_staleness_alerts_each_comment_once_and_never_writes_the_ticket(self) -> None:
+        issue = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
+                                              "items": [{"fieldId": "customfield_1"}]}]},
+                 "fields": {"comment": {"comments": [
+                     {"id": "9", "author": {"name": "dev"}, "created": "2026-01-12T09:00:00.000+0000",
+                      "body": "Root cause found"}]}}}
+        jira = FakeJira()
+        jira._json = mock.Mock(return_value=issue)
+        state: dict = {}
+        first = staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], state)
+        second = staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], state)
+        self.assertEqual(len(first), 1)
+        self.assertIn("PROJ-1: a root cause or fix was reported by dev on 2026-01-12", first[0])
+        self.assertEqual(second, [], "an already alerted comment is not alerted again")
+        self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
+
+    def test_staleness_jql_uses_the_posted_label(self) -> None:
+        jql = staleness.staleness_jql(dict(self.config, approved_scope_jql="project = PROJ"))
+        self.assertEqual(jql, '(project = PROJ) AND labels = "QEVision_UAC_DONE" AND updated >= -7d')
 
     def test_ticket_without_evidence_record_is_not_posted(self) -> None:
         jira = FakeJira()

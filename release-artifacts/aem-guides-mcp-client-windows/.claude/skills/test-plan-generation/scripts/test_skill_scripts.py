@@ -7701,6 +7701,58 @@ def test_pattern_check_suggestions() -> None:
     )
 
 
+def test_scenario_and_failure_path() -> None:
+    uc = uac_completeness_check_mod
+    source = {
+        "summary": "310 files remain In Progress after a completed translation",
+        "description": "Submit the map for German translation. The translation job shows Completed but 310 files stay In Progress.",
+        "comments": [{"id": "1", "author": "dev", "body": "Deleting a translation project leaves the reject job failing."}],
+    }
+    uac = (
+        "- Acceptance Criteria 01: Verify that files leave In Progress when the translation job completes.\n"
+        "  **Source:** ticket description.\n"
+        "- Acceptance Criteria 02: Verify that deleting a translation project clears its In Progress entries.\n"
+        "  **Source:** investigation comment.\n"
+    )
+    step = "The translation job shows Completed but 310 files stay In Progress."
+    scenario = {"customer_steps": [step], "acs": [
+        {"ac": 1, "scenario": "CUSTOMER", "step": step},
+        {"ac": 2, "scenario": "ADJACENT"},
+    ]}
+    adjacent = uc.scenario_problems({"scenario": scenario}, uac, source)
+    check("an adjacent-scenario criterion without a TBD fails", any("did not hit" in p for p in adjacent))
+    with_tbd = uac + "  **TBD:** Is project deletion part of this ticket?\n"
+    check("an adjacent-scenario criterion with a TBD passes", uc.scenario_problems({"scenario": scenario}, with_tbd, source) == [])
+    only_adjacent = {"customer_steps": [step], "acs": [{"ac": 1, "scenario": "ADJACENT"}, {"ac": 2, "scenario": "ADJACENT"}]}
+    check("a UAC with no criterion on the reporter's scenario fails",
+          any("reporter's own scenario" in p for p in uac_completeness_check_mod.scenario_problems(
+              {"scenario": only_adjacent}, with_tbd.replace("- Acceptance Criteria 01", "  **TBD:** x?\n- Acceptance Criteria 01"), source)))
+    invented = {"customer_steps": ["The customer deleted the project."], "acs": scenario["acs"]}
+    check("a customer step that is not ticket text fails",
+          any("not text from the ticket" in p for p in uc.scenario_problems({"scenario": invented}, with_tbd, source)))
+    check("a missing scenario block fails", any("scenario is missing" in p for p in uc.scenario_problems({}, uac, source)))
+
+    check("a job with many files is a batch ticket", uc.is_batch(source))
+    check("a single-screen ticket is not a batch ticket",
+          not uc.is_batch({"summary": "Preview title is wrong", "description": "The preview shows the file name."}))
+    check("a batch ticket without failure_path fails",
+          any("failure_path must say" in p for p in uc.failure_path_problems({}, with_tbd, source)))
+    failure = {"failure_path": {
+        "failing_item_outcome": {"disposition": "TBD", "ac": 2},
+        "remaining_items": {"disposition": "AC", "ac": 1},
+        "user_notice": {"disposition": "NOT_APPLICABLE", "reason": "n/a"},
+    }}
+    lazy = uc.failure_path_problems(failure, with_tbd, source)
+    check("a not-applicable failure dimension needs a concrete reason", any("user_notice" in p for p in lazy))
+    failure["failure_path"]["user_notice"] = {"disposition": "TBD", "ac": 1}
+    check("a TBD failure dimension needs a TBD line on its criterion",
+          any("has no TBD line" in p for p in uc.failure_path_problems(failure, with_tbd, source)))
+    failure["failure_path"]["user_notice"] = {"disposition": "TBD", "ac": 2}
+    check("a complete failure path passes", uc.failure_path_problems(failure, with_tbd, source) == [])
+    check("a non-batch ticket needs no failure path",
+          uc.failure_path_problems({}, uac, {"summary": "Preview title", "description": "wrong title"}) == [])
+
+
 def test_uac_completeness_check() -> None:
     uc = uac_completeness_check_mod
     vm = vm_evidence_call_mod
@@ -7723,6 +7775,9 @@ def test_uac_completeness_check() -> None:
                              for n in range(2)],
         "doc_findings": [{"finding": 1, "disposition": "AC", "ac": [1]},
                          {"finding": 2, "disposition": "SET_ASIDE", "reason": "the hotfix keeps the same HTTP client"}],
+        "scenario": {"customer_steps": ["Fix the preview"], "acs": [
+            {"ac": 1, "scenario": "CUSTOMER", "step": "Fix the preview"},
+            {"ac": 2, "scenario": "CUSTOMER", "step": "Fix the preview"}]},
     }
 
     def problems(ev, text=uac):
@@ -17435,6 +17490,7 @@ def main() -> int:
     test_config_settings_lookup()
     test_hotfix_scope_check()
     test_uac_completeness_check()
+    test_scenario_and_failure_path()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
     test_question_research()

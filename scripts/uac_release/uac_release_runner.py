@@ -81,6 +81,11 @@ When finished, write these files:
    scripts/vm_evidence_call.py when the tools are not in your tool list), and "doc_findings": one entry per
    documentation finding of the UAC Doc Researcher, {{"finding": <1-based index>, "disposition": "AC",
    "ac": [<numbers>]}} or {{"finding": <index>, "disposition": "SET_ASIDE", "reason": "..."}}.
+   Also "scenario": {{"customer_steps": [<the reporter's own steps or requested outcome, copied>], "acs":
+   [{{"ac": <number>, "scenario": "CUSTOMER", "step": "<one of customer_steps>"}} or {{"ac": <number>,
+   "scenario": "ADJACENT"}} (only with a TBD)]}}, and, when the ticket describes a job, queue or batch,
+   "failure_path": {{"failing_item_outcome" | "remaining_items" | "user_notice": {{"disposition": "AC" |
+   "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason": "..."}}}}.
 Write in simple English with AEM Guides names a QE sees on screen."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
 SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
