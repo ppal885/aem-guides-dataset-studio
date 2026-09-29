@@ -437,7 +437,8 @@ def draft_comment(field_body: str, plan_name: str, decision_body: str = "", ment
         "*Draft UAC ready for QE review* (generated automatically, not yet in the Acceptance Criteria field)\n"
         "* To approve, add the label *UAC_Approved*. The criteria below are then copied into the "
         "Acceptance Criteria field unchanged.\n"
-        "* To request changes, add the label *UAC_Rework* and leave a comment.\n"
+        "* To change the criteria, approve and then edit the Acceptance Criteria field; your edits are "
+        "learned automatically.\n"
         f"* Full test plan: [^{plan_name}]\n\n" + field_body
     )
     if review_notes:
@@ -447,7 +448,7 @@ def draft_comment(field_body: str, plan_name: str, decision_body: str = "", ment
         text += (
             "\n\n----\n*Decision request* (posted as its own comment after approval"
             + (f", tagging {mention_note}" if mention_note else "")
-            + "; edit it by asking for rework)\n\n" + decision_body
+            + ")\n\n" + decision_body
         )
     return text
 
@@ -536,7 +537,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     attachment_id = jira.attach_file(key, plan_copy)
     comment_id = jira.add_comment(key, draft_comment(field_body, plan_copy.name, decision_body,
                                                      decision_mention_note(config), review_notes))
-    jira.update_labels(key, add=[labels["draft"]], remove=[labels.get("rework", "")] if labels.get("rework") else [])
+    jira.update_labels(key, add=[labels["draft"]])
     status.update(state="DRAFT_POSTED", comment_id=comment_id, attachment_id=attachment_id)
     common.write_status(ticket_dir, status)
     logger.info("%s: draft posted (comment %s)", key, comment_id)

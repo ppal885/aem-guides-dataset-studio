@@ -15,6 +15,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 import uac_approved_poster as poster  # noqa: E402
+import uac_learning_harvester as harvester  # noqa: E402
 import uac_staleness_watch as staleness  # noqa: E402
 import uac_release_runner as runner  # noqa: E402
 
@@ -135,7 +136,7 @@ def make_config(out: Path) -> dict:
         "jql": "project = PROJ",
         "output_dir": str(out),
         "acceptance_criteria_field": "customfield_1",
-        "labels": {"draft": "UAC_Draft", "approved": "UAC_Approved", "posted": "QEVision_UAC_DONE", "rework": "UAC_Rework"},
+        "labels": {"draft": "UAC_Draft", "approved": "UAC_Approved", "posted": "QEVision_UAC_DONE"},
         "copilot": {"command": "copilot", "add_dirs": ["/repos/a"], "allow_all_tools": True,
                     "deny_tools": ["corp-jira(update_jira_issue)"], "timeout_minutes": 1},
     }
@@ -547,6 +548,109 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(any("11 Acceptance Criteria" in p for p in problems), problems)
 
 
+POSTED_FIELD = (
+    "*Acceptance Criteria 01:* Verify that the report opens from the Map console.\n"
+    "* Source: Ticket description; {{ReportServlet.java}} line 10.\n\n"
+    "*Acceptance Criteria 02:* Verify that an empty report shows a message.\n"
+    "* Source: Ticket description.\n"
+    "* TBD: Which message text should be shown?\n\n"
+    "*Acceptance Criteria 03:* Verify that the export button still downloads a CSV file.\n"
+    "* Source: QE reasoning."
+)
+HUMAN_FIELD = (
+    "* Verify that the report opens from the Map console.\n"
+    " * Verify that an empty report shows the message No data for this map.\n"
+    " * Verify that the report opens from the Map dashboard too."
+)
+
+
+def _issue(field_text: str, status: str, changes: list[tuple[str, str]]) -> dict:
+    return {
+        "fields": {"customfield_1": field_text, "status": {"name": status}, "summary": "Report",
+                   "components": [{"name": "Publishing"}]},
+        "changelog": {"histories": [{"created": at, "author": {"name": by}, "items": [{"fieldId": "customfield_1"}]}
+                                    for at, by in changes]},
+    }
+
+
+class LearningHarvesterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self.tmp.name)
+        self.config = make_config(self.out)
+        self.log = logging.getLogger("test")
+        ticket = self.out / "PROJ-1"
+        ticket.mkdir()
+        (ticket / "field-body.txt").write_text(POSTED_FIELD, encoding="utf-8")
+        common.write_status(ticket, {"state": "POSTED"})
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def jira_with(self, issue: dict) -> FakeJira:
+        jira = FakeJira()
+        jira._json = mock.Mock(return_value=issue)
+        return jira
+
+    def test_parse_reads_our_labels_and_human_bullets(self) -> None:
+        ours = harvester.parse_criteria(POSTED_FIELD)
+        self.assertEqual([c["text"] for c in ours][0], "Verify that the report opens from the Map console.")
+        self.assertIn("ReportServlet.java", ours[0]["source"], "Source lines belong to their criterion")
+        self.assertEqual(ours[1]["tbd"], "Which message text should be shown?")
+        self.assertEqual(len(harvester.parse_criteria("Summary\n\nSome context.\n\n" + HUMAN_FIELD)), 3,
+                         "text before the first criterion is ignored")
+
+    def test_compare_classifies_each_criterion(self) -> None:
+        entries = harvester.compare(harvester.parse_criteria(POSTED_FIELD), harvester.parse_criteria(HUMAN_FIELD))
+        kinds = sorted(e["kind"] for e in entries)
+        self.assertEqual(kinds, ["accepted", "added", "changed", "removed"])
+        removed = next(e for e in entries if e["kind"] == "removed")
+        self.assertIn("export button", removed["old"])
+        added = next(e for e in entries if e["kind"] == "added")
+        self.assertIn("Map dashboard", added["new"])
+
+    def test_untouched_field_counts_only_after_the_ticket_moves_on(self) -> None:
+        in_progress = self.jira_with(_issue(POSTED_FIELD, "In Progress", [("2026-01-01T10:00:00.000+0000", "uac.bot")]))
+        self.assertEqual(harvester.harvest(self.config, in_progress, self.log, "uac.bot"), [])
+        uat = self.jira_with(_issue(POSTED_FIELD, "UAT", [("2026-01-01T10:00:00.000+0000", "uac.bot")]))
+        [record] = harvester.harvest(self.config, uat, self.log, "uac.bot")
+        self.assertEqual(record["outcome"], "ACCEPTED_AS_IS")
+        self.assertEqual(record["counts"]["accepted"], 3)
+        self.assertEqual(harvester.harvest(self.config, uat, self.log, "uac.bot"), [], "a version is recorded once")
+
+    def test_only_human_edits_are_learned_and_jira_is_never_written(self) -> None:
+        bot_only = self.jira_with(_issue(HUMAN_FIELD, "In Progress", [("2026-01-01T10:00:00.000+0000", "uac.bot")]))
+        self.assertEqual(harvester.harvest(self.config, bot_only, self.log, "uac.bot"), [])
+        human = self.jira_with(_issue(HUMAN_FIELD, "In Progress", [("2026-01-01T10:00:00.000+0000", "uac.bot"),
+                                                                   ("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, human, self.log, "uac.bot")
+        self.assertEqual((record["outcome"], record["editor"]), ("CHANGED", "qe.lead"))
+        self.assertEqual(record["edited_at"], "2026-01-05T09:30:00.000+0000")
+        self.assertEqual(record["posted_text"], POSTED_FIELD)
+        self.assertEqual(record["current_text"], HUMAN_FIELD)
+        self.assertEqual(record["components"], ["Publishing"])
+        self.assertEqual(human.calls, [], "the harvester only reads Jira")
+        lines = (self.out / "learning" / "records.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), 1)
+
+    def test_tickets_not_posted_to_the_field_are_skipped(self) -> None:
+        common.write_status(self.out / "PROJ-1", {"state": "DRAFT_POSTED"})
+        jira = self.jira_with(_issue(HUMAN_FIELD, "UAT", []))
+        self.assertEqual(harvester.harvest(self.config, jira, self.log, "uac.bot"), [])
+        jira._json.assert_not_called()
+
+    def test_monthly_report_lists_what_we_overwrote_and_missed(self) -> None:
+        human = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, human, self.log, "uac.bot")
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("## Publishing", report)
+        self.assertIn("Criteria accepted 1, changed 1, removed 1, added 1", report)
+        self.assertIn("What we wrote that QE removed:", report)
+        self.assertIn("export button", report)
+        self.assertIn("What QE added that we missed:", report)
+        self.assertIn("Map dashboard", report)
+
+
 class PosterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -567,6 +671,9 @@ class PosterTests(unittest.TestCase):
         self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "POSTED")
         self.assertIn(("set_field", "PROJ-1", "customfield_1", "*Acceptance Criteria 01:* x"), jira.calls)
         self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], ["UAC_Draft"]), jira.calls)
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
+        self.assertTrue(status["posted_at"])
 
     def test_never_overwrites_human_text(self) -> None:
         jira = FakeJira(field_value="Existing text written by a person")

@@ -12,3 +12,9 @@ CONFIG=/opt/uac-release/config.json
 
 # 07:30 Mon-Fri: alert QE when a root cause or fix arrives after a UAC was posted (read-only on tickets).
 30 7 * * 1-5 cd $REPO && /usr/bin/python3 scripts/uac_release/uac_staleness_watch.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1
+
+# 02:30 every night: learn from QE edits to posted UACs (read-only on Jira).
+30 2 * * * cd $REPO && /usr/bin/python3 scripts/uac_release/uac_learning_harvester.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1
+
+# 06:00 on the 1st: monthly learning report for the previous month.
+0 6 1 * * cd $REPO && /usr/bin/python3 scripts/uac_release/uac_learning_harvester.py --config $CONFIG --env-file /opt/uac-release/uac.env --report last >> /opt/uac-release/cron.log 2>&1

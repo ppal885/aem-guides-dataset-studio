@@ -23,8 +23,7 @@
   "labels": {
     "draft": "UAC_Draft",
     "approved": "UAC_Approved",
-    "posted": "QEVision_UAC_DONE",
-    "rework": "UAC_Rework"
+    "posted": "QEVision_UAC_DONE"
   },
   "copilot": {
     "command": "copilot",
