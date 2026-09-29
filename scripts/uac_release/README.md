@@ -246,15 +246,19 @@ expected result edited). A criterion QE struck through in Jira (`-text-` or `{-}
 as **removed**, and the text QE left unstruck next to it (usually a note in brackets) is kept as the
 reason; a partly struck criterion counts as changed with the struck part and reason. Criteria are found
 by `Acceptance Criteria NN:` or `AC-NN:` labels (also after a bullet) or by top-level bullets; a plain
-note after a blank line belongs to no criterion. Only a human's edit counts; edits by the automation's
+note after a blank line belongs to no criterion, and an `Open Questions` heading or an `OQ-NN` line starts
+a questions section that is not part of any criterion until the next label. Only a human's edit counts; edits by the automation's
 own Jira user are ignored. An untouched field counts as accepted only once the ticket status is in
 `learning_accepted_statuses` (default `UAT`, `Closed`, `Resolved`, `Done`). Each new ticket version is
 appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
 it and when.
 
 `uac_learning_harvester.py --report last` (cron 06:00 on the 1st) writes
-`<output_dir>/learning/report-YYYY-MM.md`: per component, the counts, what QE removed (we wrote too
-much) and what QE added (we missed). The harvester only reads Jira; it never writes to it.
+`<output_dir>/learning/report-YYYY-MM.md`: an overall line, then per component the counts, what QE
+removed (we wrote too much), what QE added (we missed), and the **missed screens**: screens (panel,
+console, dashboard, app, view, ...) that a QE-added criterion names and our posted UAC never mentioned,
+counted once per ticket. A screen miss that recurs in these counts is the signal to change the surface
+rules; one ticket is not. The harvester only reads Jira; it never writes to it.
 
 ### Backfill hand-posted UACs
 

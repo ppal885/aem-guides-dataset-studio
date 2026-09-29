@@ -61,6 +61,23 @@ _NESTED = re.compile(r"^(?:\*\*+|##+|--+)\s+(.*)$")
 _BULLET = re.compile(r"^(?:[*#-]|\d+[.)])\s+(.*)$")
 # Jira wiki strikethrough: {-}text{-} or -text- (a dash touching text on the inside, not inside a word).
 _STRIKE = re.compile(r"\{-\}(.*?)(?:\{-\}|$)|(?<![\w-])-(?=\S)(.+?)(?<=\S)-(?![\w-])")
+# An Open Questions heading or an OQ-NN line (optionally bulleted, struck or tagged like "[To Confirm]").
+_QUESTION = re.compile(r"^(?:[-*#]\s*)*(?:\[[^\]]*\]\s*)?\*?\s*(?:OQ[\s-]*\d+\b|Open Questions?\b)", re.IGNORECASE)
+# A screen named in a criterion: a word followed by panel, console, dashboard, ... ("right panel", "Review app").
+_SCREEN = re.compile(r"\b([a-z][\w-]*)\s+(panel|console|dashboard|dialog|app|view|tab|page|editor|toolbar|menu|"
+                     r"preview|widget|screen|inbox)\b", re.IGNORECASE)
+_NOT_A_SCREEN_NAME = {"the", "a", "an", "this", "that", "each", "every", "same", "in", "on", "of", "to", "and", "or"}
+
+
+def missed_screens(added_text: str, posted_text: str) -> list[str]:
+    """Screens a QE-added criterion names that our posted UAC never mentioned."""
+    posted = (posted_text or "").lower()
+    found: list[str] = []
+    for word, kind in _SCREEN.findall(added_text or ""):
+        phrase = f"{word} {kind}".lower()
+        if word.lower() not in _NOT_A_SCREEN_NAME and phrase not in posted and phrase not in found:
+            found.append(phrase)
+    return found
 
 
 def _clean(text: str) -> str:
@@ -96,13 +113,16 @@ def parse_criteria(field_text: str) -> list[dict]:
     above them. Text before the first criterion (for example a summary paragraph) is ignored.
 
     A plain line that follows a blank line (for example a closing note such as "Automation UI or API
-    is required") is not part of the criterion above it.
+    is required") is not part of the criterion above it. An "Open Questions" heading or an "OQ-NN" line
+    starts a questions section: nothing in it is a criterion or part of one, until the next
+    "Acceptance Criteria NN:" / "AC-NN:" label.
 
     Strikethrough is how QE rejects a criterion in Jira: a criterion whose statement is fully struck is
     marked struck, and any text QE left unstruck in its lines (usually a note in brackets) is its reason.
     A partly struck criterion keeps only its unstruck text and records what was struck."""
     criteria: list[dict] = []
     after_blank = False
+    in_questions = False
     for raw in (field_text or "").replace("\r\n", "\n").split("\n"):
         line = raw.strip()
         if not line:
@@ -111,6 +131,13 @@ def parse_criteria(field_text: str) -> list[dict]:
         was_blank, after_blank = after_blank, False
         plain = _unstrike(line)
         label, meta, nested, bullet = _LABEL.match(plain), _META.match(plain), _NESTED.match(plain), _BULLET.match(plain)
+        if label:
+            in_questions = False
+        elif _QUESTION.match(plain):
+            in_questions = True  # an Open Questions heading or an OQ-NN line: not a criterion
+            continue
+        if in_questions:
+            continue
         if label:
             kept_label = _LABEL.match(_kept(line).strip()) if _kept(line).strip() else None
             kept_text = _clean(kept_label.group(2)) if kept_label else ""
@@ -360,7 +387,7 @@ def monthly_report(config: dict, month: str) -> Path:
             if str(record.get("harvested_at") or "").startswith(month):
                 records.append(record)
     by_component: dict[str, dict] = defaultdict(lambda: {"tickets": set(), "accepted": 0, "changed": 0,
-                                                          "removed": [], "added": []})
+                                                          "removed": [], "added": [], "screens": []})
     for record in records:
         for component in record.get("components") or ["(none)"]:
             bucket = by_component[component]
@@ -373,20 +400,41 @@ def monthly_report(config: dict, month: str) -> Path:
                     if entry.get("reason"):
                         text += f" (QE: {entry['reason']})"
                     bucket[entry["kind"]].append((record["key"], text))
+                    if entry["kind"] == "added":
+                        for screen in missed_screens(entry["new"], record.get("posted_text") or ""):
+                            if not any(k == record["key"] and s == screen for k, s, _ in bucket["screens"]):
+                                bucket["screens"].append((record["key"], screen, entry["new"]))
     lines = [f"# UAC learning report {month}", "",
              f"{len(records)} ticket version(s) harvested. Accepted = kept unchanged; changed = wording or "
-             "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it).",
+             "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it). "
+             "Missed screens = screens (panel, console, dashboard, app, ...) that a QE-added criterion names and our "
+             "posted UAC never mentioned, counted so a recurring screen miss shows up in the data before any rule changes.",
              ""]
+    totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "missed_screens")}
     for component in sorted(by_component):
         b = by_component[component]
+        screens = b["screens"]
+        for kind in ("accepted", "changed"):
+            totals[kind] += b[kind]
+        totals["removed"] += len(b["removed"])
+        totals["added"] += len(b["added"])
+        totals["missed_screens"] += len(screens)
         lines += [f"## {component}", "",
                   f"- Tickets: {len(b['tickets'])}",
                   f"- Criteria accepted {b['accepted']}, changed {b['changed']}, removed {len(b['removed'])}, "
-                  f"added {len(b['added'])}", ""]
+                  f"added {len(b['added'])}, missed screens {len(screens)}", ""]
         if b["removed"]:
             lines += ["What we wrote that QE removed:", ""] + [f"- {k}: {t}" for k, t in b["removed"]] + [""]
         if b["added"]:
             lines += ["What QE added that we missed:", ""] + [f"- {k}: {t}" for k, t in b["added"]] + [""]
+        if screens:
+            lines += ["Missed screens (named by a QE-added criterion, never named in our UAC):", ""] + \
+                [f"- {k}: {s} - {t}" for k, s, t in screens] + [""]
+    if records:
+        posted = totals["accepted"] + totals["changed"] + totals["removed"]
+        lines[3:3] = [f"Overall: {posted} posted criteria - accepted {totals['accepted']}, changed {totals['changed']}, "
+                      f"removed {totals['removed']}; QE added {totals['added']} (missed screens "
+                      f"{totals['missed_screens']}).", ""]
     if not records:
         lines.append("No ticket versions were harvested this month.")
     learning.mkdir(parents=True, exist_ok=True)
