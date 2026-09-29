@@ -88,7 +88,8 @@ When finished, write these files:
    "failure_path": {{"failing_item_outcome" | "remaining_items" | "user_notice": {{"disposition": "AC" |
    "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason": "..."}}}}.
    Also "similar_uacs": run the skill's scripts/similar_uac_compare.py (--ticket-source the ticket's
-   jira-source.json, --key, --component, --evidence this file) and answer every listed dimension of the
+   jira-source.json, --key, --component, --evidence this file; for a hotfix or backport add --also with its
+   parent ticket) and answer every listed dimension of the
    similar human UACs with "disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac" and "reason".
 Write in simple English with AEM Guides names a QE sees on screen."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")

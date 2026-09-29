@@ -158,14 +158,61 @@ class Jira:
             return json.loads(resp.read())
 
 
+ISSUE_KEY = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
+# Link types that point at test cases, not at another ticket's UAC.
+TEST_LINK = re.compile(r"test\s*case|tested\s+by|tests?\b", re.I)
+
+
+def related_keys(jira, key: str, ticket_text: str, also: list[str]) -> list[tuple[str, str]]:
+    """Tickets tied to this one by the author (--also), by a Jira link, or by a key written in the ticket.
+
+    A hotfix or a follow-up often shares almost no words with its parent, so text similarity alone misses
+    the most relevant human UAC; these tickets are compared first, whatever their wording."""
+    found: list[tuple[str, str]] = []
+
+    def add(other: str, via: str) -> None:
+        other = other.strip().upper()
+        if other and other != key and all(other != k for k, _ in found):
+            found.append((other, via))
+
+    for other in also:
+        add(other, "given by the author")
+    issue = jira.get(f"/rest/api/2/issue/{key}?fields=issuelinks")
+    for link in (issue.get("fields") or {}).get("issuelinks") or []:
+        link_type = link.get("type") or {}
+        for direction, name in (("outwardIssue", link_type.get("outward")), ("inwardIssue", link_type.get("inward"))):
+            other = link.get(direction)
+            label = name or link_type.get("name") or "linked"
+            if other and not TEST_LINK.search(f"{link_type.get('name') or ''} {label}"):
+                add(other.get("key") or "", f"linked ({label})")
+    project = key.split("-")[0] if "-" in key else ""
+    for other in ISSUE_KEY.findall(ticket_text or ""):
+        if not project or other.startswith(project + "-"):
+            add(other, "mentioned in the ticket")
+    return found
+
+
 def from_jira(jira, terms: list[str], key: str, component: str, top: int,
-              exclude_labels: tuple[str, ...]) -> tuple[list[dict], list[str]]:
+              exclude_labels: tuple[str, ...], ticket_text: str = "",
+              also: list[str] | None = None) -> tuple[list[dict], list[str]]:
     ac_field = next((f["id"] for f in jira.get("/rest/api/2/field") if f.get("name") == "Acceptance Criteria"), None)
     if not ac_field:
         raise RuntimeError("no Acceptance Criteria field in this Jira")
     project = key.split("-")[0] if "-" in key else ""
     queries: list[str] = []
     rows: dict[str, dict] = {}
+    for other, via in related_keys(jira, key, ticket_text, also or []):
+        if len(rows) >= top:
+            break
+        queries.append(f"{other} ({via})")
+        try:
+            fields = jira.get(f"/rest/api/2/issue/{other}?fields=summary,labels,{ac_field}").get("fields") or {}
+        except Exception:  # noqa: BLE001 - a missing or private linked ticket is skipped, not fatal
+            continue
+        ac = fields.get(ac_field) or ""
+        if is_real_uac(ac) and not set(fields.get("labels") or []) & set(exclude_labels):
+            rows[other] = {"key": other, "summary": fields.get("summary") or "", "score": 1.0, "via": via,
+                           "human_ac": ac}
     passes = [(3, True), (2, True)] if component else []
     for n_terms, use_component in passes + [(3, False), (2, False)]:
         if len(terms) < n_terms or (not use_component and component and rows):
@@ -192,7 +239,7 @@ def from_jira(jira, terms: list[str], key: str, component: str, top: int,
             if score >= MIN_SIMILARITY:
                 rows[issue["key"]] = {"key": issue["key"], "summary": fields.get("summary") or "",
                                       "score": round(score + (COMPONENT_BONUS if use_component else 0), 3),
-                                      "human_ac": ac}
+                                      "via": "similar text", "human_ac": ac}
     return sorted(rows.values(), key=lambda r: -r["score"])[:top], queries
 
 
@@ -201,7 +248,7 @@ def build_record(similar: list[dict], queries: list[str], source: str, terms: li
     if not similar:
         return {"status": "none_found", **record, "uacs": []}
     return {"status": "compared", **record,
-            "uacs": [{"key": s["key"], "summary": s["summary"], "score": s["score"],
+            "uacs": [{"key": s["key"], "summary": s["summary"], "score": s["score"], "via": s.get("via", ""),
                       "dimensions": [{"dimension": d, "disposition": "", "ac": None, "reason": ""}
                                      for d in dimensions_of(s["human_ac"])]} for s in similar]}
 
@@ -226,9 +273,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--corpus", type=Path, help="offline corpus instead of live Jira")
     parser.add_argument("--top", type=int, default=DEFAULT_TOP)
     parser.add_argument("--exclude-label", action="append", default=list(DEFAULT_EXCLUDE_LABELS))
+    parser.add_argument("--also", action="append", default=[], metavar="KEY",
+                        help="a related ticket to compare first, for example a hotfix's parent (repeatable)")
     args = parser.parse_args(argv)
     source = json.loads(args.ticket_source.read_text(encoding="utf-8-sig"))
     terms = key_terms(source.get("summary") or "", source.get("description") or "")
+    ticket_text = "\n".join([source.get("summary") or "", source.get("description") or ""]
+                            + [str(c.get("body") or "") for c in source.get("comments") or [] if isinstance(c, dict)])
     evidence = json.loads(args.evidence.read_text(encoding="utf-8-sig")) if args.evidence.is_file() else {}
     try:
         if args.corpus:
@@ -237,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             load_env_file(args.env_file)
             similar, queries = from_jira(Jira(), terms, args.key, args.component, args.top,
-                                         tuple(dict.fromkeys(args.exclude_label)))
+                                         tuple(dict.fromkeys(args.exclude_label)), ticket_text, args.also)
             evidence["similar_uacs"] = build_record(similar, queries, "jira", terms)
     except Exception as exc:  # noqa: BLE001 - record the failure, never hide it
         evidence["similar_uacs"] = {"status": "unavailable", "key_terms": terms,
@@ -247,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
     record = evidence["similar_uacs"]
     print(f"similar_uacs: {record['status']} (key terms: {', '.join(terms)})")
     for uac in record.get("uacs", []):
-        print(f"  {uac['key']} ({uac['score']}) {uac['summary'][:80]}")
+        print(f"  {uac['key']} ({uac.get('via') or uac['score']}) {uac['summary'][:80]}")
         for dimension in uac["dimensions"]:
             print(f"    - {dimension['dimension']}")
     return 0

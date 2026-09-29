@@ -7747,6 +7747,38 @@ def test_similar_uac_compare() -> None:
     check("every dimension starts unanswered", all(d["disposition"] == "" for u in record["uacs"] for d in u["dimensions"]))
     check("no similar ticket is an honest none_found", sc.build_record([], queries, "jira", terms)["status"] == "none_found")
 
+    class LinkedJira:
+        def __init__(self):
+            self.paths = []
+
+        def get(self, path):
+            self.paths.append(path)
+            if path.startswith("/rest/api/2/field"):
+                return [{"id": "customfield_1", "name": "Acceptance Criteria"}]
+            if path.startswith("/rest/api/2/issue/PROJ-1?"):
+                return {"fields": {"issuelinks": [
+                    {"type": {"name": "Cloners", "outward": "clones", "inward": "is cloned by"},
+                     "outwardIssue": {"key": "PROJ-7"}},
+                    {"type": {"name": "Test", "outward": "Has a Test Case", "inward": "is a test case of"},
+                     "outwardIssue": {"key": "PROJ-8"}}]}}
+            if path.startswith("/rest/api/2/issue/"):
+                other = path.split("/")[5].split("?")[0]
+                labels = ["Needs_Human_Review"] if other == "PROJ-9" else []
+                return {"fields": {"summary": f"{other} summary", "labels": labels, "customfield_1": human}}
+            return {"issues": []}
+
+    linked = LinkedJira()
+    found, queries = sc.from_jira(linked, terms, "PROJ-1", "Publishing", 3, ("Needs_Human_Review",),
+                                  "Backport of PROJ-9 and PROJ-11; see OTHER-5.", ["PROJ-10"])
+    check("related tickets are compared first, whatever their wording",
+          [(f["key"], f["via"]) for f in found] == [("PROJ-10", "given by the author"), ("PROJ-7", "linked (clones)"),
+                                                    ("PROJ-11", "mentioned in the ticket")])
+    check("test-case links are not compared as UACs", not any(f["key"] == "PROJ-8" for f in found))
+    check("a machine-posted UAC on a related ticket is skipped", not any(f["key"] == "PROJ-9" for f in found))
+    check("keys from another project are not related tickets", not any(p.startswith("/rest/api/2/issue/OTHER-5") for p in linked.paths))
+    check("the related tickets are recorded as queries", queries[:2] == ["PROJ-10 (given by the author)", "PROJ-7 (linked (clones))"])
+    check("the record says how each UAC was found", sc.build_record(found, queries, "jira", terms)["uacs"][0]["via"] == "given by the author")
+
     uac = ("- Acceptance Criteria 01: Verify that validation succeeds for an org that requires PKCE.\n"
            "  **Source:** ticket.\n"
            "- Acceptance Criteria 02: Verify that an org without PKCE still validates.\n"
