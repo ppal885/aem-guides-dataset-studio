@@ -62,7 +62,7 @@ _BULLET = re.compile(r"^(?:[*#-]|\d+[.)])\s+(.*)$")
 # Jira wiki strikethrough: {-}text{-} or -text- (a dash touching text on the inside, not inside a word).
 _STRIKE = re.compile(r"\{-\}(.*?)(?:\{-\}|$)|(?<![\w-])-(?=\S)(.+?)(?<=\S)-(?![\w-])")
 # An Open Questions heading or an OQ-NN line (optionally bulleted, struck or tagged like "[To Confirm]").
-_QUESTION = re.compile(r"^(?:[-*#]\s*)*(?:\[[^\]]*\]\s*)?\*?\s*(?:OQ[\s-]*\d+\b|Open Questions?\b|Suggested checks?\b)",
+_QUESTION = re.compile(r"^(?:[-*#]\s*)*(?:\[[^\]]*\]\s*)?\*?\s*(?:OQ[\s-]*\d+\b|Open Questions?\b|Suggested checks?\b|Out\s+of\s+scope\b)",
                        re.IGNORECASE)
 # A screen named in a criterion: a word followed by panel, console, dashboard, ... ("right panel", "Review app").
 _SCREEN = re.compile(r"\b([a-z][\w-]*)\s+(panel|console|dashboard|dialog|app|view|tab|page|editor|toolbar|menu|"

@@ -181,7 +181,9 @@ class TestRenderedPlanContract:
         assert criteria, "acceptance contract rendered no criteria"
         assert len(criteria) <= 10, "presented acceptance contract exceeds ten points"
         for index, line in enumerate(criteria, start=1):
-            assert line.startswith(f"- Acceptance Criteria {index:02d}: Verify that ")
+            # Human UACs state the outcome itself; no "Verify that" prefix is forced.
+            assert line.startswith(f"- Acceptance Criteria {index:02d}: ")
+            assert not line.startswith(f"- Acceptance Criteria {index:02d}: Verify that the system")
         # The human-facing label must not be issue-key shaped, or Jira auto-links
         # it and renders the criterion struck through.
         assert not any(re.search(r"\bAC-\d", line) for line in criteria)
@@ -399,7 +401,7 @@ class TestWriterSourcePreservation:
             "Add a user-facing view for each image or media asset that shows "
             "every direct and nested topic use."
         ) == (
-            "Verify that each image or media asset has a user-facing view that "
+            "Each image or media asset has a user-facing view that "
             "shows every direct and nested topic use."
         )
 
@@ -408,7 +410,7 @@ class TestWriterSourcePreservation:
             "Preserve existing baseline resolution options. This change does "
             "not introduce a new label-resolution rule."
         ) == (
-            "Verify that the existing baseline resolution options stay "
+            "The existing baseline resolution options stay "
             "unchanged; this change does not introduce a new label-resolution rule."
         )
 
@@ -417,7 +419,7 @@ class TestWriterSourcePreservation:
             'For Referred Content, the "Pick Automatically" rule selects '
             "the matching version."
         ) == (
-            'Verify that for Referred Content, the "Pick Automatically" rule '
+            'For Referred Content, the "Pick Automatically" rule '
             "selects the matching version."
         )
 
@@ -652,7 +654,7 @@ class TestWrittenCriterionRendering:
         )
         rendered = _render_written_criterion(criterion)
         outcome, _, sub_block = rendered.partition("\n")
-        assert outcome == "Verify that the Topic List shows topics in map order."
+        assert outcome == "The Topic List shows topics in map order."
         assert sub_block.startswith("- ")
         assert sub_block.rstrip().endswith("(TBD)")
         assert "?" in sub_block

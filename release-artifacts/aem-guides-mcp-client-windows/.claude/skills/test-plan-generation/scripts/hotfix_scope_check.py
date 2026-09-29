@@ -48,7 +48,7 @@ GENERIC_REGRESSION_LINE = re.compile(
     r"^(?:there should be |ensure |make sure )?(?:no|zero) (?:regression|regressions|impact|side effects?)\b"
     r"|^(?:nothing|existing (?:functionality|behaviou?r)) (?:else )?should (?:not )?(?:break|be (?:impacted|affected))"
     r"|^existing functionality should (?:work|continue)", re.IGNORECASE)
-_AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)", re.M | re.S)
+_AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", re.M | re.S)
 
 
 def is_hotfix(*texts: str) -> bool:

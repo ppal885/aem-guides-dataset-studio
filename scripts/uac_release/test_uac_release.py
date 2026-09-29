@@ -729,6 +729,14 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertIn("| evidence.scenario | 1 | 50% | 2 |", report)
         self.assertIn("| outputs | 0 | 0% | 0 |", report)
 
+    def test_out_of_scope_items_are_not_criteria(self) -> None:
+        text = ("1. Related links from the reltable appear in Native PDF.\n"
+                "2. Default behaviour stays without related links.\n\n"
+                "Out of Scope:\n1. HTML5 output.\n2. DITA-OT disabled.")
+        self.assertEqual([c["text"] for c in harvester.parse_criteria(text)],
+                         ["Related links from the reltable appear in Native PDF.",
+                          "Default behaviour stays without related links."])
+
     def test_suggested_checks_in_the_field_are_not_criteria(self) -> None:
         text = ("- Acceptance Criteria 01: The report opens from the Map console.\n\n"
                 "Suggested checks (QE decide):\n"

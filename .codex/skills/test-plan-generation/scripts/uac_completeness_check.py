@@ -77,7 +77,7 @@ MIN_RAG_PROBES = 3
 MIN_HISTORY_ATTEMPTS = 2
 DOC_MARKERS = ("experience league", "experienceleague", "helpx.adobe.com", "doc:")
 EMPTY_REASONS = {"", "n/a", "na", "none", "tbd", "-", "not relevant", "not needed", "out of scope"}
-_AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|\Z)",
+_AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)",
                        re.M | re.S)
 SUGGESTED_HEADER = "Suggested checks (QE decide):"
 _SUGGESTED_HEADER = re.compile(r"^Suggested checks\b.*$", re.M)
@@ -444,6 +444,8 @@ def suggested_problems(uac_text: str) -> list[str]:
     problems = []
     if re.search(r"^- Acceptance Criteria \d+:", text[header.end():], re.M):
         problems.append(f"every Acceptance Criterion must come before \"{SUGGESTED_HEADER}\"")
+    if re.search(r"^Out of scope\b", text[header.end():], re.M | re.I):
+        problems.append(f"the Out of scope list belongs above \"{SUGGESTED_HEADER}\", right after the criteria")
     blocks = suggested_blocks(text)
     if not blocks:
         problems.append(f"\"{SUGGESTED_HEADER}\" has no \"- Suggested check NN:\" line; remove the heading")

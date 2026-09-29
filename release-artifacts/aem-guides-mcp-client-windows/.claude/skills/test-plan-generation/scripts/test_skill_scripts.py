@@ -634,7 +634,7 @@ def test_ac_readability() -> None:
         "plain presentation is one line and preserves technical token text exactly",
         technical_projection
         == (
-            "Acceptance Criteria 01: Verify that largeFileTagCount is 100 for map.ditamap in v2.0; "
+            "Acceptance Criteria 01: largeFileTagCount is 100 for map.ditamap in v2.0; "
             "when POST /bin/fmdita/import runs, "
             "the GUIDES-44288 fixture creates one DITA-OT output."
         ),
@@ -651,7 +651,7 @@ def test_ac_readability() -> None:
         "delivered AC block spells out the label, puts a bold source on its own line, and ends a TBD with a question mark",
         chat_block
         == (
-            "- Acceptance Criteria 01: Verify that the report lists topics in map order.\n"
+            "- Acceptance Criteria 01: The report lists topics in map order.\n"
             "  **Source:** Jira GUIDES-44288.\n"
             "  **TBD:** is the same order expected in the other panel?"
         ),
@@ -2802,7 +2802,7 @@ def test_compact_view() -> None:
     check(
         "compact ACs use one plain line and hide internal record labels",
         (
-            "- Acceptance Criteria 01: Verify that an input; when the system runs, "
+            "- Acceptance Criteria 01: An input; when the system runs, "
             "it produces the correct observable output."
         )
         in acceptance_block
@@ -7997,6 +7997,50 @@ def test_fix_basis_and_suggested_checks() -> None:
     check("the suggested checks render for the draft comment",
           rendered.startswith("*Suggested check 01:*") and "* Why suggested:" in rendered)
     check("a UAC without suggested checks renders none", jst.suggested_checks_body(body) == "")
+
+
+def test_human_uac_shape() -> None:
+    ap = ac_presentation_mod
+    jst = jira_safe_text_mod
+    uc = uac_completeness_check_mod
+    plain = ap.project_ac_for_people({"id": "AC-01", "status": "Proposed", "text": "the dialog opens on click"},
+                                     include_status=False, header_bullet=False)
+    check("no Verify that prefix is added and the first word is capitalized",
+          plain == "Acceptance Criteria 01: The dialog opens on click.")
+    kept = ap.project_ac_for_people({"id": "AC-02", "status": "Proposed", "text": "Verify that the dialog opens"},
+                                    include_status=False, header_bullet=False)
+    check("an author-written Verify that is kept", kept == "Acceptance Criteria 02: Verify that the dialog opens.")
+    block = ap.project_ac_block_for_people({"id": "AC-03", "status": "Proposed", "text": "Related links are off by default",
+                                            "evidence": "GUIDES-1 comment", "sub_points": ["with the flag off", "with no preset argument"]})
+    check("short case sub-points sit under their criterion, before the source",
+          block.splitlines()[1:3] == ["  - with the flag off.", "  - with no preset argument."]
+          and block.splitlines()[3].startswith("  **Source:**"))
+    try:
+        ap.project_ac_block_for_people({"id": "AC-04", "status": "Proposed", "text": "x works", "evidence": "GUIDES-1",
+                                        "sub_points": [f"case {n}" for n in range(6)]})
+        too_many = False
+    except ValueError:
+        too_many = True
+    check("more than five sub-points is refused", too_many)
+
+    uac = ("Scope: Native PDF publishing only.\n\n"
+           "- Acceptance Criteria 01: Ph tag in the map title resolves with ditaval conditioning.\n"
+           "  - ph with keyref\n"
+           "  **Source:** GUIDES-1 description.\n"
+           "- Acceptance Criteria 02: Related links are off by default.\n"
+           "  **Source:** GUIDES-1 comment.\n\n"
+           "Out of scope:\n- Topic titles.\n- HTML5 output.\n")
+    field = jst.jira_field_body(uac)
+    check("the Jira field keeps the Scope line on top", field.startswith("*Scope:* Native PDF publishing only."))
+    check("sub-points become nested bullets in the Jira field", "** ph with keyref" in field)
+    check("the Out of scope list is kept after the criteria",
+          field.endswith("*Out of scope:*\n* Topic titles.\n* HTML5 output."))
+    blocks = dict((int(n), b) for n, b in uc._AC_BLOCK.findall(uac))
+    check("the last criterion does not swallow the Out of scope list", "Topic titles" not in blocks[2])
+    late = uac + "\nSuggested checks (QE decide):\n- Suggested check 01: x.\n  **Source:** y.\n  **Why suggested:** found only in the documentation page.\n"
+    check("an Out of scope list above the suggested checks is fine", uc.suggested_problems(late) == [])
+    wrong = uac.replace("Out of scope:", "PLACEHOLDER") + "\nSuggested checks (QE decide):\n- Suggested check 01: x.\n  **Source:** y.\n  **Why suggested:** found only in the documentation page.\nOut of scope:\n- z.\n"
+    check("an Out of scope list below the suggested checks is refused", any("Out of scope" in p for p in uc.suggested_problems(wrong)))
 
 
 def test_gate_firing_log() -> None:
@@ -17779,6 +17823,7 @@ def main() -> int:
     test_scenario_and_failure_path()
     test_fix_basis_and_suggested_checks()
     test_gate_firing_log()
+    test_human_uac_shape()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()

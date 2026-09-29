@@ -259,7 +259,7 @@ Convergence and conversational clarification: after mandated research resolves, 
 - Treat `Automation` sections and automation-PR notes as execution context, not product acceptance clauses. They can prove coverage or expose gaps, but cannot broaden accepted behavior.
 - Incident workload observations are not performance SLAs. A repository size, file count, observed duration, 503, CPU/memory spike, or crash proves performance relevance, but pass/fail thresholds require an approved workload, environment, repetitions, percentile, timeout, and resource ceiling. When accepted UAC says no performance change and supplies no threshold, set `performance_contract_complete=false` and ask for the missing oracle instead of inventing one.
 - Do not invent AC, comments, customer impact, linked PRs, or related Jira keys.
-- Assign stable IDs (`AC-01`, `AC-02`, ...) to every acceptance criterion. These IDs are internal traceability only: scenario mappings, manifest `ac_refs`, and lineage keep the `AC-##` form. The human-facing label is spelled out as `Acceptance Criteria 01`, `Acceptance Criteria 02`, ... in every delivered chat block and posted Jira Acceptance Criteria field, because `AC-01` matches Jira's issue-key shape `[A-Z]+-\d+` and is auto-linked and struck through. Write each criterion as an independently testable product contract containing input or precondition, behavior, and observable outcome. The human-facing projection must use concrete manual-QE wording: `Verify that <named item> <observable result>`; never use generic `Verify that the system...` instructions.
+- Assign stable IDs (`AC-01`, `AC-02`, ...) to every acceptance criterion. These IDs are internal traceability only: scenario mappings, manifest `ac_refs`, and lineage keep the `AC-##` form. The human-facing label is spelled out as `Acceptance Criteria 01`, `Acceptance Criteria 02`, ... in every delivered chat block and posted Jira Acceptance Criteria field, because `AC-01` matches Jira's issue-key shape `[A-Z]+-\d+` and is auto-linked and struck through. Write each criterion as an independently testable product contract containing input or precondition, behavior, and observable outcome. The human-facing projection states the named item and its observable result directly; do not write acceptance criteria as generic `Verify...` test instructions, and never use `Verify that the system...`.
 - Write for first-read understanding. Lead with one concrete outcome in a short sentence, use familiar QE words and the documented product name; in the full record, place required cases in short sub-points (the delivered UAC is flat - see "## Acceptance Scope And The Delivered UAC"). Do not force setup, action and result into one long sentence. Move implementation jargon to a `Note for developer:` without removing source-required identifiers. Follow `references/plain-language-ac-writing.md` for loss-less grouping and terminology. Outcomes over 28 words or two sentences require review; only grossly long outcomes hard-fail.
 - Evaluating an existing or AI-supplied AC/UAC set must construct the same evidence manifest and run the full `run_gates.py` pipeline. Never return a conversational-only review as if it were a gated evaluation.
 - Preserve human reviewer wording as the semantic baseline. Simplify structure without changing its actor, scope, UI label, timing, fallback, exact path, or outcome. If current code conflicts, keep the requirement Proposed and expose the conflict as an Open Question instead of substituting the implementation behavior.
@@ -669,14 +669,27 @@ suggested check, or in the full-record markdown. Two ACs with content-word overl
 (`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
 distinct product contract; no recap AC.
 
-**Delivered format - chat and the Jira Acceptance Criteria field.** A flat list: no headings, no ticket
-title line, no content sub-points, no Open Questions section, and at most one short sentence of narration.
+**Decided facts are criteria, not TBDs.** Human UACs are written once the scope is agreed: only 5% of the
+386 human UACs in the corpus carry a TBD, while 35% state a configuration, feature flag, preset argument or
+default. When the ticket, a developer comment or a product decision already settles a fact - a feature flag
+that must be on, a DITA-OT argument in the output preset, the default behaviour ("defaults to the current
+behaviour, so existing customers are unaffected"), a parity target ("same as AEM Sites"), or what is not
+supported ("flagging not supported") - write it as a criterion. A TBD is only for a decision nobody has made.
+
+**Delivered format - chat and the Jira Acceptance Criteria field.** A list of criteria with optional short
+case sub-points; no ticket title line, no Open Questions section, and at most one short sentence of
+narration. The only lines outside the criteria are the Note, an optional Scope line and an optional Out of
+scope list.
 
 ```
 Note: The root cause and the fix are not confirmed yet. ...   (only when fix_basis is UNCONFIRMED)
-- Acceptance Criteria 01: Verify that <named item> <observable result>.
+Scope: <what this ticket covers, when the ticket or a decision sets it, e.g. Native PDF publishing only>
+- Acceptance Criteria 01: <named item> <observable result>.
+  - <short case of the same outcome>                 (optional, at most five)
   **Source:** <Jira key | repository, revision, file and lines | documentation page>
   **TBD:** <open product decision>?
+Out of scope:                                          (optional, when a decision excludes something)
+- <excluded item>
 Suggested checks (QE decide):
 - Suggested check 01: <check>
   **Source:** <source>
@@ -695,8 +708,15 @@ Suggested checks (QE decide):
 - A Source names an openable artifact, never "review of X". When a criterion rests on QE reasoning, say so
   and state what evidence does not exist (`ac_presentation.validate_ac_source_specificity`). Never cite
   documentation for behaviour it does not establish.
-- Language: at most two lines; very simple English; start with `Verify that`, never `Verify that the
-  system`. No AI words (ensure that, leverage, robust, seamlessly, gracefully, as expected, properly,
+- Sub-points list the cases of one outcome - each construct in a matrix (map title: ph with keyref, keyword
+  with conref), each row of a decision table (last modified in AEM newer: update; older or equal: keep) - the
+  way 15% of human UACs nest them. A different outcome is a different criterion; at most five sub-points.
+- Scope and Out of scope: add the `Scope:` line and the `Out of scope:` list only when the ticket or a
+  product decision sets them (about 10% of human UACs have an Out of scope list); never invent a scope.
+- Language: at most two lines; very simple English; state the outcome itself - do not write acceptance
+  criteria as generic `Verify...` test instructions (83% of human UACs do not use "Verify that", and the
+  prefix made ours about 60% longer). A criterion may still start with "Verify that" when it reads better,
+  but never `Verify that the system`. No AI words (ensure that, leverage, robust, seamlessly, gracefully, as expected, properly,
   correctly handled, system shall, end-to-end flow). No vague words (appropriate, relevant, respective,
   corresponding, as applicable, the configured folder, both dashboards): name the exact screen, property and
   value. Use AEM Guides terms from `data/guides_vocabulary.json`, RAG-verified, and never a code identifier.

@@ -66,10 +66,14 @@ def jira_comment_body(text: str) -> str:
 
 _AC_BLOCK = re.compile(
     r"^-\s*(Acceptance Criteria \d+):\s*(.+?)\s*$"
-    r"((?:\n[ \t]+(?:\*\*)?(?:Source|TBD):(?:\*\*)?\s*.+)*)",
+    r"((?:\n[ \t]+(?:(?:\*\*)?(?:Source|TBD):(?:\*\*)?|-)\s*.+)*)",
     re.MULTILINE,
 )
 _SUB_LINE = re.compile(r"^[ \t]+(?:\*\*)?(Source|TBD):(?:\*\*)?\s*(.+)$", re.MULTILINE)
+_CASE_LINE = re.compile(r"^[ \t]+-\s*(.+?)\s*$", re.MULTILINE)
+_SCOPE_LINE = re.compile(r"^Scope:\s*(.+?)\s*$", re.MULTILINE)
+_OUT_OF_SCOPE_HEADING = re.compile(r"^Out of scope:?\s*$", re.MULTILINE | re.IGNORECASE)
+_TOP_BULLET = re.compile(r"^-\s+(.+?)\s*$", re.MULTILINE)
 _NOTE_LINE = re.compile(r"^Note:\s*(.+?)\s*$", re.MULTILINE)
 _SUGGESTED_HEADING = re.compile(r"^Suggested checks\b.*$", re.MULTILINE)
 _SUGGESTED = re.compile(
@@ -136,18 +140,31 @@ def jira_field_body(text: str) -> str:
     auto-linked. Use jira_comment_body for free-form comments.
 
     A "Note:" line before the first criterion (for example that the root cause is not confirmed yet)
-    is kept as an italic line on top. The "Suggested checks" part is left out: see
+    is kept as an italic line on top, and a "Scope:" line as a bold-labelled line. Short case
+    sub-points ("  - ...") under a criterion become nested bullets. An "Out of scope:" list after
+    the criteria is kept as a bold-labelled list. The "Suggested checks" part is left out: see
     suggested_checks_body.
     """
     text, _ = _split_suggested(text or "")
+    out_of_scope = ""
+    heading = _OUT_OF_SCOPE_HEADING.search(text)
+    if heading:
+        text, out_of_scope = text[:heading.start()], text[heading.end():]
     first = _AC_BLOCK.search(text)
-    blocks = [f"_Note: {_wiki_text(note)}_" for note in _NOTE_LINE.findall(text[:first.start()] if first else text)]
+    head = text[:first.start()] if first else text
+    blocks = [f"_Note: {_wiki_text(note)}_" for note in _NOTE_LINE.findall(head)]
+    blocks += [f"*Scope:* {_wiki_text(scope)}" for scope in _SCOPE_LINE.findall(head)]
     for match in _AC_BLOCK.finditer(text):
         label, statement, subs = match.groups()
         lines = [f"*{label}:* {_wiki_text(statement)}"]
+        lines += [f"** {_wiki_text(case)}" for case in _CASE_LINE.findall(subs or "")
+                  if not re.match(r"(?:\*\*)?(?:Source|TBD):", case)]
         for kind, value in _SUB_LINE.findall(subs or ""):
             lines.append(f"* {kind}: {_wiki_text(value)}")
         blocks.append("\n".join(lines))
+    items = _TOP_BULLET.findall(out_of_scope)
+    if items:
+        blocks.append("*Out of scope:*\n" + "\n".join(f"* {_wiki_text(item)}" for item in items))
     return "\n\n".join(blocks)
 
 
