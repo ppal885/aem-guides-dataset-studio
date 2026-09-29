@@ -641,6 +641,37 @@ class LearningHarvesterTests(unittest.TestCase):
         issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-01T10:00:00.000+0000", "qe.author")])
         self.assertEqual(harvester.harvest(config, self.jira_with(issue), self.log, "uac.bot"), [])
 
+    def test_open_questions_are_not_part_of_a_criterion(self) -> None:
+        text = ("Understanding: the list is out of order.\n\n"
+                "AC-01: The Conditions panel lists conditions by label.\n"
+                "AC-02: In Editor Preview the conditions are ordered by label.\n\n"
+                "Open Questions:\n"
+                "OQ-01 (fallback): confirm the sort when a label is missing.\n"
+                "-[To Confirm] OQ-06 (review app): the list also appears in the Review app.-\n"
+                "AC-03: The groups stay in label order.")
+        criteria = harvester.parse_criteria(text)
+        self.assertEqual([c["text"] for c in criteria], [
+            "The Conditions panel lists conditions by label.",
+            "In Editor Preview the conditions are ordered by label.",
+            "The groups stay in label order."])
+
+    def test_missed_screens_are_screens_our_uac_never_named(self) -> None:
+        posted = "AC-01: The Conditions panel lists conditions by label. AC-02: Editor Preview is ordered too."
+        self.assertEqual(harvester.missed_screens("Conditions displayed in right panel are ordered by label.", posted),
+                         ["right panel"])
+        self.assertEqual(harvester.missed_screens("The Conditions panel keeps the group order.", posted), [],
+                         "a screen our UAC already named is not a missed screen")
+
+    def test_monthly_report_counts_each_missed_screen_once_per_ticket(self) -> None:
+        human = HUMAN_FIELD + "\n * Verify that the right panel lists the report.\n * Verify that the right panel sorts it."
+        jira = self.jira_with(_issue(human, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("Overall: 3 posted criteria - accepted 1, changed 1, removed 1; QE added 3 (missed screens 2).", report)
+        self.assertIn("Missed screens (named by a QE-added criterion, never named in our UAC):", report)
+        self.assertEqual(report.count("PROJ-1: right panel -"), 1)
+        self.assertIn("PROJ-1: map dashboard -", report)
+
     def test_labels_in_every_format_are_criteria(self) -> None:
         text = ("AC-01: A folder profile Admin User can add an Admin User.\n"
                 "AC-02: The same user can remove an Admin User.\n\n"
