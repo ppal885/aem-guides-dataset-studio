@@ -34,6 +34,7 @@ DOC_RESEARCH_FILE = "DOC_RESEARCH.json"
 SOURCE_COVERAGE_FILE = "SOURCE_COVERAGE.json"
 SURFACE_INVENTORY_FILE = "SURFACE_INVENTORY.json"
 JIRA_SOURCE_FILE = "jira-source.json"
+HOTFIX_SCOPE_FILE = "HOTFIX_SCOPE.json"
 
 
 def load_env_file(path: Path) -> None:
@@ -313,8 +314,8 @@ class JiraClient:
         return {role: str((fields.get(role) or {}).get("name") or "") for role in ("assignee", "reporter")}
 
     def get_source(self, key: str) -> dict[str, Any]:
-        """The ticket text a UAC must cover: description, comments and attachment names."""
-        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=description,comment,attachment")
+        """The ticket text a UAC must cover: summary, description, comments and attachment names."""
+        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=summary,description,comment,attachment")
         fields = data.get("fields") or {}
         comments = [
             {"id": str(c.get("id") or ""), "author": str((c.get("author") or {}).get("name") or ""),
@@ -325,7 +326,8 @@ class JiraClient:
             {"filename": str(a.get("filename") or ""), "author": str((a.get("author") or {}).get("name") or "")}
             for a in fields.get("attachment") or []
         ]
-        return {"description": fields.get("description") or "", "comments": comments, "attachments": attachments}
+        return {"summary": fields.get("summary") or "", "description": fields.get("description") or "",
+                "comments": comments, "attachments": attachments}
 
     def set_field(self, key: str, field: str, value: str) -> None:
         self._json("PUT", f"/rest/api/2/issue/{key}", {"fields": {field: value}})

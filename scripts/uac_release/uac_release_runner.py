@@ -68,6 +68,13 @@ When finished, write these files:
    Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE>"}}. For AC, the Acceptance
    Criterion text must name the surface. A DOCUMENTATION or CODE_REUSE surface may only get an AC
    that checks it still works as before, or a TBD.
+7. {hotfix_scope_path}: ONLY when the ticket is a hotfix, a backport or a private patch - the scope of
+   every Acceptance Criterion, as the skill's scripts/hotfix_scope_check.py describes:
+   {{"ticket_lines": [<the hotfix ticket's own requirement lines>], "diffs": [{{"repo": "<clone path>",
+   "base": "<base ref>", "head": "<hotfix ref>"}}], "acs": [{{"ac": <number>, "basis": "TICKET_LINE" |
+   "CHANGED_CODE" | "PARENT_TICKET" | "UNCHANGED_BEHAVIOUR", "ticket_line": "...", "files": [{{"path": "...",
+   "lines": "78-89"}}]}}]}}. A parent ticket's criteria and behaviour the hotfix does not change are not
+   hotfix scope, and a generic "no regression" line scopes nothing by itself.
 Write in simple English with AEM Guides names a QE sees on screen."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
 SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
@@ -307,7 +314,26 @@ def ticket_problems(ticket_dir: Path, prompt: str, source: dict | None, own_name
     if source is not None:
         problems += source_coverage_problems(ticket_dir, source, own_name)
         problems += attachment_surface_problems(ticket_dir, source, own_name)
+        problems += hotfix_scope_problems(ticket_dir, source)
     return problems
+
+
+def hotfix_scope_problems(ticket_dir: Path, source: dict) -> list[str]:
+    """For a hotfix or backport ticket, every Acceptance Criterion must rest on a hotfix ticket line or on code
+    the hotfix diff changes (skill script hotfix_scope_check.py); other tickets are not checked."""
+    scope_check = common.import_skill_module("hotfix_scope_check")
+    if not scope_check.is_hotfix(source.get("summary") or "", source.get("description") or ""):
+        return []
+    path = ticket_dir / common.HOTFIX_SCOPE_FILE
+    if not path.is_file():
+        return [f"{common.HOTFIX_SCOPE_FILE} was not written: this is a hotfix ticket, so every Acceptance Criterion "
+                "must be tied to a hotfix ticket line or to code the hotfix changes"]
+    try:
+        scope = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError as exc:
+        return [f"{common.HOTFIX_SCOPE_FILE} is not valid JSON: {exc}"]
+    uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
+    return [f"hotfix scope: {p}" for p in scope_check.check(scope, uac)]
 
 
 def surface_inventory_problems(ticket_dir: Path) -> list[str]:
@@ -433,13 +459,14 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     common.archive_attempt(ticket_dir, int(config.get("keep_attempts", 5)))
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
-                 common.SURFACE_INVENTORY_FILE):
+                 common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
                            doc_research_path=ticket_dir / common.DOC_RESEARCH_FILE,
                            source_coverage_path=ticket_dir / common.SOURCE_COVERAGE_FILE,
-                           surface_inventory_path=ticket_dir / common.SURFACE_INVENTORY_FILE)
+                           surface_inventory_path=ticket_dir / common.SURFACE_INVENTORY_FILE,
+                           hotfix_scope_path=ticket_dir / common.HOTFIX_SCOPE_FILE)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()
