@@ -213,6 +213,28 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(status["suggested"], ["Verify that the report also opens from the Map dashboard."])
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
 
+    def test_each_ticket_records_which_checks_fired(self) -> None:
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=True)
+        bad = dict(EVIDENCE, rag_probes=[])
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, evidence=bad)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-2", self.config, jira, self.log, dry_run=True), "FAILED")
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(False, returncode=1)):
+            runner.process_ticket("PROJ-3", self.config, jira, self.log, dry_run=True)
+        lines = (self.out / "logs" / runner.GATE_LOG_FILE).read_text(encoding="utf-8").splitlines()
+        rows = [json.loads(line) for line in lines]
+        self.assertEqual([r["key"] for r in rows], ["PROJ-1", "PROJ-2"], "no checks ran when Copilot failed")
+        ok, failed = rows
+        self.assertTrue(ok["passed"])
+        self.assertEqual(ok["checks"]["evidence.rag_probes"], 0)
+        self.assertIn("advisory.orphan_acs", ok["checks"])
+        self.assertFalse(failed["passed"])
+        self.assertEqual(failed["checks"]["evidence.rag_probes"], 1)
+        self.assertEqual(failed["checks"]["source_coverage"], 0)
+
     def test_dry_run_writes_nothing_to_jira(self) -> None:
         jira = FakeJira()
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
@@ -694,6 +716,18 @@ class LearningHarvesterTests(unittest.TestCase):
         report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
         self.assertIn("QE added 0, promoted 1 suggested", report)
         self.assertIn("Suggested checks QE moved into the criteria:", report)
+
+    def test_monthly_report_shows_how_often_each_runner_check_fired(self) -> None:
+        firing = common.import_skill_module("gate_firing_log")
+        log = self.out / "logs" / "gate-firing.jsonl"
+        firing.record(log, tool="uac-runner", key="PROJ-1", checks={"evidence.scenario": 2, "outputs": 0})
+        firing.record(log, tool="uac-runner", key="PROJ-2", checks={"evidence.scenario": 0, "outputs": 0})
+        jira = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("## Runner checks this month", report)
+        self.assertIn("| evidence.scenario | 1 | 50% | 2 |", report)
+        self.assertIn("| outputs | 0 | 0% | 0 |", report)
 
     def test_suggested_checks_in_the_field_are_not_criteria(self) -> None:
         text = ("- Acceptance Criteria 01: The report opens from the Map console.\n\n"

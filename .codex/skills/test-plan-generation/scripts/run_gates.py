@@ -38,6 +38,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import tempfile
 from datetime import datetime, timezone
@@ -2330,8 +2331,19 @@ def check_executing_copy_drift(skill_root: str | Path | None = None) -> list[str
     return ["REVIEW EXECUTING COPY DRIFT: " + ", ".join(drifted_files)]
 
 
+# Sub-check counts of the last run() (coverage_forcing today), for the optional gate firing log.
+LAST_SUB_CHECKS: dict[str, dict[str, int]] = {}
+
+
+def gate_log_path(cli_value: str | None) -> str:
+    """--gate-log, else the UAC_GATE_LOG environment variable; empty or "off" means no log."""
+    value = (cli_value or os.environ.get("UAC_GATE_LOG") or "").strip()
+    return "" if value.lower() in ("", "off", "0", "false") else value
+
+
 def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys_path: str | None,
         skip_self_tests: bool) -> tuple[list[str], list[str]]:
+    LAST_SUB_CHECKS.clear()
     failures: list[str] = []
     notes: list[str] = check_executing_copy_drift()
 
@@ -2415,9 +2427,12 @@ def run(plan_path: str, combined_path: str, manifest_path: str | None, jira_keys
                 f"[native-pdf-coverage] {problem}"
                 for problem in native_pdf_coverage_mod.validate(manifest_data, body)
             ]
+            _forcing_checks = coverage_forcing_mod.validate_by_check(manifest_data, body)
+            LAST_SUB_CHECKS["coverage-forcing"] = {name: len(found) for name, found in _forcing_checks.items()}
             failures += [
                 f"[coverage-forcing] {problem}"
-                for problem in coverage_forcing_mod.validate(manifest_data, body)
+                for found in _forcing_checks.values()
+                for problem in found
             ]
             failures += [
                 f"[dimension-inventory] {problem}"
@@ -2865,6 +2880,12 @@ def main() -> int:
         "DISAGREEMENT); never mutates the runtime artifact",
     )
     parser.add_argument(
+        "--gate-log",
+        default=None,
+        help="append which gates fired to this JSON-lines log (default: the UAC_GATE_LOG environment "
+        "variable; unset or off = no log). Recording never changes a gate result.",
+    )
+    parser.add_argument(
         "--parity-report",
         default=None,
         help="write the machine-readable replay parity report JSON here",
@@ -2941,6 +2962,15 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - a missing receipt must fail closed
         failures.append(f"[receipt] could not write hash-bound gate receipt: {exc}")
 
+    log_path = gate_log_path(args.gate_log)
+    if log_path:
+        firing_mod = _load("gate_firing_log", "gate_firing_log.py")
+        try:
+            issue_key = manifest_issue_key(json.loads(Path(args.manifest).read_text(encoding="utf-8")))
+        except (OSError, ValueError, AttributeError, TypeError):
+            issue_key = ""
+        firing_mod.record(log_path, tool="run_gates", key=issue_key, checks=firing_mod.count_by_gate(failures),
+                          sub_checks=dict(LAST_SUB_CHECKS), notes=len(notes), passed=not failures)
     for note in notes:
         print(f"NOTE: {note}")
     if failures:

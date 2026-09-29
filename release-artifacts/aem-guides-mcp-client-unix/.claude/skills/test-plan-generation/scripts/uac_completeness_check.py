@@ -197,18 +197,18 @@ def doc_finding_problems(evidence: dict, doc_research: dict, uac_text: str) -> l
     return problems
 
 
-def evidence_problems(folder: Path) -> list[str]:
-    """Checks 2-8, 10 and 11: the evidence record the runner also enforces."""
+def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
+    """The evidence-record problems by check name (for the gate firing log); "record" when it is missing."""
     path = folder / EVIDENCE_FILE
     if not path.is_file():
-        return [f"{EVIDENCE_FILE} was not written: record the evidence preflight, RAG probes, Jira history "
-                "attempts and the disposition of every documentation finding"]
+        return {"record": [f"{EVIDENCE_FILE} was not written: record the evidence preflight, RAG probes, Jira history "
+                           "attempts and the disposition of every documentation finding"]}
     try:
         evidence = _load(path)
     except ValueError as exc:
-        return [f"{EVIDENCE_FILE} is not valid JSON: {exc}"]
+        return {"record": [f"{EVIDENCE_FILE} is not valid JSON: {exc}"]}
     if not isinstance(evidence, dict):
-        return [f"{EVIDENCE_FILE} must be a JSON object"]
+        return {"record": [f"{EVIDENCE_FILE} must be a JSON object"]}
     doc_path = folder / DOC_RESEARCH_FILE
     try:
         doc_research = _load(doc_path) if doc_path.is_file() else {}
@@ -220,10 +220,22 @@ def evidence_problems(folder: Path) -> list[str]:
         source = _load(source_path) if source_path.is_file() else None
     except ValueError:
         source = None
-    return (preflight_problems(evidence.get("preflight")) + rag_problems(evidence) + history_problems(evidence)
-            + doc_finding_problems(evidence, doc_research, uac) + scenario_problems(evidence, uac, source)
-            + failure_path_problems(evidence, uac, source) + similar_uac_problems(evidence, uac)
-            + suggested_problems(uac) + fix_basis_problems(evidence, uac, source))
+    return {
+        "preflight": preflight_problems(evidence.get("preflight")), "rag_probes": rag_problems(evidence),
+        "history_attempts": history_problems(evidence),
+        "doc_findings": doc_finding_problems(evidence, doc_research, uac),
+        "scenario": scenario_problems(evidence, uac, source), "failure_path": failure_path_problems(evidence, uac, source),
+        "similar_uacs": similar_uac_problems(evidence, uac), "suggested_checks": suggested_problems(uac),
+        "fix_basis": fix_basis_problems(evidence, uac, source),
+    }
+
+
+def evidence_problems(folder: Path) -> list[str]:
+    """Checks 2-8, 10 and 11: the evidence record the runner also enforces."""
+    problems: list[str] = []
+    for found in evidence_problems_by_check(folder).values():
+        problems += found
+    return problems
 
 
 def check(folder: Path) -> list[str]:
