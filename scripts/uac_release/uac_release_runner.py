@@ -75,6 +75,12 @@ When finished, write these files:
    "CHANGED_CODE" | "PARENT_TICKET" | "UNCHANGED_BEHAVIOUR", "ticket_line": "...", "files": [{{"path": "...",
    "lines": "78-89"}}]}}]}}. A parent ticket's criteria and behaviour the hotfix does not change are not
    hotfix scope, and a generic "no regression" line scopes nothing by itself.
+8. {evidence_path}: the evidence record the skill's scripts/uac_completeness_check.py checks - "preflight"
+   (product_rag, jira_history, live_jira, clones: available | unavailable with a reason and every route
+   tried | not_applicable with a reason), at least three "rag_probes" and two "history_attempts" (use
+   scripts/vm_evidence_call.py when the tools are not in your tool list), and "doc_findings": one entry per
+   documentation finding of the UAC Doc Researcher, {{"finding": <1-based index>, "disposition": "AC",
+   "ac": [<numbers>]}} or {{"finding": <index>, "disposition": "SET_ASIDE", "reason": "..."}}.
 Write in simple English with AEM Guides names a QE sees on screen."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
 SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
@@ -310,7 +316,8 @@ def orphan_ac_problems(ticket_dir: Path) -> list[str]:
 def ticket_problems(ticket_dir: Path, prompt: str, source: dict | None, own_name: str = "") -> list[str]:
     """Every check the runner applies to a generated UAC folder."""
     problems = (check_outputs(ticket_dir) + doc_research_problems(ticket_dir, prompt)
-                + surface_inventory_problems(ticket_dir))
+                + surface_inventory_problems(ticket_dir)
+                + common.import_skill_module("uac_completeness_check").evidence_problems(ticket_dir))
     if source is not None:
         problems += source_coverage_problems(ticket_dir, source, own_name)
         problems += attachment_surface_problems(ticket_dir, source, own_name)
@@ -459,14 +466,15 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     common.archive_attempt(ticket_dir, int(config.get("keep_attempts", 5)))
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
-                 common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE):
+                 common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE, common.EVIDENCE_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
                            doc_research_path=ticket_dir / common.DOC_RESEARCH_FILE,
                            source_coverage_path=ticket_dir / common.SOURCE_COVERAGE_FILE,
                            surface_inventory_path=ticket_dir / common.SURFACE_INVENTORY_FILE,
-                           hotfix_scope_path=ticket_dir / common.HOTFIX_SCOPE_FILE)
+                           hotfix_scope_path=ticket_dir / common.HOTFIX_SCOPE_FILE,
+                           evidence_path=ticket_dir / common.EVIDENCE_FILE)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()

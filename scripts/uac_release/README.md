@@ -227,6 +227,16 @@ Schedule: `uac-release.cron` (Linux) or `register_windows_tasks.ps1` (Windows).
 
 Anything else is marked `FAILED` in `<output_dir>/<KEY>/status.json` and nothing is posted.
 
+## Evidence record
+
+Every ticket also needs `UAC_EVIDENCE.json`, checked with the skill script `uac_completeness_check.py`:
+the evidence preflight (product RAG, Jira history, live Jira, clones), at least three `ask_dita_expert`
+probes, at least two narrow Jira history searches, and one disposition for every documentation finding of
+the UAC Doc Researcher (used in the named Acceptance Criteria, whose Source line names the documentation,
+or set aside with a reason). A tool missing from the Copilot session is not an unavailable source: the
+skill script `vm_evidence_call.py` calls the backend at `$AEM_STUDIO_URL/mcp`, so set `AEM_STUDIO_URL` in
+`uac.env`. `--check-dir` runs the same check, so run it again after editing a UAC by hand.
+
 ## Hotfix and backport scope
 
 When the ticket summary or description says it is a hotfix or a backport (for example `HOTFIX`,

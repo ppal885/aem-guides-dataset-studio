@@ -113,6 +113,19 @@ DOC_RESEARCH = {
 }
 
 
+EVIDENCE = {
+    "preflight": {"product_rag": {"status": "available", "route": "backend"},
+                  "jira_history": {"status": "available", "route": "backend"},
+                  "live_jira": {"status": "available", "route": "REST"},
+                  "clones": {"status": "available", "route": "local clones"}},
+    "rag_probes": [{"question": f"question {n}", "result": "ok", "summary": "answer"} for n in range(3)],
+    "history_attempts": [{"source": "search_jira_history", "query": f"query {n}", "result": "empty", "count": 0}
+                         for n in range(2)],
+    "doc_findings": [{"finding": 1, "disposition": "SET_ASIDE",
+                      "reason": "the Home page task list is not the screen this ticket changes"}],
+}
+
+
 def make_config(out: Path) -> dict:
     return {
         "jql": "project = PROJ",
@@ -126,7 +139,7 @@ def make_config(out: Path) -> dict:
 
 def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = "", doc_research=DOC_RESEARCH,
                  transcript: str = "task agent_type=uac-doc-researcher -> result", coverage=COVERAGE,
-                 surfaces=SURFACES):
+                 surfaces=SURFACES, evidence=EVIDENCE):
     def run(cmd, **kwargs):
         prompt = cmd[cmd.index("-p") + 1]
         if write_files:
@@ -141,6 +154,8 @@ def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = "", do
                 (uac_path.parent / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
             if surfaces is not None:
                 (uac_path.parent / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(surfaces), encoding="utf-8")
+            if evidence is not None:
+                (uac_path.parent / common.EVIDENCE_FILE).write_text(json.dumps(evidence), encoding="utf-8")
             share = next(a.split("=", 1)[1] for a in cmd if a.startswith("--share="))
             Path(share).write_text(prompt + chr(10) + transcript, encoding="utf-8")
         return subprocess.CompletedProcess(cmd, returncode, "done", "")
@@ -378,6 +393,26 @@ class RunnerTests(unittest.TestCase):
         (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(surfaces), encoding="utf-8")
         return ticket
 
+    def test_ticket_without_evidence_record_is_not_posted(self) -> None:
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, evidence=None)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "FAILED")
+        problems = common.read_status(self.out / "PROJ-1")["problems"]
+        self.assertTrue(any(common.EVIDENCE_FILE in p for p in problems))
+
+    def test_skipped_rag_and_unused_doc_finding_are_not_posted(self) -> None:
+        evidence = json.loads(json.dumps(EVIDENCE))
+        evidence["rag_probes"] = []
+        evidence["doc_findings"] = []
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, evidence=evidence)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "FAILED")
+        problems = " ".join(common.read_status(self.out / "PROJ-1")["problems"])
+        self.assertIn("probe(s) were recorded", problems)
+        self.assertIn("documentation finding 1", problems)
+
     def test_hotfix_ticket_needs_a_scope_file(self) -> None:
         ticket = self.out / "PROJ-1"
         ticket.mkdir()
@@ -451,6 +486,9 @@ class RunnerTests(unittest.TestCase):
             (ticket / common.PLAN_FILE).write_text("plan", encoding="utf-8")
             (ticket / common.DOC_RESEARCH_FILE).write_text(json.dumps(DOC_RESEARCH), encoding="utf-8")
             (ticket / "copilot-transcript.md").write_text("uac-doc-researcher ran", encoding="utf-8")
+            self.assertEqual(runner.main(["--check-dir", str(ticket), "--own-name", "uac.bot"]), 1,
+                             "the evidence record is still missing")
+            (ticket / common.EVIDENCE_FILE).write_text(json.dumps(EVIDENCE), encoding="utf-8")
             self.assertEqual(runner.main(["--check-dir", str(ticket), "--own-name", "uac.bot"]), 0)
 
     def test_check_outputs_rejects_missing_files_and_bad_ac_count(self) -> None:
