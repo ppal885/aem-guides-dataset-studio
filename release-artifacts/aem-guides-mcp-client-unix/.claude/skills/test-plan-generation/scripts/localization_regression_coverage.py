@@ -25,7 +25,7 @@ SCHEMA_VERSION = "aem-guides-localization-coverage-v1"
 DIMENSIONS = ("TRANSLATION_STATE", "XLIFF_ROUNDTRIP", "PROJECT_TYPES")
 DISPOSITIONS = {"COVERED_BY_AC", "OPEN_QUESTION", "NOT_APPLICABLE"}
 
-# Documented in SKILL.md, "Translation Project API UAC Reference".  Keep these
+# Documented in references/component-uac-contracts.md, "Translation Project API UAC Reference".  Keep these
 # as complete sets so a single familiar project type cannot satisfy the gate.
 TRANSLATION_STATUS_VALUES = (
     "Out of Date",

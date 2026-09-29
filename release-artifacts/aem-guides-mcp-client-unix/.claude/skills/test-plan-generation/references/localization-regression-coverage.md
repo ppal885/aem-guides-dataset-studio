@@ -8,7 +8,7 @@ It does not make localization part of accepted product scope automatically.
 ## Product Enumeration Source
 
 The canonical product values come from the
-[Translation Project API UAC Reference](../SKILL.md#translation-project-api-uac-reference):
+[Translation Project API UAC Reference](component-uac-contracts.md#translation-project-api-uac-reference):
 
 - translation states: `Out of Date`, `In Progress`, `In Sync`, `Out of Sync`, and
   `Missing copy`;

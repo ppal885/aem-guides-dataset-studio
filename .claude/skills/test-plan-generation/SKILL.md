@@ -60,8 +60,8 @@ clones, or retrieve unrelated RAG before saving the selected Human correction.
 ## Tool Boundary
 
 - Use `ask_dita_expert` as the only VM RAG path for AEM Guides, Experience League, DITA, DITA-OT, workflow, release-note, and configuration behaviour facts.
-- Use the FluffyJaws connector ONLY as a `SUPPORTING_DISCOVERY` source, and only when it is registered in the session AND `SKILL_FLUFFYJAWS_MODE` is `FLUFFYJAWS_SHADOW` or `FLUFFYJAWS_SECOND_PASS` (default `FLUFFYJAWS_DISABLED` => never call it). When enabled, call the connector's own tool for discovery, then RE-GROUND every finding into a first-class source (spec / DITA-OT / product doc / current code / historical Jira) that keeps its own authority before it can raise any AC coverage. FluffyJaws synthesis can hallucinate: it is never an authority, never the sole basis for a Covered/Partially-covered claim, and there is no FluffyJaws -> AC path. Record it in the manifest `fluffyjaws` block (see "### FluffyJaws Supporting-Discovery"); enforced by `fluffyjaws_evidence`. See `docs/fluffyjaws_setup.md` and `references/fluffyjaws-evidence.md`.
-- When `SKILL_PATTERN_CHECKS_MODE` is `PATTERN_CHECKS_SUGGEST` (default `PATTERN_CHECKS_DISABLED` => skip this step), save the current ticket's summary, description and comments to a file and run `python scripts/pattern_check_suggestions.py <ticket-text-file>`. It returns at most three QE-approved historical checks whose trigger words appear in this ticket. Treat each one as a `SUPPORTING_DISCOVERY` coverage candidate: check its "does not apply when" line, then either research it and cite current-ticket evidence, turn it into a research question, or disposition it as not applicable. A suggestion is never an acceptance criterion by itself, never the sole basis for a Covered claim, and its wording must not be copied into an AC without current evidence. `UNAVAILABLE` means the data file is missing or invalid: continue without suggestions and say so.
+- The FluffyJaws connector is optional supporting discovery, off by default (`SKILL_FLUFFYJAWS_MODE`). When a mode enables it, follow `references/fluffyjaws-evidence.md`: re-ground every finding into a first-class source; a FluffyJaws finding is never an authority and never becomes an AC on its own (enforced by `fluffyjaws_evidence`).
+- When `SKILL_PATTERN_CHECKS_MODE` is `PATTERN_CHECKS_SUGGEST` (default off), run `python scripts/pattern_check_suggestions.py <ticket-text-file>`. Each returned QE-approved historical check is a `SUPPORTING_DISCOVERY` candidate: research it with current evidence, turn it into a research question, or set it aside as not applicable. A suggestion is never an acceptance criterion by itself. `UNAVAILABLE` means the data file is missing: continue without suggestions and say so.
 - Use Jira MCP first for current Jira facts and historical similar-ticket search. If Jira MCP is unavailable, use pasted Jira, Dynamics, support-case, customer-escalation, log, screenshot, and investigation details; state the evidence source without automatically blocking a pre-development UAC.
 - Use the Jira MCP `list_attachments` and `download_attachment` tools to pull every attachment to a scratchpad path, then analyse it (Read images/screenshots, open logs and sample content as text). Never describe an attachment's contents from its filename alone.
 - When the Dataset Studio app or local repo is available, use its `jira_qa` related-ticket retrieval as the first historical-learning candidate source, then validate mutable Jira facts with Jira MCP. Treat indexed learning as historical QA evidence only, never as current Jira truth or product documentation.
@@ -169,20 +169,7 @@ Convergence and conversational clarification: after mandated research resolves, 
 - Return only canonical `rendered_output` / `plan_markdown` when `status` is `completed` or `needs_human_review`, `validation_status=passed`, and ContractIntegrityGate, BehavioralCompletenessGate, and AcceptancePromotionGate all passed. `needs_human_review` is a valid fresh-Jira result but is never postable or Jira-write authority. Do not run `render_compact_view.py` as a second final renderer. It remains a compatibility preview for old stored records only.
 - Before handing acceptance criteria to an AI automation-draft agent, run `python scripts/extract_acs.py <full-plan.md> --out <acceptance-criteria.json>`. A nonzero exit blocks handoff. The automation agent consumes this JSON and must not re-parse chat prose or invent setup, actions, assertions, or evidence outside its fields.
 - Jira mutation is a separate, explicit human-authorized step. A compatibility receipt alone is not enough to authorize a write: the posting boundary must also verify the completed canonical runtime envelope and post only canonically promoted acceptance records. Until a posting client supports that binding, stop rather than use the legacy compact or eleven-section draft as authority.
-- Minimum evidence manifest fields include `"schema_version": "aem-guides-evidence-manifest-v3"`, a canonical Jira issue key, explicit boolean `accepted_uac_present`, stable `open_questions` records (`id`, `question`, `qa_impact`), a versioned `enumerated_requirements` block, a versioned `operational_contract` block, the complete `evidence_preflight` contract, `"rag_tool": "ask_dita_expert"`, three exact `rag_probes`, `"jira_history_tool": "search_jira_history"`, `"indexed_history_run": true`, two scoped `jira_history_queries`, `history_attempts`, an `evidence_graph` record, a complete `performance_assessment`, clone state, and the canonical semantic blocks `contract_facts`, `issue_domains`, `behavior_model`, `behavior_graph`, `semantic_closure`, `coverage_hypotheses`, `missing_questions`, `evidence_lifecycle`, `verifications`, `dispositions`, and `acceptance_promotions`. Each contract fact's literal text must be an exact excerpt of the canonical Jira field, accepted UAC, attested attachment text, or artifact-and-hash-bound `contract_source_records` capture named by its `source_ref`. When `enumerated_requirements.active=true`, also include `source_requirement_ledger` schema `aem-guides-source-requirement-ledger-v1`. When event/async signals exist, also include versioned `concurrency_race_analysis`.
-- Record every Jira-history attempt in `history_attempts` using records such as `[{"source":"search_jira_history","query":"exact query","result":"empty","count":0}]`; `OFFLINE_CHROMA` and `Jira JQL` are also valid source descriptions. `source` and `query` are non-empty strings; `count` is a non-negative integer. Use `ok` only with one or more returned results, and use `empty` or `unavailable` with count zero. This attempt ledger is separate from `jira_history_queries`: it records the observable result even when no result can be cited.
-- Run the manifest through `feature_class_registry.py`. Declare every applicable class in `feature_classification` and include each required dimension block. For UI constructs, enumerate only the affected construct's grounded render surfaces and disposition every entry in `scripts/data/ui_surface_catalog.json`; when review discovers another reusable surface, add it with `add_catalog_surface()` so that construct cannot silently miss the same surface again. An undeclared detected class is a REVIEW signal for legacy compatibility, not permission to omit the classification from a new plan.
-- Run `relationship_traversal.py` for the affected construct. Record grounded one-hop code and corpus edges, all five cross-cutting dimensions, the exact code/corpus searches, searched clones, and the sibling-config, sibling-UI-option, caller, and same-path findings. Every discovered neighbor must be covered by an AC, exposed as an Open Question, or explicitly out of scope. This is the umbrella; role provisioning and UI-surface checks plug into its PRECONDITION and CONSUMER edges.
-- Mark a UI consumer edge with `neighbor_kind: UI_SURFACE`. That marker requires `ui_surface_scope`; a list of screen-like names without the marker is not an acceptable substitute for classification.
-- When an AC is supported only by a PR, commit, or diff, declare `implementation_scope_authority` with schema `aem-guides-implementation-scope-authority-v1`. Keep the AC Proposed and map it to a real Open Question, or cite an explicit accepted-UAC/product-decision source. Implementation evidence alone is not product authority.
-- For a configuration-backed set, declare `configuration_driven_enumeration` and populate `configuration_enumeration_scope` schema `aem-guides-configuration-enumeration-scope-v1`. Disposition authoritative source and overlay precedence, dynamic discovery, mapped and fallback labels, applicability, activation, unrelated-entry preservation, invalid/duplicate/removal behavior, upgrade, and rollback to real ACs, Open Questions, or grounded out-of-scope reasons.
-- Before canonical delegation, write the compatibility record to a UTF-8 temporary file and run `python scripts/validate_test_plan.py <draft-file>`. If it reports any error, repair the record and rerun. This check does not replace the canonical runtime gates or renderer.
-- After structural validation passes, run `python scripts/verify_evidence.py <draft-file>` to audit that every cited drive-absolute source-file path exists on disk and that every cited line number is in range. Repair or remove any hallucinated path or line before returning the plan; never present unverified file/line citations as current implementation. Proposed new files, runtime paths, and relative test paths are skipped by design and are not failures.
-- When the issue has attachments, write an evidence manifest JSON (`{"issue": ..., "attachments": [{"id", "filename", "downloaded_to", "analyzed": true, "note"}]}`) recording the scratchpad path each attachment was downloaded to, and run `python scripts/verify_evidence.py <draft-file> --attachments-manifest <manifest>`. It fails if any declared download is missing on disk or any attachment is not attested analyzed. This proves each attachment was fetched and attested; it does not prove the Jira list is complete, so still confirm the attachment count against `list_attachments`.
-- When source-file evidence came from a subagent or a clone, treat a `verify_evidence.py` failure as a real finding: the path or line is wrong or invented, not a tooling glitch.
-- If the validator or evidence scripts are edited, run `python scripts/test_skill_scripts.py` and keep it green; it is the regression guard for both scripts.
-- Whenever the plan cites existing automation as `Covered` or `Partially covered`, or the user asks for a shareable or linkable artifact, produce a single deliverable Markdown file: the eleven-section plan body followed by an `Appendix A - Automation Evidence` section. In that appendix, for each Covered or Partially covered AC, read the cited file and quote the relevant step/method/fixture verbatim in a fenced code block, with its absolute path and a one-line note on what it proves and the precise gap, plus the reusable helpers a gap test would build on. Keep code fences OUT of the eleven validated sections (they are bullet-only and code fences fail `validate_test_plan.py`); the appendix lives after the validated body. Validate the plan body alone, then run `python scripts/verify_evidence.py <combined-file>` so source paths quoted in the appendix are disk-checked too, and deliver the file to the user (do not only paste it in chat).
-- Quote real code, never paraphrased or invented code. If a cited file cannot be read, say so in the appendix rather than reconstructing its contents from memory.
+- The compatibility record and evidence manifest have more mandatory detail - minimum manifest fields, `history_attempts`, `feature_class_registry.py`, `relationship_traversal.py`, UI consumer edges, implementation scope authority, configuration enumeration scope, `validate_test_plan.py`, `verify_evidence.py` (source paths and attachment manifests), and the automation-evidence appendix. Read `references/reasoning-pipeline-phases.md` (section "Compatibility record and manifest details") before writing the manifest.
 
 ### Deterministic Authoring-State Routing
 
@@ -272,10 +259,10 @@ Convergence and conversational clarification: after mandated research resolves, 
 - Incident workload observations are not performance SLAs. A repository size, file count, observed duration, 503, CPU/memory spike, or crash proves performance relevance, but pass/fail thresholds require an approved workload, environment, repetitions, percentile, timeout, and resource ceiling. When accepted UAC says no performance change and supplies no threshold, set `performance_contract_complete=false` and ask for the missing oracle instead of inventing one.
 - Do not invent AC, comments, customer impact, linked PRs, or related Jira keys.
 - Assign stable IDs (`AC-01`, `AC-02`, ...) to every acceptance criterion. These IDs are internal traceability only: scenario mappings, manifest `ac_refs`, and lineage keep the `AC-##` form. The human-facing label is spelled out as `Acceptance Criteria 01`, `Acceptance Criteria 02`, ... in every delivered chat block and posted Jira Acceptance Criteria field, because `AC-01` matches Jira's issue-key shape `[A-Z]+-\d+` and is auto-linked and struck through. Write each criterion as an independently testable product contract containing input or precondition, behavior, and observable outcome. The human-facing projection must use concrete manual-QE wording: `Verify that <named item> <observable result>`; never use generic `Verify that the system...` instructions.
-- Write for first-read understanding. Lead with one concrete outcome in a short sentence, use familiar QE words and the documented product name, and place required cases in short sub-points. Do not force setup, action and result into one long sentence. Move implementation jargon to a `Note for developer:` without removing source-required identifiers. Follow `references/plain-language-ac-writing.md` for loss-less grouping and terminology. Outcomes over 28 words or two sentences require review; only grossly long outcomes hard-fail.
+- Write for first-read understanding. Lead with one concrete outcome in a short sentence, use familiar QE words and the documented product name; in the full record, place required cases in short sub-points (the delivered UAC is flat - see "## Acceptance Scope And The Delivered UAC"). Do not force setup, action and result into one long sentence. Move implementation jargon to a `Note for developer:` without removing source-required identifiers. Follow `references/plain-language-ac-writing.md` for loss-less grouping and terminology. Outcomes over 28 words or two sentences require review; only grossly long outcomes hard-fail.
 - Evaluating an existing or AI-supplied AC/UAC set must construct the same evidence manifest and run the full `run_gates.py` pipeline. Never return a conversational-only review as if it were a gated evaluation.
 - Preserve human reviewer wording as the semantic baseline. Simplify structure without changing its actor, scope, UI label, timing, fallback, exact path, or outcome. If current code conflicts, keep the requirement Proposed and expose the conflict as an Open Question instead of substituting the implementation behavior.
-- Never reference another AC ID inside Given, When, or Then. Repeat the short observable rule or split the criteria so every AC is independently readable and testable.
+- Never reference another AC ID inside an AC. Repeat the short observable rule or split the criteria so every AC is independently readable and testable.
 - Split compound requirements when their required behavior or outcomes differ. Independent failure of two test cases alone does not require two ACs. Preserve every named enum, mode, project type, provider, state, filter, version boundary, and failure outcome as a distinct contract or an explicit same-outcome matrix within one AC; never hide differing fallback, timing, ordering or permission rules.
 - Convert unclear AC into tester-readable product contracts and keep ambiguity visible. Never infer defaults for omitted filters, duplicate handling, reference classification, rollback, response codes, or status semantics; move undecided behavior to `Open Questions`.
 - AC decidability is a hard gate. Reject unresolved/conditional markers (`to be agreed`, `pending scope`, `if approved`), vague bounds (`bounded`, `reasonable`, `does not continue forever`) without a numeric/configured/source-backed oracle, implementation-choice menus (`via an index, keyset, or custom index`), and combined terminal outcomes (`failed or aborted`). Define success, failure, cancellation, shutdown, retry exhaustion, and recovery separately when applicable. A number elsewhere in the sentence does not quantify an unrelated bound.
@@ -348,66 +335,11 @@ Convergence and conversational clarification: after mandated research resolves, 
 
 #### Operational Incident And Recovery UAC Rules
 
-- Use these rules for Dynamics/support incidents, production escalations, stuck jobs, queue blockage, workflow failures, cleanup requests, performance degradation, concurrency failures, and customer-restoration plans.
-- Populate `operational_contract` schema `aem-guides-operational-contract-v1`. Strong job/queue/retry/restart/partial-write signals require `active=true`; `active=false` cannot bypass detected signals. Disposition every dimension to real AC, stable `TS-##` scenario, stable `OQ-##`, or a concrete out-of-scope reason.
-- Separate immediate remediation from permanent product behavior: backend cleanup, service restoration, workflow/config correction, code safeguard, resource change, and automation must each have explicit in-scope or out-of-scope status.
-- Do not turn a destructive operational procedure into a product acceptance criterion. Node deletion, workflow termination, pod restart, manual queue repair, and similar one-time engineering actions belong under `Test Scenarios` as an `Incident recovery validation` bullet; acceptance criteria may state only the observable restoration or permanent product contract.
-- For mixed-lifecycle incidents, distinguish `Incident recovery validation` from the pre-development product UAC. A closed incident or successful cleanup does not confirm that a proposed concurrency, retry, cancellation, queue, or status-consistency safeguard has been implemented.
-- Convert the end goal into proposed acceptance criteria, but keep unapproved engineering choices visible as open questions rather than presenting them as decided UAC.
-- Define the exact affected output type, workflow, environment/build, target paths, job IDs/UUIDs, queue states, customer-like fixture size, and normal-versus-failure timing baseline.
-- Require terminal-state contracts for success, failure, cancel, retry exhaustion, and recovery; define the maximum allowed duration for Waiting, Executing, Post Publishing, cancellation requested, or equivalent states.
-- Enumerate failure points across acquisition, query construction/execution, result iteration, item mutation/delete, save/commit, refresh/cleanup, and result reporting when those phases exist. Define retryable versus terminal categories, maximum attempts, delay/backoff source, short-circuit rule, exhausted outcome, and aggregate logging bound across all attempts.
-- Keep scheduler/deployment trigger, queue-level retry, and an in-run loop as distinct recurrence sources. Cover every caller/producer path, environment/build, individual-item action, and bulk/profile action that evidence places in scope.
-- Define concurrency behavior for same map, same preset, same destination, overlapping destinations, and unrelated destinations: serialize, lock, retry, fail fast, or isolate.
-- Define snapshot behavior for source additions, deletions, renames, and updates during paging/traversal; specify the observable no-skip/no-duplicate/output-integrity oracle without prescribing a cursor implementation unless accepted UAC does.
-- Define partial-write behavior: rollback, reuse, overwrite, cleanup, idempotent retry, duplicate prevention, orphan prevention, and preservation of previously valid output.
-- Define queue isolation and fairness: one failed job must not indefinitely block unrelated jobs, and recovery must specify whether successors auto-resume or require manual restart.
-- Define cleanup safety: exact nodes/workflows targeted, correlation evidence, backup, approval, audit trail, unrelated-state preservation, rollback, and post-cleanup verification.
-- Define restart and failover behavior for author pod restart, workflow restart, deployment, timeout, network interruption, and repeated cancellation.
-- Define performance and resource acceptance separately: completion SLA, dataset scale, heap/pod limits, indexing state, CPU/memory evidence, and criteria for deciding whether a resource increase is required.
-- Never convert an observed customer duration, approximate normal runtime, topic count, heap recommendation, or support anecdote into a hard pass/fail oracle unless Jira/UAC, an approved SLA, or a controlled benchmark defines the dataset, environment, repetitions, percentile, and threshold. Otherwise treat it as a measured baseline or an open question.
-- Define observability: required correlation IDs, job/output/workflow UUIDs, target path, stage timings, retry count, terminal reason, actionable errors, and sensitive-data redaction.
-- Provide an explicit fallback value when failure happens before path/page/item context exists, and bound both per-attempt and aggregate cross-retry log volume.
-- Verify the final generated output, not only DITA-OT/build success or UI status: page/file count, links, assets, metadata, navigation, history nodes, workflow completion, and absence of partial/orphan state as applicable.
-- For evidence-backed publishing/export artifacts, populate every oracle in `aem-guides-generated-output-contract-v2`: artifact existence, content/title/hierarchy/order/navigation/links/metadata/repository state/output path/locale, duplicates, orphans, stale output, unchanged-content rewrites, activation state, status-versus-real-output, and conditional delivery availability. Record primary-content versus diagnostic inventory and root/hierarchy/relative-path rules. Require the real download surface and cover `DELIVERY_AVAILABLE` only when `delivery_in_scope=true`; mark it not applicable when false or expose an Open Question when unresolved. An archive that contains only logs or merely exists is not a sufficient product oracle.
-- Inspect product clones using exact stack-trace classes, workflow model names, JCR paths, APIs, config keys, and error strings; inspect automation clones for timeout, polling, cancel, cleanup, concurrency, performance, and recovery gaps.
-- Keep destructive production reproduction out of scope unless explicitly approved; prefer a production-equivalent clone and engineering-approved cleanup validation.
+- For Dynamics/support incidents, production escalations, stuck jobs, queue blockage, workflow failures, cleanup requests, performance degradation, concurrency failures and customer-restoration plans, read `references/operational-incident-contract.md` (section "Operational Incident And Recovery UAC Rules") and populate `operational_contract`. Do not turn a destructive operational procedure into a product acceptance criterion: it is an `Incident recovery validation` scenario.
 
-#### Translation Project API UAC Reference
+#### Component UAC Contracts
 
-- Use this UAC when scope covers an automation API that creates a translation project for a supplied DITA map and selected filters.
-- Require support for project types `newTranslationProject`, `xliffTranslationProject`, `newMultiLingualTranslationProject`, `addToExistingProject`, and `newScopingTranslationProject`.
-- For `latestVersion`, resolve forward references from the latest saved version of the DITA map and exclude working-copy changes.
-- For `baseline`, resolve forward references exactly as they existed when the specified baseline was created.
-- For `versionAsOfDate`, resolve forward references exactly as they existed at the supplied date and time.
-- Cover `referenceType` values `Direct` and `Indirect`.
-- Cover `fileType` values `Map`, `Topic`, and `Others`.
-- Cover `documentState` values `Draft`, `In-Review`, and `Reviewed`.
-- Cover `translationStatus` values `Out of Date`, `In Progress`, `In Sync`, `Out of Sync`, and `Missing copy`.
-- Require the API request to accept the DITA map, project title, project type, language list, version selection and required version value, and selected filters.
-- Verify the API creates missing target-language folders before creating or updating the translation project.
-- Derive positive, negative, boundary, filter-combination, version-resolution, missing-language-folder, permissions, idempotency, validation, error-contract, and automation-consumability scenarios from this UAC.
-- Keep unspecified API details as open questions, including endpoint and method, request/response schema, baseline identifier format, date/time zone and inclusivity, filter combination semantics, existing-project identifier, duplicate project-title behavior, partial-failure rollback, folder naming/location, and permissions.
-
-#### EDS GitHub And GitLab Publishing Profile UAC Reference
-
-- Use this UAC when scope covers creating or using EDS Publishing Profiles with GitHub or GitLab repositories.
-- Support GitHub Cloud public/private, GitLab Cloud public/private, self-hosted GitHub Enterprise, and self-hosted GitLab repositories.
-- Provide a `Git Provider` selector with GitHub and GitLab options, dynamically update provider-specific UI fields, and default the server URL to the self-hosted GitLab URL when GitLab is selected.
-- Enforce mandatory-field validation and enable `Save` only after all required fields are present and authentication succeeds; never persist an unauthenticated profile.
-- Support OAuth authentication for both providers using Client ID, Client Secret, and token exchange.
-- Show clear errors for invalid repository details or credentials, expired/revoked tokens, insufficient or read-only permissions, authentication failures, network interruption, API timeout, and server failure.
-- Prevent publishing when authentication fails or repository permissions are insufficient.
-- Verify `Push to Live` commits and pushes content to the configured repository and branch for both providers, while preserving the existing EDS workflow and downstream EDS pipeline trigger.
-- Verify Publishing Profile APIs behave consistently for GitHub and GitLab.
-- Preserve backward compatibility for existing GitHub publishing profiles, Push to Live, APIs, logging, upgrades, and all supported AEM Guides Cloud versions.
-- Preserve existing publishing profiles during upgrades and confirm no impact to Salesforce publishing.
-- Verify the required AEM Admin suffix configuration change from `HTML` to `HTM`; keep the exact setting, scope, default, and upgrade behavior as open questions when Jira does not define them.
-- Verify supported content publishes through both providers without content loss or formatting issues, including DITA topics, DITAMAPs, Bookmaps, Markdown, images, multimedia, MathML, tables, code blocks, cross-references, keyrefs, conrefs, conditional content, multilingual content, and other supported assets.
-- Require logging for authentication, token exchange, publishing, commit creation, push operations, API failures, and retries when applicable.
-- Verify Client Secret, Access Token, and OAuth Token values are never logged, exposed in UI errors, or returned through unsafe API responses.
-- Derive positive, negative, provider/platform matrix, public/private repository, permission, authentication lifecycle, UI-state, API-contract, upgrade, logging/redaction, retry, pipeline-trigger, content-fidelity, and regression scenarios from this UAC.
-- Keep unspecified details as open questions, including exact OAuth grant/token-exchange flow, redirect URI, scopes, token storage/refresh, provider-specific required fields, self-hosted TLS/proxy requirements, GitLab default URL behavior, branch protections, retry policy, rollback after partial commit/push failure, supported file-size limits, and the supported AEM Guides Cloud version matrix.
+- For the Translation Project API or EDS GitHub/GitLab Publishing Profiles, read `references/component-uac-contracts.md`.
 
 ### Phase 3 — Retrieve Behaviour RAG
 
@@ -433,17 +365,11 @@ Convergence and conversational clarification: after mandated research resolves, 
 - Reuse a historical behavior contract or QA oracle only when the outcome is an implemented fix and confidence is `medium` or `high`; keep current Jira/UAC authoritative.
 - Search with multiple narrow JQL passes by exact Jira key links, exact error text, API route, config key, workflow, UI label, data shape, version boundary, and likely code area.
 - Keep at most five past tickets. For each, explain why similar and what coverage it adds.
-- Rank candidates by shared defect mechanism, not by shared feature area, subsystem name, or overlapping keywords. A ticket qualifies only when it exhibits the same failure shape (for example the same stale-reference-after-delete, same orphan-reference, same not-cleaned-up-on-lifecycle-change, same API-contract, or same root-cause family) as the issue under test. Sharing a module name (for example "version purge", "map console", "translation") or a generic word (for example "cleanup", "reference", "btree", "report") is not similarity and must not, by itself, place a ticket in this section.
-- State each entry's match strength explicitly (for example strongest match, structural twin, adjacent, or weak/setup-only) and name the concrete shared mechanism. If a ticket is only regression-adjacent rather than the same defect class, put it under `Regression Areas`, not here.
-- Prefer four sharply-matched tickets, or fewer, over five where the last one or two are padding. It is correct to list only one or two genuinely similar tickets, or to state that no same-defect-class history exists, rather than filling to five with area-only or keyword-only matches.
+- Rank candidates by shared defect mechanism, never by shared feature area or keyword. Name the one concrete mechanism each ticket shares; a ticket that only shares an area belongs in `Regression Areas` or is dropped. Listing one or two genuine matches, or none, is correct; never pad to five.
+- Follow `references/historical-ticket-selection.md` for match strength, exclude-by-default of cross-feature hits, re-auditing the whole list, and where excluded candidates go.
 - Include both resolved historical bugs that provide reusable RCA/test oracles and open known bugs that can affect execution, expected results, environment choice, or sign-off. Validate current status with Jira MCP before calling a bug open, closed, fixed, duplicated, deferred, or regressed.
 - For each selected Jira bug, capture the key, similarity reason, current status/resolution, affected/fix version when available, historical root cause or behavior contract, reusable test evidence, and the exact scenario or regression area it changes. Do not expose raw retrieval scores.
 - Record the actual JQL/search intents used and whether each historical fact came from current Jira fields, comments, linked test evidence, or indexed history. Write `not available in current evidence` for missing fix versions, affected versions, RCA, or test evidence; never silently omit those fields or infer them from ticket status.
-- Reject broad results that match only generic words, a shared feature/subsystem area, or unrelated automation-bulk tickets; if only noisy matches exist, say historical evidence is unavailable instead of padding the section. Before listing any ticket, name the one specific defect mechanism it shares with the issue under test; if that sentence would only cite a shared area or keyword, drop the ticket.
-- Exclude by default any candidate whose feature or component differs from the issue under test. Broad text JQL (for example `text ~ "parent map"`, `orphan`, `reference not cleaned`) will surface cross-feature tickets such as version-purge, map-collection, or translation bugs; treat every such hit as a candidate to DISPROVE, and include it only if you can concretely show the same code path, property, or failure - never on a shared symptom word like "parent map", "orphan", "cleanup", or "reference". When in doubt, leave it out and note in the search-status line that it was surfaced and excluded.
-- Do not name-drop a Jira key anywhere else in the plan (especially `Regression Areas`) unless that key is vetted and listed in `Known Jira Bugs / Past Similar Tickets`. Reference a regression risk by its workflow, code path, or automation (for example a specific IT class), not by an unrelated ticket number. The validator fails any Regression Areas Jira key that is absent from Known Jira Bugs.
-- Re-audit the whole list, not just newly-flagged tickets, every time you apply the exclude-by-default rule. A ticket added earlier is never grandfathered in; if it survives only on an abstract shape (for example "a deleted thing is not auto-removed from its container") across a different feature, entity, and code path, remove it too. Apply the same test to same-domain-but-different-target tickets (for example orphan Site pages vs a JCR parent-map property): shared domain is not shared mechanism.
-- Do not keep a cross-feature or different-surface ticket by relabelling it "adjacent" and listing it as a past similar ticket. If a ticket is not a same-defect-class match, exclude it and record it in the search-status note; when it still carries reusable value, cite it where that value lives (automation setup under `Automation Coverage & Gaps`, or a triage caution under `Open Questions`), not as a similar bug. It is correct for `Known Jira Bugs` to state that no same-defect-class history exists and list only the excluded candidates.
 
 ### Phase 4.5 — Connect Evidence Graph
 
@@ -459,13 +385,7 @@ Convergence and conversational clarification: after mandated research resolves, 
 
 ### FluffyJaws Supporting-Discovery (optional, mode-gated)
 
-FluffyJaws broadens *discovery* of relevant behaviour, but it is a synthesis engine, not an authority. Use it only to widen the net for candidate dimensions and behaviours; never as evidence on its own.
-
-- **Gate on the mode.** Read `SKILL_FLUFFYJAWS_MODE`. `FLUFFYJAWS_DISABLED` (default) => do not call FluffyJaws and claim no discoveries. Only `FLUFFYJAWS_SHADOW` or `FLUFFYJAWS_SECOND_PASS` may call it, and only when the connector is actually registered in this session. If the mode is enabled but the connector is not reachable, set `available: false` and record no discoveries (fall back to the normal RAG path).
-- **Query for discovery, then re-ground.** Ask FluffyJaws focused discovery questions derived from the normalized behaviour model. For every finding it surfaces, RE-GROUND it into a first-class source that keeps its own authority (spec / DITA-OT / product doc / current code / historical Jira) before it can raise any AC's coverage. A finding that cannot be re-grounded stays an Open Question or is dropped - it never becomes an AC.
-- **Record it in the manifest `fluffyjaws` block** so `fluffyjaws_evidence` can enforce the invariants: `{"mode": "FLUFFYJAWS_SHADOW|FLUFFYJAWS_SECOND_PASS", "available": true|false, "discoveries": [{"finding": "...", "authority": "SUPPORTING_DISCOVERY", "regrounded_evidence_id": "E#"}]}`. Every discovery's `authority` must be `SUPPORTING_DISCOVERY` and must name a `regrounded_evidence_id`; a discovery present while `DISABLED`/`available:false` is a hard failure.
-- **Mode effect.** `FLUFFYJAWS_SHADOW` records discoveries for trace/evaluation only - the final plan stays baseline-equivalent, unchanged versus `DISABLED`. `FLUFFYJAWS_SECOND_PASS` may let a re-grounded discovery become an `INVESTIGATION_CANDIDATE` in the coverage pipeline, still `SUPPORTING_DISCOVERY` and still with no FluffyJaws -> AC path.
-- **Transport note.** The connector-driven path above (this skill calling the registered FluffyJaws tool) is the supported path here. The separate backend HTTPS provider (`build_fluffyjaws_provider` with an injected authenticated transport) requires human-only setup - service-app registration, the operator-guide MCP/API schemas, and the confirmed API base per `docs/fluffyjaws_setup.md`; do not guess that transport.
+- Off by default. When `SKILL_FLUFFYJAWS_MODE` enables it, follow `references/fluffyjaws-evidence.md` and record the manifest `fluffyjaws` block.
 
 ### Phase 5 — Inspect Clones And Available Git Changes
 
@@ -657,340 +577,28 @@ Only when every dimension above is dispositioned may you proceed to Phase 7. If 
 surfaces a blocking unknown, resolve it from evidence or raise it as an Open Question FIRST
 — do not author around it.
 
-### Phase 6.5.5 — Behavioral Coverage Expansion (widen discovery, never acceptance)
+### Phases 6.5.5 to 6.9.7 — Reasoning Pipeline
 
-The sweep above catches the dimensions you thought to look for. This stage catches the
-ones the ticket never mentions. A named value is not atomic: before it can be treated as
-covered, the plan must also have considered where it comes from, what is shown when it is
-absent, whether it can be supplied indirectly through referenced or reused content, what a
-move or rename does to it, whether it can go stale, and whether every consumer surface
-agrees. Read `references/behavioral-coverage-expansion.md` and record the result in the
-manifest `behavioral_coverage_expansion` block, validated by
-`scripts/behavioral_coverage_expansion.py`. The canonical runtime enforces the same
-contract in its `BehavioralCoverageExpander` stage, which runs between
-`BehaviorModelBuilder` and `SemanticBehavioralClosureExplorer`.
+Each stage below is mandatory when its manifest block applies. The full rules for every stage are in
+`references/reasoning-pipeline-phases.md`; read the stage's section there and its own reference before
+filling the block.
 
-- **Derive triggers from requirement shape, never from a feature name.** A trigger fires on
-  what the requirement does — display, export, order, filter, persist, resolve a reference,
-  move or rename, change state, depend on configuration — so the same reasoning applies to
-  any product family. `MULTIPLE_CONSUMER_SURFACES` is derived, not matched: either two or
-  more consumer surfaces exist structurally, or the requirement describes both a displayed
-  and an exported form of one value.
-- **Map triggers to axes and axes to dimensions**, then treat every activated dimension as a
-  question you must answer from evidence. Activation is not coverage.
-- **Keep distinct contracts distinct.** Moving or renaming an item is not the same behavior
-  as an entry changing lifecycle state, and neither is the same as reordering. They get
-  separate dimensions, separate questions, and separate dispositions; never collapse them
-  to shorten the list.
-- **Discovery is not acceptance.** An expansion candidate carries no acceptance authority.
-  It lives in its own `covexp:` identifier namespace, can never be cited as the source for
-  an AC, and must not block an explicitly accepted Human contract. Promotion rules,
-  source authority, evidence roles, and the existing-vs-new behavior classification are
-  all unchanged.
-- **Nothing discovered may silently disappear.** Disposition every activated dimension
-  explicitly — covered, investigated and rejected, exposed as unresolved, routed to
-  research, or not applicable with a concrete reason. Omission is not a disposition, and
-  `NOT_APPLICABLE` or `INVESTIGATED_AND_REJECTED` without a reason fails the gate. An
-  unresolved activated dimension flows into the existing missing-question and mandatory
-  research path unchanged; `NOT_FOUND` still never asserts the opposite behavior.
-- **Every material subject decides all nine dependency dimensions.** Dispositioning
-  activated dimensions only proves nothing was lost after discovery; it cannot prove
-  discovery asked about everything, because a dependency that never triggered is never
-  activated and so never has to be answered. Record one `dependency_records` entry per
-  material subject deciding `PROVENANCE`, `PRECEDENCE_AND_FALLBACK`,
-  `INDIRECTION_AND_RESOLUTION`, `CONTEXT_DEPENDENCY`, `IDENTITY`, `LIFECYCLE_MUTATION`,
-  `FRESHNESS_AND_STALENESS`, `CONSUMER_PARITY`, and `UNRESOLVED_OR_NEGATIVE_BRANCH`. A
-  record that omits a kind fails; `NOT_APPLICABLE` with `n/a`, `none`, `tbd`, or an
-  equivalent empty assertion fails; `RESEARCH_REQUIRED` must name the question or
-  candidate carrying that research; and a material subject with no record fails. Records
-  are built only for material subjects, so discovery stays bounded rather than becoming a
-  Cartesian expansion.
-- **Route each dependency by where its answer actually lives.** A question about how the
-  product behaves today is an implementation read, not a product decision; a question
-  about governing rules or documented fallback is a documentation read. Declare that in
-  the dimension's evidence path so mandatory research routes correctly — misrouting a
-  code question to documentation silently converts it into a human decision. A dependency
-  record carries no acceptance authority and can never be promoted or cited as an AC
-  source.
+| Phase | Stage | Manifest block / script | Reference |
+| --- | --- | --- | --- |
+| 6.5.5 | Behavioral coverage expansion: widen discovery, never acceptance | `behavioral_coverage_expansion` / `behavioral_coverage_expansion.py` | `behavioral-coverage-expansion.md` |
+| 6.6 | Question-based reasoning: planner, research router, resolver | `question_planner.py`, `question_resolver.py` | `question-based-reasoning.md` |
+| 6.6.5 | Evidence sufficiency before coverage decisions | `evidence_sufficiency.py` | `evidence-sufficiency.md` |
+| 6.7 | Coverage reasoning | `coverage_reasoner.py` | `coverage-reasoner.md` |
+| 6.8 | Semantic coverage and AC equivalence | `coverage_equivalence.py` | `coverage-equivalence.md` |
+| 6.9 | Requirement lineage, end-to-end AC traceability | `requirement_lineage.py` | `requirement-lineage.md` |
+| 6.9.5 | Historical Jira evidence safety | `historical_jira_safety.py` | `historical-jira-safety.md` |
+| 6.9.6 | Question-level retrieval quality and evidence admission | `retrieval_admission.py`, `retrieval_benchmark.py` | `retrieval-admission.md` |
+| 6.9.7 | Canonical replay: read-only parity after runtime generation | `canonical_runtime_adapter.py --project-result`, `run_gates.py --runtime-replay` | `reasoning-pipeline-phases.md` |
 
-### Phase 6.6 — Question-Based Reasoning (Planner → Research Router → Resolver)
+The canonical Python runtime is the only production semantic and promotion authority. Never edit or
+regenerate its output to force a gate to pass.
 
-Structured reasoning stages between discovery and authoring. The Question Planner and
-Question Resolver are coordinator/reasoning stages, NOT new autonomous agents — the
-existing Evidence Agent, Doc Researcher, Writer, and Reviewer roles are unchanged.
-Flow: evidence → Question Planner → material questions → Research Router → Doc
-Researcher / other authorized evidence routes → Question Resolver → coverage reasoning
-input → Writer → Reviewer → final UAC. Record the stages in the manifest `question_plan`
-and `question_resolutions` blocks, validated by `scripts/question_planner.py` and
-`scripts/question_resolver.py` (see `references/question-based-reasoning.md`).
-
-- **Plan only material questions.** Emit a question only when its answer could materially
-  improve acceptance understanding or coverage — never carpet every category. The closed
-  category vocabulary: EXPECTED_OUTCOME, STATE_TRANSITION, PERSISTENCE, NEGATIVE_CONTRACT,
-  SCOPE, VARIANT, ENTRY_PATH, CONFIGURATION, APPLICABILITY, PRESERVATION, ERROR_RECOVERY,
-  SCALE, COMPATIBILITY. Every question carries `question_id`, `category`, `question`,
-  `why_material`, `triggering_evidence_ids`, `acceptance_impact`, `applicability`,
-  `  research_requirement`, and `status` (plus `research_topics[]` when research is routed).
-- **The question budget is bounded** (`question_plan.budget`, default 12). If the
-  material-question budget is exceeded, do not silently discard questions: move the excess
-  into `question_plan.overflow` with `state: QUESTION_BUDGET_EXCEEDED` and an explicit
-  escalation note.
-- **Route every question through the Research Router** (`question_research` block) before
-  resolving it, reusing the R1 Doc Researcher routing contract (Phase 5.5): a
-  documentation-requiring material question requires a terminal `doc_research` routing
-  state — R1-required research cannot be skipped, and a `RESEARCH_NOT_REQUIRED` doc
-  routing contradicts documentation-requiring questions. Required research cannot be
-  skipped; NOT_FOUND is not negative proof.
-- **Resolve every planned question exactly once** with a terminal disposition: ANSWERED,
-  PARTIALLY_ANSWERED, ACCEPTANCE_TBD, INVESTIGATION_ONLY, NOT_APPLICABLE, DUPLICATE, or
-  CONFLICTED. The resolution carries `question_id`, `disposition`, `answer`,
-  `source_ids`, `source_authority`, `applicability`, `limitations`, `contradictions`,
-  `decision_reason`, and `research_ids` binding the admitted research that produced a
-  documentation answer - stale or wrong-bound research cannot answer another question,
-  and documentation is never cited without admitted research. Semantic decisions are
-  externalized in these artifacts; downstream stages consume them rather than
-  reconstructing answers from raw ticket text.
-- **Hard rules:** a question is not an AC; an answer is not automatically an AC; Actual
-  Result cannot establish Expected Result; never reverse a reported failure to invent
-  desired behavior; a suspected root cause does not become acceptance behavior; an
-  attachment observation does not establish desired behavior; historical Jira does not
-  automatically establish current behavior; PARTIAL research cannot produce a fully
-  confirmed answer; an equal-authority conflict remains unresolved (stay CONFLICTED, or
-  record the higher-authority basis in `conflict_resolution`); a DUPLICATE preserves all
-  triggering evidence IDs on the surviving question; root-cause/diagnostic/mechanics
-  uncertainty never becomes ACCEPTANCE_TBD merely because it matters to engineering;
-  ACCEPTANCE_TBD is allowed only when different plausible answers materially change
-  acceptance behavior/scope/configuration/applicability/compatibility/preservation; root
-  cause, diagnostics, and implementation mechanics are normally INVESTIGATION_ONLY. The
-  Writer never receives raw unresolved questions, and a question is never rendered
-  directly as an AC - ACCEPTANCE_TBD questions reach the final Open Questions contract
-  only through the existing approved downstream path.
-- **Preserved invariants:** source authority, observation-vs-requirement separation, exact
-  Jira intake, attachment evidence handling, Doc Researcher routing, the Writer language
-  contract, Reviewer independence, and draft-only behavior all remain exactly as defined
-  elsewhere in this skill — these stages only add traceable structure between discovery
-  and authoring.
-
-### Phase 6.6.5 — Evidence Sufficiency (before coverage decisions)
-
-"Evidence exists" is not "evidence is sufficient to support this answer or coverage."
-Evaluate sufficiency at BOTH the resolved-question level and the coverage-decision
-level in the manifest `evidence_sufficiency` block, enforced by
-`scripts/evidence_sufficiency.py` (see `references/evidence-sufficiency.md`).
-
-- Every material resolved question carries `sufficiency_status` (SUFFICIENT / PARTIAL /
-  INSUFFICIENT / CONFLICTED) with the structured sub-states `authority_status`,
-  `research_completion`, `applicability_status`, `currentness_status`,
-  `contradiction_status`, plus claim-level `supported_claims[]` /
-  `unsupported_claims[]`, `limitations[]`, bound `evidence_ids[]` / `research_ids[]`,
-  and `decision_reason`. No numeric confidence as authority.
-- One applicable authoritative source may be SUFFICIENT; many related passages are not
-  automatically sufficient. Do not require documentation when Jira authority itself is
-  sufficient. PARTIAL research caps the answer at the established portion unless the
-  remaining limitation is demonstrably immaterial to that specific answer; NOT_FOUND is
-  never proof of the opposite behavior; CONFLICTED stays CONFLICTED until an existing
-  authority rule settles it.
-- Wrong-applicability evidence (wrong version / engine / surface) stays insufficient
-  without explicit compatibility evidence; UNCLEAR applicability is never confirmed
-  applicability. Sufficiency for one claim never bleeds into a neighboring claim.
-- Coverage sufficiency is computed from the underlying questions and evidence; P0/P1
-  ACCEPTANCE coverage requires SUFFICIENT unless explicitly represented as
-  ACCEPTANCE_TBD; the Writer handoff never carries INSUFFICIENT/CONFLICTED coverage or
-  an unnamed PARTIAL portion, and the Writer cannot reinterpret evidence to upgrade
-  sufficiency.
-
-### Phase 6.7 — Coverage Reasoning (dedicated Coverage Reasoner)
-
-A dedicated Coverage Reasoner — never the Writer — decides coverage on top of resolved
-question evidence, recorded in the manifest `coverage_decisions` block and validated by
-`scripts/coverage_reasoner.py` (see `references/coverage-reasoner.md`). Inputs:
-authoritative requirements, resolved questions, research findings, applicability,
-conflicts, attachment observations, existing behavior, new behavior, and preservation
-requirements.
-
-- Emit one decision per candidate behavior with `coverage_id`, `behavior`,
-  `question_ids`, `evidence_ids`, `research_ids` (the admitted research behind the
-  underlying questions), `priority`, `coverage_class`, `contract_type`
-  (`POSITIVE`/`NEGATIVE`/`PRESERVATION`), `surface`, `state_or_transition`,
-  `configuration`, `applicability`, `variants` (same-outcome variants each bound by
-  their own evidence), `reason`, `acceptance_impact`, and the
-  `dimensions_considered` axes reasoned about when applicable (single/bulk,
-  refresh/revisit, state transitions, negative contracts, alternate UI paths,
-  configuration branches, New/Old Editor, Author/Source, Collections/Explorer/Map
-  Console, Cloud/6.5, Native PDF/DITA-OT, preprocessing ON/OFF, scale, preservation).
-- **priority**: `P0` = behavior required to prove the primary ticket contract and prevent
-  the direct customer regression (class `ACCEPTANCE`); `P1` = materially related
-  regression behavior (class `QE_REGRESSION`); `SUPPORTING` = supporting regression or
-  investigation coverage; `EXCLUDED` = explicitly excluded with a reason, never reaching
-  the Writer. Do not promote generic test ideas: every decision traces to resolved
-  questions and/or evidence.
-- A decision may stand only on questions whose resolution and research permit it:
-  ANSWERED is eligible; PARTIALLY_ANSWERED grounds only the established portion
-  (regression/investigation); ACCEPTANCE_TBD is never converted into confirmed
-  behavior; INVESTIGATION_ONLY never becomes acceptance coverage; NOT_APPLICABLE
-  produces no coverage; a DUPLICATE contributes linkage through its surviving
-  question and never creates duplicate coverage; CONFLICTED never silently produces
-  confirmed acceptance coverage. An acceptance decision never rests on actual-result,
-  observation, suspected-root-cause, or historical-ticket authority. NOT_FOUND or
-  otherwise incomplete required research cannot ground an ACCEPTANCE decision.
-  Documented-today (EXISTING_CONFIRMED) behavior must not be repackaged as new
-  acceptance coverage, and a NEW_REQUIREMENT is not a preservation contract.
-- **The Writer receives an explicit admitted coverage package** (`writer_handoff` is
-  mandatory once decisions exist) containing only accepted (non-EXCLUDED) decisions and
-  every P0 decision. The Writer must not invent additional acceptance behavior, promote
-  QE_REGRESSION to ACCEPTANCE, convert INVESTIGATION into an AC, resolve
-  ACCEPTANCE_TBD, add unapproved variants, or independently decide P0/P1 — it may
-  simplify wording, combine approved same-outcome variants, and preserve required
-  product terminology.
-- **The Reviewer verifies** (via the `writer_package` block) that every AC maps to
-  admitted ACCEPTANCE coverage ids, all P0 accepted behavior is represented, P1 did not
-  expand acceptance scope, QE_REGRESSION/INVESTIGATION never leak into ACs,
-  ACCEPTANCE_TBD was not silently resolved, no unapproved variants were introduced, and
-  source mapping stays consistent with the evidence/question/research bindings.
-  Semantic failures route upstream to the Coverage Reasoner; the Reviewer never
-  silently repairs acceptance semantics.
-
-### Phase 6.8 — Semantic Coverage / AC Equivalence
-
-After coverage reasoning, classify pairs of coverage decisions for semantic equivalence
-BEFORE the Writer authors ACs, recorded in the manifest `coverage_equivalence` block and
-validated by `scripts/coverage_equivalence.py` (see
-`references/coverage-equivalence.md`). The primary comparison happens on coverage
-decisions, not merely Writer prose: compare `coverage_id`s structurally across coverage
-IDs, question IDs, expected outcome, state transition, scope, configuration, and
-applicability — never textual similarity alone. Same nouns do not mean the same outcome;
-different wording does not mean different outcomes.
-
-- **Classifications:** `SAME_OUTCOME_VARIANT` (same expected outcome through variant
-  phrasing/polarity — the Writer should normally create one AC), `DISTINCT_OUTCOME`
-  (different expected outcomes), `DEPENDENT_OUTCOME` (one outcome depends on the other;
-  record the dependency; never auto-merged), `CONFLICT` (the same outcome asserted
-  contradictorily; kept visible, never merged, routed upstream).
-- **Decision record:** `decision_id`, the two coverage ids, `classification`, declared
-  `shared_dimensions`/`differing_dimensions`, `reason`, and `merge_allowed` (true only
-  for SAME_OUTCOME_VARIANT).
-- **Merge groups** carry `equivalence_id`, `coverage_refs`, `canonical_outcome` (an
-  internal grouping label — never evidence), `question_refs`, `evidence_refs`,
-  `research_refs`, `variant_refs`, `source_lineage`, `priority`, `applicability`, and
-  `partial_members`. A merge requires a SAME_OUTCOME_VARIANT basis decision with
-  `merge_allowed`, preserves all question/evidence/research IDs, all approved variants,
-  and all lineage, keeps the highest member priority, and never crosses applicability,
-  surface, configuration, or state (parity is never inferred). INSUFFICIENT or
-  CONFLICTED coverage never merges; PARTIAL coverage participates only through its
-  bounded established portion; an ACCEPTANCE_TBD question is never absorbed into a
-  confirmed merge; EXCLUDED coverage never merges; one decision survives into exactly
-  one AC. Do not merge distinct behavior simply to reduce AC count.
-- **Writer/Reviewer binding:** the Writer receives equivalence-resolved groups; an AC
-  may reference a merge via `equivalence_refs` and must then carry every merged variant;
-  two ACs may never cover different members of the same merge. The Reviewer detects
-  duplicate ACs for a merged group, collapsed distinct outcomes, lost TBD dimensions,
-  omitted or invented variants, and lost source lineage — and routes semantic failures
-  upstream instead of repairing them.
-
-### Phase 6.9 — Requirement Lineage (end-to-end AC traceability)
-
-Trace every final AC back to the evidence that justified it, recorded in the manifest
-`requirement_lineage` block and validated by `scripts/requirement_lineage.py` (see
-`references/requirement-lineage.md`): Original Source -> Evidence -> Question ->
-Research (when required) -> Question Resolution -> Sufficiency -> Coverage Decision ->
-Equivalence Group (when applicable) -> Written AC -> Reviewer Decision. Existing
-production IDs are preserved; `SRC-` (original source) and `REV-` (review decision)
-are recorded conceptually and reference the existing IDs without rewriting them.
-
-- `sources[]` records each original admitted source with `source_type`, locator,
-  optional version/applicability, status, and `evidence_ids`; `ac_lineage[]` binds each
-  final AC to its `coverage_refs`, `equivalence_refs`, `question_refs`,
-  `evidence_refs`, `research_refs`, `source_refs`, `writer_revision`,
-  `source_versions`, and the human-facing `human_source_line`; `tbd_lineage[]` keeps
-  every unresolved ACCEPTANCE_TBD question visible with its research attempt, partial
-  or insufficient result, and reason — a TBD row never references a confirmed AC;
-  `reviews[]` binds each Reviewer decision to the exact Writer revision.
-- **Integrity rules:** every referenced ID exists in the producing block; the Writer
-  cannot fabricate lineage; unrelated or unused retrieved evidence never contaminates
-  an AC; a QE_REGRESSION member of an equivalence group never becomes acceptance
-  authority through the group; `human_source_line` derives only from admitted
-  supporting sources and never exposes internal IDs (`Q-`, `COV-`, `SUF-`, `EQ-`,
-  `DR-`, `EV-`, `SRC-`, `REV-`, `MERGE-`, `canonical_outcome`); a Writer revision
-  change makes the review stale and a source-version change invalidates the dependent
-  lineage; unsuccessful research stays visible in `tbd_lineage` instead of being
-  erased.
-- Lineage proves provenance and structural integrity, not semantic correctness; it
-  adds traceability only and introduces no new acceptance semantics.
-
-### Phase 6.9.5 — Historical Jira Evidence Safety
-
-Historical Jira similarity is discovery evidence, not acceptance authority: an old
-ticket never automatically becomes an authority for the current ticket. Record every
-historical item considered for a material Question in the manifest
-`historical_jira_assessment` block, validated by
-`scripts/historical_jira_safety.py` (see `references/historical-jira-safety.md`). This
-extends the existing temporal/authority/resolver path; it creates no competing
-framework and no new authority hierarchy.
-
-- Assess per Question (never globally per ticket): `history_id`, `question_id`,
-  `jira_key_or_source_id`, `relationship`, the six match dimensions, `currentness`,
-  `superseded_status`, `human_accepted_ac_available`, `applicability`,
-  `authority_role`, `allowed_use`, `reason`, `limitations[]`. Never classify from
-  vector similarity or lexical overlap alone.
-- **Relationships:** `AUTHORITATIVE_HISTORY` (only with an `authority_basis` naming
-  the existing permitting rule plus exact applicability — a historical Human Accepted
-  AC is not automatically authoritative for a different ticket),
-  `SUPPORTING_PRECEDENT` (may contribute; S1 still decides; never overrides current
-  Jira), `DISCOVERY_ONLY` (locates terminology/sources/paths; never establishes an
-  answer or enters Source lines), `NOT_APPLICABLE` (forced by any material
-  surface/version/configuration difference — similarity never overrides it),
-  `CONFLICTING_HISTORY` (preserve the disagreement; route through existing Q1/S1
-  conflict/TBD behavior).
-- Historical Actual Results, reproduction steps, and suspected root causes remain
-  observation/investigation evidence — never converted into current acceptance
-  requirements; historical Human UAC is never copied into the current UAC without
-  current-question reasoning and Coverage admission.
-- S1 never reaches SUFFICIENT on non-establishing history; C1 never lets historical
-  evidence create coverage directly (only through its bound Question); E1 never merges
-  current and historical outcomes for similar wording; L1 keeps every historical
-  contribution visible and keeps unused history out of final Source lines.
-
-### Phase 6.9.6 — Question-Level Retrieval Quality and Evidence Admission
-
-Retrieval is not evidence: evaluate and control retrieval against explicit material
-Questions via the manifest `retrieval_requests` / `retrieval_results` blocks,
-validated by `scripts/retrieval_admission.py` (see
-`references/retrieval-admission.md`). This extends the existing read-only retrieval
-path — it builds no new RAG system, replaces no vector store, and never reindexes.
-
-- Every retrieval request binds a `question_id`, `research_id`, the actual `query`,
-  `required_source_type`, `product_context`, `applicability`, `requested_claim`, a
-  bounded `top_k`, and a `retrieval_mode`; query rewrites never change the Question
-  binding; retrieval budgets are tracked and no answer is a valid result.
-- Every candidate records rank, score (discovery metadata — never authority), source
-  identity/version, applicability (`CONFIRMED`/`UNCLEAR`/`WRONG`/`NOT_ASSESSED`), and
-  a `relationship`: `TOPIC_MATCH` (discovery only), `RELEVANT`, `SUPPORTS_CLAIM`
-  (S1 decides sufficiency), `DECISIVE` (subject to source authority — never
-  automatically authoritative or sufficient).
-- A declared relationship never exceeds the structural admission ceiling: fetch exact
-  evidence before material use; wrong or unassessed applicability stays TOPIC_MATCH;
-  unclear applicability is never DECISIVE; exact configuration/property identity is
-  required (a same-looking numeric value on a nearby property is not the same
-  property); stale retrieval is rejected; retrieved historical Jira routes through H1.
-- TOPIC_MATCH/RELEVANT never make a Question SUFFICIENT; only fetched
-  SUPPORTS_CLAIM/DECISIVE evidence reaches AC lineage and final Source lines; unused
-  chunks stay auditable outside them.
-- Retrieval quality is evaluated offline by `scripts/retrieval_benchmark.py` over
-  question-level fixtures (retrieval and admission metrics reported separately; the
-  headline metric is DECISIVE_EVIDENCE_MISADMISSION_RATE). A live smoke check reports
-  read-only gateway connectivity only — never semantic-quality proof.
-
-### Phase 6.9.7 — Canonical Replay (read-only parity after runtime generation)
-
-The canonical Python runtime is the only production semantic and promotion authority.
-After a canonical run (CLI, HTTP, or adapter delegation), Skill gates may replay the
-SAME runtime result instead of a hand-authored manifest:
-
-1. Preserve the canonical result unchanged.
-2. Project it read-only: `python scripts/canonical_runtime_adapter.py --project-result <runtime-result.json> --out <projection.json>`. The projection preserves runtime IDs, evidence refs, research state, promotions, clarifications, and applicability; fields the runtime does not carry are recorded as `UNAVAILABLE_FROM_RUNTIME` in the projection metadata, never fabricated.
-3. Replay gates over the projection: `python scripts/run_gates.py --manifest <projection.json> --runtime-replay --parity-report <parity.json>`. Gate outcomes are PASS / FAIL / NOT_EVALUABLE / DISAGREEMENT; a missing runtime contract is NOT_EVALUABLE, never a pass.
-4. Surface every disagreement (gate, runtime artifact ref, replay decision, reason, severity) for human review or the convergence backlog.
-5. NEVER edit or regenerate the canonical runtime output to force a gate PASS: runtime output -> replay disagreement -> review/convergence backlog. The canonical AcceptancePromotionGate remains the only production promotion authority; Skill replay reports AGREES / DISAGREES / NOT_EVALUABLE and cannot modify promotion decisions, candidates, the canonical render, or runtime status.
+### Phase 7 — Write Test Scenarios
 
 - Write the minimum number of scenarios needed to cover every acceptance criterion and material risk. Use 6-10 for narrow changes and 12-20 for broad APIs, multi-provider workflows, large enum matrices, recovery incidents, or cross-version features; coverage takes priority over an arbitrary cap.
 - Each P0/P1/P2 scenario must use the literal fields `Action:` and `Expected:` in one plain-English bullet. When an operational manifest references a scenario, add a stable `[TS-##]` token before the AC mapping, for example `- P0 [TS-01] [AC-01]: Action: ... Expected: ...`.
@@ -1027,18 +635,85 @@ SAME runtime result instead of a hand-authored manifest:
 - Do not approve automatically. Any authenticated tenant teammate may capture, but only the ticket's current live QE Assignee, authenticated as a named Human, may bind/review. The server verifies the personal Jira identity and the live `QE Assignee` field; roles, admin status, draft ownership, ordinary Assignee and names in prose grant no authority. That QE must inspect provenance, applicability, counterexamples and the current revision before deliberately calling `review_uac_feedback`. Supporting corrections from another case need their own prior QE approval. Missing identity/field or Jira unavailability leaves review unauthorized; report the unchanged record state and continue normal generation. Binding/review decisions are never queued or automatically retried.
 - Future generation may consume only approved, server-published shared learning returned by the authenticated canonical resolver. Default shared mode is `SHADOW`; it cannot change the plan. In `ENABLED`, discovery lessons remain investigation guidance and language lessons remain `RETRIEVED_NOT_APPLIED` authoring guidance until deliberately applied. If the VM is unavailable, retain the existing approved TRAIN baseline and record shared learning as `UNAVAILABLE`; never read pending feedback or a stale local shared snapshot.
 
+## Acceptance Scope And The Delivered UAC
+
+This section is the single source of truth for what becomes an Acceptance Criterion and how a UAC is
+shown. Where another rule in this file or in a reference seems to say otherwise, this section wins.
+
+**Discovery is wide; acceptance is narrow.** The discovery rules (dimension sweep, surface inventory,
+consumers and sibling entry points, both editors, reviewer requests, similar UACs, miss probes) decide what
+to INVESTIGATE. Every material finding is then placed exactly once in one of four places; nothing is
+dropped silently:
+
+1. **Acceptance Criterion** - the behaviour rests on the ticket, an attachment, an accepted UAC, a product
+   or PM decision, or the confirmed fix; or it is a QE regression check guarding the reporter's own
+   scenario. When QE can state a testable outcome for such a behaviour, it is an AC, not an Open Question
+   (`qe_completeness_coverage`, `reviewer_request_coverage`).
+2. **TBD on the AC it governs** - a product decision is still open. In the full record it is also an
+   `OQ-##` entry. Create a standalone AC for a TBD only when no AC governs it.
+3. **Suggested check (QE decide)** - found only by our own research: a documentation page, the code, a
+   similar or parent ticket's UAC, an investigator's other scenario, or parity nobody asked for. At most
+   five, below the criteria, never copied into the Jira field (`uac_completeness_check.py`).
+4. **Out of scope or not applicable** - with a concrete reason, in the full record.
+
+A surface found only in documentation or code gets at most a "still works as before" AC or a TBD
+(`uac_release_runner.surface_inventory_problems`). A criterion on a scenario the reporter did not hit is a
+suggested check.
+
+**Size.** Write the fewest ACs that cover the behaviour: at most ten (`ac_contract.validate_ac_count` in
+`uac_linter`). In the human UAC corpus the median ticket has 6 criteria of about 15 words each. Merge
+same-outcome cases into one AC and list the cases in a short clause; split only when the required behaviour
+or outcome differs. Consolidation only reorganizes: every checkable point survives as an AC clause, a TBD, a
+suggested check, or in the full-record markdown. Two ACs with content-word overlap of 0.6 or more are merged
+(`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
+distinct product contract; no recap AC.
+
+**Delivered format - chat and the Jira Acceptance Criteria field.** A flat list: no headings, no ticket
+title line, no content sub-points, no Open Questions section, and at most one short sentence of narration.
+
+```
+Note: The root cause and the fix are not confirmed yet. ...   (only when fix_basis is UNCONFIRMED)
+- Acceptance Criteria 01: Verify that <named item> <observable result>.
+  **Source:** <Jira key | repository, revision, file and lines | documentation page>
+  **TBD:** <open product decision>?
+Suggested checks (QE decide):
+- Suggested check 01: <check>
+  **Source:** <source>
+  **Why suggested:** <what it guards and why it is not an Acceptance Criterion>
+```
+
+- The label is spelled out as `Acceptance Criteria 01`, never `AC-01`, because Jira auto-links and strikes
+  through issue-key shapes. `AC-##` stays internal in the record, mappings and extracted JSON.
+- No `[Proposed]`/`[Confirmed]` tags, spheres, Given/When/Then, pipes, or Starting point/Action/Expected
+  scaffolding in the delivered UAC; they live in the record only. `Needs_Human_Review` conveys status.
+- The AC body is paste-safe plain text: no bold, italics, backticks, code spans, links or `~`; name
+  properties, keys and paths as bare tokens. File paths, revisions and line numbers go on the Source line,
+  never in the AC body. For Jira, build the field with `scripts/jira_safe_text.py` `jira_field_body`, which
+  strips the chat-only `**Source:**`/`**TBD:**` markup (enforced by `validate_test_plan.py` and the shared
+  AC projector).
+- A Source names an openable artifact, never "review of X". When a criterion rests on QE reasoning, say so
+  and state what evidence does not exist (`ac_presentation.validate_ac_source_specificity`). Never cite
+  documentation for behaviour it does not establish.
+- Language: at most two lines; very simple English; start with `Verify that`, never `Verify that the
+  system`. No AI words (ensure that, leverage, robust, seamlessly, gracefully, as expected, properly,
+  correctly handled, system shall, end-to-end flow). No vague words (appropriate, relevant, respective,
+  corresponding, as applicable, the configured folder, both dashboards): name the exact screen, property and
+  value. Use AEM Guides terms from `data/guides_vocabulary.json`, RAG-verified, and never a code identifier.
+  Name an action by what the user sees with the UI name in brackets, for example "removed from the live site
+  (Unpublish)". Enforced by `ac_readability`, `coverage_forcing._validate_underspecified_terms`,
+  `_validate_vague_surface_reference` and `_validate_guides_vocabulary`; follow
+  `references/plain-language-ac-writing.md`.
+- Once the user has stated a format, reuse it verbatim on every revision.
+- The full compatibility record keeps its own grammar (Section Rules): `AC-## [Confirmed|Proposed]` with a
+  sphere and `Evidence:`, optional short sub-points, and `OQ-##` Open Questions. The delivered UAC is a
+  projection of that record (`ac_presentation.project_ac_block_for_people`), never its input.
+
 ## Output Contract
 
 - Presentation vs record: retain the eleven-section hash-bound compatibility record and evidence appendix for auditability, but never present either as the canonical result. The default Claude/Codex response is the canonical runtime's `rendered_output`.
 - The canonical renderer may emit these non-empty sections, in order: `Issue understanding`, `Publishing / product scope`, `Acceptance contract` or `Proposed acceptance contract`, `Product decisions required`, `Semantic coverage`, `Structural / hierarchy coverage`, `Referenced content coverage`, `Configuration / state coverage`, `Transformation / processing coverage`, `Generated output validation`, `Reference / link integrity`, `Negative / boundary coverage`, `Failure / recovery coverage`, `Lifecycle coverage`, `Cross-mode regression`, `NFR coverage`, `Explicit out of scope`, `Investigated and rejected`, `Evidence gaps`, and `Coverage gate result`. Do not show empty sections or manually compress away a material disposition.
 - `render_compact_view.py` and its four-section output are legacy compatibility projections only. They may be generated for an explicitly requested historical record, but they cannot replace, rewrite, authorize, or be posted instead of the canonical runtime result.
-- Compact Acceptance Criteria show each validated product contract as one plain-English `Acceptance Criteria ##` line. Never abbreviate the delivered label to `AC-##`; the internal `AC-##` id stays in the record, mappings, and extracted JSON. Do not show `Given`, `When`, `Then`, pipes, status, or sphere in chat. Status, sphere, and all analysis remain in the full record and extracted JSON.
-- The delivered chat UAC is a FLAT list and nothing else: one AC per line, no section headings of any kind (no `Acceptance Criteria`, `Open Questions`, `Must not break`, no ticket title line), no indented content sub-points, and no surrounding narration beyond one short sentence. Do not re-introduce structure the reader did not ask for; a heading or a sub-point bullet is a format defect, not a nicety.
-- Immediately under each AC line, put its source on its OWN line as `  **Source:** <underlying source>` so a reviewer can see at a glance what authority the criterion rests on. The source label is the only emphasis allowed anywhere in the delivered UAC.
-- The source must NAME the artifact, never describe the act of looking at one. `current implementation review of the title fallback` and `QE analysis of the reference resolution paths` are defects: they read like evidence but cannot be opened, and they hide a criterion that was actually written from inference. Cite the Jira key, the repository and revision plus the exact file and line numbers, or the named documentation page - and when a criterion genuinely rests on QE reasoning, say so plainly and state what does not exist (`no performance target for this report exists in the product documentation or the implementation`). File paths, revisions, and line numbers belong on this Source line, never inside the AC body. Enforced by `ac_presentation.validate_ac_source_specificity`.
-- Never deliver a separate Open Questions section in chat. An undecided product decision rides on the AC it governs as a following `  **TBD:** <question>?` line ending in a question mark; create a standalone AC for it only when no existing AC governs it. This keeps the unknown attached to the contract it blocks instead of parked in a section reviewers skip.
-- The AC body itself stays paste-safe plain text - no bold, italics, backticks, code spans, or links inside the criterion - because it is pasted straight into Jira. `**Source:**` and `**TBD:**` are chat-only labels and must be stripped to plain `Source:` / `TBD:` before any Jira write, exactly like every other markdown token.
-- Consolidate the presented Acceptance Criteria to at most ten AC points (chat AND the posted Jira field). If synthesis produced more, merge related criteria into one AC and express the detail as sub-points, keeping any remaining granularity in the linked full-record markdown - never drop accepted meaning. Enforced by `ac_contract.validate_ac_count` via `uac_linter`.
+- The delivered Acceptance Criteria format (label, Source and TBD lines, suggested checks, plain text, the ten-AC cap) is defined once in "## Acceptance Scope And The Delivered UAC" above.
 - Project full-record `Regression Areas` into smart `P3 [Regression]` Action/Expected scenarios under compact `Test Scenarios`; never expose a separate compact Regression heading.
 - Performance analysis never adds another compact section. Its internal manifest decision is visible in compact output only through a justified `(Performance)` AC when required; a conditional QA-impact question remains in the hidden full record.
 - Keep `Understanding From Jira`, `Expected Behaviour`, `Scope From Git`, `Code Touched`, `Lines Changed`, `Automation Coverage & Gaps`, and `Appendix A` in the full `.md` artifact. `Test Scenarios` remains visible in compact output. Show the complete record or any named hidden section only when the user explicitly requests it.
@@ -1047,8 +722,6 @@ SAME runtime result instead of a hand-authored manifest:
 - Output Markdown bullets only.
 - Posting ACs into the Jira Acceptance Criteria FIELD (MANDATORY): the field is wiki-rendered, so a {noformat} block shows as a raw grey code panel. Build the field body with `scripts/jira_safe_text.py` `jira_field_body(text)` from the delivered UAC block: each criterion becomes a bold `Acceptance Criteria NN:` label with Source/TBD bullets and file names in {{monospace}} (so underscores and dashes in names cannot become italics or strikethrough). Read the field back with rendered fields after posting and confirm it shows bold labels and bullets. Use `jira_comment_body` only for free-form comments.
 - Posting ACs into a Jira COMMENT (MANDATORY): a Jira comment body is Jira WIKI markup AND Jira auto-links any issue-key-shaped token. The delivered `Acceptance Criteria ##` label is deliberately not issue-key-shaped, but the plan's other labels (OQ-03, TS-05, ...) still match `[A-Z]+-\d+`, so Jira links them to a non-existent issue and renders them with a STRIKETHROUGH (removing bold/dashes does NOT fix it). Build the comment body with `scripts/jira_safe_text.py` `jira_comment_body(text)`, which strips Markdown and wraps the body in a `{noformat}` block so Jira interprets no markup and auto-links nothing; the AC ids then render literally. To correct a comment already posted with markup, edit it in place via `JiraClient.update_comment(issue_key, comment_id, body)`, do not pile on a duplicate. `jira_safe_text.validate_jira_safe` flags a body that still carries wiki markup or an unwrapped issue-key-shaped label.
-- Paste-safe plain text for Acceptance Criteria and every chat-listed AC/UAC (MANDATORY): ACs are pasted straight into Jira/Confluence, so the AC text itself must contain NO inline markdown that a renderer turns into a link or strikethrough. Specifically, inside an AC line do not use backticks/code spans, bold/italic markers, or a Markdown link; do not wrap a token in `~` (a stray `~` or a slash between formatting spans renders as strikethrough). Name properties, config keys, enums, and API paths in plain words with a bare token (e.g. baseVersion, guides-navigation, HTTP 409, referencelistener postdita) and no surrounding markup; a bare Jira key or URL in the Evidence field is fine, but never a clickable `[text](url)` link inside an AC. The canonical record uses `(<Sphere>) <plain-English criterion>. Evidence: ...` with no Given/When/Then labels or pipes anywhere. Chat and Jira show the plain one-line `Acceptance Criteria ##` projection with optional sub-points; the internal `AC-##` id and `[Proposed]` / `[Confirmed]` stay in the validated record only. Enforced by `validate_test_plan.py` and the shared AC projector.
-- Generalize the acceptance criteria (MANDATORY - anti over-decomposition): write the FEWEST ACs that cover the behaviour. Do NOT emit a separate AC per micro-variation - blank vs missing an attribute, one AC per surface, one per edit/lifecycle transition, one per structural form (direct href vs nested mapref) - fold equivalent variations into ONE behavioural AC and put concrete cases as examples INSIDE that AC, not as new ACs. Keep each AC to one to three plain sentences with no embedded markup or code (no <keydef ...> tags, no code fences - describe the condition in words). When you are unsure whether an adjacent surface is in scope or whether two structural forms share the resolver, make it ONE Open Question, not multiple asserted ACs. The presented UAC must not exceed ten AC points; more than ten is over-decomposed - merge related criteria and use sub-points, and relint/re-phrase a large synthesized set down to the cap the way a senior human QA would, without losing accepted meaning. Enforced by coverage_forcing (AC-count, no-markup-in-AC, restated-instance) and the hard `ac_contract.validate_ac_count` cap in `uac_linter`.
 - Do not use tables.
 - Do not output JSON unless explicitly requested.
 - Do not include raw RAG chunks, chunk scores, backend traces, evidence matrices, or long citations.
@@ -1072,9 +745,9 @@ SAME runtime result instead of a hand-authored manifest:
 
 - **Understanding From Jira**: Give the user a concise confidence check before the plan. Use exactly five bullets beginning `Issue understood:`, `Why it matters: Customer context resolved from Jira:`, `Requested outcome:`, `Lifecycle understood as:`, and `Evidence boundary:`. Restate the Jira or supplied issue in plain English without copying raw fields, inventing implementation, or writing test cases. Begin `Evidence boundary:` with the validated `Evidence mode: full` or `Evidence mode: degraded`; identify whether facts came from live Jira, indexed Jira, or supplied incident text, and expose every unavailable source, resulting claim restriction, contradiction, or missing Jira access. Keep this section to the issue's user-visible problem, impact, requested end state, lifecycle interpretation, and evidence limit.
 - **Acceptance Criteria**: In the record, write every criterion in the exact grammar `- AC-## [Confirmed|Proposed]: (Basic|Negative|Integration|Performance) <plain-English acceptance criterion>. Evidence: <underlying source>.` with no Given/When/Then labels or pipes. Break a long criterion into short indented sub-points rather than stacking clauses on one line. Use contiguous unique IDs beginning at `AC-01`, and cap the presented set at ten AC points - merge related criteria and use sub-points if synthesis produced more, keeping remaining granularity in the linked full-record markdown without losing accepted meaning. `Confirmed` is only for accepted-UAC behavior and must match `uac_fidelity`; otherwise every criterion remains `Proposed`. Every AC cites an underlying source; a graph path ID alone is invalid. Follow `references/plain-language-ac-writing.md`: keep one main contract, prefer common words, group same-outcome cases as named sub-points, and split only different required behavior or outcomes. Make each criterion independently pass/fail and decided: no pending/conditional markers, qualitative bounds, non-finite negatives, alternative implementation menus, or ambiguous terminal outcome unions. Keep sign-off-critical unknowns in stable `OQ-##` records.
-- Every AC must add one distinct product contract, not another phrasing of the same result. Do not add a final recap AC. Preserve any unique, source-backed cases from a merged AC in visible sub-points and mapped Test Scenarios; keep an internal old-to-new coverage mapping. Put implementation-only behavior in Expected Behaviour or an Open Question until product scope approves it.
+- Every AC must add one distinct product contract, not another phrasing of the same result. Do not add a final recap AC. Preserve any unique, source-backed cases from a merged AC in record sub-points and mapped Test Scenarios; keep an internal old-to-new coverage mapping. Put implementation-only behavior in Expected Behaviour or an Open Question until product scope approves it.
 - A readability or implementation-scope REVIEW keeps the gate exit backward-compatible but makes its receipt non-postable. Resolve the wording or authority decision before any Jira write.
-- **Acceptance Criteria - performance**: Add `(Performance)` only when the internal assessment is `required`. Its `Given` must state a numeric workload such as topic, user, job, reference, or iteration count, and its `Then` must state either a numeric latency, throughput, error, timeout, resource, queue, growth, or cardinality threshold with units, or a source-backed comparative target such as `at least 2x p95 improvement versus the recorded before-fix baseline`. The manifest's `performance_ac_ids` must exactly match the visible Performance AC IDs, and every Performance AC must map to an explicit performance/load/stress/soak/scalability/concurrency/benchmark scenario. Never emit a Performance AC for `conditional` or `not_required`.
+- **Acceptance Criteria - performance**: Add `(Performance)` only when the internal assessment is `required`. It must state a numeric workload such as topic, user, job, reference, or iteration count, and either a numeric latency, throughput, error, timeout, resource, queue, growth, or cardinality threshold with units, or a source-backed comparative target such as `at least 2x p95 improvement versus the recorded before-fix baseline`. The manifest's `performance_ac_ids` must exactly match the visible Performance AC IDs, and every Performance AC must map to an explicit performance/load/stress/soak/scalability/concurrency/benchmark scenario. Never emit a Performance AC for `conditional` or `not_required`.
 - **Expected Behaviour**: State intended behaviour from Jira plus accepted `ask_dita_expert` and Figma design-flow evidence. Separate observation, supported inference, and confirmed root cause. Do not use exclusive wording such as `purely`, `only cause`, or `proves the root cause` unless the evidence rules out credible alternatives for the relevant time window. If unsupported, write `Unknown from current evidence`.
 - **Scope From Git**: Start with lifecycle stage and readiness target. List issue/development-link source, relevant clone discovery and sync state, GitHub MCP/PR status only when stage-relevant, current or changed product area, diff-inspection state, and Figma evidence state when applicable. For every cited clone include absolute repository path, branch, pre-sync SHA, inspected post-sync SHA/ref, upstream/ahead/behind state, pre/post dirty state, fetch/pull result, whether claims use the synchronized worktree or a verified remote ref, and any retained developer-work stash OID/ref with its restore command.
 - **Code Touched**: In pre-development, write `No code changes yet — development has not started`, then list exact current files/functions/classes/workflows under `Current implementation implicated` and evidence-backed likely change points under `Potential code impact`; label inference and never present it as changed code. Use complete absolute file paths and exact symbols; never abbreviate a path with `...`. In implementation/post-fix stages, list actual changed files/symbols from the inspected diff, plus adjacent callers, shared services, configs, persistence paths, UI states, and automation code that can be impacted, with a short QA implication for each.
@@ -1085,136 +758,98 @@ SAME runtime result instead of a hand-authored manifest:
 - **Automation Coverage & Gaps**: Begin with exactly one `- Main feature coverage: Covered|Partially covered|Not covered|Unverified - <reason>.` bullet. For every AC or grouped matrix, state a verdict. `Partially covered` requires an existing test to exercise and assert a named clause of that same AC; adjacent happy-path coverage is reusable infrastructure only. For existing coverage, include exact repository, full path, exact test/scenario symbol, helper/fixture, layer, and revision. For gaps, include exact candidate location, reusable infrastructure, deterministic setup/injection, polling oracle, timeout source, output-integrity assertions, cleanup/rollback, suite/tags, and whether to extend or add. Search every relevant automation repository and exact implementation symbol before declaring `Not covered`.
 - **Open Questions**: Prefix every real question `- OQ-##:` with unique, contiguous IDs starting at `OQ-01`, and include literal `QA impact:` describing what each plausible answer changes for scenarios, expected results, environment, or sign-off. Use the same ordered IDs in the manifest. Cover only relevant permission/config/DITA/output/upgrade/operational decisions. If there are no meaningful unknowns, write exactly `- No open questions from current evidence` as the only bullet and use an empty manifest list.
 
-## Non-Negotiable Rules (presentation, scope, coverage)
+## Non-Negotiable Rules
 
-These are permanent, human-set, and each is enforced by a named gate so it cannot recur. Apply them from the start of authoring, not only at gate time.
+Each rule is permanent and human-set. The full wording, examples and manifest fields for every rule are in
+`references/qe-authoring-rules.md`: read the matching entry there whenever a rule fires. Where a rule
+decides what to investigate, "## Acceptance Scope And The Delivered UAC" decides where the result goes.
 
-- **GATE-WHILE-AUTHORING IS MANDATORY (run gates in the SAME flow, the first time, self-correct, present only when clean):** authoring a UAC is NOT complete until the gate suite exits clean. The flow is one loop: draft -> run `coverage_forcing.validate` (plus `uac_linter` and, for the full plan, `validate_test_plan.py` / `run_gates.py`) -> for EVERY failure, revise the draft to disposition the missing dimension (as an AC or Open Question) -> re-run -> repeat until zero failures -> only then present or post. NEVER present or post a UAC that has not been run through the gates. Do not hand-author in chat and skip the gate, and do not gate as an afterthought - the gates run during first authoring, every time. The automated form of this loop is `scripts/uac_eval/measure_gate_effect.py` (generate -> gate -> auto-correct -> re-gate); use it as the reference for the flow. Presenting an ungated draft is itself a defect.
-- **AC presentation is a fixed contract - never drift from it:** every AC a human reads (chat compact view AND the posted Jira Acceptance Criteria field) is ONE plain-language line, no Starting point/Action/Expected scaffolding, no Given/When/Then labels or pipes. The visible label is spelled out in full - `Acceptance Criteria 01`, `Acceptance Criteria 02`, ... - and never abbreviated to `AC-01`, which Jira auto-links and strikes through as an issue key; the abbreviated id survives only as internal traceability. The delivered chat block per criterion is exactly: the `- Acceptance Criteria ##: ...` line, then `  **Source:** ...` on its own line, then `  **TBD:** ...?` on its own line when a product decision is still open. No section headings, no ticket title line, no content sub-points, no Open Questions section. Once the user has stated the format, re-deriving a "nicer" layout is a defect: reuse the established shape verbatim on every subsequent revision of the same UAC, and when the shape is genuinely ambiguous ask once rather than guessing. Enforced by `ac_presentation.project_ac_block_for_people` (block shape, via `ac_presentation.human_ac_label`) and `ac_readability`.
-- **A Source must be openable, and the AC must name the exact thing:** never write a source that describes inspecting evidence (`current implementation review of X`, `code review of Y`) instead of naming it - cite the Jira key, the repository and revision with the exact file and line numbers, or the documentation page; if the criterion rests on QE reasoning, say so and state what evidence does not exist. In the same spirit the AC body names the exact property, column, or option it depends on (`dc:title`, not `the next available title value`) as a bare plain-text token, because a vague noun phrase cannot be tested and usually means the underlying chain was never read. When two chains exist for what looks like one value - a displayed value and a sort key, a stored value and an exported value, a list and the total count shown beside it, or two implementations of one service interface (database-backed and repository-backed) - read BOTH before asserting either, and if they disagree that disagreement is itself the finding, not a detail to smooth over. A count computed by a different query than the list it counts, and a second implementation that omits a filter the first applies, are defects the ticket will never mention. Enforced by `ac_presentation.validate_ac_source_specificity` and `coverage_forcing._validate_underspecified_terms`.
-- **AC consolidation (max 10) is loss-less:** the presented UAC must not exceed ten AC points, but consolidation only REORGANIZES coverage - it never removes a checkable point. Before merging, list every distinct checkable point; after merging, each one must survive as a clause of a merged AC line or as an entry in the linked full-record markdown. Nothing is dropped. Because the delivered chat view carries no sub-points, a merged criterion keeps its cases as a compact clause list inside its single line. Relint/re-phrase a large synthesized set (e.g. twenty) down to at most ten the way a senior human QA does - merge criteria that share a behaviour. Never delete a point to hit the cap and never split one idea into thin ACs to pad the list. If ten merged ACs still cannot hold every point, keep the full granular set in the linked markdown and make the comment link it. Enforced by the hard `ac_contract.validate_ac_count` cap in `uac_linter` and the coverage_forcing over-decomposition check.
-- **Acceptance contract cannot disappear:** when `behaviour_matters` is not explicitly `false`, the plan must contain an `Acceptance contract`, `Proposed acceptance contract`, or `Acceptance criteria` section with at least one AC. Only an explicit non-behavioral opt-out skips this check. Enforced by `coverage_forcing._validate_acceptance_contract_present`.
-- **Near-duplicate ACs must be merged:** compare only the acceptance-contract section, never the whole document. Two ACs with content-word Jaccard overlap at or above `0.6` fail until they are combined into one distinct product outcome. Enforced by `coverage_forcing._validate_ac_redundancy`; the threshold must remain aligned with `scripts/uac_eval/precision.py`.
-- **History attempts cannot be silent:** whenever the manifest declares `evidence_lifecycle`, Jira-history, or Known Jira Bugs intent, `history_attempts` must record each source, exact query, result, and result count. Empty or unavailable evidence is valid when explicitly recorded; omission fails closed. Enforced by `coverage_forcing._validate_history_attempt_recorded`.
-- **No status tag in human-facing ACs:** never show `[Proposed]`/`[Confirmed]` in chat or in the Jira field; the tag is internal-record only and the `Needs_Human_Review` label conveys not-yet-accepted status. `post_acs_to_jira.py` posts with `include_status=False`; verify the field has no tag after posting.
-- **Simple first-read language:** no code/jargon/Class.method/file paths inside AC text; move them to the Evidence field or a developer note. Enforced by `ac_readability` (REVIEW blocks a postable receipt until simplified).
-- **AC language contract - two lines, QE English, Guides vocabulary (human-set, permanent):** the person reading an AC is a QE engineer running the test, often a non-native English speaker, so the sentence must land on the first read. Every AC obeys all five rules:
-  1. **At most two lines.** One criterion, one behaviour, at most two lines of text when rendered in chat and in the Jira Acceptance Criteria field. If it needs a third line it is two criteria - split it, or move the extra detail to the linked full-record markdown. A criterion that grows past two lines is a defect, not a thorough AC.
-  2. **Very simple English.** Short clauses, active voice, everyday words. Write "the run is not shown as Failed", not "the run shall not be represented in a failed state". Prefer the shortest word that is still exact (use, not utilise; show, not surface; keep, not persist).
-  3. **No AI or machine language.** Banned outright: "ensure that", "leverage", "robust", "seamlessly", "gracefully", "as expected", "properly", "correctly handled", "system shall", "end-to-end flow", "verify that the system". These say nothing testable. Say the observable outcome instead.
-  4. **No vague words.** Name the exact screen, the exact property, and the exact value. Banned: "appropriate", "relevant", "respective", "corresponding", "as applicable", "the configured folder", "both dashboards", "some cases". Already enforced by `coverage_forcing._validate_underspecified_terms` and `_validate_vague_surface_reference`; this rule makes it an authoring rule, not only a gate.
-  5. **Every product term from AEM Guides vocabulary.** Use the documented product name for every screen, object, action, and property - Web Editor, Map Dashboard Outputs tab, output history, Native PDF output preset, Baseline Panel, `dc:title`. Never invent a term from support-ticket wording. Curated in `data/guides_vocabulary.json`; RAG-verify a term the file does not have, and add it once verified.
+**Process**
 
-  Write each human-facing AC the way a senior QE writes a test title: start with `Verify that`, name the condition or artifact, then state the observable result. `Verify that the system...` remains banned because it hides the thing QE must test. This is a standing rule for every future UAC, not a one-time correction - losing this format on a later revision is itself a defect.
-- **Source line is on its own line and bold:** each AC's provenance is delivered as `  **Source:** ...` on a NEW line directly under the `- Acceptance Criteria ##:` line, never appended to the criterion sentence and never inline. An unresolved product decision follows the same shape as `  **TBD:** ...?` on its own new line. The bold label is what makes a reviewer notice the provenance at a glance; plain `Source:` text buried at the end of the criterion is a defect. Never write a documentation source (for example Experience League) for behaviour that documentation does not establish - the source must be the evidence that actually supports that AC. Enforced by `ac_presentation.project_ac_block_for_people`.
-- **No separate Open Questions section in the delivered UAC:** an unresolved product decision is delivered as an AC carrying its own `  **TBD:** <question>?` line, not parked in a trailing Open Questions block. The question keeps its question mark so a reviewer sees it is undecided. This keeps every checkable behaviour inside the acceptance contract, consistent with the QE-owned-UAC rule below.
-- **Publishing tickets:** the ACs must cover DITA-OT processing ON and OFF and preset IN-scope / OUT-of-scope. Enforced by `publishing_scope_coverage`.
-- **Security-sensitive XML/DITA paths:** hostile or malformed input, reference-scope traversal, and permission enforcement must be covered or consciously deferred whenever their strong signals activate. Record `INPUT_SAFETY`, `REFERENCE_TRAVERSAL`, and `AUTHZ` in `security_coverage`; an activated dimension cannot be silently omitted, and a genuinely not-applicable dimension needs a concrete reason explaining why the signalled change does not exercise that boundary. Enforced by `security_coverage`.
-- **Localization regression coverage:** content, metadata, reusable-reference, and publishing changes must disposition their effect on existing translation-project status; structural/XLIFF changes must disposition XLIFF export/import integrity; translation-project creation/scope changes must cover the complete documented project-type set. Record every dimension in `localization_coverage`; silence or a placeholder N/A fails. Enforced by `localization_regression_coverage`.
-- **Upgrade and migration coverage:** version, stored-data/schema, identifier, deployment, compatibility, and persisted-format migration signals must disposition the old stored state, the migration operation and its completion/repeat/failure contract, the migrated result plus evidence-supported mixed state, and rollback support or irreversibility. Record every dimension in `upgrade_migration_coverage`; temporal applicability alone cannot satisfy this test-path contract. Silence or a placeholder N/A fails. Enforced by `upgrade_migration_coverage`.
-- **Value/metadata/property tickets:** the ACs must cover the value's provenance channels beyond the authoring UI - repository node via CRX/DE (`jcr:content/metadata`), source map/topic file, API/import, migration. Enforced by `value_provenance_coverage`.
-- **Every AC carries its own regression - there is no separate regression list to fall back on:** an acceptance criterion states the new behaviour AND what must still hold around it, in the same criterion. Never write the new behaviour as one thin AC and park "check nothing else broke" in a Regression section, an Open Question, or a later phase - the delivered UAC is the whole contract, so a criterion that adds a value also asserts that the existing values, rows, counts and classifications beside it are unchanged. For a read-only or reporting feature this specifically means the lifecycle operations that mutate the data it displays - rename, move within the repository, move as an asset, delete, and add/remove from the parent container - are in-scope acceptance criteria, not out-of-scope background, because the feature reads state those operations maintain, often asynchronously. Trace the feature to the code that WRITES what it reads, not only the code that reads it. Already covered by the `LIFECYCLE_MUTATION` and `CONSUMER_PARITY` dependency dimensions in `behavioral_coverage_expansion`; this rule makes the authoring consequence explicit so the coverage lands inside the AC text instead of a manifest block.
-- **Shared implementation path:** when code shows a path shared across consumers (a base class/method extended or used by several output types, engines, callers, or surfaces), the other consumers are SHARED-PATH REGRESSION (re-test their output unchanged), never silently out of scope. Enforced by `shared_path_regression_coverage`.
-- **Ask before authoring:** Enumerate the full dimension space and resolve or ask every material dimension BEFORE authoring ACs (`clarification_gate`). A blocking question must be answered by evidence or by the user before the AC it governs is authored; unknowns are never silently assumed. See `references/clarification-gate.md` and "## Ask-First Clarification Workflow".
-- **No manifest omission bypass:** Populate signal-activated reasoning blocks using the v3 authoring workflow, not blanket `block_waivers`. For behavioral plans, an ordinary waiver of `behavior_model`, `coverage_hypotheses`, or `verifications` hard-fails. A recorded reviewed escape is still REVIEW/non-postable. Legacy structural waivers remain migration records, never evidence that reasoning ran. See `references/manifest-completeness.md`.
-- **Reviewer-requested checks and shared-consumer surfaces remain explicit acceptance coverage:** when a human reviewer requests a check, or evidence places a shared-path consumer in scope, cover it in an AC and a mapped scenario. Named surfaces with an identical contract may share one AC with explicit sub-points; a different outcome needs a distinct contract. Never hide an in-scope check only in Regression or an Open Question to shorten the list. Unresolved applicability remains an Open Question rather than an invented parity requirement. Enforced by `reviewer_request_coverage`.
-- **Root cause and fix must DRIVE the plan (not just be cited):** when a Jira comment, linked PR, commit, or diff supplies a root cause and/or a described fix, it is not enough to mention it. The plan MUST (0) build the requirement oracle FIRST from ticket + EVERY attachment (open images, not filenames) + the UI clone for any user-configurable surface, and validate the fix AGAINST it - the diff is never the spec; record a `scope_delta` for any requirement the fix does not fully cover (mapped to an AC or Open Question), and treat any unconfirmed implementation choice (precedence/tie-break, ordering, defaults, dedup winner) as an Open Question, not an AC that asserts the code is correct; (1) classify the lifecycle as Implementation Review or Post-Fix Validation, not Pre-Development; (2) ground the affected ACs in the requirement oracle and confirm the fix's stated contract against it, naming which AC guards each invariant the fix must preserve; (3) enumerate fix-INTRODUCED risks - what the change itself could newly break - as negative ACs or P0 negative scenarios, not buried Open Questions; (4) produce an Automation Coverage verdict off any test the fix added (a fix that adds a regression test is at least Partially covered at that layer) and name the remaining E2E/preset/engine/shared-path gaps; (5) scope QA sign-off to exactly what the developer's stated verification did NOT exercise. Enforced by `root_cause_fix_driven` and specified in "## Root-Cause / Fix-Driven Authoring".
-- **QE-owned UAC is complete - every checkable behavior is an AC:** the UAC is a QE responsibility and QE-centric, so coverage is never parked in Open Questions or Regression to avoid committing. If QE can state a testable expected outcome, it is an Acceptance Criterion. Open Questions are reserved ONLY for a genuine product/scope decision QE cannot assert an outcome for; even then, prefer writing the AC with the QE-expected contract and flagging that dev may down-scope it in review, over dropping the coverage. Promote to ACs: reviewer-requested checks, shared-consumer surfaces (preview, single-topic download), intermediate/temp representations, metadata-context sources (prolog/keywords, map topicmeta), and engine/variant matrices. A UAC that ends with checkable behaviour left only in Open Questions or Regression is incomplete. Enforced by `qe_completeness_coverage`.
-- **Working-As-Designed assessment BEFORE fix-ACs (incident/support/escalation tickets):** completeness is not correctness - a UAC can cover every dimension and still be wrong-framed. For any support incident, customer escalation, or "X does not work" complaint, run a WAD assessment BEFORE authoring any fix-shaped AC: (1) is the reported behaviour the INTENDED effect of an explicit configuration or design (e.g. an ignore/exclude list deliberately turning a feature off on a path; a platform default such as no auto-versioning on overwrite; a global clientlib/UX behaviour)? (2) separate CONFIRMED-EXPECTED behaviour (assert it, do not "fix" it) from the GENUINELY DEFECT-SHAPED claim, and mark the defect claim UNVERIFIED until a targeted repro proves it (do not treat an unproven customer inference as a confirmed defect); (3) make the intended-behaviour question a BLOCKING product-decision Open Question, and recommend triage-as-WAD or enhancement when the reported behaviour is by-design. Do not convert a working-as-designed complaint into fix ACs. See "## Working-As-Designed Assessment".
-- **Reproducibility assessment before fix-ACs:** before authoring fix-validation ACs, establish whether the issue actually REPRODUCES. Check the ticket for "unable to reproduce", "cannot reproduce", intermittent/flaky wording, a `needs-clarification` / `crosshair` label, a working-hypothesis-only root cause, or QE-couldn't-repro comments. When reproduction is unconfirmed, the PRIMARY deliverable is a REPRODUCTION STRATEGY (the exact conditions to reliably trigger it - concurrency, timing, collision setup, batch size, environment, data shape), not fix-validation ACs; any fix ACs stay Proposed and explicitly gated on "once reproduced". For a suspected race/concurrency/intermittent defect, the reproduction difficulty itself (e.g. forcing two concurrent UUID collisions on a shared session) is the central test-design problem and must be the plan's focus. Never write ACs that assume a defect is real and reproducible when the evidence says it is not. See "## Working-As-Designed Assessment".
-- **Offline history is mandatory when the live tool is down:** never record "history tool not run" as a cop-out. If `search_jira_history` MCP is unavailable but the local `jira_qa` Chroma corpus is reachable, run the offline query (`embed_query` + `query_collection` over `CHROMA_COLLECTION_JIRA_QA`, the UACDISCOVER-04 path) and record the same-mechanism candidates (validate mutable status live before asserting it). "Not run" is honest only when neither the tool nor the local corpus is available.
-- **Read the LATEST comments and reflect current status before drafting (works-now recency):** the reproducibility rule above catches the CANNOT-reproduce case; this catches the opposite miss - drafting fix-ACs over behaviour a recent comment says already works or is partly resolved. ALWAYS read the newest comments, not just the description. When a comment reports the reported operation now works (e.g. "validation works fine on stage and prod now") or the issue is partially resolved, the plan must reflect that current status in Understanding AND scope itself to what still reproduces; do not assert a fix-AC for behaviour a comment says already works, and raise the changed scope as an Open Question. Enforced by `coverage_forcing._validate_current_status_recency` (works-now signal + acceptance criteria but no status reflection/Open Question fails closed).
-- **Server-error surfaces need a UI-behaviour decision (error-surface Open Question):** whenever evidence shows a user-facing server error (503 / 5xx / "service unavailable" / "File is not valid" / a panel that never loads), the plan must disposition what the UI should DO on that error - the exact message shown to the user, whether the action is blocked, allowed, or retried, and the panel/error state - as an Acceptance Criterion (once decided) or an Open Question (while undecided). Do not leave the on-error UX unaddressed. Enforced by `coverage_forcing._validate_error_surface_open_question`.
-- **Wrong/false-status fixes need an anti-over-correction AC:** when the ticket is that a run's shown status is wrong (a successful or in-progress run shown as Failed, a false/red/stale failure, "failed but the files were produced"), the plan must ALSO assert that genuine failures still show Failed, cancelled runs stay Cancelled, and successful-with-warnings keep their warning - so the fix does not over-correct and start masking real failures. This is the fix-introduced-risk guard for status defects. Enforced by `coverage_forcing._validate_status_anti_overcorrection`.
-- **Concurrency/overlap defects need an isolation AC:** when the defect involves overlapping or concurrent runs (a second request while a previous job is still running, same map and preset, parallel jobs), the plan must disposition isolation - a rejected or aborted overlapping request keeps its own correct status (it is not shown as the other run's success), and unrelated maps, presets, or jobs keep their own status, links, and logs. Enumerate the in-progress/queued/success/failed/cancelled states and the per-request outcomes; do not collapse them. Enforced by `coverage_forcing._validate_concurrency_isolation`.
-- **Name the exact screen, never a vague collective surface:** an AC must name each exact screen (for example the Map Dashboard Outputs tab, the Bulk Publish dashboard) - never a vague plural like "both dashboards", "the dashboards", "both panels". When the ticket names specific surfaces, name each one in the AC. Enforced by `coverage_forcing._validate_vague_surface_reference` (in addition to the existing plain-language "exact screen name" guidance).
-- **Restrict an AC to the ticket's specific construct - never broaden it to the general category:** when the ticket scopes a specific reference or construct type (for example relationship-table / reltable topics), the AC must assert exactly that type, not its general parent category. Writing "excludes indirect references" when the ticket means reltable silently widens the fix contract, because indirect references also cover Scope=peer, conref/keyref reuse, and other kinds. Keep the AC to the named construct and park the broader category as an Open Question (for example "are Scope=peer and other indirect references in scope, or a separate ticket?"), especially when a comment explicitly proposes a separate ticket. This is reviewer-applied: a wrong-but-plausible broadening reads as valid English, so no gate can catch it - name the exact construct the ticket named.
-- **Every surface the Jira names must be dispositioned (named-surface parity):** if the ticket names a product surface (a Panel or Dashboard - Baseline Panel, Translation Panel, Reports Panel, Conditions panel, Subject Scheme Panel, the Map dashboard, etc.), that exact surface must appear in an Acceptance Criterion or an Open Question. Never paraphrase a stated surface into a vague phrase ("baseline-based topic list" instead of Baseline Panel) or silently drop it - the ticket's current-state matrix usually names several surfaces and the reported problem is often the inconsistency ACROSS them, so each one is in scope. The Baseline, Translation, Map, Conditions, Reports, and Subject Scheme surfaces are Panels, not dashboards; use the exact product term. Enforced by `coverage_forcing._validate_named_surface_parity` (subject-matched, so the ticket saying "dashboard" while the AC correctly says "Panel" is not a false miss).
-- **RAG must DRIVE the AC terminology and behaviour, not just be a coverage side-lookup (non-negotiable):** before authoring, identify the ticket's core product concept(s) (e.g. "language variables", "output history", "conditions") and RUN a RAG probe for each via `ask_dita_expert` / `lookup_aem_guides`; then bind the ACs to what RAG returns - use the EXACT product terms and the documented behaviour (especially fallback and edge-case behaviour) from the retrieved doc. NEVER invent a term or a behaviour for a concept that RAG documents (e.g. do not write "regional value / 2-character locale / falls back to the generic language" when the doc says values are defined per language and fall back to the UI language). The static `guides_vocabulary` gate only catches already-known wrong terms; it cannot catch a novel concept, so the RAG-grounding step is what protects new concepts - and every correct term/behaviour learned this way should be added to `data/guides_vocabulary.json` so the gate keeps learning. If RAG does not have the concept, say so and mark the term/behaviour unverified - do not invent. Retrieval working is not enough: the loop is only closed when the AC wording and behaviour COME FROM the retrieved evidence.
-- **Read the COMPLETE Jira before authoring is non-negotiable:** read the ENTIRE description (every stated data point - every current-state row, per-surface count/list, expectation, and business reason - not just the summary), EVERY comment top to bottom (reviewer/PM directives, proposed solutions, related-ticket references), and EVERY attachment (open and analyze all images, logs, and documents - never from the filename; download them and read them). Every explicit data point the ticket states is test-oracle evidence: if the description gives a per-surface matrix (e.g. Baseline=a; Translation=a,b,c; Translation+baseline=a; Metadata=a,b,c), that matrix is the verification baseline and the target the fix must satisfy. Do NOT dismiss any stated surface, row, or scenario as "unchanged / out of scope" without dispositioning it as an Acceptance Criterion or an Open Question - the reported problem often IS the cross-surface inconsistency itself. Anchor the requirement on the ticket's own stated Expectation (e.g. "like the Map dashboard"), not on the surface you happened to find in code first. Then run the dimension-enumeration rule below.
-- **Dimension enumeration BEFORE authoring is non-negotiable (surfaces x sources x terms x directives):** never write ACs first and enumerate reactively as reviewers catch misses. For ANY feature/UI ticket, before writing a single AC, build and (when a reviewer is present) confirm the complete dimension grid, grounded in code + RAG, not memory: (1) EVERY UI surface the behaviour applies to - enumerate ALL editors (Web Editor AND the new Editor) and every panel/view; a UI behaviour is presumed to apply to BOTH editors (parity) unless evidence bounds it. (2) EVERY data source that feeds the affected surface - read the code that populates it and list ALL inputs it can pull from (for the Conditions panel: global profile, folder profile including custom/user-defined, and Subject Scheme maps via the workspace preference), never a remembered subset. (3) The exact product term for every surface/object, RAG- or code-verified (e.g. "Web Editor" not "authoring"; "output history" not "workflow") - see the vocabulary rule below. (4) Reviewer/PM directives as SOURCE OF TRUTH: a PM/reviewer comment (e.g. "sort within each language group too") is a confirmed requirement to encode as an AC, not to demote to a blocking Open Question. Only genuinely undecided mechanism details become Open Questions. Reading a file is not enough - extract the COMPLETE set from what you read. Write-then-patch across reviewer rounds is itself a defect.
-- **Use correct AEM Guides product vocabulary; never invent a product concept from support/ticket wording:** write each AC straightforwardly with the concrete thing named, and do not turn a support-ticket phrase into a product mechanism it does not have. Known corrections (curated in `data/guides_vocabulary.json`, enforced by `coverage_forcing._validate_guides_vocabulary`): there is NO "stale preset" concept - it is an existing preset and recreating it (delete + create again) was a support workaround, so never assert stale-preset detection/advice (put "should the product detect a broken/misconfigured preset?" in an Open Question); there is NO run "workflow" object - use "output history" (a run's output history), not "workflow" or "output-history record/details"; do not write a vague "generated file" - name the concrete location (the generated output lands in the fmdita-outputs folder set for that preset); and do not dress a straightforward requested outcome in vague language (write "reading a run's output history must not fail with an error, and such a run must not be shown as Failed", not "the read error"). A Jira "Requested Outcome" that PROPOSES a behaviour (message text, a new state, a new detection) is a candidate, not confirmed - it goes to an Open Question; the AC asserts only the confirmed defect. This grounding rule covers OPERATION VERBS as well as object names, in NEGATIVE/boundary ACs too: every action verb in an AC must be a real Guides operation - do not carry in generic-QA clichés ("moved to the wrong group" is invalid because conditions are grouped automatically by attribute and there is no move operation; "conditional preview" is invalid because the surface is called Editor Preview). Additional known-correct terms are in `data/guides_vocabulary.json` (`canonical_terms` and `synonyms`, e.g. V2 Baseline == New Baseline). Vague placeholder qualifiers ("the configured output folder", "appropriate/relevant/corresponding/respective <noun>", "as applicable") are enforced by `coverage_forcing._validate_underspecified_terms`; the product-vocabulary judgement is reviewer-applied (gates cannot catch a wrong-but-plausible term). See `references/plain-language-ac-writing.md`.
-- **Table paste/import/convert tickets must enumerate the variant space (non-negotiable):** for any ticket about pasting, importing, or converting a table, the predictable variant axes MUST each be dispositioned as an Acceptance Criterion, an Open Question, or an explicit scope bound - never authored from the single reported case. The axes are: source apps (Word, Excel, Google Doc, HTML), nested tables, merged/spanned cells, multiple/repeat header rows, simple table vs normal table, topic types (concept/reference/task), and editor scope (new/old). A missing axis fails closed. Enforced by `coverage_forcing._validate_transformation_variant_coverage`.
-- **Link / URL / cross-reference tickets must enumerate protocol schemes:** for any weblink, hyperlink, URL, href, or cross-reference ticket, the plan must disposition the URL protocol-scheme variants (http, https, ftp, ftps, mailto, tel, and similar) as an Acceptance Criterion or Open Question - observable behaviour can differ by scheme, so naming only one path shape is incomplete. Enforced by `coverage_forcing._validate_link_scheme_coverage`.
-- **Defect tickets must carry a negative/boundary criterion (corpus-learned, 52%):** mining 313 human UACs showed a negative/error/boundary criterion is the single most common dimension (51.8%). For a defect / wrong-behaviour ticket, the plan must include at least one negative Acceptance Criterion, scenario, or Open Question (must-not, invalid input, empty/missing, no data loss, error/fallback). Enforced by `coverage_forcing._validate_negative_boundary_present`. Derive the next discovery gates this way - by mining the corpus with `scripts/uac_eval/mine_uac_dimensions.py`, not by reacting to one ticket.
-- **Authoring/content/element tickets must disposition topic types (corpus-learned, 16%):** for a ticket about inserting/editing a DITA content construct (paste, table, xref, conref, keyref, footnote, tgroup, etc.), the plan must confirm the behaviour across topic types (concept, reference, task) or bound the scope explicitly, as an AC or Open Question. Enforced by `coverage_forcing._validate_topic_type_coverage`.
-- **A changed shared service forces its own neighbourhood into scope (callers, skipped branches, caller permissions):** when inspected implementation evidence puts a SHARED backend collaborator in scope, authoring from the reported operation and the diff's target branch is not enough - the code's own neighbourhood must be enumerated, because all three of these are visible in the code yet reliably go missing. (1) **Sibling entry points:** the report names the operation the reporter performed, not the code that failed; enumerate every user operation that reaches the same collaborator (create, upload, overwrite, move, copy, rename, import) and cover or explicitly bound each, or record that the callers were enumerated and this is the only one. A sibling entry point sharing the changed code is acceptance scope, never background regression. (2) **The skipped branch's other outcomes:** when the fix makes an existing path conditional, list every observable effect that path also produced and assert each remaining one still happens - a path is rarely single purpose, and the effects incidental to the reported defect are exactly what the fix silently removes. (3) **Caller-scoped lookup permissions:** when the code resolves or queries through the caller's own session/resolver, its results are permission-filtered, so the same operation observes different state for different users with no branch that mentions permissions at all - testing as an administrator hides the dimension entirely. Disposition what a user who cannot read the matched item is shown, and that the operation is not silently reported as though nothing matched. Record the enumeration in the manifest `changed_service_neighbourhood` block (schema `aem-guides-changed-service-neighbourhood-v1`): `entry_points[]` with `enumeration_evidence` naming where the callers were actually searched, `skipped_branch_outcomes[]` (or a concrete `no_conditional_skip_reason`), and `caller_scoped_lookups[]` with each lookup's `permission_scope` (or a concrete `no_caller_scoped_lookup_reason`). This is a manifest contract, not a wording check, because the signals live in the code: an author who never noticed the caller-scoped lookup also never writes the word "session", while ordinary criteria mention "create" or "copy" incidentally - so counting vocabulary both misses real gaps and passes by accident. Omission fails closed, and an empty assertion (n/a, none, tbd) is not an answer. Probes MP-012/MP-013/MP-014; enforced by `coverage_forcing._validate_changed_service_neighbourhood`.
+- **Gate while authoring.** Draft, run `coverage_forcing.validate` and `uac_linter` (plus
+  `validate_test_plan.py` / `run_gates.py` for the full plan), fix every failure, re-run, and present or post
+  only when clean. After any hand edit also run `python scripts/uac_completeness_check.py <folder>`, and for a
+  VM folder `python scripts/uac_release/uac_release_runner.py --check-dir <folder>`. An ungated draft is a
+  defect.
+- **Read the whole ticket first.** Every description data point, every comment (read the newest for current
+  status - `coverage_forcing._validate_current_status_recency`), and every attachment opened, never judged
+  from its filename. A per-surface matrix in the description is the verification baseline.
+- **Evidence leaves a record.** At least three focused `ask_dita_expert` probes, at least two narrow Jira
+  history searches with counts, the UAC Doc Researcher for every generation, and every documentation finding
+  used or set aside - recorded in `UAC_EVIDENCE.json` and `history_attempts`. A tool missing from the session
+  is not an unavailable source: use `scripts/vm_evidence_call.py`, then the offline `jira_qa` corpus. RAG
+  drives the AC wording and documented behaviour; never invent a product term.
+- **Ask first, then author.** Enumerate the dimension space and resolve it from evidence (`clarification_gate`).
+  In an interactive session, ask the residual blocking questions and wait. In an unattended run, record each
+  blocking question as a TBD on the AC it governs and continue. Never wait for a root cause.
+- **Root cause and fix.** Record `fix_basis`. When a fix is known, build the requirement oracle from the
+  ticket, attachments and UI first and validate the diff against it; split the fix contract into what it adds
+  and what it must preserve; turn fix-introduced risks into negative ACs; take the automation verdict from
+  tests the fix added; scope sign-off to what the developer's verification did not exercise
+  (`root_cause_fix_driven`). An unconfirmed implementation choice is a TBD. When no fix is known, lead with the
+  not-confirmed Note and make code-only mechanism guesses suggested checks. A later root-cause comment means
+  the UAC must be reviewed (`uac_staleness_watch.py`).
+- **Working as designed and reproducibility, before fix ACs on incident tickets.** If reproduction is
+  unconfirmed, lead with a reproduction strategy and keep fix ACs Proposed. Separate confirmed expected
+  behaviour (assert it) from the defect claim (unverified until reproduced), make the intended behaviour a
+  blocking decision, and recommend Working-As-Designed or an enhancement where it applies.
+- **The reporter's scenario is the contract.** Every AC follows a reporter step (CUSTOMER) or guards it
+  (REGRESSION), recorded in `UAC_EVIDENCE.json` "scenario".
+- **Hotfix and backport scope.** Every AC rests on a hotfix ticket line or on code the hotfix diff changes;
+  a parent ticket's ACs are an oracle only (`hotfix_scope_check.py`).
+- **Compare with similar human UACs** (`similar_uac_compare.py`, related tickets first) and answer every
+  dimension AC, TBD, SUGGESTED or NOT_APPLICABLE. A similar UAC is a checklist, never authority.
+- **No manifest omission bypass.** Populate signal-activated blocks through the v3 workflow; an ordinary
+  waiver of `behavior_model`, `coverage_hypotheses` or `verifications` hard-fails
+  (`references/manifest-completeness.md`).
 
-- **Name every action by what the user sees, with the UI name in brackets:** a QE reader does not know internal or log verbs. On first mention, say what the action does in plain words and put the exact UI name in brackets - for example "removed from the live site (Unpublish)" - and never use the code/log verb (deactivate, replicate, invalidate) in the AC body; keep those for the Source line. Enforced as advisories by `guides_vocabulary` (e.g. deactivation-is-unpublish, publish-instance-is-publish-environment).
-- **Every admitted documentation finding is used or explicitly set aside:** before finalizing, walk every doc-researcher finding with evidence_role EXISTING_BEHAVIOR or REQUIREMENT_CLARIFICATION. Each one either (a) changes or sharpens an AC - use the exact UI labels and scope limits the page states (option names, "only for full map publishing", documented logs) and cite that page on that AC - or (b) is recorded as not changing acceptance, with a one-line reason. A finding that was fetched but neither used nor set aside is a lost finding. Paraphrasing a documented option name instead of using it is a defect.
-- **The UAC Doc Researcher always runs - it cannot be skipped:** every UAC generation runs the `uac-doc-researcher` agent (role contract `agents/uac-doc-researcher.md`) before any Acceptance Criterion is written, even when the ticket looks simple or `ask_dita_expert` already answered. `ask_dita_expert` probes are discovery leads, not a substitute: they often miss the page that names the real screen, field, or documented limit. Verify the researcher's key claims by opening the cited page, use its exact UI names in the ACs, and cite the page on the AC it supports. When the researcher finds nothing, record the searched scopes as limitations; never write "not documented" without running it. Build the researcher's questions from every screen, field, status, user action and workflow step the ticket, its comments and its attachments name - not a short summary list - because the researcher only researches what it is asked. An empty or off-topic `ask_dita_expert` answer means the index may not hold that page; it never means the behavior is undocumented. The VM automation enforces this: `scripts/uac_release/uac_release_runner.py` fails a ticket whose `DOC_RESEARCH.json` result or Copilot transcript shows no researcher run.
-- **Feature surface inventory comes before any Acceptance Criterion - it cannot be skipped:** before writing an AC, list every place in the product where the feature appears or where its items open, from two independent sources, and give each place an AC, a TBD, or an explicit out-of-scope reason. (1) Documentation: the feature's product page, the pages it links to, and where each item type opens (for example an integration's task list on the Home page, a widget, and the panels in the Editor, Map console and Review UI where different task types open). (2) Code: for every widget, panel, component, service or API the change touches, search the product clones for every place it is reused (its view id, component name, import, route or endpoint) and record each consumer with file and line. A change to a shared widget reaches every screen that embeds it, so every such screen needs an AC or a TBD - but see the authority rule below: finding a screen in code or documentation does not make new behaviour there a requirement. Name each in-scope place by its on-screen name inside the AC text. Existing rules (shared implementation path, named-surface parity, relationship_traversal.py) only work once a surface is known; this inventory is what finds the surfaces. The VM automation enforces it: `scripts/uac_release/uac_release_runner.py` fails a ticket whose `SURFACE_INVENTORY.json` is missing, lacks code or documentation evidence, or names an AC that does not mention the surface.
-- **Surface authority - new behaviour only where the ticket, an attachment or a product decision puts it:** record for every surface why it is in scope: TICKET (the ticket names it, or the action it asks for runs through it), ATTACHMENT (a screenshot or file shows it), PRODUCT_DECISION (a PM or product answer names it), DOCUMENTATION or CODE_REUSE (found only by the inventory). A DOCUMENTATION or CODE_REUSE surface may only get a regression AC (the screen still works as before) or a TBD asking whether the new behaviour belongs there; asserting the new behaviour on it is an invented requirement. Enforced by `uac_release_runner.surface_inventory_problems`.
-- **The customer's own screen is the primary target; an unclear target is a TBD:** open every attachment and name each product screen it shows. When the ticket asks for a change in a generic place ("the task list", "the Guides view") and more than one screen fits, the screen in the customer's screenshot is the primary target; if the target is still unclear, the AC names every candidate screen and a TBD asks which one - never pick one silently. Enforced by `uac_release_runner.attachment_surface_problems`: every attachment lists the screens it shows, and each one must be in the surface inventory.
-- **Relevance check before delivery:** for every AC, name the affected user and the ticket sentence, attachment or product decision it serves. An AC whose screen is used by a different user than the one in the complaint (for example a creator's list when the complaint is about the assignee's list), or that rests only on your own inference, is removed or becomes a TBD. Irrelevant ACs cost reviewers as much as missing ones. A QE-judgment AC (a variant, edge case or neighbour of a ticket-driven AC) is legitimate - say which ticket-driven behaviour it extends. `uac_release_runner.orphan_ac_problems` flags, as review notes on the draft, every AC not driven by a ticket sentence or attachment, a requested surface, a still-works check or a TBD, and every AC whose only source is QE reasoning. Rules apply at generation time only, so after editing a UAC by hand run `python scripts/uac_release/uac_release_runner.py --check-dir <folder>` and post only when it passes.
-- **A tool missing from this session is not an unavailable source:** `ask_dita_expert` and `search_jira_history` are served by the Dataset Studio backend at `<AEM_STUDIO_URL>/mcp`. When they are not in the session's tool list, call them with `python scripts/vm_evidence_call.py preflight|rag|history --evidence <folder>/UAC_EVIDENCE.json` before writing any Acceptance Criterion. A source is unavailable only after that route also fails, and the record names both routes tried and the error. Reporting RAG or Jira history as "not run" while the backend answers is a skipped step, not an evidence limit.
-- **Every evidence step leaves a record, checked before the UAC is shown - and after every rewrite:** keep `UAC_EVIDENCE.json` next to `UAC.md` with the evidence preflight (product_rag, jira_history, live_jira, clones), at least three `ask_dita_expert` probes, at least two narrow Jira history searches with their counts, and one disposition for every documentation finding of the UAC Doc Researcher: the Acceptance Criteria that use it (their Source line names the documentation) or a concrete reason it is set aside. Run `python scripts/uac_completeness_check.py <folder>` before a UAC is shown, posted or re-posted, and again after every edit or rewrite; a passing structural check is not a substitute. A rewrite that drops a documentation source from a Source line, or a finding that is neither used nor set aside, fails here. The VM runner enforces the same record.
-- **The reporter's own scenario is the contract; an investigator's other scenario is a TBD:** copy the reporter's steps or requested outcome from the ticket, and tie every Acceptance Criterion to one of them. An investigation comment often finds a different path (for example a deleted project when the reporter's job simply completed); a criterion built on that path is ADJACENT - it is a suggested check (below), never an Acceptance Criterion. A QE regression or edge-case check around the reporter's scenario is REGRESSION: name the reporter step it guards, and it needs no TBD (in the human UAC corpus, 37% of tickets have more than half their criteria beyond the reporter's own words). Record this in `UAC_EVIDENCE.json` "scenario"; `uac_completeness_check.py` fails a criterion with no step, an ADJACENT criterion, and a UAC where no criterion follows the reporter.
-- **A job, queue or batch must say what happens when one item fails:** when the ticket says that items inside a job, queue or batch fail, get stuck or are left unprocessed, cover or ask three things: the failing item's own outcome (the status it ends in), whether the remaining items still complete, and how the user learns which items failed. When the root cause is not confirmed yet, these are TBDs, never guessed outcomes. Record them in `UAC_EVIDENCE.json` "failure_path". A batch ticket that reports no item failure does not need them; adding them anyway over-writes the UAC.
-- **Acceptance Criteria are only what the ticket asks; our own research goes to suggested checks:** an Acceptance Criterion rests on the ticket, an attachment, a product decision or the confirmed fix, or is a QE regression check around the reporter's scenario. A check found only by our own research - a documentation page, the code, a similar or parent ticket's UAC, an investigator's other scenario - goes below the criteria under the line `Suggested checks (QE decide):` as `- Suggested check NN:` with a `**Source:**` and a `**Why suggested:**` line, at most five. Suggested checks are shown in the draft comment and are never copied into the Acceptance Criteria field: QE moves the ones they want into the field. In the learning data QE removed what we added from our own research far more often than what the ticket asked for, and each removed criterion costs QE time and trust. A documentation finding or a similar-UAC dimension may be answered SUGGESTED. Enforced by `uac_completeness_check.py`; the learning harvester counts a suggestion QE moved into the field as promoted, not as a miss.
-- **Say whether the root cause is known; never wait for it:** many tickets never get a root-cause comment or a linked pull request, so a UAC is never held back for one. Record `UAC_EVIDENCE.json` "fix_basis": CONFIRMED with the ticket text that reports the root cause, fix or pull request, or UNCONFIRMED. When UNCONFIRMED, the UAC starts with `Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer reported and will be checked again when the fix is known.`, and no Acceptance Criterion except a REGRESSION check rests only on code - a mechanism read from the code before the fix is known is a guess, so it is a suggested check. When the ticket does report a root cause or fix, UNCONFIRMED needs a reason. Enforced by `uac_completeness_check.py`.
-- **A root cause or fix that arrives after the UAC means the UAC must be reviewed:** the VM `uac_staleness_watch.py` alerts QE when a root-cause, fix or pull-request comment appears after the Acceptance Criteria field last changed. Re-run the UAC from the new evidence; never edit a human-approved UAC.
-- **Compare with the most similar human UACs before delivery:** run `python scripts/similar_uac_compare.py --ticket-source <folder>/jira-source.json --key <KEY> --component <component> --evidence <folder>/UAC_EVIDENCE.json` (live Jira, read-only; `--corpus` for an offline corpus). It compares first the tickets tied to this one - its Jira links (not test-case links), ticket keys written in the ticket, and any `--also KEY` you give (for a hotfix or backport, give its parent ticket) - whatever their wording, because a hotfix often shares almost no words with its parent. It then finds similar resolved tickets with a human-approved UAC - same component first, and only when they share enough of the ticket's key terms - up to three in all, and lists the dimensions each covers: the screens it names and the kinds of check (negative case, configuration on/off, output presets, permissions, saved and reloaded, one item failing in a batch, and so on). Answer every dimension: AC (the Acceptance Criterion that covers it), TBD (the criterion that asks it) or NOT_APPLICABLE with a reason. A similar UAC is a checklist, never acceptance authority: copy nothing from it without this ticket's own evidence. "none_found" is a valid answer when nothing is similar; an unrelated UAC is worse than none. `uac_completeness_check.py` fails an unanswered dimension.
-- **Hotfix and backport scope - the hotfix ticket and the hotfix diff, never the parent ticket:** when the ticket is a hotfix, a backport or a private patch of a mainline change, every Acceptance Criterion must rest on a line of the hotfix ticket itself or on code the hotfix diff actually adds or changes. A parent (mainline) ticket's accepted Acceptance Criteria are an oracle for behaviour the hotfix changes, never scope on their own. A generic "No regression should be introduced" line does not scope anything by itself: a regression criterion must name the changed code it guards, and behaviour that is identical on the base branch and the hotfix branch is not a regression the hotfix can introduce - raise it on the parent ticket or as a separate bug instead. Compare the base and hotfix refs line by line (`git diff -U0 <base>...<hotfix>`); a file the hotfix touched elsewhere does not put an unchanged line in scope. Record the basis of every criterion in `HOTFIX_SCOPE.json` and run `python scripts/hotfix_scope_check.py <UAC.md> <HOTFIX_SCOPE.json>` before delivery; the VM runner requires it for every hotfix or backport ticket.
-- **Two colliding operations - cover both sides and both orders:** when the ticket is about two user operations running into each other ("while X is in process", "at the same time", "collided"), (1) enumerate how EACH operation can start - UI actions, scheduled or delayed runs, approval workflows, bulk actions, APIs - not only the operation the request names; paths that start later than the click need their own check; and (2) disposition both orders, reading the incident timeline to name which order actually happened. A safeguard for one order is not proof for the other; make the uncovered order an AC or TBD. Probes MP-015 (CONFLICTING_OPERATION_ENTRY_POINTS) and MP-016 (OPERATION_ORDER_SYMMETRY).
-- **Destructive steps after the main work need a partial-failure check:** when implementation or documentation shows the operation ends with a destructive step (delete orphans, purge, delete and recreate, remove stale), add an AC that a failure partway through the main step does not let that destructive step run on partial results, and existing content survives. Probe MP-017 (FAILURE_BEFORE_DESTRUCTIVE_CLEANUP).
+**What to investigate when the signal fires**
+
+- **Surfaces.** Inventory every place the feature appears, from documentation and from code reuse, with its
+  authority. Every surface the Jira names appears in an AC or TBD by its exact product name
+  (`coverage_forcing._validate_named_surface_parity`). The customer's screenshot screen is the primary target;
+  an unclear target is a TBD. Check each AC's relevance to the complaining user. Keep an AC to the construct
+  the ticket names, never its general category.
+- **Shared code.** Other consumers of a shared path are shared-path regression
+  (`shared_path_regression_coverage`). A changed shared service forces sibling entry points, the skipped
+  branch's other outcomes, and caller-scoped permissions (`changed_service_neighbourhood`). When one value has
+  two chains (displayed value and sort key, list and count, two implementations), read both.
+- **Data and state.** Value provenance channels, including the repository node in CRX/DE
+  (`value_provenance_coverage`); both values of every state or configuration axis; the lifecycle operations
+  that write what a read-only feature shows.
+- **Publishing.** DITA-OT processing on and off, presets in and out of scope (`publishing_scope_coverage`);
+  every output-generation entry point; output-engine parity by generating and diffing the outputs; the DITA
+  specification and DITA-OT documentation for construct semantics.
+- **Coverage blocks.** Security (`security_coverage`), localization (`localization_regression_coverage`),
+  upgrade and migration (`upgrade_migration_coverage`), and performance
+  (`references/performance-assessment-contract.md`; never invent an SLA).
+- **Defect patterns.** A defect ticket has at least one negative or boundary check; content constructs cover
+  topic types; table paste and import cover the variant axes; links cover protocol schemes; a wrong-status fix
+  keeps real failures shown as Failed; overlapping runs stay isolated; two colliding operations cover both
+  sides and both orders; a destructive step after the main work gets a partial-failure check; a job whose items
+  fail says what happens to the failing item, the remaining items, and how the user learns (`failure_path`); a
+  user-facing server error needs a UI-behaviour decision. Enforcers are listed in
+  `references/qe-authoring-rules.md`.
+- **Reviewer and PM comments are requirements.** A reviewer-requested check or a PM direction is an AC, not a
+  deferred question (`reviewer_request_coverage`).
 
 ## Root-Cause / Fix-Driven Authoring
 
-A root cause names the exact mechanism, and a described fix names exactly what changed - together they are the strongest edge-case and regression driver in the ticket. Citing them without exploiting them wastes the best evidence. When evidence carries a root-cause statement, a PR/commit/diff, or a "fixed in / merged / verified" claim, apply this before finalizing:
-
-**0. Build the requirement oracle FIRST, independent of the diff (the fix is not the spec).** Before reading the diff as the source of ACs, derive what the ticket actually ASKS from the requirement evidence: the Jira description, EVERY attachment (download and open images/screenshots, do not describe them from the filename), embedded snippets, linked issues, and - for any user-configurable feature (a preset option, dialog, selector, action) - the UI clone (e.g. xmleditor). The acceptance oracle is this requirement, not the code change. Then VALIDATE the fix against it. A fix diff that touches one narrow mechanism (e.g. one property such as `damPath`) does not shrink the requirement to that mechanism; the headline ask may be broader (e.g. "the selected File-properties list, as per other presets"). Record `requirement_oracle` (grounded in ticket/attachment/UI evidence, with at least one attachment or UI source when the issue has attachments or names a UI surface) and a `scope_delta[]` list: every requirement item the fix does NOT fully cover, or covers only partially, mapped to an AC or an Open Question - never silently narrowed to what the diff happens to do. If the fix fully covers the requirement, say so explicitly with `fix_fully_covers_requirement: true` and a one-line reason. Any implementation choice the diff makes but no requirement/spec/Jira confirms (tie-break/precedence, ordering, defaults, dedup winner) is an Open Question, NOT an AC that asserts the code is correct.
-
-**1. Reclassify the lifecycle.** A described or merged fix means Implementation Review or Post-Fix Validation. ACs still stay Proposed when there is no accepted UAC (and `Needs_Human_Review` is present), but the plan's job is now to VALIDATE the fix and its blast radius, not to restate the customer's wish.
-
-**2. Extract the fix contract and split it into what-it-adds vs what-it-must-preserve.** State the change in one line, then map ACs to both halves. Example shape: fix = "include text from non-indexterm child elements" (the added behaviour) + "still exclude nested indexterm children" (the invariant) => the nested-separation ACs are specifically the guard that the invariant survived the change; say so explicitly.
-
-**3. Derive fix-INTRODUCED risks.** Ask what the change itself could newly break, not only whether it fixes the reported symptom. A change that now collects a broader set (all non-indexterm children) may wrongly capture siblings with separate semantics (for example index-see / index-see-also / index-sort-as). Such a risk is a negative AC or a P0 negative scenario; if it cannot be confirmed against code, it is the HIGHEST-priority Open Question because the fix's own change endangers it.
-
-**4. Turn the fix's own tests into an Automation Coverage verdict.** A PR that adds a regression test makes the main feature at least "Partially covered" at that layer - name the exact added test - then list the gaps it does not cover (rendered-output/E2E, preset matrix, engine variants, shared paths).
-
-**5. Scope sign-off to the verification gap.** If the developer verified with one local build plus a unit test, QA sign-off scope is everything that build did not exercise (preset matrix, engine/version variants, metadata-context sources, and shared consumers such as preview/download paths).
-
-Record this in the manifest `root_cause_fix` block (`requirement_oracle`, `scope_delta[]` each mapped to an AC or Open Question (or `fix_fully_covers_requirement` with a reason), `root_cause`, `fix_contract`, `fix_adds`, `fix_preserves`, `fix_introduced_risks[]` each mapped to an AC or Open Question, `added_tests[]`, `verification_performed`, `verification_gap`) so `root_cause_fix_driven` can enforce that a cited fix actually drove the plan and that the requirement oracle - not the diff - defined acceptance.
+- Summarized under Non-Negotiable Rules. The five steps (requirement oracle first, lifecycle, fix contract,
+  fix-introduced risks, automation verdict, sign-off scope) and the `root_cause_fix` manifest block are in
+  `references/qe-authoring-rules.md` and `references/root-cause-fix-driven.md`.
 
 ## Working-As-Designed Assessment
 
-Run this for any support incident, customer escalation, Dynamics case, or "X does not work" complaint, BEFORE authoring fix-shaped acceptance criteria. The feature-map and probes stop MISSED dimensions; they do not stop WRONG FRAMING (treating an intended behaviour as a bug, or writing fix-ACs for something that does not reproduce). These steps do.
-
-**0. Does it reproduce, and is the root cause confirmed?** Before anything else, check reproducibility: "unable/cannot reproduce", intermittent/flaky wording, a needs-clarification/crosshair label, working-hypothesis-only RCA, or QE-couldn't-repro comments. If reproduction is UNCONFIRMED, the primary deliverable is a REPRODUCTION STRATEGY (exact trigger conditions - concurrency, timing, collision setup, batch size, environment, data), not fix-validation ACs; keep any fix ACs Proposed and gated on "once reproduced". For a suspected race/concurrency/intermittent defect, the reproduction difficulty is the central test-design problem. Do not write ACs that assume a real, reproducible defect when the evidence says otherwise.
-
-**1. Is it the intended effect of an explicit configuration or design?** Check the config/code the complaint touches. An ignore/exclude list deliberately turns a feature off on a path; a platform default (e.g. native AEM Assets does not auto-version on overwrite) is not a Guides defect; a missing UI control can be a global clientlib/UX behaviour, not a broken function. If the reported behaviour is the documented/inspected intended effect, it is Working-As-Designed - assert it, do not "fix" it.
-
-**2. Separate expected from defect.** Split the ticket into: (a) CONFIRMED-EXPECTED behaviour (WAD - covered by "confirm expected behaviour" ACs, not fix ACs); and (b) the GENUINELY DEFECT-SHAPED claim, if any. A customer inference ("the binary is stale") is UNVERIFIED until a targeted repro proves it - the evidence often shows the pipeline completed. Mark it unverified and give it a single prove-or-kill repro (e.g. re-download and byte-compare), run FIRST.
-
-**3. Make intent a blocking product decision.** The "what is the intended behaviour here?" question is a BLOCKING product-decision Open Question - the answer decides whether there is a defect at all. Author ACs to the QE-expected reading but keep them Proposed and decision-dependent.
-
-**4. Recommend the right disposition.** When the reported behaviour is by-design, recommend triage-as-Working-As-Designed; when the real ask is "give me this behaviour where it is currently (correctly) off", recommend handling it as an ENHANCEMENT request, not a bug. Never convert a working-as-designed complaint into Confirmed - or fix-shaped Proposed - acceptance criteria.
+- Summarized under Non-Negotiable Rules. The full assessment (reproducibility, intended configuration or
+  design, expected versus defect, blocking decision, recommended disposition) is in
+  `references/qe-authoring-rules.md`.
 
 ## Ask-First Clarification Workflow
 
-Root cause of recurring misses: the plan is authored on assumptions and unknowns are only *documented* in Open Questions after the fact. This workflow makes discovery active and makes asking a required step, not an afterthought. Run it after the BehaviorModel and coverage-hypotheses passes, and BEFORE writing acceptance criteria.
-
-**1. Enumerate the dimension space.** For the ticket, list every axis that could change behaviour, not just the one the Jira names:
-- VALUE_SET_CHANNEL - every way a written value/property can be set: authoring UI, config/preset, source map/topic file, repository node via CRX/DE (`jcr:content/metadata`), API/import, migration.
-- CODE_PATH_CONSUMER - every consumer of a touched shared path (base class/method, each output type/engine/caller/surface).
-- OUTPUT_PRESET - AEM Sites (new/legacy), HTML5, Native AEM Site, Native PDF, DITA-OT PDF; and DITA-OT processing ON vs OFF for publishing tickets.
-- TOPIC_TYPE, TERMINAL_STATE, LIFECYCLE, CONFIG_BRANCH, PERMISSION_ROLE, MIGRATION_PATH as applicable.
-
-**2. Mark materiality.** For each candidate decide `material: true/false` with a one-line reason. Non-material axes are recorded and dropped; they are not carried as questions.
-
-**3. Resolve from evidence first.** For each material dimension, try to answer from code (grep the handler for where the value is read/written), RAG, historical Jira, or the diff. Record the resolving `file:line` or evidence id. Do not ask the user what the evidence can answer.
-
-**4. Ask the residual blocking questions - and WAIT.** For every material dimension still unresolved that would change an AC's correctness or scope, surface a concise, decision-shaped question to the user in chat and STOP. Do not author the governed AC on an assumption. Only genuinely non-blocking gaps (they do not change any AC, only add nice-to-have coverage) may be deferred straight to Open Questions.
-
-**When to ask vs. resolve silently vs. defer:**
-- ASK the user when the answer changes an AC's correctness, an in/out-of-scope decision, or the pass/fail oracle, AND the evidence cannot settle it (e.g. which source file a preset reads; whether an old endpoint is removed or kept; the approved SLA/threshold for a cited workload).
-- RESOLVE SILENTLY when code/RAG/history answers it - cite the evidence, no question.
-- DEFER to Open Questions only when the gap is non-blocking (adds coverage but does not change any AC or scope call).
-
-**5. Confirm assumptions before posting.** Show the assumptions made and the draft AC wording in chat for confirm/correct BEFORE posting anywhere (Jira/file). Corrections belong before the post, not after.
-
-**6. Record it in the manifest** `clarification` block (`dimension_space`, `questions_surfaced_to_user`, `authoring_gated_on_answers`) so `clarification_gate` can enforce that no material dimension was left UNRESOLVED and no blocking question was left unanswered. Never fabricate a user answer to pass the gate; a `WAITING` blocking question means authoring has not started.
+- Summarized under Non-Negotiable Rules. The dimension space, materiality, resolve-from-evidence, ask-and-wait
+  steps and the `clarification` manifest block are in `references/qe-authoring-rules.md` and
+  `references/clarification-gate.md`.
 
 ## Hard Rules
 
@@ -1242,7 +877,7 @@ Root cause of recurring misses: the plan is authored on assumptions and unknowns
 
 - When the user asks to audit a previous answer, first read `references/quality-gate-checklist.md` and run `scripts/validate_test_plan.py` against the previous plan when its text is available.
 - List every validator failure plus evidence-quality failures that static validation cannot detect. Do not stop after the first few failures.
-- Regenerate a complete record only after the failure list. Validate it with the same gate, then return the corrected four-section projection and retain the corrected eleven-section artifact for explicit requests.
+- Regenerate a complete record only after the failure list. Validate it with the same gate, then return the corrected canonical rendered output and retain the corrected eleven-section artifact for explicit requests.
 - Do not retain an obsolete Jira-authorization warning when live Jira evidence was subsequently fetched successfully.
 - Do not add extra headings such as `What can break`, `Likely bugs`, `Fix safety`, `Important combinations`, or `Draft blockers` beyond the required output sections.
 - Put likely bugs, fix-safety, automation, and blocker notes under `Test Scenarios`, `Regression Areas`, or the relevant evidence section.
