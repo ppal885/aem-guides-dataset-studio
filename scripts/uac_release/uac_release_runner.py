@@ -123,6 +123,7 @@ _HEADING = re.compile(r"^h[1-6]\.\s*")
 _BULLET = re.compile(r"^\s*(?:[*#-]+)\s+")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 DOC_RESEARCHER = "uac-doc-researcher"
+GATE_LOG_FILE = "gate-firing.jsonl"
 DOC_RESEARCH_STATUSES = ("ANSWER_FOUND", "PARTIAL", "NOT_FOUND", "SOURCE_UNAVAILABLE", "CONFLICTED")
 DECISION_SECTIONS = ("### What we found", "### Decision needed", "### Impact on the Acceptance Criteria")
 
@@ -337,16 +338,34 @@ def orphan_ac_problems(ticket_dir: Path) -> list[str]:
     return problems
 
 
+def ticket_problem_groups(ticket_dir: Path, prompt: str, source: dict | None, own_name: str = "") -> dict[str, list[str]]:
+    """Every check the runner applies to a generated UAC folder, by check name (for the gate firing log)."""
+    groups = {"outputs": check_outputs(ticket_dir), "doc_research": doc_research_problems(ticket_dir, prompt),
+              "surface_inventory": surface_inventory_problems(ticket_dir)}
+    for name, found in common.import_skill_module("uac_completeness_check").evidence_problems_by_check(ticket_dir).items():
+        groups[f"evidence.{name}"] = found
+    if source is not None:
+        groups["source_coverage"] = source_coverage_problems(ticket_dir, source, own_name)
+        groups["attachment_surfaces"] = attachment_surface_problems(ticket_dir, source, own_name)
+        groups["hotfix_scope"] = hotfix_scope_problems(ticket_dir, source)
+    return groups
+
+
 def ticket_problems(ticket_dir: Path, prompt: str, source: dict | None, own_name: str = "") -> list[str]:
     """Every check the runner applies to a generated UAC folder."""
-    problems = (check_outputs(ticket_dir) + doc_research_problems(ticket_dir, prompt)
-                + surface_inventory_problems(ticket_dir)
-                + common.import_skill_module("uac_completeness_check").evidence_problems(ticket_dir))
-    if source is not None:
-        problems += source_coverage_problems(ticket_dir, source, own_name)
-        problems += attachment_surface_problems(ticket_dir, source, own_name)
-        problems += hotfix_scope_problems(ticket_dir, source)
+    problems: list[str] = []
+    for found in ticket_problem_groups(ticket_dir, prompt, source, own_name).values():
+        problems += found
     return problems
+
+
+def log_check_firing(config: dict, key: str, groups: dict[str, list[str]], advisories: dict[str, list[str]]) -> None:
+    """Record which runner checks fired on this ticket (<output_dir>/logs/gate-firing.jsonl). Never raises."""
+    firing = common.import_skill_module("gate_firing_log")
+    checks = {name: len(found) for name, found in groups.items()}
+    checks.update({f"advisory.{name}": len(found) for name, found in advisories.items()})
+    firing.record(Path(config["output_dir"]) / "logs" / GATE_LOG_FILE, tool="uac-runner", key=key, checks=checks,
+                  passed=not any(groups.values()))
 
 
 def hotfix_scope_problems(ticket_dir: Path, source: dict) -> list[str]:
@@ -529,8 +548,13 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         else:
             (ticket_dir / common.JIRA_SOURCE_FILE).write_text(
                 json.dumps(source, indent=2, ensure_ascii=False), encoding="utf-8")
-        problems = ticket_problems(ticket_dir, prompt, source, own_name) + fetch_problem
+        groups = ticket_problem_groups(ticket_dir, prompt, source, own_name)
+        if fetch_problem:
+            groups["jira_source"] = fetch_problem
+        problems = [p for found in groups.values() for p in found]
     if problems:
+        if exit_code == 0:
+            log_check_firing(config, key, groups, {})
         status.update(state="FAILED", problems=problems)
         common.write_status(ticket_dir, status)
         logger.error("%s: not drafted - %s", key, "; ".join(problems))
@@ -552,6 +576,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     status["warnings"] = warnings
     review_notes = orphan_ac_problems(ticket_dir)
     status["review_notes"] = review_notes
+    log_check_firing(config, key, groups, {"orphan_acs": review_notes, "decisions": warnings})
     for warning in warnings + review_notes:
         logger.warning("%s: %s", key, warning)
     if dry_run:

@@ -1352,34 +1352,42 @@ def _validate_changed_service_neighbourhood(manifest, plan_text: str) -> list[st
     return problems
 
 
+def validate_by_check(manifest, plan_text: str = "", *, catalog_path=None) -> dict[str, list[str]]:
+    """Every sub-check's problems by name, in the order validate() reports them (for the gate firing log)."""
+    checks: dict[str, list[str]] = {}
+    checks["performance"] = _validate_performance(manifest, plan_text)
+    checks["named_surface_parity"] = _validate_named_surface_parity(manifest, plan_text)
+    checks["ui_surface"] = _validate_ui_surface(manifest, plan_text, catalog_path=catalog_path)
+    checks["investigation"] = _validate_investigation(manifest, plan_text)
+    checks["no_test_as_ac"] = _validate_no_test_as_ac(manifest, plan_text)
+    checks["ac_oq_contradiction"] = _validate_ac_oq_contradiction(manifest, plan_text)
+    checks["restated_instance_ac"] = _validate_restated_instance_ac(manifest, plan_text)
+    checks["no_markup_in_ac"] = _validate_no_markup_in_ac(manifest, plan_text)
+    checks["ac_over_decomposition"] = _validate_ac_over_decomposition(manifest, plan_text)
+    checks["plain_language"] = _validate_plain_language(plan_text)
+    checks["ac_redundancy"] = _validate_ac_redundancy(plan_text)
+    checks["acceptance_contract_present"] = _validate_acceptance_contract_present(plan_text, manifest)
+    checks["history_attempt_recorded"] = _validate_history_attempt_recorded(manifest)
+    checks["current_status_recency"] = _validate_current_status_recency(manifest, plan_text)
+    checks["error_surface_open_question"] = _validate_error_surface_open_question(manifest, plan_text)
+    checks["status_anti_overcorrection"] = _validate_status_anti_overcorrection(manifest, plan_text)
+    checks["concurrency_isolation"] = _validate_concurrency_isolation(manifest, plan_text)
+    checks["vague_surface_reference"] = _validate_vague_surface_reference(manifest, plan_text)
+    checks["underspecified_terms"] = _validate_underspecified_terms(manifest, plan_text)
+    checks["guides_vocabulary"] = _validate_guides_vocabulary(manifest, plan_text)
+    checks["language_generalization"] = _validate_language_generalization(manifest, plan_text)
+    checks["transformation_variant_coverage"] = _validate_transformation_variant_coverage(manifest, plan_text)
+    checks["link_scheme_coverage"] = _validate_link_scheme_coverage(manifest, plan_text)
+    checks["negative_boundary_present"] = _validate_negative_boundary_present(manifest, plan_text)
+    checks["topic_type_coverage"] = _validate_topic_type_coverage(manifest, plan_text)
+    checks["changed_service_neighbourhood"] = _validate_changed_service_neighbourhood(manifest, plan_text)
+    return checks
+
+
 def validate(manifest, plan_text: str = "", *, catalog_path=None) -> list[str]:
     problems: list[str] = []
-    problems += _validate_performance(manifest, plan_text)
-    problems += _validate_named_surface_parity(manifest, plan_text)
-    problems += _validate_ui_surface(manifest, plan_text, catalog_path=catalog_path)
-    problems += _validate_investigation(manifest, plan_text)
-    problems += _validate_no_test_as_ac(manifest, plan_text)
-    problems += _validate_ac_oq_contradiction(manifest, plan_text)
-    problems += _validate_restated_instance_ac(manifest, plan_text)
-    problems += _validate_no_markup_in_ac(manifest, plan_text)
-    problems += _validate_ac_over_decomposition(manifest, plan_text)
-    problems += _validate_plain_language(plan_text)
-    problems += _validate_ac_redundancy(plan_text)
-    problems += _validate_acceptance_contract_present(plan_text, manifest)
-    problems += _validate_history_attempt_recorded(manifest)
-    problems += _validate_current_status_recency(manifest, plan_text)
-    problems += _validate_error_surface_open_question(manifest, plan_text)
-    problems += _validate_status_anti_overcorrection(manifest, plan_text)
-    problems += _validate_concurrency_isolation(manifest, plan_text)
-    problems += _validate_vague_surface_reference(manifest, plan_text)
-    problems += _validate_underspecified_terms(manifest, plan_text)
-    problems += _validate_guides_vocabulary(manifest, plan_text)
-    problems += _validate_language_generalization(manifest, plan_text)
-    problems += _validate_transformation_variant_coverage(manifest, plan_text)
-    problems += _validate_link_scheme_coverage(manifest, plan_text)
-    problems += _validate_negative_boundary_present(manifest, plan_text)
-    problems += _validate_topic_type_coverage(manifest, plan_text)
-    problems += _validate_changed_service_neighbourhood(manifest, plan_text)
+    for found in validate_by_check(manifest, plan_text, catalog_path=catalog_path).values():
+        problems += found
     return problems
 
 

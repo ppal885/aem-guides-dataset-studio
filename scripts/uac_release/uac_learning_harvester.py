@@ -459,6 +459,10 @@ def monthly_report(config: dict, month: str) -> Path:
                       f"{totals['missed_screens']}).", ""]
     if not records:
         lines.append("No ticket versions were harvested this month.")
+    firing = common.import_skill_module("gate_firing_log")
+    runs = [r for r in firing.load([Path(config["output_dir"]) / "logs" / "gate-firing.jsonl"], tool="uac-runner")
+            if str(r.get("at") or "").startswith(month)]
+    lines += [""] + firing.report_lines(runs, "Runner checks this month")
     learning.mkdir(parents=True, exist_ok=True)
     report = learning / f"report-{month}.md"
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -318,6 +318,13 @@ A re-run first moves the previous `copilot-transcript.md` and `copilot-output.tx
   other tickets. That ticket gets result `ERROR`, and `status.json` gets `last_error`. A ticket
   whose draft was already posted keeps its state, so the poster retries it on its next run.
 - Exit codes: 0 all good, 1 a ticket failed, 2 health check failed (runner), 3 the run stopped.
+- `<output_dir>/logs/gate-firing.jsonl`: one JSON line per ticket the runner checked, with the number
+  of problems each check found (`outputs`, `doc_research`, `surface_inventory`, `evidence.<check>`,
+  `source_coverage`, `attachment_surfaces`, `hotfix_scope`, and the advisory review notes). It is
+  never pruned. The monthly learning report adds a "Runner checks this month" table from it; for any
+  period run `python .claude/skills/test-plan-generation/scripts/gate_firing_log.py report
+  /opt/uac-release/runs/logs/gate-firing.jsonl --since 2026-10-01`. A check that fires on nearly
+  every ticket, or never, is a candidate to review - read what it caught before changing it.
 
 Alerts: when something needs attention, the script posts one Jira comment on `alerts.ticket`,
 mentioning the users in `alerts.mention` (Jira user names). It is sent for a failed health check,

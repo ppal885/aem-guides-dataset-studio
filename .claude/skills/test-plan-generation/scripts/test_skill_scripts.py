@@ -7957,6 +7957,44 @@ def test_fix_basis_and_suggested_checks() -> None:
     check("a UAC without suggested checks renders none", jst.suggested_checks_body(body) == "")
 
 
+def test_gate_firing_log() -> None:
+    firing = _load("gate_firing_log", "gate_firing_log.py")
+    forcing = _load("coverage_forcing", "coverage_forcing.py")
+    firing.run_self_tests()
+    check("the gate firing log self-tests pass", True)
+
+    plan = "**Understanding**\nFind returns HTTP 503 on large maps.\n**Acceptance Criteria**\n- AC-01: results are returned.\n"
+    by_check = forcing.validate_by_check({}, plan)
+    check("coverage_forcing names all 26 sub-checks", len(by_check) == 26)
+    check("coverage_forcing validate() is exactly its sub-checks in order",
+          forcing.validate({}, plan) == [p for found in by_check.values() for p in found])
+    check("the performance sub-check is the one that fired", bool(by_check["performance"]))
+
+    uc = uac_completeness_check_mod
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        check("a missing evidence record is reported as the record check",
+              list(uc.evidence_problems_by_check(folder)) == ["record"])
+        (folder / "UAC_EVIDENCE.json").write_text(json.dumps({"fix_basis": {"status": "UNCONFIRMED"}}), encoding="utf-8")
+        groups = uc.evidence_problems_by_check(folder)
+        check("the evidence checks are named", {"preflight", "scenario", "fix_basis", "suggested_checks"} <= set(groups))
+        check("evidence_problems() is exactly the named checks in order",
+              uc.evidence_problems(folder) == [p for found in groups.values() for p in found])
+
+    old = os.environ.pop("UAC_GATE_LOG", None)
+    try:
+        check("no gate log unless asked", run_gates_mod.gate_log_path(None) == "")
+        os.environ["UAC_GATE_LOG"] = "off"
+        check("UAC_GATE_LOG=off means no gate log", run_gates_mod.gate_log_path(None) == "")
+        os.environ["UAC_GATE_LOG"] = "/tmp/g.jsonl"
+        check("UAC_GATE_LOG names the gate log", run_gates_mod.gate_log_path(None) == "/tmp/g.jsonl")
+        check("--gate-log wins over the environment", run_gates_mod.gate_log_path("x.jsonl") == "x.jsonl")
+    finally:
+        os.environ.pop("UAC_GATE_LOG", None)
+        if old is not None:
+            os.environ["UAC_GATE_LOG"] = old
+
+
 def test_uac_completeness_check() -> None:
     uc = uac_completeness_check_mod
     vm = vm_evidence_call_mod
@@ -17698,6 +17736,7 @@ def main() -> int:
     test_uac_completeness_check()
     test_scenario_and_failure_path()
     test_fix_basis_and_suggested_checks()
+    test_gate_firing_log()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
