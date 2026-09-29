@@ -22,6 +22,13 @@ Monthly (--report YYYY-MM):
   added and changed, the criteria QE removed (what we over-wrote) and the ones QE added (what we
   missed).
 
+Backfill (--backfill KEY ...):
+  For UACs posted by hand rather than by this automation, the posted text is not on disk. The
+  backfill reads it from the ticket's Jira history instead: the last Acceptance Criteria change made
+  by a generator user (the automation's Jira user plus "learning_generator_users" in the config or
+  --generator-user) is the posted version, and the changes after it by anyone else are QE's edits.
+  The comparison and the record are the same as the nightly harvest; the record says "backfill".
+
 It never writes to Jira. QE only updates the Acceptance Criteria field; no label is needed.
 """
 from __future__ import annotations
@@ -196,51 +203,52 @@ def compare(posted: list[dict], current: list[dict]) -> list[dict]:
 
 
 def ac_field_changes(issue: dict, field_id: str) -> list[dict]:
+    """Every change to the Acceptance Criteria field, oldest first, with who, when and the new text."""
     changes = []
     for history in (issue.get("changelog") or {}).get("histories") or []:
         for item in history.get("items") or []:
             if item.get("fieldId") == field_id or item.get("field") == AC_FIELD_NAME:
                 changes.append({"at": str(history.get("created") or ""),
-                                "by": str((history.get("author") or {}).get("name") or "")})
+                                "by": str((history.get("author") or {}).get("name") or ""),
+                                "to": item.get("toString") or ""})
     return sorted(changes, key=lambda c: c["at"])
+
+
+def generator_users(config: dict, own_name: str, extra: list[str] | None = None) -> set[str]:
+    """Jira users whose writes to the field are the generated UAC, not a QE edit."""
+    names = {own_name, *(config.get("learning_generator_users") or []), *(extra or [])}
+    return {str(n).strip() for n in names if str(n or "").strip()}
 
 
 def _sha(text: str) -> str:
     return hashlib.sha256((text or "").replace("\r\n", "\n").strip().encode("utf-8")).hexdigest()
 
 
-def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name: str, state: dict) -> dict | None:
-    """Return a learning record for this ticket, or None when there is nothing new to learn."""
-    status = common.read_status(ticket_dir)
-    body_file = ticket_dir / FIELD_BODY_FILE
-    if status.get("state") != "POSTED" or not body_file.is_file():
-        return None
-    posted_text = body_file.read_text(encoding="utf-8")
-    field_id = config["acceptance_criteria_field"]
-    issue = jira._json("GET", f"/rest/api/2/issue/{key}?expand=changelog&fields={field_id},status,components,summary")
-    fields = issue.get("fields") or {}
-    current_text = fields.get(field_id) or ""
+def _issue(jira, key: str, field_id: str) -> dict:
+    return jira._json("GET", f"/rest/api/2/issue/{key}?expand=changelog&fields={field_id},status,components,summary")
+
+
+def _record(key: str, fields: dict, config: dict, posted_text: str, current_text: str, human: list[dict],
+            state: dict, extra: dict | None = None) -> dict | None:
+    """Build the learning record, or None when nothing new can be learned yet."""
     ticket_status = str((fields.get("status") or {}).get("name") or "")
     components = [str(c.get("name")) for c in fields.get("components") or [] if c.get("name")] or ["(none)"]
     posted_sha, current_sha = _sha(posted_text), _sha(current_text)
     accepted_statuses = {s.lower() for s in config.get("learning_accepted_statuses") or DEFAULT_ACCEPTED_STATUSES}
-
     if posted_sha == current_sha:
         if ticket_status.lower() not in accepted_statuses:
             return None
         outcome, editor, edited_at = "ACCEPTED_AS_IS", "", ""
     else:
-        human = [c for c in ac_field_changes(issue, field_id) if c["by"] and c["by"] != own_name]
         if not human:
             return None
         outcome, editor, edited_at = "CHANGED", human[-1]["by"], human[-1]["at"]
-
     version = f"{outcome}:{current_sha}"
     if state.get(key) == version:
         return None
     state[key] = version
     entries = compare(parse_criteria(posted_text), parse_criteria(current_text))
-    return {
+    record = {
         "harvested_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "key": key, "summary": str(fields.get("summary") or ""), "components": components,
         "ticket_status": ticket_status, "outcome": outcome, "editor": editor, "edited_at": edited_at,
@@ -249,6 +257,66 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name: str
         "counts": {k: sum(1 for e in entries if e["kind"] == k) for k in ("accepted", "changed", "removed", "added")},
         "criteria": entries,
     }
+    record.update(extra or {})
+    return record
+
+
+def backfill_ticket(key: str, config: dict, jira, generators: set[str], state: dict) -> dict | None:
+    """Learn from a hand-posted UAC: the last generator write in the Jira history is the posted version."""
+    field_id = config["acceptance_criteria_field"]
+    issue = _issue(jira, key, field_id)
+    fields = issue.get("fields") or {}
+    changes = ac_field_changes(issue, field_id)
+    posted = [i for i, c in enumerate(changes) if c["by"] in generators]
+    if not posted:
+        return None
+    last = changes[posted[-1]]
+    human = [c for c in changes[posted[-1] + 1:] if c["by"] and c["by"] not in generators]
+    return _record(key, fields, config, last["to"], fields.get(field_id) or "", human, state,
+                   {"source": "backfill", "posted_by": last["by"], "posted_at": last["at"]})
+
+
+def backfill(config: dict, jira, logger, generators: set[str], keys: list[str], dry_run: bool = False) -> list[dict]:
+    learning = Path(config["output_dir"]) / LEARNING_DIR
+    state_path = learning / STATE_FILE
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+    except ValueError:
+        state = {}
+    records = []
+    for key in keys:
+        try:
+            record = backfill_ticket(key, config, jira, generators, state)
+        except Exception:  # noqa: BLE001 - one ticket never stops the backfill
+            logger.exception("%s: could not backfill", key)
+            continue
+        if record:
+            records.append(record)
+            logger.info("%s: %s %s", key, record["outcome"], record["counts"])
+        else:
+            logger.info("%s: nothing to learn yet (no generated version, or no QE edit and not yet accepted)", key)
+    if not dry_run:
+        learning.mkdir(parents=True, exist_ok=True)
+        with (learning / RECORDS_FILE).open("a", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    return records
+
+
+def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, state: dict) -> dict | None:
+    """Return a learning record for this ticket, or None when there is nothing new to learn."""
+    status = common.read_status(ticket_dir)
+    body_file = ticket_dir / FIELD_BODY_FILE
+    if status.get("state") != "POSTED" or not body_file.is_file():
+        return None
+    posted_text = body_file.read_text(encoding="utf-8")
+    field_id = config["acceptance_criteria_field"]
+    issue = _issue(jira, key, field_id)
+    fields = issue.get("fields") or {}
+    generators = own_name if isinstance(own_name, set) else generator_users(config, own_name)
+    human = [c for c in ac_field_changes(issue, field_id) if c["by"] and c["by"] not in generators]
+    return _record(key, fields, config, posted_text, fields.get(field_id) or "", human, state)
 
 
 def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
@@ -333,6 +401,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env-file", type=Path, default=common.REPO_ROOT / "backend" / ".env")
     parser.add_argument("--report", metavar="YYYY-MM",
                         help="write the monthly report for this month (use 'last' for the previous month)")
+    parser.add_argument("--backfill", nargs="+", metavar="KEY",
+                        help="learn from these hand-posted tickets, reading the posted version from Jira history")
+    parser.add_argument("--generator-user", action="append", default=[],
+                        help="with --backfill: a Jira user whose field writes are the generated UAC (repeatable)")
+    parser.add_argument("--dry-run", action="store_true", help="with --backfill: print the records, write nothing")
     args = parser.parse_args(argv)
     common.load_env_file(args.env_file)
     config = common.load_config(args.config)
@@ -348,6 +421,12 @@ def main(argv: list[str] | None = None) -> int:
     logger = common.setup_logging(out / "logs", "uac-learning")
     jira = common.JiraClient.from_env()
     own_name = str((jira.myself() or {}).get("name") or "")
+    if args.backfill:
+        generators = generator_users(config, own_name, args.generator_user)
+        records = backfill(config, jira, logger, generators, args.backfill, dry_run=args.dry_run)
+        for record in records:
+            print(f"{record['key']}: {record['outcome']} by {record['editor'] or '-'} {record['counts']}")
+        return 0
     records = harvest(config, jira, logger, own_name)
     logger.info("harvested %d record(s)", len(records))
     return 0
