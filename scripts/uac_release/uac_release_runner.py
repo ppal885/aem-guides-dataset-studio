@@ -43,7 +43,10 @@ When finished, write these files:
    asks for, and QE regression checks around the reporter's scenario. Checks found only by your own
    research (documentation, code, a similar or parent ticket, an investigator's other scenario) go after
    them under the line "Suggested checks (QE decide):" as "- Suggested check NN: ..." lines, each with an
-   indented "**Source:** ..." and "**Why suggested:** ..." line - at most five, only ones that matter.
+   indented "**Source:** ..." and "**Why suggested:** ..." line - at most three, only ones that matter.
+   Keep the criteria (with sub-points, Scope and Out of scope) within 350 words and each Source line within
+   30 words: name the ticket, comment, documentation page or commit; file paths and line numbers go in the
+   test plan.
    State each criterion as the expected outcome in plain words (no "Verify that" prefix is needed), and
    under a criterion list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A fact the ticket or a developer comment already decided (a feature
@@ -98,6 +101,8 @@ When finished, write these files:
    Also "scenario": {{"customer_steps": [<the reporter's own steps or requested outcome, copied>], "acs":
    [{{"ac": <number>, "scenario": "CUSTOMER" | "REGRESSION", "step": "<one of customer_steps>"}} or
    {{"ac": <number>, "scenario": "ADJACENT"}} is not allowed: move such a check to the suggested checks]}}.
+   Also "pre_existing_items": {{"disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason":
+   "..."}} - what happens to content, presets, output or settings created before the change.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or pull request>"}} or {{"status": "UNCONFIRMED", "reason": "<why, when the ticket has a
    root-cause or fix comment that is not the fix>"}}. Many tickets never get a root cause: UNCONFIRMED is

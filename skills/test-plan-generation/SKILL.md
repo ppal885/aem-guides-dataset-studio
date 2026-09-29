@@ -654,7 +654,7 @@ dropped silently:
    `OQ-##` entry. Create a standalone AC for a TBD only when no AC governs it.
 3. **Suggested check (QE decide)** - found only by our own research: a documentation page, the code, a
    similar or parent ticket's UAC, an investigator's other scenario, or parity nobody asked for. At most
-   five, below the criteria, never copied into the Jira field (`uac_completeness_check.py`).
+   three, below the criteria, never copied into the Jira field (`uac_completeness_check.py`).
 4. **Out of scope or not applicable** - with a concrete reason, in the full record.
 
 A surface found only in documentation or code gets at most a "still works as before" AC or a TBD
@@ -668,6 +668,19 @@ or outcome differs. Consolidation only reorganizes: every checkable point surviv
 suggested check, or in the full-record markdown. Two ACs with content-word overlap of 0.6 or more are merged
 (`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
 distinct product contract; no recap AC.
+
+**Length.** Keep the delivered criteria - with their sub-points, the Scope line and the Out of scope list -
+within 350 words (the median human UAC is 122 words and 90% are under 337; blind comparisons against human
+UACs showed ours 4 to 15 times longer). Keep each Source line within 30 words: name the ticket, comment,
+documentation page or commit, and keep file paths and line numbers in the full test plan record
+(`uac_completeness_check.size_problems`).
+
+**Items made before the change.** Always say what happens to content, maps, presets, output, settings or
+projects that were created or generated before the change - for example "older files need re-processing to
+get the word count", "check with an old preset and a newly created preset", "existing output gets the
+property after the next full Generate". Record it in `UAC_EVIDENCE.json` "pre_existing_items" as the AC that
+covers it, a TBD, or NOT_APPLICABLE with a reason. 15% of human UACs cover it, and it was missed on tickets
+that never say "upgrade" or "migration" (`uac_completeness_check.pre_existing_problems`).
 
 **Decided facts are criteria, not TBDs.** Human UACs are written once the scope is agreed: only 5% of the
 386 human UACs in the corpus carry a TBD, while 35% state a configuration, feature flag, preset argument or
