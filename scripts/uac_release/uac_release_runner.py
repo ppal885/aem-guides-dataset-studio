@@ -117,13 +117,16 @@ When finished, write these files:
    - the forms of the value the change reads or shows; an AC names each shape>}}}}, "input_sources": [<same shape
    as entry_points: where pasted, imported or uploaded content can come from, at least two, e.g. Word, Google
    Docs, Excel, a web page>]}} - every route to the ticket's action (for an output ticket: the output preset from the map,
-   Map Collection, a baseline, and for PDF Download as PDF), the result in each state of every switch that changes
+   Map Collection, a baseline, for PDF Download as PDF, and for a changed preset setting a profile preset
+   template applied with Apply Preset Changes), the result in each state of every switch that changes
    it, the other item or reference types when the ticket asks for general behaviour, the action done the
    other way round, and an item with a different history. These are criteria (scenario VARIANT) that name
    the route, state or type, never only suggested checks - except one known only from the code (basis
    CODE), which is a TBD or a suggested check.
-   Also "pre_existing_items": {{"disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason":
-   "..."}} - what happens to content, presets, output or settings created before the change.
+   Also "pre_existing_items": {{"disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac": <number>, "outcome":
+   "UNCHANGED" | "CHANGED", "basis": "<TICKET | ATTACHMENT | PRODUCT_DECISION | DEVELOPER_COMMENT, needed for
+   CHANGED>", "reason": "..."}} - what happens to content, presets, output or settings created before the
+   change. Do not guess new behaviour for them: existing items usually stay as they are.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or pull request>"}} or {{"status": "UNCONFIRMED", "reason": "<why, when the ticket has a
    root-cause or fix comment that is not the fix>"}}. Many tickets never get a root cause: UNCONFIRMED is
