@@ -8133,6 +8133,45 @@ def test_gate_false_positives_from_questions_and_side_sections() -> None:
                                                   "The Native PDF output preset drops the TOC.")))
 
 
+def test_shared_consumers() -> None:
+    uc = uac_completeness_check_mod
+    wide = {"summary": "Not able to insert at tgroup position",
+            "description": "Insert fails in a topic with tracked changes.",
+            "comments": [{"body": "This ticket touches upon a lot of areas in the guides app."}]}
+    narrow = {"summary": "Bleed not rendered", "description": "The bleed setting is ignored in the PDF."}
+    uac = ("- Acceptance Criteria 01: A tgroup inserted in a topic with tracked changes lands at the chosen position.\n"
+           "  **Source:** Ticket description.\n"
+           "- Acceptance Criteria 02: Other screens that read the element position still work as before.\n"
+           "  - breadcrumb selection\n  - outline panel single and multi select\n"
+           "  **Source:** Comment on other areas.\n")
+    plan = "- P2 [AC-02]: Action: Place the cursor in source view. Expected: The cursor maps to the same element."
+    good = {"shared_consumers": {"mechanism": "element position mapping with tracked changes", "consumers": [
+        {"name": "breadcrumb selection", "disposition": "AC", "ac": 2},
+        {"name": "outline panel", "disposition": "AC", "ac": 2},
+        {"name": "source view cursor", "disposition": "TEST_PLAN"}]}}
+    check("listed consumers pass", uc.shared_consumer_problems(good, uac, wide, plan) == [])
+    check("a missing record fails", any("shared_consumers is missing" in p for p in
+                                        uc.shared_consumer_problems({}, uac, narrow, plan)))
+    check("no consumers with a reason passes on a narrow ticket", uc.shared_consumer_problems(
+        {"shared_consumers": {"consumers": [], "reason": "the bleed rule is read only by the PDF engine"}},
+        uac, narrow, plan) == [])
+    check("no consumers is refused when the ticket says other areas are touched", any(
+        "reaches other areas" in p for p in uc.shared_consumer_problems(
+            {"shared_consumers": {"consumers": [], "reason": "the bleed rule is read only by the PDF engine"}},
+            uac, wide, plan)))
+    check("one consumer is too few when other areas are touched", any("at least 2" in p for p in
+          uc.shared_consumer_problems({"shared_consumers": {"mechanism": "position", "consumers": [
+              {"name": "breadcrumb selection", "disposition": "AC", "ac": 2}]}}, uac, wide, plan)))
+    check("a consumer the criterion does not name fails", any("does not name it" in p for p in
+          uc.shared_consumer_problems({"shared_consumers": {"mechanism": "position", "consumers": [
+              {"name": "right panel", "disposition": "AC", "ac": 2},
+              {"name": "outline panel", "disposition": "AC", "ac": 2}]}}, uac, wide, plan)))
+    check("a test-plan consumer the plan does not name fails", any("does not name it" in p for p in
+          uc.shared_consumer_problems({"shared_consumers": {"mechanism": "position", "consumers": [
+              {"name": "AI Assistant selection", "disposition": "TEST_PLAN"},
+              {"name": "outline panel", "disposition": "AC", "ac": 2}]}}, uac, wide, plan)))
+
+
 def test_output_setting_and_existing_output() -> None:
     uc = uac_completeness_check_mod
     output = {"summary": "Native PDF appendix with mapref shown as chapter",
@@ -8504,6 +8543,7 @@ def test_uac_completeness_check() -> None:
                       "value_shapes": {"name": "values", "disposition": "NOT_APPLICABLE",
                                        "reason": "the screen shows fixed labels and reads no user value"}}},
     "scope_boundaries": [], "scope_boundaries_reason": "nobody decided a version, type or path that this change leaves out",
+    "shared_consumers": {"consumers": [], "reason": "the change reads nothing that another screen also reads"},
     }
 
     def problems(ev, text=uac):
@@ -18226,6 +18266,7 @@ def main() -> int:
     test_output_route_entry_points()
     test_not_named_reasons_and_scope_boundaries()
     test_output_setting_and_existing_output()
+    test_shared_consumers()
     test_input_sources()
     test_test_plan_disposition()
     test_similar_uac_compare()

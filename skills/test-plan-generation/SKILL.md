@@ -707,6 +707,16 @@ reason (for example a fix that restores documented output). On such a ticket, ex
 (pre_existing_items CHANGED) needs a product or development basis - the customer's ask is not a decision
 (`uac_completeness_check.output_setting_problems`).
 
+**Screens that read what the change touches.** When the change touches something many screens read - element
+position and selection, the topic's CSS, how a reference is stored or resolved - list those screens and check
+that each still works: human UACs did this on three tickets where ours did not (breadcrumb, right panel,
+outline, source cursor and AI Assistant selection for a position-mapping fix; review panel, version history and
+merge for a CSS-order fix; baseline, reports and translation for a reference change). Record `UAC_EVIDENCE.json`
+"shared_consumers": the "mechanism" and the "consumers", each a sub-point of one "still works as before"
+criterion (a screen found in code or documentation may be one, since it asserts no new behaviour), TEST_PLAN,
+or NOT_APPLICABLE with a reason. An empty list needs a reason, and is refused when the ticket or a comment
+says the change reaches other areas (`uac_completeness_check.shared_consumer_problems`).
+
 **Every way to do the ticket's action.** The reporter shows one path; the human UAC covers the action.
 Record in `UAC_EVIDENCE.json` "action_variants", and make each an AC (or a TBD), never only a suggested
 check - these criteria are scenario VARIANT:
