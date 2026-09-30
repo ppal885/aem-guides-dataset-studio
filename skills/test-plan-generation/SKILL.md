@@ -663,9 +663,14 @@ suggested check. The reporter's own action done another way is not a different s
 to do the ticket's action" below.
 
 **Size.** Write the fewest ACs that cover the behaviour: at most ten (`ac_contract.validate_ac_count` in
-`uac_linter`). In the human UAC corpus the median ticket has 6 criteria of about 15 words each. Merge
-same-outcome cases into one AC and list the cases in a short clause; split only when the required behaviour
-or outcome differs. Consolidation only reorganizes: every checkable point survives as an AC clause, a TBD, a
+`uac_linter`). In the human UAC corpus the median ticket has 6 criteria of about 15 words each, a quarter
+have 2 or fewer and 40% have 4 or fewer; the size does not follow the length of the ticket. Start from one
+AC per distinct outcome the ticket asks for. Every entry point, switch state, item type, value form, item
+made before the change and reverse action whose expected outcome is the same as an existing AC is a short
+sub-point of that AC, not a new AC - the action_variants and pre_existing_items records point at that AC.
+Add an AC only when the expected outcome differs. Blind comparisons showed ours at 5 to 9 ACs on every
+ticket while the human UAC had 3 to 30 points. Merge same-outcome cases into one AC and list the cases in a
+short clause; split only when the required behaviour or outcome differs. Consolidation only reorganizes: every checkable point survives as an AC clause, a TBD, a
 suggested check, or in the full-record markdown. Two ACs with content-word overlap of 0.6 or more are merged
 (`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
 distinct product contract; no recap AC.
