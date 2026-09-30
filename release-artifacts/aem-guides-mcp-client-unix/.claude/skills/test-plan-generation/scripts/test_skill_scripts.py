@@ -8171,6 +8171,46 @@ def test_not_named_reasons_and_scope_boundaries() -> None:
                                      uac.split("Out of scope:")[0])))
 
 
+def test_test_plan_disposition() -> None:
+    uc = uac_completeness_check_mod
+    uac = ("- Acceptance Criteria 01: The PDF generated from the Map console preset shows the bleed area.\n"
+           "  **Source:** Ticket description.\n")
+    blocks = {1: "The PDF generated from the Map console preset shows the bleed area."}
+    plan = "- P1 [AC-01]: Action: Generate the PDF from a Map Collection. Expected: The bleed shows."
+
+    def run(entry, plan_text=plan, **kwargs):
+        return uc._variant_entry_problems("action_variants.entry_points 1", entry, blocks, uac, plan_text=plan_text,
+                                          **kwargs)
+
+    collection = {"name": "Map Collection", "basis": "DOCUMENTATION", "disposition": "TEST_PLAN"}
+    check("a documented route in the test plan may leave the UAC", run(collection) == [])
+    check("a code-only route in the test plan may leave the UAC", run(dict(collection, basis="CODE")) == [])
+    check("a ticket-named route cannot leave the UAC", any("stays in the delivered UAC" in p for p in run(
+        dict(collection, basis="TICKET"))))
+    check("TEST_PLAN needs a test plan", any("needs the full test plan" in p for p in run(collection, plan_text="")))
+    check("TEST_PLAN needs the test plan to name it", any("does not name it" in p for p in run(
+        dict(collection, name="baseline generation"))))
+    check("a reverse action may live in the test plan", uc._variant_entry_problems(
+        "action_variants.mechanism.reverse_action", {"name": "generate from the collection again",
+                                                     "disposition": "TEST_PLAN"},
+        blocks, uac, needs_basis=False, plan_text=plan) == [])
+    evidence = {"action_variants": {
+        "entry_points": [{"name": "Map console preset", "basis": "TICKET", "disposition": "AC", "ac": 1},
+                         collection],
+        "config_switches": [], "config_switches_reason": "no setting changes how the bleed is drawn here",
+        "mechanism": {"general_ask": False, "reason": "the ticket asks only about the reporter's preset",
+                      "reverse_action": {"name": "turn bleed off", "disposition": "NOT_APPLICABLE",
+                                         "reason": "turning a setting off cannot show a bleed that was never drawn"},
+                      "item_origin": {"name": "older presets", "disposition": "NOT_APPLICABLE",
+                                      "reason": "the preset has no stored state that differs by age here"},
+                      "value_shapes": {"name": "widths", "disposition": "NOT_APPLICABLE",
+                                       "reason": "the ticket has a single fixed width value to check"}}}}
+    check("TEST_PLAN answers flow through the whole action_variants check",
+          uc.action_variant_problems(evidence, uac, None, plan) == [])
+    check("without the test plan the whole check refuses TEST_PLAN",
+          any("needs the full test plan" in p for p in uc.action_variant_problems(evidence, uac, None, "")))
+
+
 def test_input_sources() -> None:
     uc = uac_completeness_check_mod
     paste = {"summary": "Word table header row content is lost when pasted", "description": "Paste the table."}
@@ -18133,6 +18173,7 @@ def main() -> int:
     test_output_route_entry_points()
     test_not_named_reasons_and_scope_boundaries()
     test_input_sources()
+    test_test_plan_disposition()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()

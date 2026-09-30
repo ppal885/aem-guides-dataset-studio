@@ -71,7 +71,9 @@ WHAT IT CHECKS in a UAC folder
    lists at least two in "shapes" and names each). Each is an AC
    that names it, a TBD, or not applicable with a reason; never only a suggested check - except a route,
    switch or item type known only from the code (basis CODE), which is a TBD or a suggested check, never an
-   AC. A criterion that covers one of them is scenario VARIANT. When the ticket generates output (any
+   AC. A research-found variant (DOCUMENTATION or CODE basis, or a reverse action, item history or value
+   form) with the same outcome as an AC may be TEST_PLAN: named in test-plan.md, left out of the delivered
+   UAC. A criterion that covers one of them is scenario VARIANT. When the ticket generates output (any
    output type), entry_points also names each documented generation route - the output preset from the map,
    Map Collection, a baseline, and for PDF the Download as PDF / single-topic path - so none is dropped
    silently (miss probe MP-004); when it changes an output preset setting, also a Global or Folder Profile
@@ -103,6 +105,7 @@ DOC_RESEARCH_FILE = "DOC_RESEARCH.json"
 UAC_FILE = "UAC.md"
 JIRA_SOURCE_FILE = "jira-source.json"
 HOTFIX_SCOPE_FILE = "HOTFIX_SCOPE.json"
+PLAN_FILE = "test-plan.md"
 PREFLIGHT_SOURCES = ("product_rag", "jira_history", "live_jira", "clones")
 PREFLIGHT_STATES = ("available", "unavailable", "not_applicable")
 RAG_RESULTS = ("ok", "empty", "error")
@@ -257,6 +260,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
     except ValueError:
         doc_research = {}
     uac = (folder / UAC_FILE).read_text(encoding="utf-8") if (folder / UAC_FILE).is_file() else ""
+    plan = (folder / PLAN_FILE).read_text(encoding="utf-8") if (folder / PLAN_FILE).is_file() else ""
     source_path = folder / JIRA_SOURCE_FILE
     try:
         source = _load(source_path) if source_path.is_file() else None
@@ -270,7 +274,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "similar_uacs": similar_uac_problems(evidence, uac), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac),
-        "action_variants": action_variant_problems(evidence, uac, source),
+        "action_variants": action_variant_problems(evidence, uac, source, plan),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
     }
 
@@ -710,15 +714,36 @@ def _value_shape_problems(entry: dict, blocks: dict[int, str]) -> list[str]:
                        if len(w) >= 4) and _normalize(shape) not in text]
 
 
+# Research-found variants may live in the full test plan instead of the delivered UAC. Blind comparisons showed
+# human UACs of one to three lines where ours listed every route, switch and value form as criteria; the checks
+# stay, in the test plan. A ticket-named or decided variant is never TEST_PLAN: the human UAC keeps those.
+TEST_PLAN_BASES = ("DOCUMENTATION", "CODE", None)
+
+
+def _test_plan_problems(label: str, name: str, basis, plan_text: str) -> list[str]:
+    if basis not in TEST_PLAN_BASES:
+        return [f"{label} \"{name}\": a variant from the ticket, an attachment or a decision (basis {basis}) stays in "
+                "the delivered UAC as an AC or a TBD; TEST_PLAN is for variants found by our own research"]
+    if not plan_text.strip():
+        return [f"{label} \"{name}\": TEST_PLAN needs the full test plan ({PLAN_FILE}) that checks it"]
+    words = _name_words(name)
+    text = _normalize(plan_text)
+    if words and not any(re.search(rf"\b{re.escape(w)}", text) for w in words):
+        return [f"{label} \"{name}\": the full test plan does not name it"]
+    return []
+
+
 def _name_words(name) -> list[str]:
     return [w for w in re.findall(r"[a-z0-9]+", str(name or "").lower()) if len(w) >= 4 and w not in _STOP_WORDS]
 
 
 def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text: str = "",
-                            needs_basis: bool = True) -> list[str]:
+                            needs_basis: bool = True, plan_text: str = "") -> list[str]:
     """One variant: an AC that names it, a TBD on the AC it governs, or not applicable with a reason.
 
-    A variant known only from the code (basis CODE) is a TBD or a suggested check, never an AC."""
+    A variant known only from the code (basis CODE) is a TBD or a suggested check, never an AC. A variant found by
+    our own research (DOCUMENTATION or CODE, or a reverse action, item history or value form) whose expected outcome
+    is the same as a criterion may be TEST_PLAN: checked in the full test plan, not listed in the delivered UAC."""
     if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
         return [f"{label} needs a name"]
     name = str(entry["name"]).strip()
@@ -735,6 +760,8 @@ def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text:
             number = entry.get("suggested")
             return [] if isinstance(number, int) and number in suggested_blocks(uac_text) else [
                 f"{label} \"{name}\": suggested check {number!r} does not exist"]
+    if disposition == "TEST_PLAN":
+        return _test_plan_problems(label, name, basis if needs_basis else None, plan_text)
     if disposition not in VARIANT_DISPOSITIONS:
         return [f"{label} \"{name}\": disposition must be {', '.join(VARIANT_DISPOSITIONS)} - a variant of the "
                 "ticket's own action is never only a suggested check (unless it is known only from the code)"]
@@ -812,7 +839,8 @@ INPUT_SIGNAL = re.compile(
 MIN_INPUT_SOURCES = 2
 
 
-def input_source_problems(block: dict, blocks: dict[int, str], uac_text: str, source: dict | None) -> list[str]:
+def input_source_problems(block: dict, blocks: dict[int, str], uac_text: str, source: dict | None,
+                          plan_text: str = "") -> list[str]:
     """A ticket about content brought in names where that content can come from, each dispositioned."""
     if not source:
         return []
@@ -827,11 +855,13 @@ def input_source_problems(block: dict, blocks: dict[int, str], uac_text: str, so
                 "each an AC, a TBD or NOT_APPLICABLE with a reason"]
     problems = []
     for index, entry in enumerate(sources, 1):
-        problems += _variant_entry_problems(f"action_variants.input_sources {index}", entry, blocks, uac_text)
+        problems += _variant_entry_problems(f"action_variants.input_sources {index}", entry, blocks, uac_text,
+                                        plan_text=plan_text)
     return problems
 
 
-def action_variant_problems(evidence: dict, uac_text: str, source: dict | None = None) -> list[str]:
+def action_variant_problems(evidence: dict, uac_text: str, source: dict | None = None,
+                            plan_text: str = "") -> list[str]:
     """The ticket's own action through every route, configuration state and item type it applies to.
 
     Blind comparisons with human UACs missed these while the reporter's single path was covered: the toolbar
@@ -855,9 +885,10 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
                         "example drag and drop, the toolbar, a dialog, the context menu, an API)")
     else:
         for index, entry in enumerate(entry_points, 1):
-            problems += _variant_entry_problems(f"action_variants.entry_points {index}", entry, blocks, uac_text)
+            problems += _variant_entry_problems(f"action_variants.entry_points {index}", entry, blocks, uac_text,
+                                        plan_text=plan_text)
         problems += output_route_problems(entry_points, source)
-    problems += input_source_problems(block, blocks, uac_text, source)
+    problems += input_source_problems(block, blocks, uac_text, source, plan_text)
     switches = block.get("config_switches")
     if not isinstance(switches, list):
         problems.append("action_variants.config_switches is missing: list each configuration, feature flag or "
@@ -868,7 +899,8 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
     else:
         for index, entry in enumerate(switches, 1):
             label = f"action_variants.config_switches {index}"
-            found = _variant_entry_problems(label, entry, blocks, uac_text)
+            found = _variant_entry_problems(label, entry, blocks, uac_text,
+                                        plan_text=plan_text)
             problems += found
             if found or not isinstance(entry, dict) or entry.get("disposition") != "AC":
                 continue
@@ -894,7 +926,7 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
         else:
             for index, entry in enumerate(variants, 1):
                 problems += _variant_entry_problems(f"action_variants.mechanism variant {index}", entry, blocks,
-                                                    uac_text)
+                                                    uac_text, plan_text=plan_text)
     elif len(str(mechanism.get("reason") or "").split()) < 5:
         problems.append("action_variants.mechanism is limited to the reporter's case without a concrete reason")
     if isinstance(mechanism, dict):
@@ -905,7 +937,7 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
                                 " - an AC, a TBD or NOT_APPLICABLE with a reason")
                 continue
             found = _variant_entry_problems(f"action_variants.mechanism.{dimension}", entry, blocks, uac_text,
-                                            needs_basis=False)
+                                            needs_basis=False, plan_text=plan_text)
             problems += found
             if dimension == "value_shapes" and not found and entry.get("disposition") == "AC":
                 problems += _value_shape_problems(entry, blocks)
