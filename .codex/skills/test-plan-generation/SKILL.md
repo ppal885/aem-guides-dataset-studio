@@ -659,7 +659,8 @@ dropped silently:
 
 A surface found only in documentation or code gets at most a "still works as before" AC or a TBD
 (`uac_release_runner.surface_inventory_problems`). A criterion on a scenario the reporter did not hit is a
-suggested check.
+suggested check. The reporter's own action done another way is not a different scenario - see "Every way
+to do the ticket's action" below.
 
 **Size.** Write the fewest ACs that cover the behaviour: at most ten (`ac_contract.validate_ac_count` in
 `uac_linter`). In the human UAC corpus the median ticket has 6 criteria of about 15 words each. Merge
@@ -681,6 +682,28 @@ get the word count", "check with an old preset and a newly created preset", "exi
 property after the next full Generate". Record it in `UAC_EVIDENCE.json` "pre_existing_items" as the AC that
 covers it, a TBD, or NOT_APPLICABLE with a reason. 15% of human UACs cover it, and it was missed on tickets
 that never say "upgrade" or "migration" (`uac_completeness_check.pre_existing_problems`).
+
+**Every way to do the ticket's action.** The reporter shows one path; the human UAC covers the action.
+Record in `UAC_EVIDENCE.json` "action_variants", and make each an AC (or a TBD), never only a suggested
+check - these criteria are scenario VARIANT:
+- **entry_points** - every route to the same action: drag and drop, the toolbar, a dialog, the context
+  menu, a keyboard shortcut, an API. When the reporter dragged a file in, the toolbar insert is part of the
+  ticket too. Merge routes with the same outcome into one AC and list them as sub-points.
+- **config_switches** - every configuration, feature flag or setting that changes what the action stores or
+  shows, with the result in each state ("with UUID file names enabled the GUID is inserted; when disabled
+  the path is inserted"). An empty list needs a reason.
+- **mechanism** - when the ticket asks for general behaviour ("users can move content while others refer to
+  it", "same as Baseline and Conditional Presets"), the other item or reference types, and the named feature
+  it must match, are ACs; the reporter's own item is one case of it. When the ask is only the reporter's
+  case, say why. Always answer two more: **reverse_action** - the action done the other way round (move the
+  item back, re-enable, undo) - and **item_origin** - an item with a different history (created in the
+  target folder, never translated, made in an older release). On a move ticket the human UAC moved the item
+  back and moved an item that was created in the target folder.
+Each entry records its **basis**: TICKET, ATTACHMENT, PRODUCT_DECISION, DEVELOPER_COMMENT, DOCUMENTATION or
+CODE. A route, switch or item type known only from the code is a TBD or a suggested check, never an AC: in
+blind comparisons, routes and modes read only from the code were criteria the human UAC did not have, and
+they cost QE review time. Blind comparisons with human UACs missed the other variants while covering the
+reporter's single path (`uac_completeness_check.action_variant_problems`).
 
 **Decided facts are criteria, not TBDs.** Human UACs are written once the scope is agreed: only 5% of the
 386 human UACs in the corpus carry a TBD, while 35% state a configuration, feature flag, preset argument or

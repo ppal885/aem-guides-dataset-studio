@@ -26,8 +26,10 @@ WHAT IT CHECKS in a UAC folder
 6. "scenario": the reporter's own steps or requested outcome (text copied from the ticket) and, for
    every Acceptance Criterion, the step it follows (CUSTOMER), the step it guards as a QE regression or
    edge-case check (REGRESSION, no TBD needed). A check that follows a scenario the reporter did not
-   hit (ADJACENT, for example one an investigator found) is a suggested check, never a criterion. At
-   least one criterion follows the reporter's scenario.
+   hit (ADJACENT, for example one an investigator found) is a suggested check, never a criterion. The
+   reporter's step done another way - another entry point, configuration state or item type listed in
+   "action_variants" - is VARIANT and stays a criterion. At least one criterion follows the reporter's
+   scenario.
 7. "failure_path": when the ticket says that items inside a job, queue or batch fail, get stuck or
    are left unprocessed, what happens to the item that fails, to the remaining items, and how the user
    learns which items failed - each an AC, a TBD or not applicable with a reason. A batch ticket that
@@ -58,6 +60,14 @@ WHAT IT CHECKS in a UAC folder
    output, settings or projects created or generated earlier - an AC, a TBD or NOT_APPLICABLE with a reason.
    15% of human UACs cover it ("older files need re-processing", "old preset and newly created preset"),
    and blind comparisons missed it on tickets that never say "upgrade" or "migration".
+14. "action_variants": the ticket's own action through every route the user has (entry_points: drag and
+   drop, toolbar, dialog, context menu, API), every configuration switch that changes the result
+   (config_switches, each state it can take), and - when the ticket asks for general behaviour - the other
+   item or reference types it applies to (mechanism), plus the action done the other way round
+   (mechanism.reverse_action) and an item with a different history (mechanism.item_origin). Each is an AC
+   that names it, a TBD, or not applicable with a reason; never only a suggested check - except a route,
+   switch or item type known only from the code (basis CODE), which is a TBD or a suggested check, never an
+   AC. A criterion that covers one of them is scenario VARIANT.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -240,11 +250,12 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "similar_uacs": similar_uac_problems(evidence, uac), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac),
+        "action_variants": action_variant_problems(evidence, uac),
     }
 
 
 def evidence_problems(folder: Path) -> list[str]:
-    """Checks 2-8 and 10-13: the evidence record the runner also enforces."""
+    """Checks 2-8 and 10-14: the evidence record the runner also enforces."""
     problems: list[str] = []
     for found in evidence_problems_by_check(folder).values():
         problems += found
@@ -277,7 +288,7 @@ def check(folder: Path) -> list[str]:
 
 
 # --- customer scenario ---------------------------------------------------------------------------------
-SCENARIO_KINDS = ("CUSTOMER", "REGRESSION", "ADJACENT")
+SCENARIO_KINDS = ("CUSTOMER", "REGRESSION", "VARIANT", "ADJACENT")
 _NORMALIZE = re.compile(r"[*_{}|`\"'‘’“”]")
 
 
@@ -296,7 +307,9 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
 
     An investigator's comment often finds a different scenario from the one the reporter hit (for example
     a deleted project when the reporter's job completed). A criterion built on that other scenario is
-    ADJACENT: it must not become the core contract, so it goes to the suggested checks for QE to decide."""
+    ADJACENT: it must not become the core contract, so it goes to the suggested checks for QE to decide.
+    The reporter's step done through another entry point, configuration state or item type is VARIANT: it
+    stays a criterion when "action_variants" lists it for that criterion."""
     scenario = evidence.get("scenario")
     if not isinstance(scenario, dict):
         return ["scenario is missing: copy the reporter's own steps or requested outcome into "
@@ -319,7 +332,13 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
             problems.append(f"Acceptance Criteria {ac:02d}: say in scenario.acs which customer step it follows")
             continue
         kind = entry.get("scenario")
-        if kind in ("CUSTOMER", "REGRESSION"):
+        if kind == "VARIANT":
+            if _normalize(entry.get("step")) not in steps:
+                problems.append(f"Acceptance Criteria {ac:02d}: its step is not one of scenario.customer_steps")
+            if ac not in _variant_acs(evidence):
+                problems.append(f"Acceptance Criteria {ac:02d} is a VARIANT, but action_variants lists no entry point, "
+                                "configuration switch or mechanism variant for it")
+        elif kind in ("CUSTOMER", "REGRESSION"):
             customer_acs += kind == "CUSTOMER"
             if _normalize(entry.get("step")) not in steps:
                 problems.append(f"Acceptance Criteria {ac:02d}: its step is not one of scenario.customer_steps")
@@ -331,6 +350,17 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
     if blocks and customer_acs == 0:
         problems.append("no Acceptance Criterion follows the reporter's own scenario")
     return problems
+
+
+def _variant_acs(evidence: dict) -> set[int]:
+    block = evidence.get("action_variants") if isinstance(evidence.get("action_variants"), dict) else {}
+    mechanism = block.get("mechanism") if isinstance(block.get("mechanism"), dict) else {}
+    found: set[int] = set()
+    for entry in (block.get("entry_points") or []) + (block.get("config_switches") or []) + (
+            mechanism.get("variants") or []) + [mechanism.get(d) for d in MECHANISM_DIMENSIONS]:
+        if isinstance(entry, dict) and entry.get("disposition") in ("AC", "TBD"):
+            found.update(_ac_list(entry.get("acs", entry.get("ac"))))
+    return found
 
 
 # --- batch and queue failure path ----------------------------------------------------------------------
@@ -599,6 +629,140 @@ def pre_existing_problems(evidence: dict, uac_text: str) -> list[str]:
     if disposition == "TBD" and "TBD:" not in blocks[ac]:
         return [f"pre_existing_items: Acceptance Criteria {ac:02d} has no TBD line"]
     return []
+
+
+# --- entry points, configuration switches and mechanism variants ---------------------------------------
+VARIANT_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
+# Where a route, switch or item type comes from. CODE alone never makes new behaviour a criterion: in blind
+# comparisons, routes and modes read only from the code were criteria the human UAC did not have.
+VARIANT_BASES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DEVELOPER_COMMENT", "DOCUMENTATION", "CODE")
+MECHANISM_DIMENSIONS = ("reverse_action", "item_origin")
+_STOP_WORDS = {"from", "with", "into", "that", "this", "when", "then", "panel", "dialog", "using", "through",
+               "button", "option", "menu", "file", "files", "view", "editor", "page", "item", "items"}
+
+
+def _name_words(name) -> list[str]:
+    return [w for w in re.findall(r"[a-z0-9]+", str(name or "").lower()) if len(w) >= 4 and w not in _STOP_WORDS]
+
+
+def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text: str = "",
+                            needs_basis: bool = True) -> list[str]:
+    """One variant: an AC that names it, a TBD on the AC it governs, or not applicable with a reason.
+
+    A variant known only from the code (basis CODE) is a TBD or a suggested check, never an AC."""
+    if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
+        return [f"{label} needs a name"]
+    name = str(entry["name"]).strip()
+    disposition = entry.get("disposition")
+    basis = entry.get("basis")
+    if needs_basis and disposition != "NOT_APPLICABLE" and basis not in VARIANT_BASES:
+        return [f"{label} \"{name}\": basis must be {', '.join(VARIANT_BASES)} - where this route, switch or item "
+                "type comes from"]
+    if needs_basis and basis == "CODE":
+        if disposition == "AC":
+            return [f"{label} \"{name}\" is known only from the code: make it a TBD or a suggested check, not an "
+                    "Acceptance Criterion"]
+        if disposition == "SUGGESTED":
+            number = entry.get("suggested")
+            return [] if isinstance(number, int) and number in suggested_blocks(uac_text) else [
+                f"{label} \"{name}\": suggested check {number!r} does not exist"]
+    if disposition not in VARIANT_DISPOSITIONS:
+        return [f"{label} \"{name}\": disposition must be {', '.join(VARIANT_DISPOSITIONS)} - a variant of the "
+                "ticket's own action is never only a suggested check (unless it is known only from the code)"]
+    if disposition == "NOT_APPLICABLE":
+        return [] if len(str(entry.get("reason") or "").split()) >= 5 else [
+            f"{label} \"{name}\" is not applicable without a concrete reason"]
+    acs = _ac_list(entry.get("acs", entry.get("ac")))
+    missing = [ac for ac in acs if ac not in blocks]
+    if not acs or missing:
+        return [f"{label} \"{name}\": Acceptance Criteria {missing or acs!r} does not exist"]
+    text = _normalize(" ".join(blocks[ac] for ac in acs))
+    if disposition == "TBD":
+        return [] if "tbd:" in text else [f"{label} \"{name}\": Acceptance Criteria {acs[0]:02d} has no TBD line"]
+    words = _name_words(name)
+    if words and not any(re.search(rf"\b{re.escape(w)}", text) for w in words):
+        return [f"{label} \"{name}\": Acceptance Criteria {', '.join(f'{a:02d}' for a in acs)} does not name it"]
+    return []
+
+
+def action_variant_problems(evidence: dict, uac_text: str) -> list[str]:
+    """The ticket's own action through every route, configuration state and item type it applies to.
+
+    Blind comparisons with human UACs missed these while the reporter's single path was covered: the toolbar
+    insert when the reporter dragged and dropped, both states of the configuration that decides what is
+    stored, and the topic reference when the reporter used a map reference while the ticket asked for the
+    general behaviour ("users can move content while others refer to it"). On a move ticket the human UAC
+    also moved the item back and moved an item with a different origin (created in the target folder). They
+    are ACs or TBDs, never suggested checks: they are the ticket's own action, not a scenario found only by
+    research. The exception is a route, switch or item type known only from the code: it would assert
+    behaviour nobody asked for, so it is a TBD or a suggested check."""
+    block = evidence.get("action_variants")
+    if not isinstance(block, dict):
+        return ["action_variants is missing: list every way the user performs the ticket's action (entry_points), "
+                "every configuration switch that changes the result (config_switches), and whether the ticket asks "
+                "for general behaviour that covers other item or reference types (mechanism)"]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    problems = []
+    entry_points = block.get("entry_points")
+    if not isinstance(entry_points, list) or not entry_points:
+        problems.append("action_variants.entry_points is empty: name every route to the ticket's action (for "
+                        "example drag and drop, the toolbar, a dialog, the context menu, an API)")
+    else:
+        for index, entry in enumerate(entry_points, 1):
+            problems += _variant_entry_problems(f"action_variants.entry_points {index}", entry, blocks, uac_text)
+    switches = block.get("config_switches")
+    if not isinstance(switches, list):
+        problems.append("action_variants.config_switches is missing: list each configuration, feature flag or "
+                        "setting that changes the result, or give an empty list with config_switches_reason")
+    elif not switches:
+        if len(str(block.get("config_switches_reason") or "").split()) < 5:
+            problems.append("action_variants.config_switches is empty without a concrete config_switches_reason")
+    else:
+        for index, entry in enumerate(switches, 1):
+            label = f"action_variants.config_switches {index}"
+            found = _variant_entry_problems(label, entry, blocks, uac_text)
+            problems += found
+            if found or not isinstance(entry, dict) or entry.get("disposition") != "AC":
+                continue
+            states = [str(s).strip().lower() for s in entry.get("states") or [] if str(s).strip()]
+            if len(states) < 2:
+                problems.append(f"{label} \"{entry['name']}\": list at least two states (for example enabled and "
+                                "disabled) - the human UACs cover each state the switch can take")
+                continue
+            text = _normalize(" ".join(blocks[ac] for ac in _ac_list(entry.get("acs", entry.get("ac")))))
+            for state in states:
+                if not re.search(rf"\b{re.escape(_normalize(state))}\b", text):
+                    problems.append(f"{label} \"{entry['name']}\": no Acceptance Criterion states the result when it "
+                                    f"is {state}")
+    mechanism = block.get("mechanism")
+    if not isinstance(mechanism, dict) or not isinstance(mechanism.get("general_ask"), bool):
+        problems.append("action_variants.mechanism needs general_ask true or false: does the ticket ask for a general "
+                        "behaviour, beyond the one item or reference type the reporter used?")
+    elif mechanism["general_ask"]:
+        variants = mechanism.get("variants")
+        if not isinstance(variants, list) or not variants:
+            problems.append("action_variants.mechanism asks for general behaviour but lists no variants (the other "
+                            "item or reference types the same action applies to)")
+        else:
+            for index, entry in enumerate(variants, 1):
+                problems += _variant_entry_problems(f"action_variants.mechanism variant {index}", entry, blocks,
+                                                    uac_text)
+    elif len(str(mechanism.get("reason") or "").split()) < 5:
+        problems.append("action_variants.mechanism is limited to the reporter's case without a concrete reason")
+    if isinstance(mechanism, dict):
+        for dimension in MECHANISM_DIMENSIONS:
+            entry = mechanism.get(dimension)
+            if not isinstance(entry, dict):
+                problems.append(f"action_variants.mechanism.{dimension} is missing: "
+                                + ("the action done the other way round (move back, re-enable, undo)"
+                                   if dimension == "reverse_action" else
+                                   "an item with a different history (created in the target location, never "
+                                   "translated, from an older release)")
+                                + " - an AC, a TBD or NOT_APPLICABLE with a reason")
+                continue
+            problems += _variant_entry_problems(f"action_variants.mechanism.{dimension}", entry, blocks, uac_text,
+                                                needs_basis=False)
+    return problems
 
 
 def main(argv: list[str] | None = None) -> int:
