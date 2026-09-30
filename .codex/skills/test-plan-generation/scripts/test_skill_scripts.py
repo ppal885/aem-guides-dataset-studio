@@ -8083,6 +8083,37 @@ def test_uac_size_and_pre_existing_items() -> None:
         "disposition": "NOT_APPLICABLE", "reason": "the change only affects a dialog that stores nothing"}}, short) == [])
 
 
+def test_gate_false_positives_from_questions_and_side_sections() -> None:
+    h, r, p = hotfix_scope_check_mod, root_cause_fix_driven_mod, publishing_scope_coverage_mod
+    asks = "Ask: How to address this issue? Will a hotfix be provided? Customer was testing on 4.6."
+    check("a reporter asking for a hotfix is not a hotfix ticket", not h.is_hotfix("External link gets a GUID", asks))
+    check("a request for a backport is not a backport ticket",
+          not h.is_hotfix("", "The customer needs a backport to 5.0 as soon as possible."))
+    check("a hotfix ticket is still a hotfix", h.is_hotfix("[Hotfix] 5.1.3 HF for the preview"))
+    check("a backport statement is still a backport", h.is_hotfix("Backport of the preview fix to 5.0"))
+    check("a hotfix statement in the description still counts",
+          h.is_hotfix("", "This is the hotfix for the customer."))
+
+    check("a question about a fix is not a fix-status claim",
+          r._text_signals("After the fix is provided - do they have to restart? Will a hotfix be provided?") == [])
+    check("an absence claim with a qualifier and a list is skipped",
+          r._text_signals("Lifecycle: Pre-Development; no fix diff or root cause is in the supplied evidence.") == [])
+    check("a root-cause statement still counts", r._text_signals("Root cause: the parser ignores scope.") ==
+          ["root-cause statement"])
+    check("a delivered hotfix still counts", "positive fix-status claim" in r._text_signals(
+        "A hotfix was delivered in 5.0.3.1."))
+
+    side = ("**Understanding From Jira**\n- An external link gets a GUID after migration.\n"
+            "**Acceptance Criteria**\n- AC-01: The link keeps its href.\n"
+            "**Regression Areas**\n- Re-run DITA-OT publishing of a map with such links.\n"
+            "**Open Questions**\n- OQ-01: Which output presets does the customer use?\n")
+    check("output named only in Regression Areas and Open Questions is not a publishing ticket",
+          not p.is_publishing_ticket({}, side))
+    check("a Native PDF output preset in the ticket's own sections is a publishing ticket",
+          p.is_publishing_ticket({}, side.replace("An external link gets a GUID after migration.",
+                                                  "The Native PDF output preset drops the TOC.")))
+
+
 def test_action_variants() -> None:
     uc = uac_completeness_check_mod
     uac = ("- Acceptance Criteria 01: A topic added to an unsaved map by drag and drop or from the toolbar keeps "
@@ -17965,6 +17996,7 @@ def main() -> int:
     test_human_uac_shape()
     test_uac_size_and_pre_existing_items()
     test_action_variants()
+    test_gate_false_positives_from_questions_and_side_sections()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()

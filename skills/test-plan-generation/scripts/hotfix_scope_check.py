@@ -51,9 +51,23 @@ GENERIC_REGRESSION_LINE = re.compile(
 _AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", re.M | re.S)
 
 
+# A question or a request ("Will a hotfix be provided?", "customer needs a hotfix") does not make a mainline
+# ticket a hotfix: asking for one says nothing about what this ticket's change is.
+_QUESTION_SENTENCE = re.compile(r"[^.?!\n]*\?")
+_HOTFIX_REQUEST = re.compile(
+    r"\b(?:will|would|could|can|shall|should|provide[sd]?|providing|need(?:s|ed)?|request(?:s|ed)?|asking for|"
+    r"ask for|want(?:s|ed)?|expect(?:s|ed|ing)?|is there|any)\b[^.?!\n]{0,25}"
+    r"(?:\bhot\s*-?\s*fix\b|\bbackport(?:ed|ing)?\b)", re.IGNORECASE)
+
+
+def _statement_text(text: str) -> str:
+    """The text without questions and without requests for a hotfix or backport."""
+    return _HOTFIX_REQUEST.sub(" ", _QUESTION_SENTENCE.sub(" ", text or ""))
+
+
 def is_hotfix(*texts: str) -> bool:
-    """True when the ticket text says it is a hotfix or a backport."""
-    return any(HOTFIX_SIGNAL.search(t or "") for t in texts)
+    """True when the ticket text says it is a hotfix or a backport - not when it only asks for one."""
+    return any(HOTFIX_SIGNAL.search(_statement_text(t)) for t in texts)
 
 
 def _normalize(text: str) -> str:
