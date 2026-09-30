@@ -148,6 +148,7 @@ EVIDENCE = {
                       "value_shapes": {"name": "values", "disposition": "NOT_APPLICABLE",
                                        "reason": "the screen shows fixed labels and reads no user value"}}},
     "scope_boundaries": [], "scope_boundaries_reason": "nobody decided a version, type or path that this change leaves out",
+    "shared_consumers": {"consumers": [], "reason": "the change reads nothing that another screen also reads"},
 }
 
 

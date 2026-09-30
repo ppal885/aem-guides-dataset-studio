@@ -88,6 +88,10 @@ WHAT IT CHECKS in a UAC folder
 16. "output_setting": when the ticket changes generated output, whether the new behaviour sits behind a
    setting and its default - an AC with a product or development basis, a TBD, or NOT_APPLICABLE with a
    reason. Existing output changing (pre_existing_items CHANGED) needs a product or development basis too.
+17. "shared_consumers": what the change touches that other screens read ("mechanism") and those screens
+   ("consumers"), each an AC sub-point of a "still works as before" criterion, TEST_PLAN, or NOT_APPLICABLE
+   with a reason; an empty list needs a reason, and is refused when the ticket says the change reaches other
+   areas.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -148,6 +152,73 @@ def is_output_ticket(source: dict | None) -> bool:
     if not source:
         return False
     return bool(OUTPUT_SIGNAL.search("\n".join([source.get("summary") or "", source.get("description") or ""])))
+
+
+# When a change touches something many screens read - element position and selection, the topic's CSS, how a
+# reference is stored - human UACs list every screen that reads it as a "still works" check: breadcrumb, right
+# panel, outline, source cursor and AI Assistant selection for a position-mapping fix; review panel, version
+# history and merge for a CSS-order fix; baseline, reports and translation for a reference change. Blind
+# comparisons missed them on all three. They are regression checks, so a screen found in code or documentation
+# may be one - as a sub-point of a single "still works as before" criterion, or in the full test plan.
+SHARED_SIGNAL = re.compile(
+    r"\b(?:touch(?:es|ed)?\s+(?:upon\s+)?(?:a\s+lot\s+of|many|several|multiple|other)\s+areas|impact(?:ed)?\s+areas?|"
+    r"areas?\s+(?:of\s+)?impact|shared\s+(?:code|logic|component|service|path)|common\s+(?:code|logic|component|"
+    r"service|path)|used\s+(?:in|by)\s+(?:many|multiple|several|other))\b", re.IGNORECASE)
+SHARED_DISPOSITIONS = ("AC", "TEST_PLAN", "NOT_APPLICABLE")
+MIN_SHARED_CONSUMERS = 2
+
+
+def shared_consumer_problems(evidence: dict, uac_text: str, source: dict | None, plan_text: str = "") -> list[str]:
+    """Name the other screens that read what the change touches, each checked in the UAC or the test plan."""
+    block = evidence.get("shared_consumers")
+    signal = bool(source) and bool(SHARED_SIGNAL.search(_ticket_text(source)))
+    if not isinstance(block, dict):
+        return ["shared_consumers is missing: name what the change touches (\"mechanism\") and the other screens that "
+                "read it (\"consumers\"), or \"consumers\": [] with a reason when nothing else reads it"]
+    consumers = block.get("consumers")
+    if not isinstance(consumers, list):
+        return ["shared_consumers.consumers must be a list"]
+    if not consumers:
+        if signal:
+            return ["the ticket says the change reaches other areas: shared_consumers needs at least "
+                    f"{MIN_SHARED_CONSUMERS} screens that read what it touches, each an AC sub-point, TEST_PLAN or "
+                    "NOT_APPLICABLE with a reason"]
+        return [] if len(str(block.get("reason") or "").split()) >= 5 else [
+            "shared_consumers is empty without a concrete reason"]
+    if not str(block.get("mechanism") or "").strip():
+        return ["shared_consumers needs \"mechanism\": what the change touches that other screens read"]
+    if signal and len(consumers) < MIN_SHARED_CONSUMERS:
+        return [f"the ticket says the change reaches other areas: list at least {MIN_SHARED_CONSUMERS} consumers"]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    plan = _normalize(plan_text)
+    problems = []
+    for index, entry in enumerate(consumers, 1):
+        label = f"shared_consumers {index}"
+        if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
+            problems.append(f"{label} needs a name")
+            continue
+        name, disposition = str(entry["name"]).strip(), entry.get("disposition")
+        words = _name_words(name)
+        if disposition == "NOT_APPLICABLE":
+            if len(str(entry.get("reason") or "").split()) < 5:
+                problems.append(f"{label} \"{name}\" is not applicable without a concrete reason")
+        elif disposition == "AC":
+            acs = _ac_list(entry.get("acs", entry.get("ac")))
+            if not acs or any(ac not in blocks for ac in acs):
+                problems.append(f"{label} \"{name}\": Acceptance Criteria {acs!r} does not exist")
+                continue
+            text = _normalize(" ".join(blocks[ac] for ac in acs))
+            if words and not any(re.search(rf"\b{re.escape(w)}", text) for w in words):
+                problems.append(f"{label} \"{name}\": Acceptance Criteria {', '.join(f'{a:02d}' for a in acs)} does not "
+                                "name it")
+        elif disposition == "TEST_PLAN":
+            if not plan:
+                problems.append(f"{label} \"{name}\": TEST_PLAN needs the full test plan ({PLAN_FILE}) that checks it")
+            elif words and not any(re.search(rf"\b{re.escape(w)}", plan) for w in words):
+                problems.append(f"{label} \"{name}\": the full test plan does not name it")
+        else:
+            problems.append(f"{label} \"{name}\": disposition must be {', '.join(SHARED_DISPOSITIONS)}")
+    return problems
 
 
 def output_setting_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
@@ -322,6 +393,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac, source),
         "action_variants": action_variant_problems(evidence, uac, source, plan),
         "output_setting": output_setting_problems(evidence, uac, source),
+        "shared_consumers": shared_consumer_problems(evidence, uac, source, plan),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
     }
 

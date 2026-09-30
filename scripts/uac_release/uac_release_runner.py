@@ -133,6 +133,10 @@ When finished, write these files:
    When the ticket changes generated output, also "output_setting": {{"disposition": "AC" | "TBD" |
    "NOT_APPLICABLE", "ac": <number>, "basis": "PRODUCT_DECISION" | "DEVELOPER_COMMENT", "reason": "..."}} -
    whether the new behaviour is behind a setting and off by default (ask in a TBD when nobody decided it).
+   Also "shared_consumers": {{"mechanism": "<what the change touches that other screens read>", "consumers":
+   [{{"name": "<screen, e.g. outline panel>", "disposition": "AC" | "TEST_PLAN" | "NOT_APPLICABLE", "ac":
+   <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - list them as sub-points of one "still
+   works as before" criterion.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or pull request>"}} or {{"status": "UNCONFIRMED", "reason": "<why, when the ticket has a
    root-cause or fix comment that is not the fix>"}}. Many tickets never get a root cause: UNCONFIRMED is
