@@ -140,7 +140,11 @@ EVIDENCE = {
     "action_variants": {"entry_points": [{"name": "the only route", "disposition": "NOT_APPLICABLE",
                             "reason": "the change has a single route with no alternative path"}],
         "config_switches": [], "config_switches_reason": "no setting changes what this screen shows",
-        "mechanism": {"general_ask": False, "reason": "the ticket asks only about this one screen"}},
+        "mechanism": {"general_ask": False, "reason": "the ticket asks only about this one screen",
+                      "reverse_action": {"name": "undo", "disposition": "NOT_APPLICABLE",
+                                         "reason": "the screen only displays data and has no reverse action"},
+                      "item_origin": {"name": "older items", "disposition": "NOT_APPLICABLE",
+                                      "reason": "every item is shown the same way whatever its history"}}},
 }
 
 

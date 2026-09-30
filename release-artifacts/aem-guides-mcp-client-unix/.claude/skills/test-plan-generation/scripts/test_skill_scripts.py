@@ -8094,14 +8094,27 @@ def test_action_variants() -> None:
            "- Acceptance Criteria 03: A map reference behaves the same as a topic reference.\n"
            "  **Source:** Ticket ask.\n"
            "  **TBD:** Does the same apply to a key reference?\n")
+    uac += ("- Acceptance Criteria 04: A topic moved back to its first folder before the map is saved keeps "
+            "its reference.\n"
+            "  **Source:** QE variant of the ticket's move.\n"
+            "Suggested checks (QE decide):\n"
+            "- Suggested check 01: The same move with the new baseline mode on.\n"
+            "  **Source:** Code.\n"
+            "  **Why suggested:** Found only in the code.\n")
     good = {"action_variants": {
-        "entry_points": [{"name": "drag and drop from the Repository panel", "disposition": "AC", "ac": 1},
-                         {"name": "Insert from the toolbar", "disposition": "AC", "ac": 1}],
-        "config_switches": [{"name": "UUID file names", "states": ["enabled", "disabled"], "disposition": "AC",
-                             "acs": [2]}],
+        "entry_points": [{"name": "drag and drop from the Repository panel", "basis": "TICKET", "disposition": "AC",
+                          "ac": 1},
+                         {"name": "Insert from the toolbar", "basis": "DOCUMENTATION", "disposition": "AC", "ac": 1}],
+        "config_switches": [{"name": "UUID file names", "basis": "DEVELOPER_COMMENT", "states": ["enabled", "disabled"],
+                             "disposition": "AC", "acs": [2]},
+                            {"name": "new baseline mode", "basis": "CODE", "disposition": "SUGGESTED",
+                             "suggested": 1}],
         "mechanism": {"general_ask": True, "variants": [
-            {"name": "map reference", "disposition": "AC", "ac": 3},
-            {"name": "key reference", "disposition": "TBD", "ac": 3}]}}}
+            {"name": "map reference", "basis": "TICKET", "disposition": "AC", "ac": 3},
+            {"name": "key reference", "basis": "TICKET", "disposition": "TBD", "ac": 3}],
+            "reverse_action": {"name": "move the topic back", "disposition": "AC", "ac": 4},
+            "item_origin": {"name": "a topic created in the target folder", "disposition": "NOT_APPLICABLE",
+                            "reason": "a reference to a topic keeps its GUID wherever it was created"}}}}
     check("a complete action_variants record passes", uc.action_variant_problems(good, uac) == [])
     check("a missing action_variants record fails",
           any("action_variants is missing" in p for p in uc.action_variant_problems({}, uac)))
@@ -8118,7 +8131,7 @@ def test_action_variants() -> None:
 
     check("no entry point fails", any("entry_points is empty" in p for p in variant(entry_points=[])))
     check("an entry point the criterion does not name fails",
-          any("does not name it" in p for p in variant(entry_points=[{"name": "context menu", "disposition": "AC",
+          any("does not name it" in p for p in variant(entry_points=[{"name": "context menu", "basis": "TICKET", "disposition": "AC",
                                                                       "ac": 1}])))
     check("an entry point parked as a suggestion fails",
           any("never only a suggested check" in p for p in variant(entry_points__1__disposition="SUGGESTED")))
@@ -8134,12 +8147,26 @@ def test_action_variants() -> None:
     check("a TBD variant needs a TBD line", any("has no TBD line" in p for p in variant(
         mechanism__variants__1__ac=1)))
     check("a narrow ask needs a reason", any("without a concrete reason" in p for p in variant(
-        mechanism={"general_ask": False})))
+        mechanism__general_ask=False)))
+    check("a missing reverse action fails", any("reverse_action is missing" in p for p in variant(
+        mechanism__reverse_action=None)))
+    check("a missing item origin fails", any("item_origin is missing" in p for p in variant(
+        mechanism__item_origin=None)))
+    check("a variant without a basis fails", any("basis must be" in p for p in variant(
+        entry_points__0__basis=None)))
+    check("a code-only route cannot be an Acceptance Criterion", any("known only from the code" in p for p in variant(
+        entry_points__1__basis="CODE")))
+    check("a code-only switch may be a suggested check", variant(config_switches__1__suggested=1) == [])
+    check("a code-only suggestion must exist", any("suggested check 5" in p for p in variant(
+        config_switches__1__suggested=5)))
+    check("a suggestion is still refused for a ticket-based route", any("never only a suggested check" in p
+                                                                        for p in variant(
+        entry_points__0__disposition="SUGGESTED")))
 
     step = "Move the referenced map before saving"
     scenario = {"scenario": {"customer_steps": [step], "acs": [
         {"ac": 1, "scenario": "CUSTOMER", "step": step}, {"ac": 2, "scenario": "VARIANT", "step": step},
-        {"ac": 3, "scenario": "VARIANT", "step": step}]}}
+        {"ac": 3, "scenario": "VARIANT", "step": step}, {"ac": 4, "scenario": "VARIANT", "step": step}]}}
     check("VARIANT criteria listed in action_variants pass the scenario check",
           uc.scenario_problems({**scenario, **good}, uac, None) == [])
     check("a VARIANT criterion action_variants does not list fails",
@@ -8215,7 +8242,11 @@ def test_uac_completeness_check() -> None:
         "action_variants": {"entry_points": [{"name": "the only route", "disposition": "NOT_APPLICABLE",
                             "reason": "the change has a single route with no alternative path"}],
         "config_switches": [], "config_switches_reason": "no setting changes what this screen shows",
-        "mechanism": {"general_ask": False, "reason": "the ticket asks only about this one screen"}},
+        "mechanism": {"general_ask": False, "reason": "the ticket asks only about this one screen",
+                      "reverse_action": {"name": "undo", "disposition": "NOT_APPLICABLE",
+                                         "reason": "the screen only displays data and has no reverse action"},
+                      "item_origin": {"name": "older items", "disposition": "NOT_APPLICABLE",
+                                      "reason": "every item is shown the same way whatever its history"}}},
     }
 
     def problems(ev, text=uac):

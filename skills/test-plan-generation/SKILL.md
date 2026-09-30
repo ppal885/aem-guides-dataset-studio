@@ -695,9 +695,15 @@ check - these criteria are scenario VARIANT:
 - **mechanism** - when the ticket asks for general behaviour ("users can move content while others refer to
   it", "same as Baseline and Conditional Presets"), the other item or reference types, and the named feature
   it must match, are ACs; the reporter's own item is one case of it. When the ask is only the reporter's
-  case, say why.
-Blind comparisons with human UACs missed all three while covering the reporter's single path
-(`uac_completeness_check.action_variant_problems`).
+  case, say why. Always answer two more: **reverse_action** - the action done the other way round (move the
+  item back, re-enable, undo) - and **item_origin** - an item with a different history (created in the
+  target folder, never translated, made in an older release). On a move ticket the human UAC moved the item
+  back and moved an item that was created in the target folder.
+Each entry records its **basis**: TICKET, ATTACHMENT, PRODUCT_DECISION, DEVELOPER_COMMENT, DOCUMENTATION or
+CODE. A route, switch or item type known only from the code is a TBD or a suggested check, never an AC: in
+blind comparisons, routes and modes read only from the code were criteria the human UAC did not have, and
+they cost QE review time. Blind comparisons with human UACs missed the other variants while covering the
+reporter's single path (`uac_completeness_check.action_variant_problems`).
 
 **Decided facts are criteria, not TBDs.** Human UACs are written once the scope is agreed: only 5% of the
 386 human UACs in the corpus carry a TBD, while 35% state a configuration, feature flag, preset argument or
