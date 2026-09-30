@@ -130,6 +130,9 @@ When finished, write these files:
    CHANGED>", "quote": "<for CHANGED: the ticket sentence that decided it, copied>", "reason": "..."}} - what
    happens to content, presets, output or settings created before the
    change. Do not guess new behaviour for them: existing items usually stay as they are.
+   When the ticket changes generated output, also "output_setting": {{"disposition": "AC" | "TBD" |
+   "NOT_APPLICABLE", "ac": <number>, "basis": "PRODUCT_DECISION" | "DEVELOPER_COMMENT", "reason": "..."}} -
+   whether the new behaviour is behind a setting and off by default (ask in a TBD when nobody decided it).
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or pull request>"}} or {{"status": "UNCONFIRMED", "reason": "<why, when the ticket has a
    root-cause or fix comment that is not the fix>"}}. Many tickets never get a root cause: UNCONFIRMED is

@@ -85,6 +85,9 @@ WHAT IT CHECKS in a UAC folder
    change does not cover, a loss that is expected - is an Out of scope item or a criterion that states it
    (human UACs: "V2 baseline is out of scope", "external paste: fix not applicable"). An empty list needs
    scope_boundaries_reason.
+16. "output_setting": when the ticket changes generated output, whether the new behaviour sits behind a
+   setting and its default - an AC with a product or development basis, a TBD, or NOT_APPLICABLE with a
+   reason. Existing output changing (pre_existing_items CHANGED) needs a product or development basis too.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -134,6 +137,43 @@ PRE_EXISTING_DECIDED_BASES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DEVEL
 # decision names it; otherwise it goes to the full test plan (TEST_PLAN). A held-out run of ten tickets still
 # averaged 5.2 criteria against human UACs of 37-46 words on small fixes, mostly from these dimensions.
 DECIDED_BASES = PRE_EXISTING_DECIDED_BASES
+# When a ticket changes what generated output looks like, the team shipped the new behaviour behind a setting that
+# is off by default, so existing output stays the same (Include Draft Comments toggle, Show all glossary entries
+# option, an OSGi flag for map appendices). Ours assumed the new behaviour for everyone on all three.
+OUTPUT_CHANGE_DECIDERS = ("PRODUCT_DECISION", "DEVELOPER_COMMENT")
+OUTPUT_SETTING_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
+
+
+def is_output_ticket(source: dict | None) -> bool:
+    if not source:
+        return False
+    return bool(OUTPUT_SIGNAL.search("\n".join([source.get("summary") or "", source.get("description") or ""])))
+
+
+def output_setting_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
+    """An output-changing ticket says whether the new behaviour sits behind a setting, and its default."""
+    if not is_output_ticket(source):
+        return []
+    entry = evidence.get("output_setting")
+    if not isinstance(entry, dict) or entry.get("disposition") not in OUTPUT_SETTING_DISPOSITIONS:
+        return ["output_setting is missing: the ticket changes generated output - say whether the new behaviour is "
+                "behind a setting (preset option, template option, configuration) and whether it is off by default "
+                "- an AC with the deciding basis, a TBD, or NOT_APPLICABLE with a reason (for example a fix that "
+                "restores documented output)"]
+    disposition = entry["disposition"]
+    if disposition == "NOT_APPLICABLE":
+        return [] if len(str(entry.get("reason") or "").split()) >= 5 else [
+            "output_setting is not applicable without a concrete reason"]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    ac = entry.get("ac")
+    if not isinstance(ac, int) or ac not in blocks:
+        return [f"output_setting: Acceptance Criteria {ac!r} does not exist"]
+    if disposition == "TBD":
+        return [] if "TBD:" in blocks[ac] else [f"output_setting: Acceptance Criteria {ac:02d} has no TBD line"]
+    if entry.get("basis") not in OUTPUT_CHANGE_DECIDERS:
+        return ["output_setting: a setting and its default are decided by product or development "
+                f"({', '.join(OUTPUT_CHANGE_DECIDERS)}); without that, ask in a TBD"]
+    return []
 
 
 def _load(path: Path):
@@ -281,6 +321,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "fix_basis": fix_basis_problems(evidence, uac, source),
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac, source),
         "action_variants": action_variant_problems(evidence, uac, source, plan),
+        "output_setting": output_setting_problems(evidence, uac, source),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
     }
 
@@ -669,6 +710,11 @@ def pre_existing_problems(evidence: dict, uac_text: str, source: dict | None = N
             return ["pre_existing_items: new behaviour for items made before the change needs a basis that decided it ("
                     f"{', '.join(PRE_EXISTING_DECIDED_BASES)}); without one, expect them unchanged or ask in a TBD - "
                     "a new option is usually off for existing items"]
+        if outcome == "CHANGED" and is_output_ticket(source) and entry.get("basis") not in OUTPUT_CHANGE_DECIDERS:
+            return ["pre_existing_items: the ticket changes generated output, and existing output changing is decided "
+                    f"by product or development ({', '.join(OUTPUT_CHANGE_DECIDERS)}), not by the customer's ask; "
+                    "human UACs kept existing output unchanged behind a setting that is off by default - expect "
+                    "UNCHANGED or ask in a TBD"]
         if outcome == "CHANGED":
             quote = _normalize(entry.get("quote"))
             if len(quote.split()) < 5:

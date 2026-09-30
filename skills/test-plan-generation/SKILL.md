@@ -697,6 +697,16 @@ option is off for them). An AC records "outcome": UNCHANGED, or CHANGED only wit
 ticket; otherwise it is a TBD. Blind comparisons asserted new behaviour for old items three times, and all
 three were wrong - the third with a loose "basis TICKET" that no ticket sentence supported.
 
+**Changed output behind a setting.** When the ticket changes what generated output looks like, the team has
+shipped the new behaviour behind a setting that is off by default, so existing output stays the same: an
+"Include Draft Comments" preset toggle, a "Show all glossary entries" template option, and an OSGi flag for
+map appendices - three tickets where ours assumed the new behaviour for everyone. Record `UAC_EVIDENCE.json`
+"output_setting": an AC (basis PRODUCT_DECISION or DEVELOPER_COMMENT) that names the setting and its default,
+a TBD asking "Is the new behaviour behind a setting, and is it off by default?", or NOT_APPLICABLE with a
+reason (for example a fix that restores documented output). On such a ticket, existing output changing
+(pre_existing_items CHANGED) needs a product or development basis - the customer's ask is not a decision
+(`uac_completeness_check.output_setting_problems`).
+
 **Every way to do the ticket's action.** The reporter shows one path; the human UAC covers the action.
 Record in `UAC_EVIDENCE.json` "action_variants", and make each an AC (or a TBD), never only a suggested
 check - these criteria are scenario VARIANT:

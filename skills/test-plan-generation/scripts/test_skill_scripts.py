@@ -8133,6 +8133,41 @@ def test_gate_false_positives_from_questions_and_side_sections() -> None:
                                                   "The Native PDF output preset drops the TOC.")))
 
 
+def test_output_setting_and_existing_output() -> None:
+    uc = uac_completeness_check_mod
+    output = {"summary": "Native PDF appendix with mapref shown as chapter",
+              "description": "Native PDF output shows the appendix map topics as chapters. Legacy content structure "
+                             "cannot be modified in the existing bookmaps."}
+    editor = {"summary": "Topic title lost after save", "description": "Saving a topic in the editor loses the title."}
+    uac = ("- Acceptance Criteria 01: Map topics in an appendix publish as appendices in the Native PDF.\n"
+           "  **Source:** Ticket description.\n"
+           "  **TBD:** Is the new behaviour behind a setting, and is it off by default?\n"
+           "- Acceptance Criteria 02: Chapters publish as before.\n"
+           "  **Source:** Ticket description.\n")
+    check("an output ticket must answer the setting question", any("output_setting is missing" in p for p in
+          uc.output_setting_problems({}, uac, output)))
+    check("a non-output ticket needs no setting answer", uc.output_setting_problems({}, uac, editor) == [])
+    check("a TBD on the setting passes", uc.output_setting_problems(
+        {"output_setting": {"disposition": "TBD", "ac": 1}}, uac, output) == [])
+    check("a TBD answer needs a TBD line", any("has no TBD line" in p for p in uc.output_setting_problems(
+        {"output_setting": {"disposition": "TBD", "ac": 2}}, uac, output)))
+    check("a decided setting needs product or development basis", any("decided by product" in p for p in
+          uc.output_setting_problems({"output_setting": {"disposition": "AC", "ac": 1, "basis": "TICKET"}}, uac,
+                                     output)))
+    check("a developer-decided setting passes", uc.output_setting_problems(
+        {"output_setting": {"disposition": "AC", "ac": 1, "basis": "DEVELOPER_COMMENT"}}, uac, output) == [])
+    check("a documented-output restore may be not applicable", uc.output_setting_problems(
+        {"output_setting": {"disposition": "NOT_APPLICABLE",
+                            "reason": "the fix restores the documented bleed that never rendered"}}, uac, output) == [])
+    changed = {"pre_existing_items": {"disposition": "AC", "ac": 1, "outcome": "CHANGED", "basis": "TICKET",
+                                      "quote": "Legacy content structure cannot be modified in the existing bookmaps"}}
+    check("existing output changing on the customer's ask is refused", any(
+        "not by the customer's ask" in p for p in uc.pre_existing_problems(changed, uac, output)))
+    changed["pre_existing_items"]["basis"] = "DEVELOPER_COMMENT"
+    check("existing output changing on a developer decision is allowed",
+          uc.pre_existing_problems(changed, uac, output) == [])
+
+
 def test_not_named_reasons_and_scope_boundaries() -> None:
     uc = uac_completeness_check_mod
     blocks = {1: "The baseline stays selected after a refresh."}
@@ -18190,6 +18225,7 @@ def main() -> int:
     test_gate_false_positives_from_questions_and_side_sections()
     test_output_route_entry_points()
     test_not_named_reasons_and_scope_boundaries()
+    test_output_setting_and_existing_output()
     test_input_sources()
     test_test_plan_disposition()
     test_similar_uac_compare()
