@@ -136,6 +136,7 @@ EVIDENCE = {
         {"ac": 1, "scenario": "CUSTOMER", "step": "The report must open from the Map console."},
         {"ac": 2, "scenario": "CUSTOMER", "step": "The report must open from the Map console."}]},
     "fix_basis": {"status": "UNCONFIRMED"},
+    "pre_existing_items": {"disposition": "NOT_APPLICABLE", "reason": "the report screen stores nothing made before the change"},
 }
 
 

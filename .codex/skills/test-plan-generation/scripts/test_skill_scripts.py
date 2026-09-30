@@ -8043,6 +8043,46 @@ def test_human_uac_shape() -> None:
     check("an Out of scope list below the suggested checks is refused", any("Out of scope" in p for p in uc.suggested_problems(wrong)))
 
 
+def test_uac_size_and_pre_existing_items() -> None:
+    uc = uac_completeness_check_mod
+    short = ("Scope: DITA topics only.\n\n"
+             "- Acceptance Criteria 01: Saving a topic stores its word count.\n"
+             "  - a new topic\n"
+             "  **Source:** GUIDES-1 description.\n"
+             "- Acceptance Criteria 02: Older topics get a word count after they are re-processed.\n"
+             "  **Source:** GUIDES-1 comment.\n"
+             "  **TBD:** Is a bulk re-process part of this change?\n")
+    check("a UAC of human size passes the size check", uc.size_problems(short) == [])
+    long_source = short.replace("GUIDES-1 description.", "GUIDES-1 description; " + "file.java lines 1-9; " * 12)
+    problems = uc.size_problems(long_source)
+    check("a long Source line fails and names its criterion",
+          any("Source line of Acceptance Criteria 01" in p for p in problems))
+    long_body = short.replace("Saving a topic stores its word count.", "Saving a topic stores its word count " + "and more " * 200 + ".")
+    check("delivered criteria over the word budget fail", any("words; keep them within" in p for p in uc.size_problems(long_body)))
+    suggestions = short + "\nSuggested checks (QE decide):\n" + "".join(
+        f"- Suggested check {n:02d}: " + "word " * 100 + "\n  **Source:** doc.\n  **Why suggested:** found only in the documentation page.\n"
+        for n in range(1, 4))
+    check("suggested checks do not count toward the word budget", uc.size_problems(suggestions) == [])
+    check("four suggested checks is one too many", any("4 suggested checks" in p for p in uc.suggested_problems(
+        short + "\nSuggested checks (QE decide):\n" + "".join(
+            f"- Suggested check {n:02d}: x.\n  **Source:** doc.\n  **Why suggested:** found only in the documentation page.\n"
+            for n in range(1, 5)))))
+
+    check("a missing pre-existing answer fails", any("pre_existing_items is missing" in p for p in uc.pre_existing_problems({}, short)))
+    check("an AC answer that names a real criterion passes",
+          uc.pre_existing_problems({"pre_existing_items": {"disposition": "AC", "ac": 2}}, short) == [])
+    check("an AC answer to a missing criterion fails",
+          any("does not exist" in p for p in uc.pre_existing_problems({"pre_existing_items": {"disposition": "AC", "ac": 7}}, short)))
+    check("a TBD answer needs a TBD line",
+          any("no TBD line" in p for p in uc.pre_existing_problems({"pre_existing_items": {"disposition": "TBD", "ac": 1}}, short)))
+    check("a TBD answer on a criterion with a TBD passes",
+          uc.pre_existing_problems({"pre_existing_items": {"disposition": "TBD", "ac": 2}}, short) == [])
+    check("not applicable needs a concrete reason",
+          any("concrete reason" in p for p in uc.pre_existing_problems({"pre_existing_items": {"disposition": "NOT_APPLICABLE", "reason": "n/a"}}, short)))
+    check("not applicable with a reason passes", uc.pre_existing_problems({"pre_existing_items": {
+        "disposition": "NOT_APPLICABLE", "reason": "the change only affects a dialog that stores nothing"}}, short) == [])
+
+
 def test_gate_firing_log() -> None:
     firing = _load("gate_firing_log", "gate_firing_log.py")
     forcing = _load("coverage_forcing", "coverage_forcing.py")
@@ -8108,6 +8148,7 @@ def test_uac_completeness_check() -> None:
             {"ac": 1, "scenario": "CUSTOMER", "step": "Fix the preview"},
             {"ac": 2, "scenario": "CUSTOMER", "step": "Fix the preview"}]},
         "fix_basis": {"status": "UNCONFIRMED"},
+        "pre_existing_items": {"disposition": "NOT_APPLICABLE", "reason": "the preview change stores nothing that existed before"},
     }
 
     def problems(ev, text=uac):
@@ -17824,6 +17865,7 @@ def main() -> int:
     test_fix_basis_and_suggested_checks()
     test_gate_firing_log()
     test_human_uac_shape()
+    test_uac_size_and_pre_existing_items()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()

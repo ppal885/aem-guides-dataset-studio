@@ -46,9 +46,18 @@ WHAT IT CHECKS in a UAC folder
    or fix, UNCONFIRMED needs a reason why that text is not the fix.
 11. "Suggested checks (QE decide):": checks found only by our own research (documentation, code, a
    similar or parent ticket, an investigator's other scenario) go below the Acceptance Criteria as
-   "- Suggested check NN:" lines, each with a Source line and a "Why suggested:" line, at most five.
+   "- Suggested check NN:" lines, each with a Source line and a "Why suggested:" line, at most three.
    They are not posted as Acceptance Criteria: QE moves the ones they want into the criteria. A
    criterion that follows a scenario the reporter did not hit (ADJACENT) must be a suggested check.
+12. Size: the delivered criteria (with their sub-points, the Scope line and the Out of scope list, but not
+   the Source, TBD or Note lines) stay within MAX_BODY_WORDS, and each Source line within MAX_SOURCE_WORDS.
+   In the 386 human UACs of the corpus the median is 122 words and 90% are under 337; blind comparisons
+   showed ours 4 to 15 times longer, mostly from long Source lines and extra sub-points. File paths and line
+   numbers belong in the full test plan record.
+13. "pre_existing_items": what happens to items made before the change - content, maps, presets,
+   output, settings or projects created or generated earlier - an AC, a TBD or NOT_APPLICABLE with a reason.
+   15% of human UACs cover it ("older files need re-processing", "old preset and newly created preset"),
+   and blind comparisons missed it on tickets that never say "upgrade" or "migration".
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -82,7 +91,10 @@ _AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Crit
 SUGGESTED_HEADER = "Suggested checks (QE decide):"
 _SUGGESTED_HEADER = re.compile(r"^Suggested checks\b.*$", re.M)
 _SUGGESTED_BLOCK = re.compile(r"^- Suggested check (\d+):(.*?)(?=^- Suggested check \d+:|\Z)", re.M | re.S)
-MAX_SUGGESTED = 5
+MAX_SUGGESTED = 3
+MAX_BODY_WORDS = 350
+MAX_SOURCE_WORDS = 30
+PRE_EXISTING_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
 
 
 def _load(path: Path):
@@ -227,11 +239,12 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "scenario": scenario_problems(evidence, uac, source), "failure_path": failure_path_problems(evidence, uac, source),
         "similar_uacs": similar_uac_problems(evidence, uac), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
+        "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac),
     }
 
 
 def evidence_problems(folder: Path) -> list[str]:
-    """Checks 2-8, 10 and 11: the evidence record the runner also enforces."""
+    """Checks 2-8 and 10-13: the evidence record the runner also enforces."""
     problems: list[str] = []
     for found in evidence_problems_by_check(folder).values():
         problems += found
@@ -530,6 +543,62 @@ def fix_basis_problems(evidence: dict, uac_text: str, source: dict | None) -> li
             problems.append(f"Acceptance Criteria {number:02d} rests only on code while the root cause is not "
                             f"confirmed; tie it to what the customer reported, or move it to \"{SUGGESTED_HEADER}\"")
     return problems
+
+
+# --- size ------------------------------------------------------------------------------------------
+_LABEL_LINE = re.compile(r"^\s*(?:\*\*)?(?:Source|TBD|Why suggested):", re.I)
+
+
+def size_problems(uac_text: str) -> list[str]:
+    """Keep the delivered UAC near the size of a human UAC, and every Source line short."""
+    text = uac_text or ""
+    header = _SUGGESTED_HEADER.search(text)
+    body = text[:header.start()] if header else text
+    problems = []
+    words, current = 0, "a criterion"
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.lower().startswith("note:"):
+            continue
+        label = re.match(r"^- (Acceptance Criteria \d+):", stripped)
+        if label:
+            current = label.group(1)
+        source = re.match(r"^(?:\*\*)?Source:(?:\*\*)?\s*(.*)$", stripped)
+        if source:
+            count = len(source.group(1).split())
+            if count > MAX_SOURCE_WORDS:
+                problems.append(f"the Source line of {current} has {count} words; keep it to {MAX_SOURCE_WORDS} - name "
+                                "the ticket, comment, documentation page or commit, and keep file paths and line numbers "
+                                "in the full test plan")
+            continue
+        if _LABEL_LINE.match(stripped):
+            continue
+        words += len(stripped.split())
+    if words > MAX_BODY_WORDS:
+        problems.append(f"the delivered criteria have {words} words; keep them within {MAX_BODY_WORDS} (human UACs: "
+                        "median 122, 90% under 337) by merging cases, cutting sub-points and moving detail to the "
+                        "full test plan")
+    return problems
+
+
+# --- items made before the change ------------------------------------------------------------------
+def pre_existing_problems(evidence: dict, uac_text: str) -> list[str]:
+    """Say what happens to content, presets, output or settings created before the change."""
+    entry = evidence.get("pre_existing_items")
+    if not isinstance(entry, dict) or entry.get("disposition") not in PRE_EXISTING_DISPOSITIONS:
+        return ["pre_existing_items is missing: say what happens to items made before the change (content, "
+                "presets, output, settings created earlier) - AC, TBD or NOT_APPLICABLE with a reason"]
+    disposition = entry["disposition"]
+    if disposition == "NOT_APPLICABLE":
+        return [] if len(str(entry.get("reason") or "").split()) >= 5 else [
+            "pre_existing_items is not applicable without a concrete reason"]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    ac = entry.get("ac")
+    if not isinstance(ac, int) or ac not in blocks:
+        return [f"pre_existing_items: Acceptance Criteria {ac!r} does not exist"]
+    if disposition == "TBD" and "TBD:" not in blocks[ac]:
+        return [f"pre_existing_items: Acceptance Criteria {ac:02d} has no TBD line"]
+    return []
 
 
 def main(argv: list[str] | None = None) -> int:
