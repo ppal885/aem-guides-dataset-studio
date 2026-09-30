@@ -107,7 +107,8 @@ When finished, write these files:
    "scope_boundaries_reason").
    Also "action_variants": {{"entry_points": [{{"name": "<route, e.g. toolbar insert>", "basis": "TICKET" |
    "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT" | "DOCUMENTATION" | "CODE", "disposition": "AC" |
-   "TBD" | "NOT_APPLICABLE" | "SUGGESTED" (CODE only, with "suggested": <number>), "ac": <number>, "reason":
+   "TBD" | "NOT_APPLICABLE" | "SUGGESTED" (CODE only, with "suggested": <number>) | "TEST_PLAN" (DOCUMENTATION or
+   CODE basis, same outcome as an AC; the test plan names it and the UAC stays short), "ac": <number>, "reason":
    "..."}}], "config_switches": [{{"name": "...", "basis": "...", "states": ["enabled", "disabled"],
    "disposition": "AC", "acs": [<numbers>]}}] (or [] with "config_switches_reason"), "mechanism":
    {{"general_ask": true | false, "variants": [<same shape as entry_points>], "reason": "...",

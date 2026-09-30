@@ -669,7 +669,11 @@ AC per distinct outcome the ticket asks for. Every entry point, switch state, it
 made before the change and reverse action whose expected outcome is the same as an existing AC is a short
 sub-point of that AC, not a new AC - the action_variants and pre_existing_items records point at that AC.
 Add an AC only when the expected outcome differs. Blind comparisons showed ours at 5 to 9 ACs on every
-ticket while the human UAC had 3 to 30 points. Merge same-outcome cases into one AC and list the cases in a
+ticket while the human UAC had 3 to 30 points, and one to three lines on small fixes. A variant found by our
+own research - a route, switch, input source or item type with basis DOCUMENTATION or CODE, or a reverse
+action, item history or value form - whose expected outcome is the same as an AC may be answered TEST_PLAN:
+it is checked in the full test plan (test-plan.md must name it) and left out of the delivered UAC. A variant
+the ticket, an attachment or a decision names stays in the UAC as an AC or a TBD. Merge same-outcome cases into one AC and list the cases in a
 short clause; split only when the required behaviour or outcome differs. Consolidation only reorganizes: every checkable point survives as an AC clause, a TBD, a
 suggested check, or in the full-record markdown. Two ACs with content-word overlap of 0.6 or more are merged
 (`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
