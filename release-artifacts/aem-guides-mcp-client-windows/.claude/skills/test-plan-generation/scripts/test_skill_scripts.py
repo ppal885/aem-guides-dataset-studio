@@ -8076,8 +8076,18 @@ def test_uac_size_and_pre_existing_items() -> None:
         {"pre_existing_items": {"disposition": "AC", "ac": 2}}, short)))
     check("new behaviour for old items without a decision fails", any("needs a basis" in p for p in
           uc.pre_existing_problems({"pre_existing_items": {"disposition": "AC", "ac": 2, "outcome": "CHANGED"}}, short)))
-    check("new behaviour for old items with a decision passes", uc.pre_existing_problems({"pre_existing_items": {
-        "disposition": "AC", "ac": 2, "outcome": "CHANGED", "basis": "DEVELOPER_COMMENT"}}, short) == [])
+    decided = {"summary": "Word count", "description": "Older topics will get the word count when they are next "
+                                                       "saved, with no re-processing needed."}
+    quote = "Older topics will get the word count when they are next saved"
+    check("new behaviour for old items with a decision and its quote passes", uc.pre_existing_problems(
+        {"pre_existing_items": {"disposition": "AC", "ac": 2, "outcome": "CHANGED", "basis": "DEVELOPER_COMMENT",
+                                "quote": quote}}, short, decided) == [])
+    check("CHANGED without a quote fails", any("needs \"quote\"" in p for p in uc.pre_existing_problems(
+        {"pre_existing_items": {"disposition": "AC", "ac": 2, "outcome": "CHANGED", "basis": "TICKET"}}, short, decided)))
+    check("a CHANGED quote that is not ticket text fails", any("not text from the ticket" in p for p in
+          uc.pre_existing_problems({"pre_existing_items": {
+              "disposition": "AC", "ac": 2, "outcome": "CHANGED", "basis": "TICKET",
+              "quote": "existing maps get the full glossary on the next Generate"}}, short, decided)))
     check("a code-only basis is not a decision", any("needs a basis" in p for p in uc.pre_existing_problems(
         {"pre_existing_items": {"disposition": "AC", "ac": 2, "outcome": "CHANGED", "basis": "CODE"}}, short)))
     check("an AC answer to a missing criterion fails",
@@ -8303,11 +8313,19 @@ def test_action_variants() -> None:
         "mechanism": {"general_ask": True, "variants": [
             {"name": "map reference", "basis": "TICKET", "disposition": "AC", "ac": 3},
             {"name": "key reference", "basis": "TICKET", "disposition": "TBD", "ac": 3}],
-            "reverse_action": {"name": "move the topic back", "disposition": "AC", "ac": 4},
+            "reverse_action": {"name": "move the topic back", "basis": "TICKET", "disposition": "AC", "ac": 4},
             "item_origin": {"name": "a topic created in the target folder", "disposition": "NOT_APPLICABLE",
                             "reason": "a reference to a topic keeps its GUID wherever it was created"},
-            "value_shapes": {"name": "href values", "disposition": "AC", "ac": 4, "shapes": ["empty", "no href"]}}}}
+            "value_shapes": {"name": "href values", "basis": "PRODUCT_DECISION", "disposition": "AC", "ac": 4,
+                             "shapes": ["empty", "no href"]}}}}
     check("a complete action_variants record passes", uc.action_variant_problems(good, uac) == [])
+    undecided = json.loads(json.dumps(good))
+    undecided["action_variants"]["mechanism"]["reverse_action"].pop("basis")
+    check("a reverse action nobody decided cannot be an Acceptance Criterion", any(
+        "answer TEST_PLAN" in p for p in uc.action_variant_problems(undecided, uac)))
+    undecided["action_variants"]["mechanism"]["reverse_action"]["basis"] = "CODE"
+    check("a code-found reverse action cannot be an Acceptance Criterion", any(
+        "answer TEST_PLAN" in p for p in uc.action_variant_problems(undecided, uac)))
     check("a missing action_variants record fails",
           any("action_variants is missing" in p for p in uc.action_variant_problems({}, uac)))
 

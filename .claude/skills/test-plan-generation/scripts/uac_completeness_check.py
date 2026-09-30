@@ -126,8 +126,14 @@ PRE_EXISTING_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
 # What an AC says about items made before the change. Human UACs usually say they stay as they are ("existing
 # presets remain unaffected"); two blind comparisons asserted new behaviour for them instead (a guessed upgrade
 # criterion QE struck, and "existing content shows draft comments" where the new option was off by default).
+# A held-out run guessed it a third time with a loose "basis TICKET", so CHANGED now also needs the ticket text
+# that decided it, copied.
 PRE_EXISTING_OUTCOMES = ("UNCHANGED", "CHANGED")
 PRE_EXISTING_DECIDED_BASES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DEVELOPER_COMMENT")
+# A reverse action, item history or value form becomes a criterion only when the ticket, an attachment or a
+# decision names it; otherwise it goes to the full test plan (TEST_PLAN). A held-out run of ten tickets still
+# averaged 5.2 criteria against human UACs of 37-46 words on small fixes, mostly from these dimensions.
+DECIDED_BASES = PRE_EXISTING_DECIDED_BASES
 
 
 def _load(path: Path):
@@ -273,7 +279,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "scenario": scenario_problems(evidence, uac, source), "failure_path": failure_path_problems(evidence, uac, source),
         "similar_uacs": similar_uac_problems(evidence, uac), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
-        "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac),
+        "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac, source),
         "action_variants": action_variant_problems(evidence, uac, source, plan),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
     }
@@ -638,7 +644,7 @@ def size_problems(uac_text: str) -> list[str]:
 
 
 # --- items made before the change ------------------------------------------------------------------
-def pre_existing_problems(evidence: dict, uac_text: str) -> list[str]:
+def pre_existing_problems(evidence: dict, uac_text: str, source: dict | None = None) -> list[str]:
     """Say what happens to content, presets, output or settings created before the change."""
     entry = evidence.get("pre_existing_items")
     if not isinstance(entry, dict) or entry.get("disposition") not in PRE_EXISTING_DISPOSITIONS:
@@ -663,6 +669,14 @@ def pre_existing_problems(evidence: dict, uac_text: str) -> list[str]:
             return ["pre_existing_items: new behaviour for items made before the change needs a basis that decided it ("
                     f"{', '.join(PRE_EXISTING_DECIDED_BASES)}); without one, expect them unchanged or ask in a TBD - "
                     "a new option is usually off for existing items"]
+        if outcome == "CHANGED":
+            quote = _normalize(entry.get("quote"))
+            if len(quote.split()) < 5:
+                return ["pre_existing_items: outcome CHANGED needs \"quote\": the ticket or decision text, copied, that "
+                        "says items made before the change behave the new way"]
+            if source and quote not in _ticket_text(source):
+                return ["pre_existing_items: the CHANGED quote is not text from the ticket; copy the sentence that "
+                        "decided it, or expect existing items unchanged, or ask in a TBD"]
     return []
 
 
@@ -939,6 +953,12 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
             found = _variant_entry_problems(f"action_variants.mechanism.{dimension}", entry, blocks, uac_text,
                                             needs_basis=False, plan_text=plan_text)
             problems += found
+            if not found and entry.get("disposition") == "AC" and entry.get("basis") not in DECIDED_BASES:
+                problems.append(f"action_variants.mechanism.{dimension} \"{entry.get('name')}\": the {dimension.replace('_', ' ')} "
+                                "is an Acceptance Criterion only when the ticket, an attachment or a decision names it "
+                                f"(basis {', '.join(DECIDED_BASES)}); otherwise answer TEST_PLAN (checked in the full "
+                                "test plan), TBD or NOT_APPLICABLE")
+                continue
             if dimension == "value_shapes" and not found and entry.get("disposition") == "AC":
                 problems += _value_shape_problems(entry, blocks)
     return problems
