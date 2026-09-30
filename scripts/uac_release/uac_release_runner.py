@@ -109,7 +109,8 @@ When finished, write these files:
    {{"general_ask": true | false, "variants": [<same shape as entry_points>], "reason": "...",
    "reverse_action": {{"name": "<e.g. move the item back>", "disposition": "AC" | "TBD" | "NOT_APPLICABLE",
    "ac": <number>, "reason": "..."}}, "item_origin": {{<same shape, e.g. an item created in the target
-   folder>}}}}}} - every route to the ticket's action (for an output ticket: the output preset from the map,
+   folder>}}, "value_shapes": {{<same shape, plus "shapes": ["empty", "missing", "special characters", ...]
+   - the forms of the value the change reads or shows; an AC names each shape>}}}}}} - every route to the ticket's action (for an output ticket: the output preset from the map,
    Map Collection, a baseline, and for PDF Download as PDF), the result in each state of every switch that changes
    it, the other item or reference types when the ticket asks for general behaviour, the action done the
    other way round, and an item with a different history. These are criteria (scenario VARIANT) that name
