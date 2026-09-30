@@ -101,6 +101,10 @@ When finished, write these files:
    Also "scenario": {{"customer_steps": [<the reporter's own steps or requested outcome, copied>], "acs":
    [{{"ac": <number>, "scenario": "CUSTOMER" | "REGRESSION" | "VARIANT", "step": "<one of customer_steps>"}} or
    {{"ac": <number>, "scenario": "ADJACENT"}} is not allowed: move such a check to the suggested checks]}}.
+   Also "scope_boundaries": [{{"boundary": "<a limit the ticket, a developer or product decided, e.g. V2
+   baseline is out of scope>", "basis": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT",
+   "disposition": "OUT_OF_SCOPE" (named in the UAC's Out of scope list) | "AC", "ac": <number>}}] (or [] with
+   "scope_boundaries_reason").
    Also "action_variants": {{"entry_points": [{{"name": "<route, e.g. toolbar insert>", "basis": "TICKET" |
    "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT" | "DOCUMENTATION" | "CODE", "disposition": "AC" |
    "TBD" | "NOT_APPLICABLE" | "SUGGESTED" (CODE only, with "suggested": <number>), "ac": <number>, "reason":

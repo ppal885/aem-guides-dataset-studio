@@ -8114,6 +8114,54 @@ def test_gate_false_positives_from_questions_and_side_sections() -> None:
                                                   "The Native PDF output preset drops the TOC.")))
 
 
+def test_not_named_reasons_and_scope_boundaries() -> None:
+    uc = uac_completeness_check_mod
+    blocks = {1: "The baseline stays selected after a refresh."}
+
+    def na(reason):
+        return uc._variant_entry_problems("action_variants.entry_points 1", {
+            "name": "Map Collection", "basis": "DOCUMENTATION", "disposition": "NOT_APPLICABLE", "reason": reason},
+            blocks)
+
+    check("'nobody names it' is refused", any("why it is a variant" in p for p in na(
+        "neither the reporter nor any comment names it")))
+    check("'the reporter did not use it' is refused", any("why it is a variant" in p for p in na(
+        "the reporter did not use Map Collection at all")))
+    check("'not in the ticket' is refused", any("why it is a variant" in p for p in na(
+        "this route is not in the ticket description")))
+    check("a reason that says why the route cannot do it passes",
+          na("a Map Collection cannot hold a baseline for a single map preset") == [])
+    check("a named-but-cannot reason passes", na(
+        "not mentioned, and Download as PDF does not use a map preset baseline") == [])
+
+    uac = ("- Acceptance Criteria 01: The baseline stays selected after a refresh in the v1 baseline screens.\n"
+           "  **Source:** Ticket description.\n"
+           "Out of scope:\n"
+           "- V2 baselines (the new baseline mode).\n"
+           "- External paste from Word or Excel.\n"
+           "Suggested checks (QE decide):\n"
+           "- Suggested check 01: x.\n  **Source:** doc.\n  **Why suggested:** doc only.\n")
+    check("the Out of scope list is read", uc.out_of_scope_items(uac) == [
+        "V2 baselines (the new baseline mode).", "External paste from Word or Excel."])
+    good = {"scope_boundaries": [
+        {"boundary": "V2 baseline is out of scope", "basis": "DEVELOPER_COMMENT", "disposition": "OUT_OF_SCOPE"},
+        {"boundary": "applies to the v1 baseline only", "basis": "PRODUCT_DECISION", "disposition": "AC", "ac": 1}]}
+    check("decided boundaries written in the UAC pass", uc.scope_boundary_problems(good, uac) == [])
+    check("a missing record fails", any("scope_boundaries is missing" in p for p in uc.scope_boundary_problems({}, uac)))
+    check("an empty list needs a reason", any("scope_boundaries_reason" in p for p in uc.scope_boundary_problems(
+        {"scope_boundaries": []}, uac)))
+    check("an empty list with a reason passes", uc.scope_boundary_problems(
+        {"scope_boundaries": [], "scope_boundaries_reason": "nobody decided any limit on this change"}, uac) == [])
+    check("a boundary the Out of scope list does not name fails", any("no Out of scope item names it" in p for p in
+          uc.scope_boundary_problems({"scope_boundaries": [{"boundary": "partial table copy loss", "basis": "TICKET",
+                                                            "disposition": "OUT_OF_SCOPE"}]}, uac)))
+    check("a code-only limit is not a decided boundary", any("basis must be" in p for p in uc.scope_boundary_problems(
+        {"scope_boundaries": [{"boundary": "V2 baseline", "basis": "CODE", "disposition": "OUT_OF_SCOPE"}]}, uac)))
+    check("an out-of-scope boundary needs an Out of scope list", any("no Out of scope list" in p for p in
+          uc.scope_boundary_problems({"scope_boundaries": [good["scope_boundaries"][0]]},
+                                     uac.split("Out of scope:")[0])))
+
+
 def test_output_route_entry_points() -> None:
     uc = uac_completeness_check_mod
     sites = {"summary": "New AEM Sites | Error on publishing with attached content",
@@ -8316,6 +8364,7 @@ def test_uac_completeness_check() -> None:
                                       "reason": "every item is shown the same way whatever its history"},
                       "value_shapes": {"name": "values", "disposition": "NOT_APPLICABLE",
                                        "reason": "the screen shows fixed labels and reads no user value"}}},
+    "scope_boundaries": [], "scope_boundaries_reason": "nobody decided a version, type or path that this change leaves out",
     }
 
     def problems(ev, text=uac):
@@ -18036,6 +18085,7 @@ def main() -> int:
     test_action_variants()
     test_gate_false_positives_from_questions_and_side_sections()
     test_output_route_entry_points()
+    test_not_named_reasons_and_scope_boundaries()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
