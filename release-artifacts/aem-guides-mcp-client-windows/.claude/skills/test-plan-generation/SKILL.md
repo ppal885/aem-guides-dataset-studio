@@ -699,6 +699,12 @@ check - these criteria are scenario VARIANT:
   baseline, and for PDF the Download as PDF / single-topic path. Each gets an AC, a TBD or NOT_APPLICABLE
   with a reason - the routes share one engine and the reporter used only one (miss probe MP-004;
   `uac_completeness_check.output_route_problems`).
+- **input_sources** - when the ticket brings content in (paste, import, upload, drag and drop), where that
+  content can come from: the reporter's application and the others the same conversion handles (Word,
+  Google Docs, Excel, a web page, another topic or view, another file format). At least two, each an AC, a TBD
+  or NOT_APPLICABLE with a reason; "the ticket only reports Word" is not a reason. A Word-table paste ticket's
+  human UAC covered Google Docs, an HTML page and Excel where ours made them suggested checks
+  (`uac_completeness_check.input_source_problems`).
 - **config_switches** - every configuration, feature flag or setting that changes what the action stores or
   shows, with the result in each state ("with UUID file names enabled the GUID is inserted; when disabled
   the path is inserted"). An empty list needs a reason.

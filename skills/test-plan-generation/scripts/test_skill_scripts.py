@@ -8162,6 +8162,32 @@ def test_not_named_reasons_and_scope_boundaries() -> None:
                                      uac.split("Out of scope:")[0])))
 
 
+def test_input_sources() -> None:
+    uc = uac_completeness_check_mod
+    paste = {"summary": "Word table header row content is lost when pasted", "description": "Paste the table."}
+    other = {"summary": "Topic title is lost after save", "description": "Saving a topic loses the title."}
+    uac = ("- Acceptance Criteria 01: A pasted table keeps its header text from Word and from Google Docs.\n"
+           "  **Source:** Ticket description.\n"
+           "  **TBD:** Must a table from Excel keep its header row too?\n")
+    blocks = {int(n): body for n, body in uc._AC_BLOCK.findall(uac)}
+    word = {"name": "Word", "basis": "TICKET", "disposition": "AC", "ac": 1}
+    docs = {"name": "Google Docs", "basis": "DOCUMENTATION", "disposition": "AC", "ac": 1}
+    excel = {"name": "Excel", "basis": "DOCUMENTATION", "disposition": "TBD", "ac": 1}
+    check("a paste ticket needs input sources", any("input_sources" in p for p in uc.input_source_problems({}, blocks, uac,
+                                                                                                           paste)))
+    check("one input source is not enough", any("at least 2" in p for p in uc.input_source_problems(
+        {"input_sources": [word]}, blocks, uac, paste)))
+    check("dispositioned input sources pass", uc.input_source_problems(
+        {"input_sources": [word, docs, excel]}, blocks, uac, paste) == [])
+    check("'the ticket only reports Word' is refused", any("why it is a variant" in p for p in uc.input_source_problems(
+        {"input_sources": [word, {"name": "Excel", "basis": "DOCUMENTATION", "disposition": "NOT_APPLICABLE",
+                                  "reason": "the ticket only reports Word, not mentioned by the reporter"}]},
+        blocks, uac, paste)))
+    check("an input source parked as a suggestion is refused", any("never only a suggested check" in p for p in
+          uc.input_source_problems({"input_sources": [word, dict(docs, disposition="SUGGESTED")]}, blocks, uac, paste)))
+    check("a ticket that brings nothing in needs no input sources", uc.input_source_problems({}, blocks, uac, other) == [])
+
+
 def test_output_route_entry_points() -> None:
     uc = uac_completeness_check_mod
     sites = {"summary": "New AEM Sites | Error on publishing with attached content",
@@ -18086,6 +18112,7 @@ def main() -> int:
     test_gate_false_positives_from_questions_and_side_sections()
     test_output_route_entry_points()
     test_not_named_reasons_and_scope_boundaries()
+    test_input_sources()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()

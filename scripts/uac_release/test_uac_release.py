@@ -860,6 +860,7 @@ class LearningHarvesterTests(unittest.TestCase):
                 "entry_points": [{"name": "Map dashboard", "disposition": "AC", "ac": 2},
                                  {"name": "Map Collection", "disposition": "NOT_APPLICABLE", "reason": "x"}],
                 "config_switches": [{"name": "flag", "disposition": "AC", "acs": [2, 3]}],
+                "input_sources": [{"name": "Word", "disposition": "AC", "ac": 1}],
                 "mechanism": {"variants": [{"name": "map", "disposition": "TBD", "ac": 1}],
                               "reverse_action": {"name": "undo", "disposition": "AC", "ac": 3},
                               "value_shapes": {"name": "values", "disposition": "NOT_APPLICABLE", "reason": "x"}}},
@@ -867,7 +868,7 @@ class LearningHarvesterTests(unittest.TestCase):
             "failure_path": {"remaining_items": {"disposition": "AC", "ac": 3}},
         }
         self.assertEqual(harvester.criterion_kinds(evidence), {
-            1: ["reporter step", "item type", "items made before the change"],
+            1: ["reporter step", "input source", "item type", "items made before the change"],
             2: ["variant", "entry point", "switch state"],
             3: ["regression check", "switch state", "reverse action", "failure path"]})
         self.assertEqual(harvester.criterion_kinds({}), {})
