@@ -688,7 +688,12 @@ Record in `UAC_EVIDENCE.json` "action_variants", and make each an AC (or a TBD),
 check - these criteria are scenario VARIANT:
 - **entry_points** - every route to the same action: drag and drop, the toolbar, a dialog, the context
   menu, a keyboard shortcut, an API. When the reporter dragged a file in, the toolbar insert is part of the
-  ticket too. Merge routes with the same outcome into one AC and list them as sub-points.
+  ticket too. Merge routes with the same outcome into one AC and list them as sub-points. When the ticket
+  generates output (Native PDF, AEM Sites, HTML5, custom DITA-OT or any other type), name each documented
+  generation route: the output preset from the map (Map console or Map Dashboard), Map Collection, a
+  baseline, and for PDF the Download as PDF / single-topic path. Each gets an AC, a TBD or NOT_APPLICABLE
+  with a reason - the routes share one engine and the reporter used only one (miss probe MP-004;
+  `uac_completeness_check.output_route_problems`).
 - **config_switches** - every configuration, feature flag or setting that changes what the action stores or
   shows, with the result in each state ("with UUID file names enabled the GUID is inserted; when disabled
   the path is inserted"). An empty list needs a reason.
