@@ -48,7 +48,10 @@ def _components(manifest):
 # Sections that describe OTHER tickets (historical neighbours), not this ticket's
 # own scope. A neighbour's title mentioning "native pdf" must not misclassify the
 # ticket - the strong-signal scan runs only over the ticket's own sections.
-_NEIGHBOUR_SECTIONS = ("Known Jira Bugs", "Past Similar Tickets")
+# Regression Areas and Open Questions name what else to re-run or ask about ("re-run DITA-OT
+# publishing", "which output presets does the customer use?"); a mention there does not make
+# the ticket's own change a publishing change.
+_NEIGHBOUR_SECTIONS = ("Known Jira Bugs", "Past Similar Tickets", "Regression Areas", "Open Questions")
 
 
 def _own_scope_text(plan_text):

@@ -37,7 +37,7 @@ PLACEHOLDERS = {
 }
 
 ABSENCE_CLAIM_RE = re.compile(
-    r"\b(?:no|without)\s+(?:linked\s+|development\s+|implementation\s+)?"
+    r"\b(?:no|without)\s+(?:(?:linked|development|implementation|fix|confirmed)\s+)*"
     r"(?:pr|pull\s+request|commit|branch|diff|root[-\s]?cause|rca)\b|"
     r"\b(?:pr|pull\s+request|commit|branch|diff|root[-\s]?cause|rca)\b"
     r".{0,45}\b(?:not\s+(?:available|present|provided|captured|inspected|linked|confirmed)|"
@@ -189,10 +189,15 @@ def _manifest_scalars(value: Any, path: tuple[str, ...] = ()) -> Iterable[tuple[
         yield path, value
 
 
+# A question ("Will a hotfix be provided?", "After the fix is provided, do they restart?") asks for a fix;
+# it never reports one.
+_QUESTION_SENTENCE_RE = re.compile(r"[^.?!\n]*\?")
+
+
 def _text_signals(text: str) -> list[str]:
     detected: list[str] = []
     for line in (text or "").splitlines() or [text or ""]:
-        candidate = line.strip()
+        candidate = _QUESTION_SENTENCE_RE.sub(" ", line).strip()
         if not candidate or ABSENCE_CLAIM_RE.search(candidate):
             continue
         for label, pattern in TEXT_SIGNAL_PATTERNS:
