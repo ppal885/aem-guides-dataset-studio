@@ -717,7 +717,18 @@ Each entry records its **basis**: TICKET, ATTACHMENT, PRODUCT_DECISION, DEVELOPE
 CODE. A route, switch or item type known only from the code is a TBD or a suggested check, never an AC: in
 blind comparisons, routes and modes read only from the code were criteria the human UAC did not have, and
 they cost QE review time. Blind comparisons with human UACs missed the other variants while covering the
-reporter's single path (`uac_completeness_check.action_variant_problems`).
+reporter's single path (`uac_completeness_check.action_variant_problems`). NOT_APPLICABLE needs a reason
+that says why the route, switch or item cannot do the action; "nobody named it" or "the reporter did not
+use it" is why it is a variant, and the checker refuses it (Map Collection was dropped this way on two
+tickets whose human UAC made it a criterion).
+
+**Decided boundaries.** When the ticket, a developer or product has decided a limit - a version or type
+the change does not cover ("V2 baseline is out of scope", "applies to the old baseline v1"), a path where
+the fix does not apply ("external paste from Word or Excel"), or a loss that is expected ("copying part of
+a table loses its column widths") - write it: an Out of scope item or a criterion that states the limit.
+Record each in `UAC_EVIDENCE.json` "scope_boundaries" with its basis (TICKET, ATTACHMENT, PRODUCT_DECISION
+or DEVELOPER_COMMENT) and disposition (OUT_OF_SCOPE or AC); a limit nobody decided is a TBD, not a
+boundary. An empty list needs a reason (`uac_completeness_check.scope_boundary_problems`).
 
 **Decided facts are criteria, not TBDs.** Human UACs are written once the scope is agreed: only 5% of the
 386 human UACs in the corpus carry a TBD, while 35% state a configuration, feature flag, preset argument or

@@ -72,7 +72,12 @@ WHAT IT CHECKS in a UAC folder
    AC. A criterion that covers one of them is scenario VARIANT. When the ticket generates output (any
    output type), entry_points also names each documented generation route - the output preset from the map,
    Map Collection, a baseline, and for PDF the Download as PDF / single-topic path - so none is dropped
-   silently (miss probe MP-004).
+   silently (miss probe MP-004). A NOT_APPLICABLE reason says why the route, switch or item cannot do the
+   action; "nobody named it" is why it is a variant, not a reason, and is refused.
+15. "scope_boundaries": each limit the ticket, a developer or product decided - a version, type or path the
+   change does not cover, a loss that is expected - is an Out of scope item or a criterion that states it
+   (human UACs: "V2 baseline is out of scope", "external paste: fix not applicable"). An empty list needs
+   scope_boundaries_reason.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -256,11 +261,12 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "fix_basis": fix_basis_problems(evidence, uac, source),
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac),
         "action_variants": action_variant_problems(evidence, uac, source),
+        "scope_boundaries": scope_boundary_problems(evidence, uac),
     }
 
 
 def evidence_problems(folder: Path) -> list[str]:
-    """Checks 2-8 and 10-14: the evidence record the runner also enforces."""
+    """Checks 2-8 and 10-15: the evidence record the runner also enforces."""
     problems: list[str] = []
     for found in evidence_problems_by_check(folder).values():
         problems += found
@@ -656,6 +662,21 @@ _STOP_WORDS = {"from", "with", "into", "that", "this", "when", "then", "panel", 
                "button", "option", "menu", "file", "files", "view", "editor", "page", "item", "items"}
 
 
+# "Nobody named it" is the reason a variant exists, never a reason it does not apply. Blind comparisons
+# marked Map Collection not applicable with "no one names it" on two tickets whose human UAC made it a
+# criterion. A reason must say why the route, switch or item cannot do the action.
+_NOT_NAMED_REASON = re.compile(
+    r"\b(?:not|never|neither|nor|no\s+one|nobody|nothing|none)\b[^.;]{0,40}\b(?:named?|names|mention\w*|ask\w*|request\w*|"
+    r"report\w*|list\w*|cited?|referenc\w*)\b"
+    r"|\b(?:reporter|ticket|customer|description|comments?)\s+(?:did\s+not|didn't|does\s+not|doesn't|never)\s+"
+    r"(?:name|mention|ask|use|hit|cover|include)\b"
+    r"|\bnot\s+in\s+the\s+(?:ticket|description|comments?)\b", re.IGNORECASE)
+_CANNOT_REASON = re.compile(
+    r"\b(?:cannot|can't|can\s+not|does\s+not\s+(?:use|open|read|store|show|call|reach|support|offer|have|run)|"
+    r"doesn't\s+(?:use|open|read|store|show|call|reach|support|offer|have|run)|has\s+no|no\s+such|not\s+available|"
+    r"not\s+supported|only\s+(?:for|in|on))\b", re.IGNORECASE)
+
+
 def _value_shape_problems(entry: dict, blocks: dict[int, str]) -> list[str]:
     """An AC answer lists at least two value forms, and its criteria name each of them."""
     shapes = [str(s).strip() for s in entry.get("shapes") or [] if str(s).strip()]
@@ -698,8 +719,13 @@ def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text:
         return [f"{label} \"{name}\": disposition must be {', '.join(VARIANT_DISPOSITIONS)} - a variant of the "
                 "ticket's own action is never only a suggested check (unless it is known only from the code)"]
     if disposition == "NOT_APPLICABLE":
-        return [] if len(str(entry.get("reason") or "").split()) >= 5 else [
-            f"{label} \"{name}\" is not applicable without a concrete reason"]
+        reason = str(entry.get("reason") or "")
+        if len(reason.split()) < 5:
+            return [f"{label} \"{name}\" is not applicable without a concrete reason"]
+        if _NOT_NAMED_REASON.search(reason) and not _CANNOT_REASON.search(reason):
+            return [f"{label} \"{name}\": \"{reason[:80]}\" is why it is a variant, not why it does not apply - say "
+                    "why this route, switch or item cannot do the action, or make it an AC or a TBD"]
+        return []
     acs = _ac_list(entry.get("acs", entry.get("ac")))
     missing = [ac for ac in acs if ac not in blocks]
     if not acs or missing:
@@ -822,6 +848,68 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
             problems += found
             if dimension == "value_shapes" and not found and entry.get("disposition") == "AC":
                 problems += _value_shape_problems(entry, blocks)
+    return problems
+
+
+# --- decided boundaries ------------------------------------------------------------------------------
+BOUNDARY_BASES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DEVELOPER_COMMENT")
+BOUNDARY_DISPOSITIONS = ("OUT_OF_SCOPE", "AC")
+_OUT_OF_SCOPE_LIST = re.compile(r"^Out of scope:?[ \t]*$(.*?)(?=^(?![-\s])\S|\Z)", re.M | re.S | re.I)
+
+
+def out_of_scope_items(uac_text: str) -> list[str]:
+    """The "- item" lines of the UAC's Out of scope list."""
+    match = _OUT_OF_SCOPE_LIST.search(uac_text or "")
+    return [line.strip()[2:].strip() for line in (match.group(1) if match else "").splitlines()
+            if line.strip().startswith("- ")]
+
+
+def scope_boundary_problems(evidence: dict, uac_text: str) -> list[str]:
+    """Boundaries the ticket, a developer or product already decided are written in the UAC.
+
+    Human UACs state them as points: "V2 baseline is out of scope", "applicable for the old baseline (v1)",
+    "external paste from Word or Excel: fix not applicable", "partial table copy: data loss is expected".
+    Blind comparisons dropped or turned them into TBDs on two tickets. A decided boundary is an Out of scope
+    item or a criterion that states the limit; an undecided one is a TBD and does not belong here."""
+    block = evidence.get("scope_boundaries")
+    if not isinstance(block, list):
+        return ["scope_boundaries is missing: list each limit the ticket, a developer or product decided (a version, "
+                "type or path the change does not cover, a loss that is expected) - or give an empty list with "
+                "scope_boundaries_reason"]
+    if not block:
+        return [] if len(str(evidence.get("scope_boundaries_reason") or "").split()) >= 5 else [
+            "scope_boundaries is empty without a concrete scope_boundaries_reason"]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    listed = _normalize(" ".join(out_of_scope_items(uac_text)))
+    problems = []
+    for index, entry in enumerate(block, 1):
+        label = f"scope_boundaries {index}"
+        if not isinstance(entry, dict) or not str(entry.get("boundary") or "").strip():
+            problems.append(f"{label} needs the boundary text")
+            continue
+        boundary = str(entry["boundary"]).strip()
+        if entry.get("basis") not in BOUNDARY_BASES:
+            problems.append(f"{label} \"{boundary[:60]}\": basis must be {', '.join(BOUNDARY_BASES)} - a limit found "
+                            "only in the code or by our own research is a TBD, not a decided boundary")
+            continue
+        words = _name_words(boundary)
+        disposition = entry.get("disposition")
+        if disposition == "OUT_OF_SCOPE":
+            if not listed:
+                problems.append(f"{label} \"{boundary[:60]}\": the UAC has no Out of scope list")
+            elif words and not any(re.search(rf"\b{re.escape(w)}", listed) for w in words):
+                problems.append(f"{label} \"{boundary[:60]}\": no Out of scope item names it")
+        elif disposition == "AC":
+            acs = _ac_list(entry.get("acs", entry.get("ac")))
+            if not acs or any(ac not in blocks for ac in acs):
+                problems.append(f"{label} \"{boundary[:60]}\": Acceptance Criteria {acs!r} does not exist")
+                continue
+            text = _normalize(" ".join(blocks[ac] for ac in acs))
+            if words and not any(re.search(rf"\b{re.escape(w)}", text) for w in words):
+                problems.append(f"{label} \"{boundary[:60]}\": Acceptance Criteria "
+                                f"{', '.join(f'{a:02d}' for a in acs)} does not state it")
+        else:
+            problems.append(f"{label} \"{boundary[:60]}\": disposition must be {', '.join(BOUNDARY_DISPOSITIONS)}")
     return problems
 
 

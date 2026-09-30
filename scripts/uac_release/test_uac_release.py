@@ -147,6 +147,7 @@ EVIDENCE = {
                                       "reason": "every item is shown the same way whatever its history"},
                       "value_shapes": {"name": "values", "disposition": "NOT_APPLICABLE",
                                        "reason": "the screen shows fixed labels and reads no user value"}}},
+    "scope_boundaries": [], "scope_boundaries_reason": "nobody decided a version, type or path that this change leaves out",
 }
 
 
