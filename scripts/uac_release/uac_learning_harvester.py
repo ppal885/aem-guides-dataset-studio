@@ -254,11 +254,13 @@ def compare(posted: list[dict], current: list[dict]) -> list[dict]:
 # Why each posted criterion was written, read from the run's UAC_EVIDENCE.json. The monthly report counts
 # how often QE removes each kind, so rules on size and variants follow QE's edits instead of guesses.
 _SCENARIO_KINDS = {"CUSTOMER": "reporter step", "REGRESSION": "regression check", "VARIANT": "variant"}
-_VARIANT_KINDS = (("entry_points", "entry point"), ("config_switches", "switch state"))
+_VARIANT_KINDS = (("entry_points", "entry point"), ("config_switches", "switch state"),
+                  ("input_sources", "input source"))
 _MECHANISM_KINDS = (("reverse_action", "reverse action"), ("item_origin", "item history"),
                     ("value_shapes", "value forms"))
-KIND_ORDER = ("reporter step", "regression check", "variant", "entry point", "switch state", "item type",
-              "reverse action", "item history", "value forms", "items made before the change", "failure path")
+KIND_ORDER = ("reporter step", "regression check", "variant", "entry point", "switch state", "input source",
+              "item type", "reverse action", "item history", "value forms", "items made before the change",
+              "failure path")
 
 
 def _ac_numbers(entry) -> list[int]:

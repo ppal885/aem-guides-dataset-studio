@@ -72,7 +72,9 @@ WHAT IT CHECKS in a UAC folder
    AC. A criterion that covers one of them is scenario VARIANT. When the ticket generates output (any
    output type), entry_points also names each documented generation route - the output preset from the map,
    Map Collection, a baseline, and for PDF the Download as PDF / single-topic path - so none is dropped
-   silently (miss probe MP-004). A NOT_APPLICABLE reason says why the route, switch or item cannot do the
+   silently (miss probe MP-004). When the ticket brings content in (paste, import, upload, drag and drop),
+   input_sources lists at least two places it can come from (another application, view, topic or file
+   format), each dispositioned. A NOT_APPLICABLE reason says why the route, switch or item cannot do the
    action; "nobody named it" is why it is a variant, not a reason, and is refused.
 15. "scope_boundaries": each limit the ticket, a developer or product decided - a version, type or path the
    change does not cover, a loss that is expected - is an Out of scope item or a criterion that states it
@@ -368,7 +370,8 @@ def _variant_acs(evidence: dict) -> set[int]:
     mechanism = block.get("mechanism") if isinstance(block.get("mechanism"), dict) else {}
     found: set[int] = set()
     for entry in (block.get("entry_points") or []) + (block.get("config_switches") or []) + (
-            mechanism.get("variants") or []) + [mechanism.get(d) for d in MECHANISM_DIMENSIONS]:
+            block.get("input_sources") or []) + (mechanism.get("variants") or []) + [
+            mechanism.get(d) for d in MECHANISM_DIMENSIONS]:
         if isinstance(entry, dict) and entry.get("disposition") in ("AC", "TBD"):
             found.update(_ac_list(entry.get("acs", entry.get("ac"))))
     return found
@@ -771,6 +774,35 @@ def output_route_problems(entry_points, source: dict | None) -> list[str]:
             for label, terms in routes.items() if not any(term in names for term in terms)]
 
 
+# Content brought in from outside - pasted, imported, uploaded, dragged in - arrives from several places that the
+# same conversion handles. The reporter uses one. Human UACs name the others: a Word table paste ticket covered
+# Google Docs, an HTML page and Excel (ours made them suggested checks, "the ticket only reports Word"), and a
+# table copy ticket said external paste from Word or Excel is not covered by the fix.
+INPUT_SIGNAL = re.compile(
+    r"\b(?:paste[sd]?|pasting|clipboard|import(?:s|ed|ing)?|upload(?:s|ed|ing)?|drag(?:ged|ging)?\s+(?:and|&)\s+drop"
+    r"(?:ped|ping)?)\b", re.IGNORECASE)
+MIN_INPUT_SOURCES = 2
+
+
+def input_source_problems(block: dict, blocks: dict[int, str], uac_text: str, source: dict | None) -> list[str]:
+    """A ticket about content brought in names where that content can come from, each dispositioned."""
+    if not source:
+        return []
+    text = "\n".join([source.get("summary") or "", source.get("description") or ""])
+    if not INPUT_SIGNAL.search(text):
+        return []
+    sources = block.get("input_sources")
+    if not isinstance(sources, list) or len(sources) < MIN_INPUT_SOURCES:
+        return ["the ticket brings content in (paste, import, upload or drag and drop): action_variants.input_sources "
+                f"must list at least {MIN_INPUT_SOURCES} places it can come from - the reporter's one and the others "
+                "the same conversion handles (another application, another view or topic, another file format) - "
+                "each an AC, a TBD or NOT_APPLICABLE with a reason"]
+    problems = []
+    for index, entry in enumerate(sources, 1):
+        problems += _variant_entry_problems(f"action_variants.input_sources {index}", entry, blocks, uac_text)
+    return problems
+
+
 def action_variant_problems(evidence: dict, uac_text: str, source: dict | None = None) -> list[str]:
     """The ticket's own action through every route, configuration state and item type it applies to.
 
@@ -797,6 +829,7 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
         for index, entry in enumerate(entry_points, 1):
             problems += _variant_entry_problems(f"action_variants.entry_points {index}", entry, blocks, uac_text)
         problems += output_route_problems(entry_points, source)
+    problems += input_source_problems(block, blocks, uac_text, source)
     switches = block.get("config_switches")
     if not isinstance(switches, list):
         problems.append("action_variants.config_switches is missing: list each configuration, feature flag or "
