@@ -137,6 +137,10 @@ EVIDENCE = {
         {"ac": 2, "scenario": "CUSTOMER", "step": "The report must open from the Map console."}]},
     "fix_basis": {"status": "UNCONFIRMED"},
     "pre_existing_items": {"disposition": "NOT_APPLICABLE", "reason": "the report screen stores nothing made before the change"},
+    "action_variants": {"entry_points": [{"name": "the only route", "disposition": "NOT_APPLICABLE",
+                            "reason": "the change has a single route with no alternative path"}],
+        "config_switches": [], "config_switches_reason": "no setting changes what this screen shows",
+        "mechanism": {"general_ask": False, "reason": "the ticket asks only about this one screen"}},
 }
 
 

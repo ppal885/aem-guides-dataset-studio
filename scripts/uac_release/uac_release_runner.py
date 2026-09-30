@@ -99,8 +99,15 @@ When finished, write these files:
    documentation finding of the UAC Doc Researcher, {{"finding": <1-based index>, "disposition": "AC",
    "ac": [<numbers>]}} or {{"finding": <index>, "disposition": "SET_ASIDE", "reason": "..."}}.
    Also "scenario": {{"customer_steps": [<the reporter's own steps or requested outcome, copied>], "acs":
-   [{{"ac": <number>, "scenario": "CUSTOMER" | "REGRESSION", "step": "<one of customer_steps>"}} or
+   [{{"ac": <number>, "scenario": "CUSTOMER" | "REGRESSION" | "VARIANT", "step": "<one of customer_steps>"}} or
    {{"ac": <number>, "scenario": "ADJACENT"}} is not allowed: move such a check to the suggested checks]}}.
+   Also "action_variants": {{"entry_points": [{{"name": "<route, e.g. toolbar insert>", "disposition": "AC" |
+   "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason": "..."}}], "config_switches": [{{"name": "...", "states":
+   ["enabled", "disabled"], "disposition": "AC", "acs": [<numbers>]}}] (or [] with "config_switches_reason"),
+   "mechanism": {{"general_ask": true | false, "variants": [<same shape as entry_points>], "reason": "..."}}}}
+   - every route to the ticket's action, the result in each state of every switch that changes it, and the
+   other item or reference types when the ticket asks for general behaviour. These are criteria (scenario
+   VARIANT) that name the route, state or type, never only suggested checks.
    Also "pre_existing_items": {{"disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason":
    "..."}} - what happens to content, presets, output or settings created before the change.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root

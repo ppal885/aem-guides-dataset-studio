@@ -8083,6 +8083,69 @@ def test_uac_size_and_pre_existing_items() -> None:
         "disposition": "NOT_APPLICABLE", "reason": "the change only affects a dialog that stores nothing"}}, short) == [])
 
 
+def test_action_variants() -> None:
+    uc = uac_completeness_check_mod
+    uac = ("- Acceptance Criteria 01: A topic added to an unsaved map by drag and drop or from the toolbar keeps "
+           "its reference after another user moves it and the map is saved.\n"
+           "  **Source:** Ticket description.\n"
+           "- Acceptance Criteria 02: With UUID file names enabled the GUID is inserted; when disabled the path is "
+           "inserted.\n"
+           "  **Source:** Comment by the product owner.\n"
+           "- Acceptance Criteria 03: A map reference behaves the same as a topic reference.\n"
+           "  **Source:** Ticket ask.\n"
+           "  **TBD:** Does the same apply to a key reference?\n")
+    good = {"action_variants": {
+        "entry_points": [{"name": "drag and drop from the Repository panel", "disposition": "AC", "ac": 1},
+                         {"name": "Insert from the toolbar", "disposition": "AC", "ac": 1}],
+        "config_switches": [{"name": "UUID file names", "states": ["enabled", "disabled"], "disposition": "AC",
+                             "acs": [2]}],
+        "mechanism": {"general_ask": True, "variants": [
+            {"name": "map reference", "disposition": "AC", "ac": 3},
+            {"name": "key reference", "disposition": "TBD", "ac": 3}]}}}
+    check("a complete action_variants record passes", uc.action_variant_problems(good, uac) == [])
+    check("a missing action_variants record fails",
+          any("action_variants is missing" in p for p in uc.action_variant_problems({}, uac)))
+
+    def variant(**changes):
+        record = json.loads(json.dumps(good))
+        for path, value in changes.items():
+            target = record["action_variants"]
+            keys = path.split("__")
+            for key in keys[:-1]:
+                target = target[int(key)] if key.isdigit() else target[key]
+            target[keys[-1]] = value
+        return uc.action_variant_problems(record, uac)
+
+    check("no entry point fails", any("entry_points is empty" in p for p in variant(entry_points=[])))
+    check("an entry point the criterion does not name fails",
+          any("does not name it" in p for p in variant(entry_points=[{"name": "context menu", "disposition": "AC",
+                                                                      "ac": 1}])))
+    check("an entry point parked as a suggestion fails",
+          any("never only a suggested check" in p for p in variant(entry_points__1__disposition="SUGGESTED")))
+    check("a switch with one state fails", any("at least two states" in p for p in variant(
+        config_switches__0__states=["enabled"])))
+    check("a switch state no criterion covers fails", any("when it is off" in p for p in variant(
+        config_switches__0__states=["enabled", "off"])))
+    check("no switches without a reason fails", any("config_switches_reason" in p for p in variant(config_switches=[])))
+    check("no switches with a reason passes", variant(config_switches=[], config_switches_reason=
+                                                      "no setting changes what the dialog stores") == [])
+    check("a general ask with no variants fails", any("lists no variants" in p for p in variant(
+        mechanism={"general_ask": True, "variants": []})))
+    check("a TBD variant needs a TBD line", any("has no TBD line" in p for p in variant(
+        mechanism__variants__1__ac=1)))
+    check("a narrow ask needs a reason", any("without a concrete reason" in p for p in variant(
+        mechanism={"general_ask": False})))
+
+    step = "Move the referenced map before saving"
+    scenario = {"scenario": {"customer_steps": [step], "acs": [
+        {"ac": 1, "scenario": "CUSTOMER", "step": step}, {"ac": 2, "scenario": "VARIANT", "step": step},
+        {"ac": 3, "scenario": "VARIANT", "step": step}]}}
+    check("VARIANT criteria listed in action_variants pass the scenario check",
+          uc.scenario_problems({**scenario, **good}, uac, None) == [])
+    check("a VARIANT criterion action_variants does not list fails",
+          any("is a VARIANT" in p for p in uc.scenario_problems(scenario, uac, None)))
+
+
 def test_gate_firing_log() -> None:
     firing = _load("gate_firing_log", "gate_firing_log.py")
     forcing = _load("coverage_forcing", "coverage_forcing.py")
@@ -8149,6 +8212,10 @@ def test_uac_completeness_check() -> None:
             {"ac": 2, "scenario": "CUSTOMER", "step": "Fix the preview"}]},
         "fix_basis": {"status": "UNCONFIRMED"},
         "pre_existing_items": {"disposition": "NOT_APPLICABLE", "reason": "the preview change stores nothing that existed before"},
+        "action_variants": {"entry_points": [{"name": "the only route", "disposition": "NOT_APPLICABLE",
+                            "reason": "the change has a single route with no alternative path"}],
+        "config_switches": [], "config_switches_reason": "no setting changes what this screen shows",
+        "mechanism": {"general_ask": False, "reason": "the ticket asks only about this one screen"}},
     }
 
     def problems(ev, text=uac):
@@ -17866,6 +17933,7 @@ def main() -> int:
     test_gate_firing_log()
     test_human_uac_shape()
     test_uac_size_and_pre_existing_items()
+    test_action_variants()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()
