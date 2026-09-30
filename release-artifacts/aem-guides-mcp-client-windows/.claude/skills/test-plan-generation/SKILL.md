@@ -703,7 +703,11 @@ check - these criteria are scenario VARIANT:
   case, say why. Always answer two more: **reverse_action** - the action done the other way round (move the
   item back, re-enable, undo) - and **item_origin** - an item with a different history (created in the
   target folder, never translated, made in an older release). On a move ticket the human UAC moved the item
-  back and moved an item that was created in the target folder.
+  back and moved an item that was created in the target folder. And **value_shapes** - the forms of the
+  value the change reads or shows: an empty value and a missing one (href="" and no href), special
+  characters, fragments, query strings, encoded characters, a very long value. An AC answer lists at least
+  two forms in "shapes" and names each; usually they are sub-points of the AC they share an outcome with.
+  Human UACs tested these on a blank-href ticket and a URL-as-title ticket where ours covered one value.
 Each entry records its **basis**: TICKET, ATTACHMENT, PRODUCT_DECISION, DEVELOPER_COMMENT, DOCUMENTATION or
 CODE. A route, switch or item type known only from the code is a TBD or a suggested check, never an AC: in
 blind comparisons, routes and modes read only from the code were criteria the human UAC did not have, and

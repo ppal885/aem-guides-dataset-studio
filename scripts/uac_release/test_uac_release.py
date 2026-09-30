@@ -144,7 +144,9 @@ EVIDENCE = {
                       "reverse_action": {"name": "undo", "disposition": "NOT_APPLICABLE",
                                          "reason": "the screen only displays data and has no reverse action"},
                       "item_origin": {"name": "older items", "disposition": "NOT_APPLICABLE",
-                                      "reason": "every item is shown the same way whatever its history"}}},
+                                      "reason": "every item is shown the same way whatever its history"},
+                      "value_shapes": {"name": "values", "disposition": "NOT_APPLICABLE",
+                                       "reason": "the screen shows fixed labels and reads no user value"}}},
 }
 
 

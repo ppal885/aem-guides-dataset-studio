@@ -64,7 +64,9 @@ WHAT IT CHECKS in a UAC folder
    drop, toolbar, dialog, context menu, API), every configuration switch that changes the result
    (config_switches, each state it can take), and - when the ticket asks for general behaviour - the other
    item or reference types it applies to (mechanism), plus the action done the other way round
-   (mechanism.reverse_action) and an item with a different history (mechanism.item_origin). Each is an AC
+   (mechanism.reverse_action), an item with a different history (mechanism.item_origin), and the forms of
+   the value the change reads or shows - empty, missing, special characters (mechanism.value_shapes, an AC
+   lists at least two in "shapes" and names each). Each is an AC
    that names it, a TBD, or not applicable with a reason; never only a suggested check - except a route,
    switch or item type known only from the code (basis CODE), which is a TBD or a suggested check, never an
    AC. A criterion that covers one of them is scenario VARIANT. When the ticket generates output (any
@@ -639,9 +641,32 @@ VARIANT_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
 # Where a route, switch or item type comes from. CODE alone never makes new behaviour a criterion: in blind
 # comparisons, routes and modes read only from the code were criteria the human UAC did not have.
 VARIANT_BASES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DEVELOPER_COMMENT", "DOCUMENTATION", "CODE")
-MECHANISM_DIMENSIONS = ("reverse_action", "item_origin")
+# Always answered, each with what it asks for. value_shapes: the human UACs test the forms of the value the
+# change reads or shows - an empty value and a missing one (href="" and no href), and special characters,
+# fragments, query strings, encoded characters and very long values (a URL used as a TOC title). Blind
+# comparisons missed them on two tickets while covering the reporter's one value.
+MECHANISM_DIMENSIONS = {
+    "reverse_action": "the action done the other way round (move back, re-enable, undo)",
+    "item_origin": "an item with a different history (created in the target location, never translated, from an "
+                   "older release)",
+    "value_shapes": "the forms of the value the change reads or shows (empty, missing, special characters, "
+                    "encoded, very long)",
+}
 _STOP_WORDS = {"from", "with", "into", "that", "this", "when", "then", "panel", "dialog", "using", "through",
                "button", "option", "menu", "file", "files", "view", "editor", "page", "item", "items"}
+
+
+def _value_shape_problems(entry: dict, blocks: dict[int, str]) -> list[str]:
+    """An AC answer lists at least two value forms, and its criteria name each of them."""
+    shapes = [str(s).strip() for s in entry.get("shapes") or [] if str(s).strip()]
+    if len(shapes) < 2:
+        return ["action_variants.mechanism.value_shapes: list at least two value forms in shapes (for example empty "
+                "and missing, or special characters and a very long value)"]
+    text = _normalize(" ".join(blocks.get(ac, "") for ac in _ac_list(entry.get("acs", entry.get("ac")))))
+    return [f"action_variants.mechanism.value_shapes: no Acceptance Criterion names the {shape} value"
+            for shape in shapes
+            if not any(re.search(rf"\b{re.escape(w)}", text) for w in re.findall(r"[a-z0-9]+", shape.lower())
+                       if len(w) >= 4) and _normalize(shape) not in text]
 
 
 def _name_words(name) -> list[str]:
@@ -789,15 +814,14 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
         for dimension in MECHANISM_DIMENSIONS:
             entry = mechanism.get(dimension)
             if not isinstance(entry, dict):
-                problems.append(f"action_variants.mechanism.{dimension} is missing: "
-                                + ("the action done the other way round (move back, re-enable, undo)"
-                                   if dimension == "reverse_action" else
-                                   "an item with a different history (created in the target location, never "
-                                   "translated, from an older release)")
-                                + " - an AC, a TBD or NOT_APPLICABLE with a reason")
+                problems.append(f"action_variants.mechanism.{dimension} is missing: {MECHANISM_DIMENSIONS[dimension]}"
+                                " - an AC, a TBD or NOT_APPLICABLE with a reason")
                 continue
-            problems += _variant_entry_problems(f"action_variants.mechanism.{dimension}", entry, blocks, uac_text,
-                                                needs_basis=False)
+            found = _variant_entry_problems(f"action_variants.mechanism.{dimension}", entry, blocks, uac_text,
+                                            needs_basis=False)
+            problems += found
+            if dimension == "value_shapes" and not found and entry.get("disposition") == "AC":
+                problems += _value_shape_problems(entry, blocks)
     return problems
 
 

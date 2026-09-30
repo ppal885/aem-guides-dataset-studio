@@ -8152,6 +8152,7 @@ def test_action_variants() -> None:
            "  **TBD:** Does the same apply to a key reference?\n")
     uac += ("- Acceptance Criteria 04: A topic moved back to its first folder before the map is saved keeps "
             "its reference.\n"
+            "  - a reference with an empty href, and one with no href at all\n"
             "  **Source:** QE variant of the ticket's move.\n"
             "Suggested checks (QE decide):\n"
             "- Suggested check 01: The same move with the new baseline mode on.\n"
@@ -8170,7 +8171,8 @@ def test_action_variants() -> None:
             {"name": "key reference", "basis": "TICKET", "disposition": "TBD", "ac": 3}],
             "reverse_action": {"name": "move the topic back", "disposition": "AC", "ac": 4},
             "item_origin": {"name": "a topic created in the target folder", "disposition": "NOT_APPLICABLE",
-                            "reason": "a reference to a topic keeps its GUID wherever it was created"}}}}
+                            "reason": "a reference to a topic keeps its GUID wherever it was created"},
+            "value_shapes": {"name": "href values", "disposition": "AC", "ac": 4, "shapes": ["empty", "no href"]}}}}
     check("a complete action_variants record passes", uc.action_variant_problems(good, uac) == [])
     check("a missing action_variants record fails",
           any("action_variants is missing" in p for p in uc.action_variant_problems({}, uac)))
@@ -8208,6 +8210,15 @@ def test_action_variants() -> None:
         mechanism__reverse_action=None)))
     check("a missing item origin fails", any("item_origin is missing" in p for p in variant(
         mechanism__item_origin=None)))
+    check("missing value shapes fail", any("value_shapes is missing" in p for p in variant(
+        mechanism__value_shapes=None)))
+    check("value shapes need at least two forms", any("at least two value forms" in p for p in variant(
+        mechanism__value_shapes__shapes=["empty"])))
+    check("a value shape no criterion names fails", any("names the special characters value" in p for p in variant(
+        mechanism__value_shapes__shapes=["empty", "special characters"])))
+    check("value shapes may be not applicable with a reason", variant(mechanism__value_shapes={
+        "name": "values", "disposition": "NOT_APPLICABLE", "reason": "the change reads no value, it only removes a row"})
+          == [])
     check("a variant without a basis fails", any("basis must be" in p for p in variant(
         entry_points__0__basis=None)))
     check("a code-only route cannot be an Acceptance Criterion", any("known only from the code" in p for p in variant(
@@ -8302,7 +8313,9 @@ def test_uac_completeness_check() -> None:
                       "reverse_action": {"name": "undo", "disposition": "NOT_APPLICABLE",
                                          "reason": "the screen only displays data and has no reverse action"},
                       "item_origin": {"name": "older items", "disposition": "NOT_APPLICABLE",
-                                      "reason": "every item is shown the same way whatever its history"}}},
+                                      "reason": "every item is shown the same way whatever its history"},
+                      "value_shapes": {"name": "values", "disposition": "NOT_APPLICABLE",
+                                       "reason": "the screen shows fixed labels and reads no user value"}}},
     }
 
     def problems(ev, text=uac):
