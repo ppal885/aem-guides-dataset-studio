@@ -20,7 +20,10 @@ Nightly (harvest):
 Monthly (--report YYYY-MM):
   <output_dir>/learning/report-YYYY-MM.md: per component, how many criteria were accepted, removed,
   added and changed, the criteria QE removed (what we over-wrote) and the ones QE added (what we
-  missed).
+  missed). "Removed by kind" says, for each reason a criterion was written (reporter step, regression
+  check, entry point, switch state, item type, reverse action, item history, value forms, items made
+  before the change, failure path - read from the run's UAC_EVIDENCE.json), how often QE removed it,
+  and how many criteria per ticket we posted against how many QE left.
 
 Backfill (--backfill KEY ...):
   For UACs posted by hand rather than by this automation, the posted text is not on disk. The
@@ -143,7 +146,7 @@ def parse_criteria(field_text: str) -> list[dict]:
             kept_label = _LABEL.match(_kept(line).strip()) if _kept(line).strip() else None
             kept_text = _clean(kept_label.group(2)) if kept_label else ""
             full = _clean(label.group(2))
-            criteria.append({"text": kept_text, "full": full, "source": "", "tbd": "",
+            criteria.append({"text": kept_text, "full": full, "source": "", "tbd": "", "number": int(label.group(1)),
                              "struck_parts": [] if kept_text == full else [full], "notes": []})
             continue
         if not criteria and not bullet:
@@ -174,7 +177,7 @@ def parse_criteria(field_text: str) -> list[dict]:
             text = _clean(_BULLET.match(plain).group(1))
             kept = _clean(_kept(line))
             kept_text = _clean(_BULLET.match(kept).group(1)) if _BULLET.match(kept) else ""
-            criteria.append({"text": kept_text, "full": text, "source": "", "tbd": "",
+            criteria.append({"text": kept_text, "full": text, "source": "", "tbd": "", "number": None,
                              "struck_parts": [] if kept_text == text else [text], "notes": []})
     result = []
     for c in criteria:
@@ -211,17 +214,21 @@ def compare(posted: list[dict], current: list[dict]) -> list[dict]:
     struck = [j for j, c in enumerate(current) if c.get("struck")]
     right = [j for j in range(len(current)) if j not in struck]
 
+    def number(i: int) -> int:
+        """The posted criterion's own number, or its position when the field has no numbers."""
+        return posted[i].get("number") or i + 1
+
     for j in struck:
         best = max(left, key=lambda i: similarity(posted[i]["text"], current[j]["full"]), default=None)
         if best is not None and similarity(posted[best]["text"], current[j]["full"]) >= MATCH_THRESHOLD:
             left.remove(best)
             entries.append({"kind": "removed", "old": posted[best]["text"], "new": "", "similarity": 0.0,
-                            "struck": True, "reason": current[j].get("reason", "")})
+                            "struck": True, "reason": current[j].get("reason", ""), "number": number(best)})
     for i in list(left):
         for j in list(right):
             if _norm(posted[i]["text"]) == _norm(current[j]["text"]):
                 entries.append({"kind": "accepted", "old": posted[i]["text"], "new": current[j]["text"],
-                                "similarity": 1.0})
+                                "similarity": 1.0, "number": number(i)})
                 left.remove(i)
                 right.remove(j)
                 break
@@ -231,16 +238,65 @@ def compare(posted: list[dict], current: list[dict]) -> list[dict]:
         if score < MATCH_THRESHOLD or i not in left or j not in right:
             continue
         entry = {"kind": "changed", "old": posted[i]["text"], "new": current[j]["text"],
-                 "similarity": round(score, 2)}
+                 "similarity": round(score, 2), "number": number(i)}
         if current[j].get("struck_parts"):
             entry["struck_parts"] = current[j]["struck_parts"]
             entry["reason"] = current[j].get("reason", "")
         entries.append(entry)
         left.remove(i)
         right.remove(j)
-    entries += [{"kind": "removed", "old": posted[i]["text"], "new": "", "similarity": 0.0} for i in left]
+    entries += [{"kind": "removed", "old": posted[i]["text"], "new": "", "similarity": 0.0, "number": number(i)}
+                for i in left]
     entries += [{"kind": "added", "old": "", "new": current[j]["text"], "similarity": 0.0} for j in right]
     return entries
+
+
+# Why each posted criterion was written, read from the run's UAC_EVIDENCE.json. The monthly report counts
+# how often QE removes each kind, so rules on size and variants follow QE's edits instead of guesses.
+_SCENARIO_KINDS = {"CUSTOMER": "reporter step", "REGRESSION": "regression check", "VARIANT": "variant"}
+_VARIANT_KINDS = (("entry_points", "entry point"), ("config_switches", "switch state"))
+_MECHANISM_KINDS = (("reverse_action", "reverse action"), ("item_origin", "item history"),
+                    ("value_shapes", "value forms"))
+KIND_ORDER = ("reporter step", "regression check", "variant", "entry point", "switch state", "item type",
+              "reverse action", "item history", "value forms", "items made before the change", "failure path")
+
+
+def _ac_numbers(entry) -> list[int]:
+    if not isinstance(entry, dict) or entry.get("disposition") not in ("AC", "TBD"):
+        return []
+    value = entry.get("acs", entry.get("ac"))
+    values = value if isinstance(value, list) else [value]
+    return [v for v in values if isinstance(v, int) and not isinstance(v, bool)]
+
+
+def criterion_kinds(evidence: dict) -> dict[int, list[str]]:
+    """Criterion number -> the kinds of reason it was written for (a criterion can have several)."""
+    kinds: dict[int, set[str]] = defaultdict(set)
+    if not isinstance(evidence, dict):
+        return {}
+    scenario = evidence.get("scenario") if isinstance(evidence.get("scenario"), dict) else {}
+    for entry in scenario.get("acs") or []:
+        if isinstance(entry, dict) and isinstance(entry.get("ac"), int) and entry.get("scenario") in _SCENARIO_KINDS:
+            kinds[entry["ac"]].add(_SCENARIO_KINDS[entry["scenario"]])
+    variants = evidence.get("action_variants") if isinstance(evidence.get("action_variants"), dict) else {}
+    for field, kind in _VARIANT_KINDS:
+        for entry in variants.get(field) or []:
+            for ac in _ac_numbers(entry):
+                kinds[ac].add(kind)
+    mechanism = variants.get("mechanism") if isinstance(variants.get("mechanism"), dict) else {}
+    for entry in mechanism.get("variants") or []:
+        for ac in _ac_numbers(entry):
+            kinds[ac].add("item type")
+    for field, kind in _MECHANISM_KINDS:
+        for ac in _ac_numbers(mechanism.get(field)):
+            kinds[ac].add(kind)
+    for ac in _ac_numbers(evidence.get("pre_existing_items")):
+        kinds[ac].add("items made before the change")
+    failure = evidence.get("failure_path") if isinstance(evidence.get("failure_path"), dict) else {}
+    for entry in failure.values():
+        for ac in _ac_numbers(entry):
+            kinds[ac].add("failure path")
+    return {ac: sorted(found, key=KIND_ORDER.index) for ac, found in kinds.items()}
 
 
 def ac_field_changes(issue: dict, field_id: str) -> list[dict]:
@@ -270,7 +326,8 @@ def _issue(jira, key: str, field_id: str) -> dict:
 
 
 def _record(key: str, fields: dict, config: dict, posted_text: str, current_text: str, human: list[dict],
-            state: dict, extra: dict | None = None, suggested: list[str] | None = None) -> dict | None:
+            state: dict, extra: dict | None = None, suggested: list[str] | None = None,
+            kinds: dict[int, list[str]] | None = None) -> dict | None:
     """Build the learning record, or None when nothing new can be learned yet."""
     ticket_status = str((fields.get("status") or {}).get("name") or "")
     components = [str(c.get("name")) for c in fields.get("components") or [] if c.get("name")] or ["(none)"]
@@ -288,7 +345,11 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
     if state.get(key) == version:
         return None
     state[key] = version
-    entries = mark_promoted(compare(parse_criteria(posted_text), parse_criteria(current_text)), suggested or [])
+    posted_criteria, current_criteria = parse_criteria(posted_text), parse_criteria(current_text)
+    entries = mark_promoted(compare(posted_criteria, current_criteria), suggested or [])
+    for entry in entries:
+        if kinds and entry.get("number") in kinds:
+            entry["kinds"] = kinds[entry["number"]]
     record = {
         "harvested_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "key": key, "summary": str(fields.get("summary") or ""), "components": components,
@@ -297,6 +358,8 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
         "posted_text": posted_text, "current_text": current_text,
         "counts": {k: sum(1 for e in entries if e["kind"] == k)
                    for k in ("accepted", "changed", "removed", "added", "promoted")},
+        "posted_count": len(posted_criteria),
+        "kept_count": sum(1 for c in current_criteria if not c.get("struck")),
         "criteria": entries,
     }
     record.update(extra or {})
@@ -358,8 +421,13 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, sta
     fields = issue.get("fields") or {}
     generators = own_name if isinstance(own_name, set) else generator_users(config, own_name)
     human = [c for c in ac_field_changes(issue, field_id) if c["by"] and c["by"] not in generators]
+    evidence_path = ticket_dir / common.EVIDENCE_FILE
+    try:
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8-sig")) if evidence_path.is_file() else {}
+    except ValueError:
+        evidence = {}
     return _record(key, fields, config, posted_text, fields.get(field_id) or "", human, state,
-                   suggested=status.get("suggested") or [])
+                   suggested=status.get("suggested") or [], kinds=criterion_kinds(evidence))
 
 
 def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
@@ -387,6 +455,35 @@ def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return records
+
+
+def kind_report_lines(records: list[dict]) -> list[str]:
+    """How often QE removed each kind of posted criterion, and how many criteria QE kept per ticket."""
+    posted: dict[str, int] = defaultdict(int)
+    removed: dict[str, int] = defaultdict(int)
+    for record in records:
+        for entry in record.get("criteria") or []:
+            if entry.get("kind") not in ("accepted", "changed", "removed"):
+                continue
+            for kind in entry.get("kinds") or ["(no evidence record)"]:
+                posted[kind] += 1
+                removed[kind] += entry["kind"] == "removed"
+    lines = ["## Removed by kind", "",
+             "Why each posted criterion was written (from the run's evidence record) and how often QE removed it. "
+             "A kind QE removes often is one we over-write; change the rule for it from this table.", ""]
+    if not posted:
+        return lines + ["No posted criteria with a kind this month.", ""]
+    lines += ["| Kind | Posted | Removed by QE | Removed % |", "|---|---|---|---|"]
+    for kind in [k for k in KIND_ORDER if k in posted] + sorted(k for k in posted if k not in KIND_ORDER):
+        lines.append(f"| {kind} | {posted[kind]} | {removed[kind]} | {round(100 * removed[kind] / posted[kind])}% |")
+    sized = [r for r in records if r.get("outcome") == "CHANGED" and isinstance(r.get("posted_count"), int)]
+    if sized:
+        posted_counts = sorted(r["posted_count"] for r in sized)
+        kept_counts = sorted(r.get("kept_count", 0) for r in sized)
+        mid = len(sized) // 2
+        lines += ["", f"Criteria per ticket QE edited ({len(sized)}): we posted a median of {posted_counts[mid]}, "
+                      f"QE left a median of {kept_counts[mid]}."]
+    return lines + [""]
 
 
 def monthly_report(config: dict, month: str) -> Path:
@@ -459,6 +556,7 @@ def monthly_report(config: dict, month: str) -> Path:
                       f"{totals['missed_screens']}).", ""]
     if not records:
         lines.append("No ticket versions were harvested this month.")
+    lines += [""] + kind_report_lines(records)
     firing = common.import_skill_module("gate_firing_log")
     runs = [r for r in firing.load([Path(config["output_dir"]) / "logs" / "gate-firing.jsonl"], tool="uac-runner")
             if str(r.get("at") or "").startswith(month)]

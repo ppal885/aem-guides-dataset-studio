@@ -262,7 +262,12 @@ it and when.
 removed (we wrote too much), what QE added (we missed), and the **missed screens**: screens (panel,
 console, dashboard, app, view, ...) that a QE-added criterion names and our posted UAC never mentioned,
 counted once per ticket. A screen miss that recurs in these counts is the signal to change the surface
-rules; one ticket is not. The harvester only reads Jira; it never writes to it.
+rules; one ticket is not. A **Removed by kind** table says why each posted criterion was written - reporter
+step, regression check, entry point, switch state, item type, reverse action, item history, value forms,
+items made before the change, failure path, read from the run's `UAC_EVIDENCE.json` - and how often QE
+removed each kind, plus the median number of criteria we posted against the median QE left. A kind QE
+removes often is the signal to change the size or variant rules. The harvester only reads Jira; it never
+writes to it.
 
 ### Backfill hand-posted UACs
 
