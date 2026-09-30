@@ -59,7 +59,9 @@ WHAT IT CHECKS in a UAC folder
 13. "pre_existing_items": what happens to items made before the change - content, maps, presets,
    output, settings or projects created or generated earlier - an AC, a TBD or NOT_APPLICABLE with a reason.
    15% of human UACs cover it ("older files need re-processing", "old preset and newly created preset"),
-   and blind comparisons missed it on tickets that never say "upgrade" or "migration".
+   and blind comparisons missed it on tickets that never say "upgrade" or "migration". An AC says the
+   outcome: UNCHANGED (they stay as they are - the usual human answer), or CHANGED with the basis that
+   decided it; a guessed new behaviour for old items is refused.
 14. "action_variants": the ticket's own action through every route the user has (entry_points: drag and
    drop, toolbar, dialog, context menu, API), every configuration switch that changes the result
    (config_switches, each state it can take), and - when the ticket asks for general behaviour - the other
@@ -72,7 +74,8 @@ WHAT IT CHECKS in a UAC folder
    AC. A criterion that covers one of them is scenario VARIANT. When the ticket generates output (any
    output type), entry_points also names each documented generation route - the output preset from the map,
    Map Collection, a baseline, and for PDF the Download as PDF / single-topic path - so none is dropped
-   silently (miss probe MP-004). When the ticket brings content in (paste, import, upload, drag and drop),
+   silently (miss probe MP-004); when it changes an output preset setting, also a Global or Folder Profile
+   preset template applied with Apply Preset Changes. When the ticket brings content in (paste, import, upload, drag and drop),
    input_sources lists at least two places it can come from (another application, view, topic or file
    format), each dispositioned. A NOT_APPLICABLE reason says why the route, switch or item cannot do the
    action; "nobody named it" is why it is a variant, not a reason, and is refused.
@@ -117,6 +120,11 @@ MAX_SUGGESTED = 3
 MAX_BODY_WORDS = 350
 MAX_SOURCE_WORDS = 30
 PRE_EXISTING_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
+# What an AC says about items made before the change. Human UACs usually say they stay as they are ("existing
+# presets remain unaffected"); two blind comparisons asserted new behaviour for them instead (a guessed upgrade
+# criterion QE struck, and "existing content shows draft comments" where the new option was off by default).
+PRE_EXISTING_OUTCOMES = ("UNCHANGED", "CHANGED")
+PRE_EXISTING_DECIDED_BASES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DEVELOPER_COMMENT")
 
 
 def _load(path: Path):
@@ -642,6 +650,15 @@ def pre_existing_problems(evidence: dict, uac_text: str) -> list[str]:
         return [f"pre_existing_items: Acceptance Criteria {ac!r} does not exist"]
     if disposition == "TBD" and "TBD:" not in blocks[ac]:
         return [f"pre_existing_items: Acceptance Criteria {ac:02d} has no TBD line"]
+    if disposition == "AC":
+        outcome = entry.get("outcome")
+        if outcome not in PRE_EXISTING_OUTCOMES:
+            return ["pre_existing_items: say whether items made before the change stay as they are (outcome "
+                    "UNCHANGED) or behave the new way (outcome CHANGED, with the basis that decided it)"]
+        if outcome == "CHANGED" and entry.get("basis") not in PRE_EXISTING_DECIDED_BASES:
+            return ["pre_existing_items: new behaviour for items made before the change needs a basis that decided it ("
+                    f"{', '.join(PRE_EXISTING_DECIDED_BASES)}); without one, expect them unchanged or ask in a TBD - "
+                    "a new option is usually off for existing items"]
     return []
 
 
@@ -758,6 +775,16 @@ OUTPUT_ROUTES = {
 }
 PDF_ROUTES = {"Download as PDF or a single topic": ("download as pdf", "download pdf", "single topic",
                                                     "single-topic")}
+# A setting in an output preset also reaches maps through a profile preset template pushed with Apply Preset
+# Changes. Human UACs checked that the setting survives that path on two tickets (an AEM Sites publish context
+# pushed from a Folder Profile preset, and a new Native PDF preset toggle); ours did not.
+PRESET_SETTING_SIGNAL = re.compile(
+    r"\bpresets?\b[^.\n]{0,60}\b(?:options?|toggles?|settings?|checkbox(?:es)?|fields?|flags?|parameters?|"
+    r"properties|property|context)\b"
+    r"|\b(?:options?|toggles?|settings?|checkbox(?:es)?|fields?|flags?|parameters?|properties|property)\b[^.\n]{0,60}"
+    r"\bpresets?\b", re.IGNORECASE)
+PRESET_ROUTES = {"a Global or Folder Profile preset template applied to maps with Apply Preset Changes": (
+    "apply preset changes", "preset template", "profile preset", "folder profile", "global profile")}
 
 
 def output_route_problems(entry_points, source: dict | None) -> list[str]:
@@ -768,7 +795,8 @@ def output_route_problems(entry_points, source: dict | None) -> list[str]:
     if not OUTPUT_SIGNAL.search(text):
         return []
     names = " | ".join(str(e.get("name") or "").lower() for e in entry_points if isinstance(e, dict))
-    routes = dict(OUTPUT_ROUTES, **(PDF_ROUTES if PDF_SIGNAL.search(text) else {}))
+    routes = dict(OUTPUT_ROUTES, **(PDF_ROUTES if PDF_SIGNAL.search(text) else {}),
+                  **(PRESET_ROUTES if PRESET_SETTING_SIGNAL.search(text) else {}))
     return [f"the ticket generates output: action_variants.entry_points must name {label} - an AC, a TBD or "
             "NOT_APPLICABLE with a reason (the generation routes share one engine; MP-004)"
             for label, terms in routes.items() if not any(term in names for term in terms)]

@@ -8070,7 +8070,16 @@ def test_uac_size_and_pre_existing_items() -> None:
 
     check("a missing pre-existing answer fails", any("pre_existing_items is missing" in p for p in uc.pre_existing_problems({}, short)))
     check("an AC answer that names a real criterion passes",
-          uc.pre_existing_problems({"pre_existing_items": {"disposition": "AC", "ac": 2}}, short) == [])
+          uc.pre_existing_problems({"pre_existing_items": {"disposition": "AC", "ac": 2, "outcome": "UNCHANGED"}},
+                                   short) == [])
+    check("an AC answer without an outcome fails", any("outcome UNCHANGED" in p for p in uc.pre_existing_problems(
+        {"pre_existing_items": {"disposition": "AC", "ac": 2}}, short)))
+    check("new behaviour for old items without a decision fails", any("needs a basis" in p for p in
+          uc.pre_existing_problems({"pre_existing_items": {"disposition": "AC", "ac": 2, "outcome": "CHANGED"}}, short)))
+    check("new behaviour for old items with a decision passes", uc.pre_existing_problems({"pre_existing_items": {
+        "disposition": "AC", "ac": 2, "outcome": "CHANGED", "basis": "DEVELOPER_COMMENT"}}, short) == [])
+    check("a code-only basis is not a decision", any("needs a basis" in p for p in uc.pre_existing_problems(
+        {"pre_existing_items": {"disposition": "AC", "ac": 2, "outcome": "CHANGED", "basis": "CODE"}}, short)))
     check("an AC answer to a missing criterion fails",
           any("does not exist" in p for p in uc.pre_existing_problems({"pre_existing_items": {"disposition": "AC", "ac": 7}}, short)))
     check("a TBD answer needs a TBD line",
@@ -8211,6 +8220,17 @@ def test_output_route_entry_points() -> None:
           uc.output_route_problems([preset, collection, baseline, download], pdf) == [])
     check("a non-output ticket needs no generation routes", uc.output_route_problems([preset], other) == [])
     check("no ticket source means no output check", uc.output_route_problems([preset], None) == [])
+    toggle = {"summary": "Draft comments hidden in Native PDF output",
+              "description": "Please add a configuration flag or preset option to include draft comments."}
+    check("a changed preset setting must name the profile preset template path",
+          any("Apply Preset Changes" in p for p in uc.output_route_problems([preset, collection, baseline, download],
+                                                                           toggle)))
+    template = {"name": "Folder Profile preset template applied with Apply Preset Changes", "disposition": "AC",
+                "ac": 1}
+    check("naming the Apply Preset Changes path passes",
+          uc.output_route_problems([preset, collection, baseline, download, template], toggle) == [])
+    check("an output ticket with no preset setting does not need the template path",
+          not any("Apply Preset Changes" in p for p in uc.output_route_problems([preset], sites)))
 
 
 def test_action_variants() -> None:

@@ -686,7 +686,11 @@ projects that were created or generated before the change - for example "older f
 get the word count", "check with an old preset and a newly created preset", "existing output gets the
 property after the next full Generate". Record it in `UAC_EVIDENCE.json` "pre_existing_items" as the AC that
 covers it, a TBD, or NOT_APPLICABLE with a reason. 15% of human UACs cover it, and it was missed on tickets
-that never say "upgrade" or "migration" (`uac_completeness_check.pre_existing_problems`).
+that never say "upgrade" or "migration" (`uac_completeness_check.pre_existing_problems`). Do not guess the
+outcome: human UACs usually say existing items stay as they are ("existing presets remain unaffected"; a new
+option is off for them). An AC records "outcome": UNCHANGED, or CHANGED only with the basis that decided it
+(TICKET, ATTACHMENT, PRODUCT_DECISION or DEVELOPER_COMMENT); otherwise it is a TBD. Blind comparisons
+asserted new behaviour for old items twice, and both were wrong.
 
 **Every way to do the ticket's action.** The reporter shows one path; the human UAC covers the action.
 Record in `UAC_EVIDENCE.json` "action_variants", and make each an AC (or a TBD), never only a suggested
@@ -698,7 +702,9 @@ check - these criteria are scenario VARIANT:
   generation route: the output preset from the map (Map console or Map Dashboard), Map Collection, a
   baseline, and for PDF the Download as PDF / single-topic path. Each gets an AC, a TBD or NOT_APPLICABLE
   with a reason - the routes share one engine and the reporter used only one (miss probe MP-004;
-  `uac_completeness_check.output_route_problems`).
+  `uac_completeness_check.output_route_problems`). When the ticket adds or changes a setting in an output
+  preset, also name a Global or Folder Profile preset template applied to maps with Apply Preset Changes: the
+  setting must survive that path (human UACs checked it on two tickets where ours did not).
 - **input_sources** - when the ticket brings content in (paste, import, upload, drag and drop), where that
   content can come from: the reporter's application and the others the same conversion handles (Word,
   Google Docs, Excel, a web page, another topic or view, another file format). At least two, each an AC, a TBD
