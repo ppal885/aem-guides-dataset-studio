@@ -8114,6 +8114,31 @@ def test_gate_false_positives_from_questions_and_side_sections() -> None:
                                                   "The Native PDF output preset drops the TOC.")))
 
 
+def test_output_route_entry_points() -> None:
+    uc = uac_completeness_check_mod
+    sites = {"summary": "New AEM Sites | Error on publishing with attached content",
+             "description": "Content throws an error on publishing via New AEM Sites."}
+    pdf = {"summary": "Native PDF drops the TOC", "description": "The Native PDF output preset drops the TOC."}
+    other = {"summary": "Topic title is lost after save", "description": "Saving a topic in the editor loses the title."}
+    preset = {"name": "Generate from the output preset in the Map console", "disposition": "AC", "ac": 1}
+    collection = {"name": "Map Collection", "disposition": "NOT_APPLICABLE",
+                  "reason": "the site preset cannot be selected in a Map Collection here"}
+    baseline = {"name": "publish from a baseline", "disposition": "AC", "ac": 1}
+    download = {"name": "Download as PDF for a single topic", "disposition": "AC", "ac": 1}
+    missing = uc.output_route_problems([preset], sites)
+    check("an output ticket must name Map Collection", any("Map Collection" in p for p in missing))
+    check("an output ticket must name a baseline route", any("a baseline" in p for p in missing))
+    check("a Sites ticket with every route passes", uc.output_route_problems([preset, collection, baseline], sites) == [])
+    check("a Sites ticket does not need Download as PDF",
+          not any("Download as PDF" in p for p in uc.output_route_problems([preset], sites)))
+    check("a PDF ticket also needs Download as PDF",
+          any("Download as PDF" in p for p in uc.output_route_problems([preset, collection, baseline], pdf)))
+    check("a PDF ticket with every route passes",
+          uc.output_route_problems([preset, collection, baseline, download], pdf) == [])
+    check("a non-output ticket needs no generation routes", uc.output_route_problems([preset], other) == [])
+    check("no ticket source means no output check", uc.output_route_problems([preset], None) == [])
+
+
 def test_action_variants() -> None:
     uc = uac_completeness_check_mod
     uac = ("- Acceptance Criteria 01: A topic added to an unsaved map by drag and drop or from the toolbar keeps "
@@ -17997,6 +18022,7 @@ def main() -> int:
     test_uac_size_and_pre_existing_items()
     test_action_variants()
     test_gate_false_positives_from_questions_and_side_sections()
+    test_output_route_entry_points()
     test_similar_uac_compare()
     test_temporal_evidence()
     test_evidence_conflict_resolver()

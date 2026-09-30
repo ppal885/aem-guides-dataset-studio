@@ -67,7 +67,10 @@ WHAT IT CHECKS in a UAC folder
    (mechanism.reverse_action) and an item with a different history (mechanism.item_origin). Each is an AC
    that names it, a TBD, or not applicable with a reason; never only a suggested check - except a route,
    switch or item type known only from the code (basis CODE), which is a TBD or a suggested check, never an
-   AC. A criterion that covers one of them is scenario VARIANT.
+   AC. A criterion that covers one of them is scenario VARIANT. When the ticket generates output (any
+   output type), entry_points also names each documented generation route - the output preset from the map,
+   Map Collection, a baseline, and for PDF the Download as PDF / single-topic path - so none is dropped
+   silently (miss probe MP-004).
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -250,7 +253,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "similar_uacs": similar_uac_problems(evidence, uac), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac),
-        "action_variants": action_variant_problems(evidence, uac),
+        "action_variants": action_variant_problems(evidence, uac, source),
     }
 
 
@@ -685,7 +688,39 @@ def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text:
     return []
 
 
-def action_variant_problems(evidence: dict, uac_text: str) -> list[str]:
+# Output generation has several routes that share one engine; the reporter uses one of them (miss probe
+# MP-004). Blind comparisons missed Map Collection publishing on a New AEM Sites ticket and Download as PDF on
+# Native PDF tickets.
+OUTPUT_SIGNAL = re.compile(
+    r"\b(?:native\s+pdf|pdf\s+output|aem\s+sites?|html5|output\s+presets?|generate\s+output|output\s+generation|"
+    r"generated\s+output|download\s+as\s+pdf|map\s+collection|dita[\s-]?ot\s+(?:output|publish\w*)|"
+    r"publish(?:es|ed|ing)?\s+(?:the\s+)?(?:map|output|site)s?)\b", re.IGNORECASE)
+PDF_SIGNAL = re.compile(r"\b(?:native\s+pdf|pdf\s+output|download\s+as\s+pdf|pdf\s+preset)\b", re.IGNORECASE)
+OUTPUT_ROUTES = {
+    "the output preset from the map (Map console or Map Dashboard Generate)": (
+        "output preset", "map console", "map dashboard", "output tab", "output panel", "generate"),
+    "Map Collection": ("map collection",),
+    "a baseline": ("baseline",),
+}
+PDF_ROUTES = {"Download as PDF or a single topic": ("download as pdf", "download pdf", "single topic",
+                                                    "single-topic")}
+
+
+def output_route_problems(entry_points, source: dict | None) -> list[str]:
+    """An output-generation ticket names every documented generation route in entry_points."""
+    if not source or not isinstance(entry_points, list):
+        return []
+    text = "\n".join([source.get("summary") or "", source.get("description") or ""])
+    if not OUTPUT_SIGNAL.search(text):
+        return []
+    names = " | ".join(str(e.get("name") or "").lower() for e in entry_points if isinstance(e, dict))
+    routes = dict(OUTPUT_ROUTES, **(PDF_ROUTES if PDF_SIGNAL.search(text) else {}))
+    return [f"the ticket generates output: action_variants.entry_points must name {label} - an AC, a TBD or "
+            "NOT_APPLICABLE with a reason (the generation routes share one engine; MP-004)"
+            for label, terms in routes.items() if not any(term in names for term in terms)]
+
+
+def action_variant_problems(evidence: dict, uac_text: str, source: dict | None = None) -> list[str]:
     """The ticket's own action through every route, configuration state and item type it applies to.
 
     Blind comparisons with human UACs missed these while the reporter's single path was covered: the toolbar
@@ -710,6 +745,7 @@ def action_variant_problems(evidence: dict, uac_text: str) -> list[str]:
     else:
         for index, entry in enumerate(entry_points, 1):
             problems += _variant_entry_problems(f"action_variants.entry_points {index}", entry, blocks, uac_text)
+        problems += output_route_problems(entry_points, source)
     switches = block.get("config_switches")
     if not isinstance(switches, list):
         problems.append("action_variants.config_switches is missing: list each configuration, feature flag or "
