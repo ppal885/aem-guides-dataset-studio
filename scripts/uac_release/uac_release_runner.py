@@ -112,7 +112,8 @@ When finished, write these files:
    "..."}}], "config_switches": [{{"name": "...", "basis": "...", "states": ["enabled", "disabled"],
    "disposition": "AC", "acs": [<numbers>]}}] (or [] with "config_switches_reason"), "mechanism":
    {{"general_ask": true | false, "variants": [<same shape as entry_points>], "reason": "...",
-   "reverse_action": {{"name": "<e.g. move the item back>", "disposition": "AC" | "TBD" | "NOT_APPLICABLE",
+   "reverse_action": {{"name": "<e.g. move the item back>", "disposition": "TEST_PLAN" | "AC" | "TBD" |
+   "NOT_APPLICABLE", "basis": "<for AC only: TICKET | ATTACHMENT | PRODUCT_DECISION | DEVELOPER_COMMENT>",
    "ac": <number>, "reason": "..."}}, "item_origin": {{<same shape, e.g. an item created in the target
    folder>}}, "value_shapes": {{<same shape, plus "shapes": ["empty", "missing", "special characters", ...]
    - the forms of the value the change reads or shows; an AC names each shape>}}}}, "input_sources": [<same shape
@@ -126,7 +127,8 @@ When finished, write these files:
    CODE), which is a TBD or a suggested check.
    Also "pre_existing_items": {{"disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac": <number>, "outcome":
    "UNCHANGED" | "CHANGED", "basis": "<TICKET | ATTACHMENT | PRODUCT_DECISION | DEVELOPER_COMMENT, needed for
-   CHANGED>", "reason": "..."}} - what happens to content, presets, output or settings created before the
+   CHANGED>", "quote": "<for CHANGED: the ticket sentence that decided it, copied>", "reason": "..."}} - what
+   happens to content, presets, output or settings created before the
    change. Do not guess new behaviour for them: existing items usually stay as they are.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or pull request>"}} or {{"status": "UNCONFIRMED", "reason": "<why, when the ticket has a

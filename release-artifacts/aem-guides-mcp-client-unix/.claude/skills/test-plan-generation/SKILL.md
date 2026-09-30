@@ -693,8 +693,9 @@ covers it, a TBD, or NOT_APPLICABLE with a reason. 15% of human UACs cover it, a
 that never say "upgrade" or "migration" (`uac_completeness_check.pre_existing_problems`). Do not guess the
 outcome: human UACs usually say existing items stay as they are ("existing presets remain unaffected"; a new
 option is off for them). An AC records "outcome": UNCHANGED, or CHANGED only with the basis that decided it
-(TICKET, ATTACHMENT, PRODUCT_DECISION or DEVELOPER_COMMENT); otherwise it is a TBD. Blind comparisons
-asserted new behaviour for old items twice, and both were wrong.
+(TICKET, ATTACHMENT, PRODUCT_DECISION or DEVELOPER_COMMENT) and "quote": that sentence copied from the
+ticket; otherwise it is a TBD. Blind comparisons asserted new behaviour for old items three times, and all
+three were wrong - the third with a loose "basis TICKET" that no ticket sentence supported.
 
 **Every way to do the ticket's action.** The reporter shows one path; the human UAC covers the action.
 Record in `UAC_EVIDENCE.json` "action_variants", and make each an AC (or a TBD), never only a suggested
@@ -729,6 +730,10 @@ check - these criteria are scenario VARIANT:
   characters, fragments, query strings, encoded characters, a very long value. An AC answer lists at least
   two forms in "shapes" and names each; usually they are sub-points of the AC they share an outcome with.
   Human UACs tested these on a blank-href ticket and a URL-as-title ticket where ours covered one value.
+  A reverse action, item history or value form is an AC only when the ticket, an attachment or a decision
+  names it (record its "basis"); otherwise answer it TEST_PLAN, so the check lives in the full test plan and
+  the delivered UAC stays short. A held-out run of ten tickets still averaged 5.2 criteria where the human UACs
+  of small fixes had 37 to 46 words.
 Each entry records its **basis**: TICKET, ATTACHMENT, PRODUCT_DECISION, DEVELOPER_COMMENT, DOCUMENTATION or
 CODE. A route, switch or item type known only from the code is a TBD or a suggested check, never an AC: in
 blind comparisons, routes and modes read only from the code were criteria the human UAC did not have, and
