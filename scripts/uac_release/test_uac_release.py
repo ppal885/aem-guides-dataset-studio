@@ -851,6 +851,50 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertEqual(harvester.harvest(self.config, jira, self.log, "uac.bot"), [])
         jira._json.assert_not_called()
 
+    def test_criterion_kinds_come_from_the_evidence_record(self) -> None:
+        evidence = {
+            "scenario": {"acs": [{"ac": 1, "scenario": "CUSTOMER"}, {"ac": 2, "scenario": "VARIANT"},
+                                 {"ac": 3, "scenario": "REGRESSION"}]},
+            "action_variants": {
+                "entry_points": [{"name": "Map dashboard", "disposition": "AC", "ac": 2},
+                                 {"name": "Map Collection", "disposition": "NOT_APPLICABLE", "reason": "x"}],
+                "config_switches": [{"name": "flag", "disposition": "AC", "acs": [2, 3]}],
+                "mechanism": {"variants": [{"name": "map", "disposition": "TBD", "ac": 1}],
+                              "reverse_action": {"name": "undo", "disposition": "AC", "ac": 3},
+                              "value_shapes": {"name": "values", "disposition": "NOT_APPLICABLE", "reason": "x"}}},
+            "pre_existing_items": {"disposition": "AC", "ac": 1},
+            "failure_path": {"remaining_items": {"disposition": "AC", "ac": 3}},
+        }
+        self.assertEqual(harvester.criterion_kinds(evidence), {
+            1: ["reporter step", "item type", "items made before the change"],
+            2: ["variant", "entry point", "switch state"],
+            3: ["regression check", "switch state", "reverse action", "failure path"]})
+        self.assertEqual(harvester.criterion_kinds({}), {})
+
+    def test_monthly_report_counts_removals_by_kind(self) -> None:
+        (self.out / "PROJ-1" / "UAC_EVIDENCE.json").write_text(json.dumps({
+            "scenario": {"acs": [{"ac": 1, "scenario": "CUSTOMER"}, {"ac": 2, "scenario": "CUSTOMER"},
+                                 {"ac": 3, "scenario": "REGRESSION"}]},
+            "action_variants": {"entry_points": [{"name": "export", "disposition": "AC", "ac": 3}]}}),
+            encoding="utf-8")
+        jira = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        removed = [e for e in record["criteria"] if e["kind"] == "removed"]
+        self.assertEqual([(e["number"], e.get("kinds")) for e in removed], [(3, ["regression check", "entry point"])])
+        self.assertEqual((record["posted_count"], record["kept_count"]), (3, 3))
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("## Removed by kind", report)
+        self.assertIn("| reporter step | 2 | 0 | 0% |", report)
+        self.assertIn("| regression check | 1 | 1 | 100% |", report)
+        self.assertIn("| entry point | 1 | 1 | 100% |", report)
+        self.assertIn("we posted a median of 3, QE left a median of 3", report)
+
+    def test_criteria_without_an_evidence_record_are_counted_apart(self) -> None:
+        jira = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("| (no evidence record) | 3 | 1 | 33% |", report)
+
     def test_monthly_report_lists_what_we_overwrote_and_missed(self) -> None:
         human = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
         [record] = harvester.harvest(self.config, human, self.log, "uac.bot")
