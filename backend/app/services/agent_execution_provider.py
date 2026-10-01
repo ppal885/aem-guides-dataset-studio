@@ -1400,6 +1400,55 @@ class HostMediatedResearchProvider:
         self.last_model_execution = False
         self.last_model = ""
         self.last_role_contract = ""
+        # Per orchestrator pass: executions consumed in this pass (by run
+        # scope), and consumed executions this pass may read again because
+        # their run is still open (see _run_still_open).
+        self._consumed_this_pass: dict[str, set[str]] = {}
+        self._reserve: set[str] = set()
+
+    def begin_pass(self) -> None:
+        """Start a new orchestrator pass: forget the previous pass's
+        consumption bookkeeping (a long-lived backend reuses the provider)."""
+
+        self._consumed_this_pass = {}
+        self._reserve = set()
+
+    def _run_still_open(self, scope: str, execution_id: str) -> bool:
+        """True when an already-consumed execution belongs to a run that has
+        not finished: another execution of the same run scope is still
+        pending or fulfilled-but-unconsumed, or was consumed in this pass.
+
+        The host may fulfil a run's requests over several passes; a result
+        consumed on an earlier pass must then be served again rather than
+        re-delegated under a fresh scope, or that execution stays one pass
+        behind forever.  A run whose executions were all consumed on earlier
+        passes is complete, so a later Generate-UAC run still gets fresh
+        research.  An execution never re-serves itself within one pass, so a
+        duplicate consumption in one pass still fails closed."""
+
+        import json as _json
+
+        if not scope or execution_id in self._consumed_this_pass.get(scope, set()):
+            return False
+        if self._consumed_this_pass.get(scope):
+            return True
+        pending_dir = self._store / "pending"
+        if not pending_dir.is_dir():
+            return False
+        for candidate in pending_dir.glob("agent-request_*.json"):
+            try:
+                payload = _json.loads(candidate.read_text(encoding="utf-8-sig"))
+            except Exception:
+                continue
+            if str(payload.get("run_scope") or "") != scope:
+                continue
+            sibling = self._request_from_payload(payload)
+            if sibling is None or sibling.execution_id == execution_id:
+                continue
+            fulfilled = self._fulfilled_path(self._store, sibling.execution_id)
+            if not fulfilled.with_suffix(".consumed").exists():
+                return True
+        return False
 
     @staticmethod
     def _pending_path(store: Path, execution_id: str) -> Path:
@@ -1519,6 +1568,7 @@ class HostMediatedResearchProvider:
         # episode - that is the delegation the host just answered.  Run-scope
         # ids are random, so ordering by scope string would pick arbitrarily.
         resumable: list[str] = []
+        reusable: list[str] = []
         in_flight: list[str] = []
         completed = False
         for scope, episode_request in episodes.items():
@@ -1527,7 +1577,10 @@ class HostMediatedResearchProvider:
             )
             if fulfilled.exists():
                 if fulfilled.with_suffix(".consumed").exists():
-                    completed = True
+                    if self._run_still_open(scope, episode_request.execution_id):
+                        reusable.append(scope)
+                    else:
+                        completed = True
                 else:
                     resumable.append(scope)
             else:
@@ -1538,6 +1591,12 @@ class HostMediatedResearchProvider:
 
         if resumable:
             return episodes[_newest(resumable)]
+        if reusable:
+            # The result was consumed on an earlier pass of a run that is
+            # still open: serve it again instead of re-delegating.
+            chosen = episodes[_newest(reusable)]
+            self._reserve.add(chosen.execution_id)
+            return chosen
         if completed:
             # A sibling episode already completed this logical question's
             # research: this invocation is a new run and mints fresh
@@ -1574,7 +1633,8 @@ class HostMediatedResearchProvider:
         fulfilled = self._fulfilled_path(self._store, request.execution_id)
         if fulfilled.exists():
             consumed = fulfilled.with_suffix(".consumed")
-            if consumed.exists():
+            reserve = consumed.exists() and request.execution_id in self._reserve
+            if consumed.exists() and not reserve:
                 return _terminal_result(
                     request,
                     ResearchWorkerStatus.FAILED,
@@ -1600,8 +1660,14 @@ class HostMediatedResearchProvider:
                 repository_roots=repository_roots,
             )
             if result.status != ResearchWorkerStatus.FAILED:
-                # Consume once; the receipt rides on the execution row.
-                consumed.write_text("consumed", encoding="utf-8")
+                # Consume once; the receipt rides on the execution row.  A
+                # re-served result (run still open) is already marked.
+                if not reserve:
+                    consumed.write_text("consumed", encoding="utf-8")
+                self._reserve.discard(request.execution_id)
+                self._consumed_this_pass.setdefault(request.run_scope, set()).add(
+                    request.execution_id
+                )
                 self.last_model_execution = True
                 self.last_model = str(envelope.get("model") or "")
                 self.last_role_contract = str(
@@ -1771,6 +1837,14 @@ class RoutedResearchProvider:
     @property
     def mode(self) -> str:
         return self._mode
+
+    def begin_pass(self) -> None:
+        """Forward the orchestrator's pass boundary to stateful providers."""
+
+        for provider in (self._deterministic, self._agent, self._host):
+            begin = getattr(provider, "begin_pass", None)
+            if callable(begin):
+                begin()
 
     def execute(self, request, **kwargs):
         """Return (authoritative_result, executions) where executions carries
