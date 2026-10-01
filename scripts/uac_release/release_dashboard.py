@@ -30,7 +30,6 @@ AC_PATTERN = re.compile(r"Acceptance Criteria \d+:")
 
 WHERE = {
     "POSTED": "Acceptance Criteria field",
-    "DRAFT_POSTED": "Draft comment, waiting for QE approval",
 }
 
 

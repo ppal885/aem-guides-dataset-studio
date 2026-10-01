@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate draft UACs for every release ticket with GitHub Copilot CLI.
+"""Generate the UAC for every release ticket with GitHub Copilot CLI and write it to Jira.
 
 One scheduled run:
   1. health checks: Jira auth, Dataset Studio MCP health URL, Copilot CLI present;
@@ -11,18 +11,14 @@ One scheduled run:
      UAC Doc Researcher actually ran, and that every sentence of the live Jira
      description and comments, and every attachment, is mapped to the UAC, and that every
      place the feature appears (from documentation and code) is covered;
-  5. posts a draft comment with the plan attached and adds the draft label. When the
-     UAC has TBDs, the draft also shows the decision request that the poster will send
-     to the ticket after QE approval (DECISIONS.md).
-     With "write_field": true in the config, it instead writes the UAC straight into
-     an empty Acceptance Criteria field, checks the field rendered, attaches the plan,
-     adds the posted label (the UAC was written by the skill) and sends the decision
-     request; a field that already holds text is never overwritten.
+  5. writes the UAC into an empty Acceptance Criteria field, checks the field rendered,
+     attaches the plan, comments (suggested checks, review notes), adds the posted label
+     (the UAC was written by the skill) and, when the UAC has TBDs, sends the decision
+     request (DECISIONS.md) as its own comment. A field that already holds text is never
+     overwritten.
 
 Copilot never writes to Jira: its Jira write tools are denied in the config and
-all Jira writes happen here, after the checks. Without "write_field", the Acceptance
-Criteria field is only filled later by uac_approved_poster.py, after QE adds the
-approval label.
+all Jira writes happen here, after the checks.
 """
 from __future__ import annotations
 
@@ -37,7 +33,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
-import uac_approved_poster as poster  # noqa: E402
 
 PROMPT = """Generate the UAC for Jira {key} using the test-plan-generation skill.
 Follow the skill fully: live Jira, attachments, product and automation clones, the researcher
@@ -521,32 +516,6 @@ def check_outputs(ticket_dir: Path) -> list[str]:
     return problems
 
 
-def draft_comment(field_body: str, plan_name: str, decision_body: str = "", mention_note: str = "",
-                  review_notes: list[str] | None = None, suggested_body: str = "") -> str:
-    text = (
-        "*Draft UAC ready for QE review* (generated automatically, not yet in the Acceptance Criteria field)\n"
-        "* To approve, add the label *UAC_Approved*. The criteria below are then copied into the "
-        "Acceptance Criteria field unchanged.\n"
-        "* To change the criteria, approve and then edit the Acceptance Criteria field; your edits are "
-        "learned automatically.\n"
-        f"* Full test plan: [^{plan_name}]\n\n" + field_body
-    )
-    if suggested_body:
-        text += ("\n\n----\n*Suggested checks (QE decide)* - found by our own research, not by the ticket. "
-                 "They are not copied into the Acceptance Criteria field. To use one, add it to the field "
-                 "after approving; ignore the rest.\n\n" + suggested_body)
-    if review_notes:
-        text += ("\n\n----\n*Please check before approving* (automatic review notes)\n"
-                 + "".join(f"* {note}\n" for note in review_notes))
-    if decision_body:
-        text += (
-            "\n\n----\n*Decision request* (posted as its own comment after approval"
-            + (f", tagging {mention_note}" if mention_note else "")
-            + ")\n\n" + decision_body
-        )
-    return text
-
-
 def written_comment(plan_name: str, review_notes: list[str] | None = None, suggested_body: str = "") -> str:
     text = (
         "*UAC written by the test-plan skill* into the Acceptance Criteria field (generated automatically; "
@@ -564,8 +533,28 @@ def written_comment(plan_name: str, review_notes: list[str] | None = None, sugge
     return text
 
 
+def post_decision_request(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict,
+                          decision_body: str) -> str:
+    """Post the decision request for the UAC's TBDs once, as its own comment; never blocks the UAC."""
+    settings = config.get("decision_comment") or {}
+    if not settings.get("enabled") or not decision_body:
+        return "NONE"
+    if status.get("decision_comment_id"):
+        return "ALREADY_POSTED"
+    people = jira.get_people(key) if settings.get("mention") else {}
+    names = [people.get(role, "") for role in settings.get("mention", [])] + list(settings.get("cc", []))
+    names = list(dict.fromkeys(n for n in names if n))
+    lead = " ".join(f"[~{name}]" for name in names)
+    intro = "The UAC is in the Acceptance Criteria field. These product decisions are still open:"
+    body = (f"{lead} {intro}" if lead else intro) + "\n\n" + decision_body
+    status["decision_comment_id"] = jira.add_comment(key, body)
+    common.write_status(ticket_dir, status)
+    logger.info("%s: decision request posted (comment %s)", key, status["decision_comment_id"])
+    return "POSTED"
+
+
 def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict, field_body: str,
-                plan_copy: Path, review_notes: list[str], suggested_body: str) -> str:
+                plan_copy: Path, review_notes: list[str], suggested_body: str, decision_body: str = "") -> str:
     """Write the checked UAC into an empty Acceptance Criteria field and mark it written by the skill."""
     field = config["acceptance_criteria_field"]
     current = (jira.get_field(key, field) or "").strip()
@@ -590,23 +579,15 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
                   posted_sha256=common.sha256_file(ticket_dir / "field-body.txt"))
     common.write_status(ticket_dir, status)
     logger.info("%s: written to the Acceptance Criteria field (comment %s)", key, comment_id)
-    poster.post_decision_request(key, config, jira, logger, ticket_dir, status)
+    post_decision_request(key, config, jira, logger, ticket_dir, status, decision_body)
     return "POSTED"
-
-
-def decision_mention_note(config: dict) -> str:
-    settings = config.get("decision_comment") or {}
-    if not settings.get("enabled"):
-        return ""
-    who = [f"the {role}" for role in settings.get("mention", [])] + [f"[~{u}]" for u in settings.get("cc", [])]
-    return ", ".join(who)
 
 
 def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     out_root = Path(config["output_dir"])
     ticket_dir = out_root / key
     status = common.read_status(ticket_dir)
-    if status.get("state") in {"DRAFT_POSTED", "POSTED", "FIELD_KEPT"} and not config.get("regenerate_existing"):
+    if status.get("state") in {"POSTED", "FIELD_KEPT"} and not config.get("regenerate_existing"):
         logger.info("%s: already %s, skipping", key, status["state"])
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
@@ -655,7 +636,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
             log_check_firing(config, key, groups, {})
         status.update(state="FAILED", problems=problems)
         common.write_status(ticket_dir, status)
-        logger.error("%s: not drafted - %s", key, "; ".join(problems))
+        logger.error("%s: UAC not written - %s", key, "; ".join(problems))
         return "FAILED"
     jira_text = common.import_skill_module("jira_safe_text")
     uac_text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
@@ -681,20 +662,10 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         common.write_status(ticket_dir, status)
         logger.info("%s: ready (dry run, nothing posted)", key)
         return "READY"
-    labels = config["labels"]
     plan_copy = ticket_dir / f"{key}-test-plan.md"
     shutil.copyfile(ticket_dir / common.PLAN_FILE, plan_copy)
-    if config.get("write_field"):
-        return write_field(key, config, jira, logger, ticket_dir, status, field_body, plan_copy,
-                           review_notes, suggested_body)
-    attachment_id = jira.attach_file(key, plan_copy)
-    comment_id = jira.add_comment(key, draft_comment(field_body, plan_copy.name, decision_body,
-                                                     decision_mention_note(config), review_notes, suggested_body))
-    jira.update_labels(key, add=[labels["draft"]])
-    status.update(state="DRAFT_POSTED", comment_id=comment_id, attachment_id=attachment_id)
-    common.write_status(ticket_dir, status)
-    logger.info("%s: draft posted (comment %s)", key, comment_id)
-    return "DRAFT_POSTED"
+    return write_field(key, config, jira, logger, ticket_dir, status, field_body, plan_copy,
+                       review_notes, suggested_body, decision_body)
 
 
 def health(config: dict, jira, logger) -> list[str]:
@@ -781,7 +752,7 @@ def main(argv: list[str] | None = None) -> int:
         elif result == "FAILED":
             problems = common.read_status(out / key).get("problems") or ["see status.json"]
             more = f" (and {len(problems) - 1} more)" if len(problems) > 1 else ""
-            alerts.append(f"{key}: draft not posted - {problems[0]}{more}")
+            alerts.append(f"{key}: UAC not posted - {problems[0]}{more}")
     logger.info("summary: %s", results)
     common.append_run_record(out, {
         "run_id": run_id, "tool": "uac-runner", "dry_run": args.dry_run,
