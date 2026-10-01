@@ -244,6 +244,50 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("labels", [c[0] for c in jira.calls], "no done label on a broken field")
         self.assertIn("did not render", common.read_status(self.out / "PROJ-1")["problems"][0])
 
+    def test_runtime_fallback_uac_is_written_with_the_failed_gates_listed(self) -> None:
+        base = fake_copilot(True)
+
+        def copilot_with_fallback(cmd, **kwargs):
+            done = base(cmd, **kwargs)
+            prompt = cmd[cmd.index("-p") + 1]
+            fallback = self.out / "PROJ-1" / common.RUNTIME_FALLBACK_FILE
+            self.assertIn("Runtime fallback", prompt)
+            self.assertIn(str(fallback), prompt, "the prompt names the fallback file")
+            fallback.write_text(json.dumps({
+                "canonical_status": "waiting_for_agent_research",
+                "failed_gates": [{"gate": "BehavioralCompletenessGate", "reason": "research still pending"},
+                                 {"gate": "FinalQEPlanRenderer", "reason": "no criteria to render"}]}),
+                encoding="utf-8")
+            return done
+
+        jira = FakeJira()
+        with mock.patch.object(runner.subprocess, "run", copilot_with_fallback), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "POSTED")
+        self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls, "a fallback UAC is posted too")
+        comment = [c for c in jira.calls if c[0] == "comment"][0][2]
+        self.assertIn("*Runtime gates not passed - please check these points*", comment)
+        self.assertIn("* BehavioralCompletenessGate: research still pending", comment)
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["runtime_fallback"], ["BehavioralCompletenessGate: research still pending",
+                                                      "FinalQEPlanRenderer: no criteria to render"])
+
+    def test_a_canonical_uac_has_no_fallback_section(self) -> None:
+        jira = FakeJira()
+        self.assertEqual(self._run(jira), "POSTED")
+        comment = [c for c in jira.calls if c[0] == "comment"][0][2]
+        self.assertNotIn("Runtime gates not passed", comment)
+        self.assertNotIn("runtime_fallback", common.read_status(self.out / "PROJ-1"))
+
+    def test_runtime_fallback_record_is_read_defensively(self) -> None:
+        ticket = self.out / "PROJ-9"
+        ticket.mkdir()
+        self.assertIsNone(runner.runtime_fallback_gates(ticket))
+        (ticket / common.RUNTIME_FALLBACK_FILE).write_text("{not json", encoding="utf-8")
+        self.assertEqual(runner.runtime_fallback_gates(ticket), ["the runtime fallback record is not valid JSON"])
+        (ticket / common.RUNTIME_FALLBACK_FILE).write_text(json.dumps({"canonical_status": "blocked"}), encoding="utf-8")
+        self.assertEqual(runner.runtime_fallback_gates(ticket), ["canonical runtime status: blocked"])
+
     def test_each_ticket_records_which_checks_fired(self) -> None:
         jira = FakeJira()
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
@@ -1183,6 +1227,14 @@ class ReleaseDashboardTests(unittest.TestCase):
             (folder / common.JIRA_SOURCE_FILE).write_text(json.dumps({"summary": summary}), encoding="utf-8")
         if body:
             (folder / "field-body.txt").write_text(body, encoding="utf-8")
+
+    def test_a_fallback_uac_is_posted_and_marked(self) -> None:
+        self.ticket("PROJ-1", {"state": "POSTED", "runtime_fallback": ["FinalQEPlanRenderer: no criteria"]})
+        self.ticket("PROJ-2", {"state": "POSTED"})
+        posted, _ = dashboard.collect_tickets(self.out)
+        where = {r["key"]: r["where"] for r in posted}
+        self.assertIn("runtime gates not passed", where["PROJ-1"])
+        self.assertEqual(where["PROJ-2"], "Acceptance Criteria field")
 
     def test_tickets_split_into_posted_and_not_posted_with_reasons(self) -> None:
         self.ticket("PROJ-1", {"state": "POSTED", "posted_at": "2026-10-02T07:05:00+0000"}, "Report",

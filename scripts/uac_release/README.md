@@ -16,6 +16,13 @@ decision request. No person reviews it before it is posted; QE edits the field a
 harvester learns from those edits. A field that already holds text is never overwritten: the ticket
 is recorded as `FIELD_KEPT`, gets no label and is not written again.
 
+**Runtime fallback.** When the skill's canonical runtime ends blocked or with no deliverable criteria,
+Copilot still writes the UAC and the test plan from the evidence it already verified, under the skill's
+authoring rules, and records the gates that did not pass in `RUNTIME_FALLBACK.json`. The runner's own
+checks still apply. The UAC is posted like any other; the comment adds "Runtime gates not passed - please
+check these points" with each gate and its reason, `status.json` keeps them as `runtime_fallback`, and the
+release page marks the row.
+
 Copilot CLI only **generates**. It is denied every Jira write tool; all Jira writes are done
 by the runner, after the checks.
 
