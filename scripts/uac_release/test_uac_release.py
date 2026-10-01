@@ -987,6 +987,27 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertIn("What QE added that we missed:", report)
         self.assertIn("Map dashboard", report)
 
+    def test_report_shows_runtime_fallback_uacs_separately(self) -> None:
+        ticket = self.out / "PROJ-1"
+        common.write_status(ticket, {"state": "POSTED",
+                                     "runtime_fallback": ["FinalQEPlanRenderer: no criteria to render"]})
+        human = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, human, self.log, "uac.bot")
+        self.assertEqual(record["uac_origin"], "RUNTIME_FALLBACK")
+        self.assertEqual(record["runtime_fallback_gates"], ["FinalQEPlanRenderer: no criteria to render"])
+        lines = harvester.origin_report_lines([record, {"key": "PROJ-2", "uac_origin": "CANONICAL",
+                                                        "criteria": [{"kind": "accepted"}, {"kind": "accepted"}]}])
+        text = "\n".join(lines)
+        self.assertIn("| Skill runtime (all gates passed) | 1 | 2 | 2 | 0 | 0 | 0 | 100% |", text)
+        self.assertIn("| Runtime fallback (gates not passed) | 1 | 3 | 1 | 1 | 1 | 1 | 33% |", text)
+        self.assertIn("- FinalQEPlanRenderer: 1", text)
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("## By how the UAC was written", report)
+
+    def test_records_without_an_origin_count_as_runtime_or_backfill(self) -> None:
+        self.assertEqual(harvester._origin({"key": "A"}), "CANONICAL")
+        self.assertEqual(harvester._origin({"key": "B", "source": "backfill"}), "HAND_POSTED")
+
 
 class DecisionRequestTests(unittest.TestCase):
     def setUp(self) -> None:
