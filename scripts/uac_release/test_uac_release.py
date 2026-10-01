@@ -14,7 +14,6 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
-import uac_approved_poster as poster  # noqa: E402
 import uac_learning_harvester as harvester  # noqa: E402
 import uac_staleness_watch as staleness  # noqa: E402
 import uac_release_runner as runner  # noqa: E402
@@ -157,7 +156,7 @@ def make_config(out: Path) -> dict:
         "jql": "project = PROJ",
         "output_dir": str(out),
         "acceptance_criteria_field": "customfield_1",
-        "labels": {"draft": "UAC_Draft", "approved": "UAC_Approved", "posted": "QEVision_UAC_DONE"},
+        "labels": {"posted": "QEVision_UAC_DONE"},
         "copilot": {"command": "copilot", "add_dirs": ["/repos/a"], "allow_all_tools": True,
                     "deny_tools": ["corp-jira(update_jira_issue)"], "timeout_minutes": 1},
     }
@@ -205,39 +204,20 @@ class RunnerTests(unittest.TestCase):
             self.assertIn(flag, cmd)
         self.assertIn(f"--share={self.out / 't.md'}", cmd)
 
-    def test_passing_ticket_posts_draft_comment_attachment_and_label(self) -> None:
-        jira = FakeJira()
+    def _run(self, jira: FakeJira) -> str:
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
                 mock.patch.object(runner, "check_outputs", return_value=[]):
-            result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
-        self.assertEqual(result, "DRAFT_POSTED")
-        kinds = [c[0] for c in jira.calls]
-        self.assertEqual(kinds, ["attach", "comment", "labels"])
-        comment = jira.calls[1][2]
-        self.assertIn("*Acceptance Criteria 01:*", comment)
-        self.assertIn("{{ReportServlet.java}}", comment)
-        self.assertIn("*Suggested check 01:*", comment)
-        field_body = (self.out / "PROJ-1" / "field-body.txt").read_text(encoding="utf-8")
-        self.assertTrue(field_body.startswith("_Note: The root cause"))
-        self.assertNotIn("Suggested", field_body, "suggested checks never go into the Acceptance Criteria field")
-        self.assertNotIn(("set_field",), [c[:1] for c in jira.calls], "runner never fills the AC field")
-        status = common.read_status(self.out / "PROJ-1")
-        self.assertEqual(status["state"], "DRAFT_POSTED")
-        self.assertEqual(status["suggested"], ["Verify that the report also opens from the Map dashboard."])
-        self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
+            return runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
 
-    def _run_direct(self, jira: FakeJira) -> str:
-        config = dict(self.config, write_field=True)
-        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
-                mock.patch.object(runner, "check_outputs", return_value=[]):
-            return runner.process_ticket("PROJ-1", config, jira, self.log, dry_run=False)
-
-    def test_direct_flow_writes_the_field_and_adds_the_done_label(self) -> None:
+    def test_passing_ticket_writes_the_field_and_adds_the_done_label(self) -> None:
         jira = FakeJira()
-        self.assertEqual(self._run_direct(jira), "POSTED")
+        self.assertEqual(self._run(jira), "POSTED")
         kinds = [c[0] for c in jira.calls]
         self.assertEqual(kinds[:4], ["attach", "set_field", "comment", "labels"])
         field_body = (self.out / "PROJ-1" / "field-body.txt").read_text(encoding="utf-8")
+        self.assertTrue(field_body.startswith("_Note: The root cause"))
+        self.assertIn("{{ReportServlet.java}}", field_body)
+        self.assertNotIn("Suggested", field_body, "suggested checks never go into the Acceptance Criteria field")
         self.assertIn(("set_field", "PROJ-1", "customfield_1", field_body), jira.calls)
         self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls)
         comment = jira.calls[2][2]
@@ -247,17 +227,19 @@ class RunnerTests(unittest.TestCase):
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["state"], "POSTED", "the harvester learns from it")
         self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
+        self.assertEqual(status["suggested"], ["Verify that the report also opens from the Map dashboard."])
+        self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
 
-    def test_direct_flow_never_overwrites_a_filled_field(self) -> None:
+    def test_runner_never_overwrites_a_filled_field(self) -> None:
         jira = FakeJira(field_value="Criteria written by a person")
-        self.assertEqual(self._run_direct(jira), "FIELD_KEPT")
+        self.assertEqual(self._run(jira), "FIELD_KEPT")
         self.assertEqual([c[0] for c in jira.calls], [], "nothing is written to the ticket")
         self.assertEqual(common.read_status(self.out / "PROJ-1")["state"], "FIELD_KEPT")
-        self.assertEqual(self._run_direct(FakeJira()), "SKIPPED", "the next run does not draft it again")
+        self.assertEqual(self._run(FakeJira()), "SKIPPED", "the next run does not write it again")
 
-    def test_direct_flow_fails_when_the_field_does_not_render(self) -> None:
+    def test_runner_fails_when_the_field_does_not_render(self) -> None:
         jira = FakeJira(rendered_ok=False)
-        self.assertEqual(self._run_direct(jira), "FAILED")
+        self.assertEqual(self._run(jira), "FAILED")
         self.assertNotIn("labels", [c[0] for c in jira.calls], "no done label on a broken field")
         self.assertIn("did not render", common.read_status(self.out / "PROJ-1")["problems"][0])
 
@@ -561,16 +543,16 @@ class RunnerTests(unittest.TestCase):
             problems = runner.hotfix_scope_problems(ticket, hotfix)
         self.assertEqual(problems, ["hotfix scope: Acceptance Criteria 02: not a hotfix regression"])
 
-    def test_orphan_notes_go_to_the_draft_and_do_not_fail_the_ticket(self) -> None:
+    def test_orphan_notes_go_to_the_comment_and_do_not_fail_the_ticket(self) -> None:
         jira = FakeJira()
         note = "Acceptance Criteria 2 is not tied to any ticket sentence"
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
                 mock.patch.object(runner, "check_outputs", return_value=[]), \
                 mock.patch.object(runner, "orphan_ac_problems", return_value=[note]):
             result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
-        self.assertEqual(result, "DRAFT_POSTED")
+        self.assertEqual(result, "POSTED")
         comment = [c for c in jira.calls if c[0] == "comment"][0][2]
-        self.assertIn("*Please check before approving*", comment)
+        self.assertIn("*Please check*", comment)
         self.assertIn(note, comment)
         self.assertEqual(common.read_status(self.out / "PROJ-1")["review_notes"], [note])
 
@@ -961,51 +943,6 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertIn("Map dashboard", report)
 
 
-class PosterTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory()
-        self.out = Path(self.tmp.name)
-        self.config = make_config(self.out)
-        self.log = logging.getLogger("test")
-        ticket = self.out / "PROJ-1"
-        ticket.mkdir()
-        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
-        (ticket / "field-body.txt").write_text("*Acceptance Criteria 01:* x", encoding="utf-8")
-        common.write_status(ticket, {"state": "DRAFT_POSTED", "uac_sha256": common.sha256_file(ticket / common.UAC_FILE)})
-
-    def tearDown(self) -> None:
-        self.tmp.cleanup()
-
-    def test_posts_approved_draft_and_swaps_labels(self) -> None:
-        jira = FakeJira()
-        self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "POSTED")
-        self.assertIn(("set_field", "PROJ-1", "customfield_1", "*Acceptance Criteria 01:* x"), jira.calls)
-        self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], ["UAC_Draft"]), jira.calls)
-        status = common.read_status(self.out / "PROJ-1")
-        self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
-        self.assertTrue(status["posted_at"])
-
-    def test_never_overwrites_human_text(self) -> None:
-        jira = FakeJira(field_value="Existing text written by a person")
-        self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "FIELD_NOT_EMPTY")
-        self.assertFalse(any(c[0] == "set_field" for c in jira.calls))
-
-    def test_refuses_when_uac_changed_after_draft(self) -> None:
-        (self.out / "PROJ-1" / common.UAC_FILE).write_text(UAC + "- Acceptance Criteria 03: new\n", encoding="utf-8")
-        jira = FakeJira()
-        self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "DRAFT_CHANGED")
-        self.assertEqual(jira.calls, [])
-
-    def test_render_check_failure_is_reported(self) -> None:
-        jira = FakeJira(rendered_ok=False)
-        self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "RENDER_CHECK_FAILED")
-
-    def test_approved_jql_excludes_posted(self) -> None:
-        jql = poster.approved_jql(self.config)
-        self.assertIn('labels = "UAC_Approved"', jql)
-        self.assertIn('labels != "QEVision_UAC_DONE"', jql)
-
-
 class DecisionRequestTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -1017,57 +954,47 @@ class DecisionRequestTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def draft(self, decisions: str = DECISIONS) -> FakeJira:
+    def post(self, decisions: str = DECISIONS, config: dict | None = None) -> FakeJira:
         jira = FakeJira()
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True, decisions=decisions)), \
                 mock.patch.object(runner, "check_outputs", return_value=[]):
-            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "DRAFT_POSTED")
+            self.assertEqual(runner.process_ticket("PROJ-1", config or self.config, jira, self.log, dry_run=False),
+                             "POSTED")
         return jira
 
-    def test_draft_shows_the_decision_request_for_qe_review(self) -> None:
-        jira = self.draft()
-        comment = [c for c in jira.calls if c[0] == "comment"][0][2]
-        self.assertIn("*Decision request*", comment)
-        self.assertIn("tagging the assignee, [~qa.lead]", comment)
-        self.assertIn("# Is a button enough?", comment)
-        self.assertIn("\\[Home page\\]", comment)
-        self.assertNotIn(("people", "PROJ-1"), jira.calls, "nobody is tagged before approval")
+    def requests(self, jira: FakeJira) -> list[str]:
+        return [c[2] for c in jira.calls if c[0] == "comment" and "product decisions are still open" in c[2]]
+
+    def test_decision_request_is_sent_once_with_mentions_after_the_field_is_written(self) -> None:
+        jira = self.post()
+        [request] = self.requests(jira)
+        self.assertTrue(request.startswith("[~dev.lead] [~qa.lead] "))
+        self.assertIn("# Is a button enough?", request)
+        self.assertIn("\\[Home page\\]", request)
+        kinds = [c[0] for c in jira.calls]
+        self.assertLess(kinds.index("set_field"), kinds.index("people"), "people are tagged only after the UAC is in")
+        ticket = self.out / "PROJ-1"
+        status = common.read_status(ticket)
+        self.assertTrue(status["decision_comment_id"])
+        self.assertEqual(runner.post_decision_request("PROJ-1", self.config, jira, self.log, ticket, status, "x"),
+                         "ALREADY_POSTED")
 
     def test_tbd_without_decisions_file_warns_and_sends_nothing(self) -> None:
-        jira = self.draft(decisions="")
+        jira = self.post(decisions="")
         status = common.read_status(self.out / "PROJ-1")
         self.assertTrue(any("DECISIONS.md was not written" in w for w in status["warnings"]))
-        comment = [c for c in jira.calls if c[0] == "comment"][0][2]
-        self.assertNotIn("Decision request", comment)
+        self.assertEqual(self.requests(jira), [])
 
     def test_decisions_missing_a_section_are_not_sent(self) -> None:
-        self.draft(decisions="### Decision needed\n1. Is a button enough?\n")
+        jira = self.post(decisions="### Decision needed\n1. Is a button enough?\n")
         status = common.read_status(self.out / "PROJ-1")
         self.assertTrue(any("missing section" in w for w in status["warnings"]))
         self.assertFalse((self.out / "PROJ-1" / common.DECISION_BODY_FILE).exists())
+        self.assertEqual(self.requests(jira), [])
 
-    def test_poster_sends_decision_request_once_with_mentions(self) -> None:
-        self.draft()
-        jira = FakeJira()
-        self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "POSTED")
-        comments = [c[2] for c in jira.calls if c[0] == "comment"]
-        request = [c for c in comments if "product decisions are still open" in c]
-        self.assertEqual(len(request), 1)
-        self.assertTrue(request[0].startswith("[~dev.lead] [~qa.lead] "))
-        status = common.read_status(self.out / "PROJ-1")
-        self.assertEqual(poster.post_decision_request("PROJ-1", self.config, jira, self.log,
-                                                      self.out / "PROJ-1", status), "ALREADY_POSTED")
-
-    def test_poster_skips_changed_decisions_and_disabled_setting(self) -> None:
-        self.draft()
-        ticket = self.out / "PROJ-1"
-        (ticket / common.DECISIONS_FILE).write_text(DECISIONS + "- edited later\n", encoding="utf-8")
-        jira = FakeJira()
-        self.assertEqual(poster.post_ticket("PROJ-1", self.config, jira, self.log, overwrite=False), "POSTED")
-        self.assertFalse(any("product decisions are still open" in c[2] for c in jira.calls if c[0] == "comment"))
-        disabled = dict(self.config, decision_comment={"enabled": False})
-        self.assertEqual(poster.post_decision_request("PROJ-1", disabled, jira, self.log, ticket,
-                                                      common.read_status(ticket)), "NONE")
+    def test_disabled_setting_sends_no_decision_request(self) -> None:
+        jira = self.post(config=dict(self.config, decision_comment={"enabled": False}))
+        self.assertEqual(self.requests(jira), [])
 
 
 def close_logger(name: str) -> None:
@@ -1088,7 +1015,6 @@ class RunLoggingTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         close_logger("uac-runner")
-        close_logger("uac-poster")
         self.tmp.cleanup()
 
     def run_runner(self, jira, process=None, health=(), extra=()):
@@ -1112,7 +1038,7 @@ class RunLoggingTests(unittest.TestCase):
             seen.append(key)
             if key == "PROJ-1":
                 raise ConnectionError("Jira returned 500")
-            return "DRAFT_POSTED"
+            return "POSTED"
 
         jira = FakeJira()
         self.assertEqual(self.run_runner(jira, process), 1)
@@ -1121,7 +1047,7 @@ class RunLoggingTests(unittest.TestCase):
         self.assertEqual(status["state"], "ERROR")
         self.assertIn("Jira returned 500", status["last_error"])
         record = self.runs()[-1]
-        self.assertEqual(record["tickets"], {"PROJ-1": "ERROR", "PROJ-2": "DRAFT_POSTED"})
+        self.assertEqual(record["tickets"], {"PROJ-1": "ERROR", "PROJ-2": "POSTED"})
         self.assertEqual(record["exit_code"], 1)
         log_text = "".join(p.read_text(encoding="utf-8") for p in (self.out / "logs").glob("uac-runner-*.log"))
         self.assertIn("Traceback", log_text, "the traceback goes to the daily log, not only cron.log")
@@ -1129,12 +1055,12 @@ class RunLoggingTests(unittest.TestCase):
         self.assertIn("[~qe.lead]", alert)
         self.assertIn("PROJ-1: unexpected error - ConnectionError: Jira returned 500", alert)
 
-    def test_error_after_the_draft_keeps_the_posted_state(self) -> None:
-        common.write_status(self.out / "PROJ-1", {"state": "DRAFT_POSTED"})
+    def test_error_after_posting_keeps_the_posted_state(self) -> None:
+        common.write_status(self.out / "PROJ-1", {"state": "POSTED"})
         results, errors = common.run_each(["PROJ-1"], lambda k: 1 / 0, self.log, self.out)
         self.assertEqual(results, {"PROJ-1": "ERROR"})
         status = common.read_status(self.out / "PROJ-1")
-        self.assertEqual(status["state"], "DRAFT_POSTED")
+        self.assertEqual(status["state"], "POSTED")
         self.assertIn("ZeroDivisionError", status["last_error"])
 
     def test_failed_ticket_is_alerted_with_its_first_problem(self) -> None:
@@ -1142,12 +1068,12 @@ class RunLoggingTests(unittest.TestCase):
             if key == "PROJ-2":
                 common.write_status(self.out / key, {"state": "FAILED", "problems": ["no doc researcher run", "x"]})
                 return "FAILED"
-            return "DRAFT_POSTED"
+            return "POSTED"
 
         jira = FakeJira()
         self.run_runner(jira, process)
         [alert] = self.alert_comments(jira)
-        self.assertIn("PROJ-2: draft not posted - no doc researcher run (and 1 more)", alert)
+        self.assertIn("PROJ-2: UAC not posted - no doc researcher run (and 1 more)", alert)
         self.assertNotIn("PROJ-1", alert)
 
     def test_health_failure_is_alerted_and_no_ticket_runs(self) -> None:
@@ -1185,7 +1111,7 @@ class RunLoggingTests(unittest.TestCase):
 
     def test_same_alert_is_not_repeated_until_the_problem_clears(self) -> None:
         jira = FakeJira()
-        send = lambda lines: common.send_alert(self.config, jira, self.log, "uac-poster", "r1", lines)  # noqa: E731
+        send = lambda lines: common.send_alert(self.config, jira, self.log, "uac-runner", "r1", lines)  # noqa: E731
         self.assertEqual(send(["PROJ-1: approved but not posted"]), "POSTED")
         self.assertEqual(send(["PROJ-1: approved but not posted"]), "SUPPRESSED")
         self.assertEqual(send(["PROJ-1: approved but not posted", "PROJ-2: x"]), "POSTED")
@@ -1238,18 +1164,6 @@ class RunLoggingTests(unittest.TestCase):
         self.assertEqual(common.prune_logs(logs, 30), [old.name])
         self.assertTrue(new.exists())
         self.assertEqual(common.prune_logs(logs, 0), [])
-
-    def test_poster_alerts_on_tickets_it_could_not_post(self) -> None:
-        jira = FakeJira()
-        jira.search_keys = lambda jql, max_results=100: ["PROJ-1", "PROJ-2"]
-        results = {"PROJ-1": "FIELD_NOT_EMPTY", "PROJ-2": "POSTED"}
-        with mock.patch.object(poster.common, "load_config", return_value=self.config), \
-                mock.patch.object(poster.common.JiraClient, "from_env", return_value=jira), \
-                mock.patch.object(poster, "post_ticket", side_effect=lambda k, *a: results[k]):
-            self.assertEqual(poster.main(["--config", "unused.json", *self.env]), 1)
-        [alert] = self.alert_comments(jira)
-        self.assertIn("PROJ-1: approved but not posted - the Acceptance Criteria field already has other text", alert)
-        self.assertEqual(self.runs()[-1]["tool"], "uac-poster")
 
 
 if __name__ == "__main__":

@@ -189,7 +189,7 @@ def run_each(keys: list[str], handle, logger: logging.Logger, output_dir: Path) 
                 ticket_dir = output_dir / key
                 status = read_status(ticket_dir)
                 status["last_error"] = message
-                if status.get("state") not in {"DRAFT_POSTED", "POSTED"}:
+                if status.get("state") not in {"POSTED", "FIELD_KEPT"}:
                     status["state"] = "ERROR"
                 write_status(ticket_dir, status)
             except Exception:  # noqa: BLE001 - never let status bookkeeping hide the real error
@@ -206,7 +206,7 @@ def append_run_record(output_dir: Path, record: dict[str, Any]) -> None:
 def send_alert(config: dict, jira, logger: logging.Logger, tool: str, run_id: str, lines: list[str]) -> str:
     """Post one Jira comment listing what went wrong, on the configured alert ticket,
     mentioning the configured people. The same alert is not repeated within
-    alerts.repeat_hours, so the 30-minute poster does not flood the ticket."""
+    alerts.repeat_hours, so a repeated failure does not flood the ticket."""
     settings = config.get("alerts") or {}
     state_file = Path(config["output_dir"]) / ALERT_STATE_FILE
     try:
