@@ -569,6 +569,9 @@ class ResearchOrchestrator:
         requirements_by_question = {row.question_id: row for row in requirements}
         results: list[ResearchWorkerResult] = []
         executions: list[ResearchWorkerExecution] = []
+        begin_pass = getattr(self._provider, "begin_pass", None)
+        if callable(begin_pass):
+            begin_pass()
         for question in sorted(questions, key=lambda row: row.question_id):
             requirement = requirements_by_question.get(question.question_id)
             if (

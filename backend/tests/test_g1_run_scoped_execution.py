@@ -399,3 +399,72 @@ def test_no_timestamp_cleanup_and_legacy_state_left_intact(tmp_path) -> None:
 
     assert legacy.exists()
     assert len(_pending_ids(tmp_path)) == 2
+
+
+def _other_question() -> MissingQuestion:
+    return MissingQuestion(
+        question="What does a second documented claim establish?",
+        authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
+        target_source_types=[],
+        blocking=True,
+        open_question_class=OpenQuestionClass.USER_ACCEPTANCE_DECISION,
+    )
+
+
+def _partial_fulfilment_across_passes(tmp_path, later_pass_order: str) -> None:
+    """Live GUIDES-53703 failure: the host fulfilled one request of a run on
+    one pass and the rest on the next.  The result consumed on the earlier
+    pass must be served again while the run is open, not re-delegated under
+    a fresh scope (which left it one pass behind forever)."""
+
+    record = _record()
+    bundle = _bundle(record)
+    first_q, second_q = _question(), _other_question()
+    requirement_1, requirement_2 = _requirement(first_q), _requirement(second_q)
+
+    def run_pass(scope: str, order: str) -> dict:
+        provider = HostMediatedResearchProvider(store=tmp_path)  # a new process
+        getattr(provider, "begin_pass", lambda: None)()
+        jobs = [("first", first_q, requirement_1), ("second", second_q, requirement_2)]
+        if order == "second-first":
+            jobs.reverse()
+        return {
+            name: provider.execute(
+                _request(question, record, scope),
+                bundle=bundle, question=question, requirement=requirement,
+            )
+            for name, question, requirement in jobs
+        }
+
+    # Pass 1 (run A): both requests delegated.
+    pass1 = run_pass("run:AAAA", "first-second")
+    assert {r.status for r in pass1.values()} == {ResearchWorkerStatus.AWAITING_HOST}
+    first_id = _request(first_q, record, "run:AAAA").execution_id
+    second_id = _request(second_q, record, "run:AAAA").execution_id
+
+    # The host answers only the first request; pass 2 consumes it.
+    _fulfill(tmp_path, first_id, first_q, "first result")
+    pass2 = run_pass("run:BBBB", "first-second")
+    assert pass2["first"].status == ResearchWorkerStatus.NOT_FOUND
+    assert pass2["second"].status == ResearchWorkerStatus.AWAITING_HOST
+
+    # The host answers the second; pass 3 must finish the run.
+    _fulfill(tmp_path, second_id, second_q, "second result")
+    pass3 = run_pass("run:CCCC", later_pass_order)
+    assert pass3["first"].status == ResearchWorkerStatus.NOT_FOUND
+    assert pass3["first"].limitations == ["first result"]
+    assert pass3["second"].limitations == ["second result"]
+    assert len(_pending_ids(tmp_path)) == 2, "nothing was re-delegated"
+
+    # The run is complete: a later Generate-UAC run gets fresh research.
+    pass4 = run_pass("run:DDDD", "first-second")
+    assert {r.status for r in pass4.values()} == {ResearchWorkerStatus.AWAITING_HOST}
+    assert len(_pending_ids(tmp_path)) == 4
+
+
+def test_partial_fulfilment_across_passes_finishes_the_run(tmp_path) -> None:
+    _partial_fulfilment_across_passes(tmp_path, "first-second")
+
+
+def test_partial_fulfilment_across_passes_in_either_order(tmp_path) -> None:
+    _partial_fulfilment_across_passes(tmp_path, "second-first")
