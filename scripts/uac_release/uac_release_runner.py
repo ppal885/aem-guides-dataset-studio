@@ -151,6 +151,13 @@ When finished, write these files:
    parent ticket) and answer every listed dimension of the
    similar human UACs with "disposition": "AC" | "TBD" | "SUGGESTED" | "NOT_APPLICABLE", "ac" (or
    "suggested": <Suggested check number>) and "reason". A documentation finding may also be "SUGGESTED".
+Runtime fallback: this invocation asks for runtime-fallback authoring. When the canonical runtime ends
+blocked, waiting, or with no deliverable Acceptance Criteria after its bounded attempts, do not stop: write
+files 1, 2 and 3 yourself from the evidence you already verified, following every rule above and the skill,
+and make them pass scripts/validate_test_plan.py and scripts/uac_completeness_check.py. Then write
+{fallback_path}: {{"canonical_status": "<the runtime's final status>", "failed_gates": [{{"gate": "<gate
+name>", "reason": "<why it did not pass, one sentence>"}}]}}. Never invent evidence or report a failed gate
+as passed. Do not write this file when the canonical runtime delivered the UAC.
 Write in simple English with AEM Guides names a QE sees on screen."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
 SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
@@ -516,13 +523,42 @@ def check_outputs(ticket_dir: Path) -> list[str]:
     return problems
 
 
-def written_comment(plan_name: str, review_notes: list[str] | None = None, suggested_body: str = "") -> str:
+def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
+    """The runtime gates that did not pass when Copilot wrote the UAC through the runtime
+    fallback, as "gate: reason" lines; None when the canonical runtime delivered the UAC."""
+    path = ticket_dir / common.RUNTIME_FALLBACK_FILE
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError:
+        return ["the runtime fallback record is not valid JSON"]
+    gates = data.get("failed_gates") if isinstance(data, dict) else None
+    lines = []
+    for gate in gates if isinstance(gates, list) else []:
+        if isinstance(gate, dict) and gate.get("gate"):
+            reason = str(gate.get("reason") or "").strip()
+            lines.append(f"{gate['gate']}: {reason}" if reason else str(gate["gate"]))
+    if not lines and isinstance(data, dict) and data.get("canonical_status"):
+        lines.append(f"canonical runtime status: {data['canonical_status']}")
+    return lines
+
+
+def written_comment(plan_name: str, review_notes: list[str] | None = None, suggested_body: str = "",
+                    fallback_gates: list[str] | None = None) -> str:
+    if fallback_gates is None:
+        how = "it passed the automated checks but no person reviewed it before posting"
+    else:
+        how = ("the skill's runtime did not pass every gate, so the UAC was written from the evidence "
+               "gathered and passed the runner's checks; no person reviewed it before posting")
     text = (
-        "*UAC written by the test-plan skill* into the Acceptance Criteria field (generated automatically; "
-        "it passed the automated checks but no person reviewed it before posting).\n"
+        f"*UAC written by the test-plan skill* into the Acceptance Criteria field (generated automatically; {how}).\n"
         "* To change the criteria, edit the Acceptance Criteria field; your edits are learned automatically.\n"
         f"* Full test plan: [^{plan_name}]"
     )
+    if fallback_gates is not None:
+        text += ("\n\n----\n*Runtime gates not passed - please check these points*\n"
+                 + "".join(f"* {gate}\n" for gate in fallback_gates or ["not recorded"]))
     if suggested_body:
         text += ("\n\n----\n*Suggested checks (QE decide)* - found by our own research, not by the ticket. "
                  "They are not in the Acceptance Criteria field. To use one, add it to the field; "
@@ -572,7 +608,8 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
         common.write_status(ticket_dir, status)
         logger.error("%s: field written but did not render as expected; check it in Jira", key)
         return "FAILED"
-    comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes, suggested_body))
+    comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes, suggested_body,
+                                                       status.get("runtime_fallback")))
     jira.update_labels(key, add=[config["labels"]["posted"]])
     status.update(state="POSTED", comment_id=comment_id, attachment_id=attachment_id,
                   posted_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -594,7 +631,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     common.archive_attempt(ticket_dir, int(config.get("keep_attempts", 5)))
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
-                 common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE, common.EVIDENCE_FILE):
+                 common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE, common.EVIDENCE_FILE,
+                 common.RUNTIME_FALLBACK_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
@@ -602,7 +640,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            source_coverage_path=ticket_dir / common.SOURCE_COVERAGE_FILE,
                            surface_inventory_path=ticket_dir / common.SURFACE_INVENTORY_FILE,
                            hotfix_scope_path=ticket_dir / common.HOTFIX_SCOPE_FILE,
-                           evidence_path=ticket_dir / common.EVIDENCE_FILE)
+                           evidence_path=ticket_dir / common.EVIDENCE_FILE,
+                           fallback_path=ticket_dir / common.RUNTIME_FALLBACK_FILE)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()
@@ -655,6 +694,11 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     status["warnings"] = warnings
     review_notes = orphan_ac_problems(ticket_dir)
     status["review_notes"] = review_notes
+    fallback = runtime_fallback_gates(ticket_dir)
+    if fallback is not None:
+        status["runtime_fallback"] = fallback
+        logger.warning("%s: written by the runtime fallback; gates not passed: %s",
+                       key, "; ".join(fallback) or "not recorded")
     log_check_firing(config, key, groups, {"orphan_acs": review_notes, "decisions": warnings})
     for warning in warnings + review_notes:
         logger.warning("%s: %s", key, warning)
