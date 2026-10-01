@@ -20,10 +20,7 @@
     "mention": ["assignee"],
     "cc": []
   },
-  "write_field": true,
   "labels": {
-    "draft": "UAC_Draft",
-    "approved": "UAC_Approved",
     "posted": "QEVision_UAC_DONE"
   },
   "copilot": {

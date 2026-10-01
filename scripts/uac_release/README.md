@@ -1,9 +1,7 @@
 # UAC release automation (GitHub Copilot CLI)
 
 Generates a UAC for every ticket in a release and writes it into the Jira **Acceptance Criteria**
-field. Two flows, chosen by `write_field` in the config.
-
-**Direct (`"write_field": true`, the default in `config.example.json`):**
+field.
 
 ```
 nightly (runner)
@@ -16,27 +14,16 @@ rendered field back, attaches the full test plan, leaves a short comment (sugges
 notes), adds `labels.posted` (`QEVision_UAC_DONE`: the UAC was written by the skill) and sends the
 decision request. No person reviews it before it is posted; QE edits the field afterwards and the
 harvester learns from those edits. A field that already holds text is never overwritten: the ticket
-is recorded as `FIELD_KEPT`, gets no label and is not drafted again. The poster cron line is not needed.
-
-**Review first (`"write_field": false`):**
-
-```
-nightly (runner)                                   every 30 min (poster)
-JQL -> copilot -p per ticket -> checks -> draft     label UAC_Approved -> AC field -> QEVision_UAC_DONE
-             (UAC.md + test-plan.md)      comment + attachment + UAC_Draft
-```
+is recorded as `FIELD_KEPT`, gets no label and is not written again.
 
 Copilot CLI only **generates**. It is denied every Jira write tool; all Jira writes are done
-by these scripts, after the checks. In this flow the Acceptance Criteria field is written only after
-a QE adds the `UAC_Approved` label, and a field that already holds other text is never overwritten.
+by the runner, after the checks.
 
-## Ticket flow (review first)
+## Ticket flow
 
 | Label on the ticket | Meaning | Who sets it |
 |---|---|---|
-| `UAC_Draft` | Draft comment + full test plan attached, waiting for QE | runner |
-| `UAC_Approved` | QE accepts the draft as written | QE |
-| `QEVision_UAC_DONE` | Draft copied into the Acceptance Criteria field | poster |
+| `QEVision_UAC_DONE` | The UAC was written by the skill into the Acceptance Criteria field | runner |
 
 ## Every place the feature appears is covered
 
@@ -116,17 +103,14 @@ When a UAC has TBDs, Copilot also writes `DECISIONS.md`. It has three sections:
 - **Decision needed:** one question per TBD.
 - **Impact on the Acceptance Criteria.**
 
-The runner shows this request at the end of the draft comment, so QE reviews the exact text.
-
-After QE adds `UAC_Approved` and the criteria are posted, the poster sends the request once, as its own comment. It tags the people named in `decision_comment`:
+After the criteria are written into the field, the runner sends the request once, as its own comment. It tags the people named in `decision_comment`:
 - `mention` is a list of issue roles (`assignee`, `reporter`).
 - `cc` is a list of Jira usernames.
 
 The request is not sent in these cases:
 - `decision_comment.enabled` is false;
 - the UAC has no TBD;
-- `DECISIONS.md` is missing a section;
-- `DECISIONS.md` changed after the draft.
+- `DECISIONS.md` is missing a section.
 
 A missing request is logged as a warning in `status.json` and never blocks the AC post.
 
@@ -159,8 +143,8 @@ A missing request is logged as a warning in `status.json` and never blocks the A
      empty it is used instead of `jql` (useful before the fix version or sprint is set).
    - `max_tickets`: the most tickets one nightly run takes from `jql` (default 100). Tickets
      left over are picked up the next night.
-   - `approved_scope_jql`: the same fix version and issue type, without the sprint or other filters,
-     so an approved ticket is still posted after the sprint ends.
+   - `approved_scope_jql`: the same fix version and issue type, without the sprint or other filters;
+     the staleness watch uses it to keep checking posted tickets after the sprint ends.
    - `output_dir`, `add_dirs`, `mcp_health_url`.
 7. **Check the Copilot flags on your version** with `copilot --help` (the scripts use `-p`, `-s`,
    `--no-ask-user`, `--share`, `--add-dir`, `--allow-all-tools`, `--allow-tool`, `--deny-tool`),
@@ -215,13 +199,11 @@ crontab -l
 Windows VM: same steps in PowerShell, then register the tasks once (elevated):
 `.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env`
 
-Daily use: nothing to run. With `write_field` the UAC is already in the Acceptance Criteria field with
-`QEVision_UAC_DONE`; edit the field to correct it. In the review-first flow, review each `UAC_Draft`
-comment in Jira and add `UAC_Approved`. To change
-the criteria, edit the Acceptance Criteria field after it is posted; no label is needed. The draft
-comment lists *Suggested checks (QE decide)* below the criteria: checks found only by our own research
+Daily use: nothing to run. The UAC is already in the Acceptance Criteria field with
+`QEVision_UAC_DONE`; to change the criteria, edit the field, and no label is needed. The runner's
+comment lists *Suggested checks (QE decide)*: checks found only by our own research
 (documentation, code, a similar ticket). They are never copied into the field; add the ones you want to
-the field after approving, and the monthly report counts them as promoted. When the root cause is not
+the field, and the monthly report counts them as promoted. When the root cause is not
 confirmed yet, the UAC starts with a note saying so. Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
 
 ## Run it
@@ -232,14 +214,11 @@ python scripts/uac_release/uac_release_runner.py --config /opt/uac-release/confi
 
 # Whole release
 python scripts/uac_release/uac_release_runner.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env
-
-# Post approved drafts
-python scripts/uac_release/uac_approved_poster.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env
 ```
 
 Schedule: `uac-release.cron` (Linux) or `register_windows_tasks.ps1` (Windows).
 
-## What the runner checks before posting a draft
+## What the runner checks before writing the UAC
 
 - Jira login works, the Dataset Studio MCP health URL answers, and `copilot` is on PATH.
   If any fails the run stops, so a UAC is never written without product documentation.
@@ -266,8 +245,8 @@ skill script `vm_evidence_call.py` calls the backend at `$AEM_STUDIO_URL/mcp`, s
 run files (`<output_dir>/<KEY>/status.json`, `jira-source.json`, `field-body.txt` and
 `<output_dir>/learning/records.jsonl`); it never calls Jira. `JIRA_BASE_URL` from the env file is used
 only for ticket links. The page shows:
-- **UAC posted:** tickets whose UAC passed every check and was posted (to the field, or as a draft
-  comment waiting for QE in the review-first flow), with the number of criteria.
+- **UAC posted:** tickets whose UAC passed every check and was written into the Acceptance Criteria
+  field, with the number of criteria.
 - **UAC not posted:** every other picked ticket with its reason - the first failed check (all of them
   behind a click), a field that already had text, a dry run, or an unexpected error.
 - **Edited by a person:** the newest harvester record per ticket a person changed, with who, when and
@@ -343,7 +322,7 @@ the file must exist on the VM.
 
 ## Files per ticket (`<output_dir>/<KEY>/`)
 
-`UAC.md`, `test-plan.md`, `field-body.txt` (exact text the poster will write),
+`UAC.md`, `test-plan.md`, `field-body.txt` (exact text written into the field),
 `copilot-transcript.md`, `copilot-output.txt`, `status.json`. Logs are in `<output_dir>/logs/`.
 
 A re-run first moves the previous `copilot-transcript.md` and `copilot-output.txt`, and a copy of
@@ -351,7 +330,7 @@ A re-run first moves the previous `copilot-transcript.md` and `copilot-output.tx
 
 ## Logs, run history and alerts
 
-- `<output_dir>/logs/uac-runner-YYYYMMDD.log` and `uac-poster-YYYYMMDD.log`: one file per day,
+- `<output_dir>/logs/uac-runner-YYYYMMDD.log`: one file per day,
   including the traceback of any error. Files older than `log_retention_days` (default 30; 0 keeps
   everything) are deleted at the start of each run.
 - `<output_dir>/runs.jsonl`: one JSON line per run with `run_id`, `tool`, `started`, `seconds`,
@@ -359,7 +338,7 @@ A re-run first moves the previous `copilot-transcript.md` and `copilot-output.tx
   `tail -n 5 /opt/uac-release/runs/runs.jsonl` shows the last runs.
 - One ticket failing with an unexpected error (for example Jira returning 500) never stops the
   other tickets. That ticket gets result `ERROR`, and `status.json` gets `last_error`. A ticket
-  whose draft was already posted keeps its state, so the poster retries it on its next run.
+  whose UAC was already written keeps its state `POSTED`, so it is not written twice.
 - Exit codes: 0 all good, 1 a ticket failed, 2 health check failed (runner), 3 the run stopped.
 - `<output_dir>/logs/gate-firing.jsonl`: one JSON line per ticket the runner checked, with the number
   of problems each check found (`outputs`, `doc_research`, `surface_inventory`, `evidence.<check>`,
@@ -371,9 +350,9 @@ A re-run first moves the previous `copilot-transcript.md` and `copilot-output.tx
 
 Alerts: when something needs attention, the script posts one Jira comment on `alerts.ticket`,
 mentioning the users in `alerts.mention` (Jira user names). It is sent for a failed health check,
-a run that stopped, a ticket with `ERROR`, a runner ticket that was not drafted (`FAILED`), and an
-approved ticket the poster could not post. The same alert is not repeated within
-`alerts.repeat_hours` (default 24), so the 30-minute poster does not flood the ticket; once a run
+a run that stopped, a ticket with `ERROR`, and a ticket whose UAC was not posted (`FAILED`). The same
+alert is not repeated within `alerts.repeat_hours` (default 24), so a repeated failure does not flood
+the ticket; once a run
 is clean, the next problem alerts again at once. `--dry-run` never sends an alert; it only logs it.
 With no `alerts.ticket`, the alert is only logged. If Jira itself is down, the alert cannot be
 posted; that failure is in the daily log.
