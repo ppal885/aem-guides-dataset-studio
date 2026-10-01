@@ -226,6 +226,41 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(status["suggested"], ["Verify that the report also opens from the Map dashboard."])
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
 
+    def _run_direct(self, jira: FakeJira) -> str:
+        config = dict(self.config, write_field=True)
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            return runner.process_ticket("PROJ-1", config, jira, self.log, dry_run=False)
+
+    def test_direct_flow_writes_the_field_and_adds_the_done_label(self) -> None:
+        jira = FakeJira()
+        self.assertEqual(self._run_direct(jira), "POSTED")
+        kinds = [c[0] for c in jira.calls]
+        self.assertEqual(kinds[:4], ["attach", "set_field", "comment", "labels"])
+        field_body = (self.out / "PROJ-1" / "field-body.txt").read_text(encoding="utf-8")
+        self.assertIn(("set_field", "PROJ-1", "customfield_1", field_body), jira.calls)
+        self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls)
+        comment = jira.calls[2][2]
+        self.assertIn("UAC written by the test-plan skill", comment)
+        self.assertIn("*Suggested check 01:*", comment)
+        self.assertNotIn("UAC_Approved", comment)
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], "POSTED", "the harvester learns from it")
+        self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
+
+    def test_direct_flow_never_overwrites_a_filled_field(self) -> None:
+        jira = FakeJira(field_value="Criteria written by a person")
+        self.assertEqual(self._run_direct(jira), "FIELD_KEPT")
+        self.assertEqual([c[0] for c in jira.calls], [], "nothing is written to the ticket")
+        self.assertEqual(common.read_status(self.out / "PROJ-1")["state"], "FIELD_KEPT")
+        self.assertEqual(self._run_direct(FakeJira()), "SKIPPED", "the next run does not draft it again")
+
+    def test_direct_flow_fails_when_the_field_does_not_render(self) -> None:
+        jira = FakeJira(rendered_ok=False)
+        self.assertEqual(self._run_direct(jira), "FAILED")
+        self.assertNotIn("labels", [c[0] for c in jira.calls], "no done label on a broken field")
+        self.assertIn("did not render", common.read_status(self.out / "PROJ-1")["problems"][0])
+
     def test_each_ticket_records_which_checks_fired(self) -> None:
         jira = FakeJira()
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
@@ -688,6 +723,22 @@ class LearningHarvesterTests(unittest.TestCase):
         config = dict(self.config, learning_generator_users=["qe.author"])
         issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-01T10:00:00.000+0000", "qe.author")])
         self.assertEqual(harvester.harvest(config, self.jira_with(issue), self.log, "uac.bot"), [])
+
+    def test_a_later_write_by_our_own_user_is_not_learned_as_a_qe_edit(self) -> None:
+        own_edit = HUMAN_FIELD + "\n * Note added by the automation's user."
+        issue = _issue(own_edit, "In Progress", [])
+        issue["changelog"]["histories"] = [
+            {"created": "2026-01-05T09:30:00.000+0000", "author": {"name": "dev.lead"},
+             "items": [{"fieldId": "customfield_1", "toString": HUMAN_FIELD}]},
+            {"created": "2026-01-06T09:30:00.000+0000", "author": {"name": "uac.bot"},
+             "items": [{"fieldId": "customfield_1", "toString": own_edit}]}]
+        [record] = harvester.harvest(self.config, self.jira_with(issue), self.log, "uac.bot")
+        self.assertEqual(record["editor"], "dev.lead")
+        self.assertEqual(record["current_text"], HUMAN_FIELD, "the automation user's own edit is left out")
+
+    def test_only_our_own_user_editing_teaches_nothing(self) -> None:
+        issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-05T09:30:00.000+0000", "uac.bot")])
+        self.assertEqual(harvester.harvest(self.config, self.jira_with(issue), self.log, "uac.bot"), [])
 
     def test_open_questions_are_not_part_of_a_criterion(self) -> None:
         text = ("Understanding: the list is out of order.\n\n"

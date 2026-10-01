@@ -20,6 +20,7 @@
     "mention": ["assignee"],
     "cc": []
   },
+  "write_field": true,
   "labels": {
     "draft": "UAC_Draft",
     "approved": "UAC_Approved",
