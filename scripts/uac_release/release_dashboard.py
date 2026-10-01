@@ -214,6 +214,8 @@ Counts are per criterion. {accepted} more ticket(s) were accepted without edits.
 
 def write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # The web server reads this as another user; a strict umask (root 077) would hide the folder.
+    os.chmod(path.parent, 0o755)
     handle, tmp = tempfile.mkstemp(prefix=".uac-release-", dir=path.parent)
     with os.fdopen(handle, "w", encoding="utf-8") as stream:
         stream.write(text)
