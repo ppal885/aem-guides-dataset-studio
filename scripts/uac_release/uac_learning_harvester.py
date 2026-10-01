@@ -422,13 +422,18 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, sta
     issue = _issue(jira, key, field_id)
     fields = issue.get("fields") or {}
     generators = own_name if isinstance(own_name, set) else generator_users(config, own_name)
-    human = [c for c in ac_field_changes(issue, field_id) if c["by"] and c["by"] not in generators]
+    changes = ac_field_changes(issue, field_id)
+    human = [c for c in changes if c["by"] and c["by"] not in generators]
+    current_text = fields.get(field_id) or ""
+    if human and changes[-1]["by"] in generators and human[-1]["to"]:
+        # A later write by the automation's own user is not a QE edit: learn from the last human version.
+        current_text = human[-1]["to"]
     evidence_path = ticket_dir / common.EVIDENCE_FILE
     try:
         evidence = json.loads(evidence_path.read_text(encoding="utf-8-sig")) if evidence_path.is_file() else {}
     except ValueError:
         evidence = {}
-    return _record(key, fields, config, posted_text, fields.get(field_id) or "", human, state,
+    return _record(key, fields, config, posted_text, current_text, human, state,
                    suggested=status.get("suggested") or [], kinds=criterion_kinds(evidence))
 
 

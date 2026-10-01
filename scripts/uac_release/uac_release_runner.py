@@ -14,10 +14,15 @@ One scheduled run:
   5. posts a draft comment with the plan attached and adds the draft label. When the
      UAC has TBDs, the draft also shows the decision request that the poster will send
      to the ticket after QE approval (DECISIONS.md).
+     With "write_field": true in the config, it instead writes the UAC straight into
+     an empty Acceptance Criteria field, checks the field rendered, attaches the plan,
+     adds the posted label (the UAC was written by the skill) and sends the decision
+     request; a field that already holds text is never overwritten.
 
 Copilot never writes to Jira: its Jira write tools are denied in the config and
-all Jira writes happen here, after the checks. The Acceptance Criteria field is
-only filled later by uac_approved_poster.py, after QE adds the approval label.
+all Jira writes happen here, after the checks. Without "write_field", the Acceptance
+Criteria field is only filled later by uac_approved_poster.py, after QE adds the
+approval label.
 """
 from __future__ import annotations
 
@@ -32,6 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
+import uac_approved_poster as poster  # noqa: E402
 
 PROMPT = """Generate the UAC for Jira {key} using the test-plan-generation skill.
 Follow the skill fully: live Jira, attachments, product and automation clones, the researcher
@@ -541,6 +547,53 @@ def draft_comment(field_body: str, plan_name: str, decision_body: str = "", ment
     return text
 
 
+def written_comment(plan_name: str, review_notes: list[str] | None = None, suggested_body: str = "") -> str:
+    text = (
+        "*UAC written by the test-plan skill* into the Acceptance Criteria field (generated automatically; "
+        "it passed the automated checks but no person reviewed it before posting).\n"
+        "* To change the criteria, edit the Acceptance Criteria field; your edits are learned automatically.\n"
+        f"* Full test plan: [^{plan_name}]"
+    )
+    if suggested_body:
+        text += ("\n\n----\n*Suggested checks (QE decide)* - found by our own research, not by the ticket. "
+                 "They are not in the Acceptance Criteria field. To use one, add it to the field; "
+                 "ignore the rest.\n\n" + suggested_body)
+    if review_notes:
+        text += ("\n\n----\n*Please check* (automatic review notes)\n"
+                 + "".join(f"* {note}\n" for note in review_notes))
+    return text
+
+
+def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict, field_body: str,
+                plan_copy: Path, review_notes: list[str], suggested_body: str) -> str:
+    """Write the checked UAC into an empty Acceptance Criteria field and mark it written by the skill."""
+    field = config["acceptance_criteria_field"]
+    current = (jira.get_field(key, field) or "").strip()
+    if current and current != field_body.strip():
+        status.update(state="FIELD_KEPT")
+        common.write_status(ticket_dir, status)
+        logger.info("%s: the Acceptance Criteria field already has text; not overwriting it", key)
+        return "FIELD_KEPT"
+    attachment_id = jira.attach_file(key, plan_copy)
+    jira.set_field(key, field, field_body)
+    rendered = jira.get_field(key, field, rendered=True) or ""
+    if "<b>Acceptance Criteria 01:</b>" not in rendered:
+        status.update(state="FAILED", attachment_id=attachment_id,
+                      problems=["the Acceptance Criteria field was written but did not render as expected; check it in Jira"])
+        common.write_status(ticket_dir, status)
+        logger.error("%s: field written but did not render as expected; check it in Jira", key)
+        return "FAILED"
+    comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes, suggested_body))
+    jira.update_labels(key, add=[config["labels"]["posted"]])
+    status.update(state="POSTED", comment_id=comment_id, attachment_id=attachment_id,
+                  posted_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                  posted_sha256=common.sha256_file(ticket_dir / "field-body.txt"))
+    common.write_status(ticket_dir, status)
+    logger.info("%s: written to the Acceptance Criteria field (comment %s)", key, comment_id)
+    poster.post_decision_request(key, config, jira, logger, ticket_dir, status)
+    return "POSTED"
+
+
 def decision_mention_note(config: dict) -> str:
     settings = config.get("decision_comment") or {}
     if not settings.get("enabled"):
@@ -553,7 +606,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     out_root = Path(config["output_dir"])
     ticket_dir = out_root / key
     status = common.read_status(ticket_dir)
-    if status.get("state") in {"DRAFT_POSTED", "POSTED"} and not config.get("regenerate_existing"):
+    if status.get("state") in {"DRAFT_POSTED", "POSTED", "FIELD_KEPT"} and not config.get("regenerate_existing"):
         logger.info("%s: already %s, skipping", key, status["state"])
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
@@ -631,6 +684,9 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     labels = config["labels"]
     plan_copy = ticket_dir / f"{key}-test-plan.md"
     shutil.copyfile(ticket_dir / common.PLAN_FILE, plan_copy)
+    if config.get("write_field"):
+        return write_field(key, config, jira, logger, ticket_dir, status, field_body, plan_copy,
+                           review_notes, suggested_body)
     attachment_id = jira.attach_file(key, plan_copy)
     comment_id = jira.add_comment(key, draft_comment(field_body, plan_copy.name, decision_body,
                                                      decision_mention_note(config), review_notes, suggested_body))

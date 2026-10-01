@@ -1,7 +1,24 @@
 # UAC release automation (GitHub Copilot CLI)
 
-Generates draft UACs for every ticket in a release, posts them to Jira for QE review, and
-copies each draft into the **Acceptance Criteria** field once QE approves it.
+Generates a UAC for every ticket in a release and writes it into the Jira **Acceptance Criteria**
+field. Two flows, chosen by `write_field` in the config.
+
+**Direct (`"write_field": true`, the default in `config.example.json`):**
+
+```
+nightly (runner)
+JQL -> copilot -p per ticket -> checks -> AC field + attachment + comment + QEVision_UAC_DONE
+             (UAC.md + test-plan.md)
+```
+
+When the checks pass, the runner writes the UAC into the Acceptance Criteria field, reads the
+rendered field back, attaches the full test plan, leaves a short comment (suggested checks and review
+notes), adds `labels.posted` (`QEVision_UAC_DONE`: the UAC was written by the skill) and sends the
+decision request. No person reviews it before it is posted; QE edits the field afterwards and the
+harvester learns from those edits. A field that already holds text is never overwritten: the ticket
+is recorded as `FIELD_KEPT`, gets no label and is not drafted again. The poster cron line is not needed.
+
+**Review first (`"write_field": false`):**
 
 ```
 nightly (runner)                                   every 30 min (poster)
@@ -10,10 +27,10 @@ JQL -> copilot -p per ticket -> checks -> draft     label UAC_Approved -> AC fie
 ```
 
 Copilot CLI only **generates**. It is denied every Jira write tool; all Jira writes are done
-by these scripts, after the checks. The Acceptance Criteria field is written only after a QE
-adds the `UAC_Approved` label, and a field that already holds other text is never overwritten.
+by these scripts, after the checks. In this flow the Acceptance Criteria field is written only after
+a QE adds the `UAC_Approved` label, and a field that already holds other text is never overwritten.
 
-## Ticket flow
+## Ticket flow (review first)
 
 | Label on the ticket | Meaning | Who sets it |
 |---|---|---|
@@ -198,7 +215,9 @@ crontab -l
 Windows VM: same steps in PowerShell, then register the tasks once (elevated):
 `.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env`
 
-Daily use: nothing to run. Review each `UAC_Draft` comment in Jira and add `UAC_Approved`. To change
+Daily use: nothing to run. With `write_field` the UAC is already in the Acceptance Criteria field with
+`QEVision_UAC_DONE`; edit the field to correct it. In the review-first flow, review each `UAC_Draft`
+comment in Jira and add `UAC_Approved`. To change
 the criteria, edit the Acceptance Criteria field after it is posted; no label is needed. The draft
 comment lists *Suggested checks (QE decide)* below the criteria: checks found only by our own research
 (documentation, code, a similar ticket). They are never copied into the field; add the ones you want to
@@ -252,7 +271,9 @@ reason; a partly struck criterion counts as changed with the struck part and rea
 by `Acceptance Criteria NN:` or `AC-NN:` labels (also after a bullet) or by top-level bullets; a plain
 note after a blank line belongs to no criterion, and an `Open Questions` heading or an `OQ-NN` line starts
 a questions section that is not part of any criterion until the next label. Only a human's edit counts; edits by the automation's
-own Jira user are ignored. An untouched field counts as accepted only once the ticket status is in
+own Jira user (the account in `JIRA_PAT`, plus `learning_generator_users`) are ignored. Edits by anyone
+else - the assignee, the developer or QE - are learned. When the automation's user writes the field
+after a human edit, the record keeps the last human version and leaves that later write out. An untouched field counts as accepted only once the ticket status is in
 `learning_accepted_statuses` (default `UAT`, `Closed`, `Resolved`, `Done`). Each new ticket version is
 appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
 it and when.
