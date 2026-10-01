@@ -433,7 +433,10 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, sta
         evidence = json.loads(evidence_path.read_text(encoding="utf-8-sig")) if evidence_path.is_file() else {}
     except ValueError:
         evidence = {}
-    return _record(key, fields, config, posted_text, current_text, human, state,
+    fallback = status.get("runtime_fallback")
+    origin = {"uac_origin": "RUNTIME_FALLBACK" if fallback is not None else "CANONICAL",
+              "runtime_fallback_gates": list(fallback or [])}
+    return _record(key, fields, config, posted_text, current_text, human, state, origin,
                    suggested=status.get("suggested") or [], kinds=criterion_kinds(evidence))
 
 
@@ -462,6 +465,54 @@ def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return records
+
+
+ORIGIN_LABELS = {
+    "CANONICAL": "Skill runtime (all gates passed)",
+    "RUNTIME_FALLBACK": "Runtime fallback (gates not passed)",
+    "HAND_POSTED": "Hand-posted (backfill)",
+}
+
+
+def _origin(record: dict) -> str:
+    if record.get("uac_origin"):
+        return str(record["uac_origin"])
+    return "HAND_POSTED" if record.get("source") == "backfill" else "CANONICAL"
+
+
+def origin_report_lines(records: list[dict]) -> list[str]:
+    """QE's edits split by how the UAC was written, so a runtime-fallback UAC that QE fixes more
+    often than a canonical one shows up in the data."""
+    groups: dict[str, dict] = {}
+    gates: dict[str, int] = defaultdict(int)
+    for record in records:
+        origin = _origin(record)
+        group = groups.setdefault(origin, {"tickets": set(), "accepted": 0, "changed": 0, "removed": 0, "added": 0})
+        group["tickets"].add(record.get("key"))
+        for entry in record.get("criteria") or []:
+            if entry.get("kind") in group:
+                group[entry["kind"]] += 1
+        if origin == "RUNTIME_FALLBACK":
+            for gate in record.get("runtime_fallback_gates") or []:
+                gates[str(gate).split(":", 1)[0].strip()] += 1
+    lines = ["## By how the UAC was written", ""]
+    if not groups:
+        return lines + ["No ticket versions were harvested this month.", ""]
+    lines += ["| UAC written by | Tickets | Posted criteria | Kept unchanged | Changed | Removed | QE added | Kept % |",
+              "|---|---|---|---|---|---|---|---|"]
+    for origin in [o for o in ORIGIN_LABELS if o in groups] + sorted(o for o in groups if o not in ORIGIN_LABELS):
+        g = groups[origin]
+        posted = g["accepted"] + g["changed"] + g["removed"]
+        kept = f"{round(100 * g['accepted'] / posted)}%" if posted else "-"
+        lines.append(f"| {ORIGIN_LABELS.get(origin, origin)} | {len(g['tickets'])} | {posted} | {g['accepted']} | "
+                     f"{g['changed']} | {g['removed']} | {g['added']} | {kept} |")
+    lines.append("")
+    if gates:
+        lines += ["Runtime gates that did not pass on fallback UACs (tickets):", ""] + \
+            [f"- {gate}: {count}" for gate, count in sorted(gates.items(), key=lambda kv: (-kv[1], kv[0]))] + [""]
+    lines += ["A lower Kept % or more QE-added criteria for fallback UACs than for runtime UACs is the signal to "
+              "fix the runtime gate that keeps failing; a similar share means the fallback is safe.", ""]
+    return lines
 
 
 def kind_report_lines(records: list[dict]) -> list[str]:
@@ -563,6 +614,7 @@ def monthly_report(config: dict, month: str) -> Path:
                       f"{totals['missed_screens']}).", ""]
     if not records:
         lines.append("No ticket versions were harvested this month.")
+    lines += [""] + origin_report_lines(records)
     lines += [""] + kind_report_lines(records)
     firing = common.import_skill_module("gate_firing_log")
     runs = [r for r in firing.load([Path(config["output_dir"]) / "logs" / "gate-firing.jsonl"], tool="uac-runner")

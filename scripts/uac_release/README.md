@@ -290,7 +290,10 @@ rules; one ticket is not. A **Removed by kind** table says why each posted crite
 step, regression check, entry point, switch state, item type, reverse action, item history, value forms,
 items made before the change, failure path, read from the run's `UAC_EVIDENCE.json` - and how often QE
 removed each kind, plus the median number of criteria we posted against the median QE left. A kind QE
-removes often is the signal to change the size or variant rules. The harvester only reads Jira; it never
+removes often is the signal to change the size or variant rules. A **By how the UAC was written** table
+splits the same counts into UACs the skill runtime delivered, runtime-fallback UACs (gates not passed) and
+hand-posted backfills, with the share of criteria QE kept and which runtime gates failed on fallback UACs:
+a fallback UAC that QE fixes more often is the signal to fix that gate. The harvester only reads Jira; it never
 writes to it.
 
 ### Backfill hand-posted UACs
