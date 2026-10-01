@@ -139,7 +139,7 @@ NGINX_CONF = r"""server {
         limit_except GET HEAD { deny all; }
         try_files /index.html =404;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-CLP9y1ElrCwWiqoltxsf8iKvKo5NZ08yIG9+K5kZNiQ='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-MOiLslSrJQ5o29rDsyOvu4cUaxN5xi02TiFc0sNc1Vw='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
@@ -149,7 +149,7 @@ NGINX_CONF = r"""server {
         limit_except GET HEAD { deny all; }
         try_files $uri =404;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-CLP9y1ElrCwWiqoltxsf8iKvKo5NZ08yIG9+K5kZNiQ='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-MOiLslSrJQ5o29rDsyOvu4cUaxN5xi02TiFc0sNc1Vw='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
@@ -161,6 +161,17 @@ NGINX_CONF = r"""server {
         default_type application/json;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+    }
+
+    location = /uac-release {
+        limit_except GET HEAD { deny all; }
+        alias /var/www/uac-release/index.html;
+        default_type text/html;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
@@ -340,6 +351,7 @@ def validate_nginx_contract() -> None:
         "location = / {",
         "location = /index.html {",
         "location = /dashboard_data.json {",
+        "location = /uac-release {",
         'add_header Cache-Control "no-store, no-cache, must-revalidate" always;',
         "location / {\n        return 404;",
     )
@@ -350,9 +362,9 @@ def validate_nginx_contract() -> None:
         raise RuntimeError("Both compatibility URLs must return an exact 308 redirect")
     if NGINX_CONF.count("proxy_pass http://127.0.0.1:8001;") != 5:
         raise RuntimeError("API, MCP, and health proxy locations must target localhost:8001")
-    if NGINX_CONF.count('add_header Cache-Control "no-store, no-cache, must-revalidate" always;') != 3:
-        raise RuntimeError("Root HTML, index HTML, and dashboard JSON must disable caching")
-    if NGINX_CONF.count("frame-ancestors 'none'") != 3:
+    if NGINX_CONF.count('add_header Cache-Control "no-store, no-cache, must-revalidate" always;') != 4:
+        raise RuntimeError("Root HTML, index HTML, dashboard JSON and the UAC release page must disable caching")
+    if NGINX_CONF.count("frame-ancestors 'none'") != 4:
         raise RuntimeError("Every dashboard response location must deny framing")
     mismatched_script_hashes = [
         digest for digest in dashboard_inline_script_hashes() if NGINX_CONF.count(digest) != 2

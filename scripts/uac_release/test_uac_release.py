@@ -18,6 +18,7 @@ import uac_approved_poster as poster  # noqa: E402
 import uac_learning_harvester as harvester  # noqa: E402
 import uac_staleness_watch as staleness  # noqa: E402
 import uac_release_runner as runner  # noqa: E402
+import release_dashboard as dashboard  # noqa: E402
 
 UAC = (
     "Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer reported and "
@@ -1250,6 +1251,64 @@ class RunLoggingTests(unittest.TestCase):
         [alert] = self.alert_comments(jira)
         self.assertIn("PROJ-1: approved but not posted - the Acceptance Criteria field already has other text", alert)
         self.assertEqual(self.runs()[-1]["tool"], "uac-poster")
+
+
+class ReleaseDashboardTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self.tmp.name)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def ticket(self, key: str, status: dict, summary: str = "", body: str = "") -> None:
+        folder = self.out / key
+        folder.mkdir()
+        common.write_status(folder, status)
+        if summary:
+            (folder / common.JIRA_SOURCE_FILE).write_text(json.dumps({"summary": summary}), encoding="utf-8")
+        if body:
+            (folder / "field-body.txt").write_text(body, encoding="utf-8")
+
+    def test_tickets_split_into_posted_and_not_posted_with_reasons(self) -> None:
+        self.ticket("PROJ-1", {"state": "POSTED", "posted_at": "2026-10-02T07:05:00+0000"}, "Report",
+                    "*Acceptance Criteria 01:* a\n*Acceptance Criteria 02:* b")
+        self.ticket("PROJ-2", {"state": "FAILED", "problems": ["UAC.md was not written", "test-plan.md was not written"]})
+        self.ticket("PROJ-3", {"state": "FIELD_KEPT"})
+        self.ticket("PROJ-4", {"state": "POSTED", "last_error": "Jira returned 500"})
+        (self.out / "logs").mkdir()
+        posted, not_posted = dashboard.collect_tickets(self.out)
+        self.assertEqual([(r["key"], r["criteria"], r["summary"]) for r in posted], [("PROJ-1", 2, "Report")])
+        reasons = {r["key"]: r["reason"] for r in not_posted}
+        self.assertEqual(reasons["PROJ-2"], "UAC.md was not written (and 1 more)")
+        self.assertIn("already had text", reasons["PROJ-3"])
+        self.assertEqual(reasons["PROJ-4"], "Unexpected error: Jira returned 500")
+
+    def test_human_edits_keep_the_newest_change_per_ticket(self) -> None:
+        learning = self.out / "learning"
+        learning.mkdir()
+        lines = [{"key": "PROJ-1", "outcome": "CHANGED", "editor": "qe.a", "edited_at": "2026-10-01"},
+                 {"key": "PROJ-1", "outcome": "CHANGED", "editor": "dev.b", "edited_at": "2026-10-03"},
+                 {"key": "PROJ-2", "outcome": "ACCEPTED_AS_IS"}]
+        (learning / "records.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\nnot json\n",
+                                                encoding="utf-8")
+        edits, accepted = dashboard.collect_human_edits(self.out)
+        self.assertEqual([(r["key"], r["editor"]) for r in edits], [("PROJ-1", "dev.b")])
+        self.assertEqual(accepted, 1)
+
+    def test_page_escapes_ticket_text_and_links_to_jira(self) -> None:
+        self.ticket("PROJ-1", {"state": "FAILED", "problems": ["<script>alert(1)</script>"]}, "A <b>bold</b> title")
+        config = self.out / "config.json"
+        config.write_text(json.dumps(dict(make_config(self.out), output_dir=str(self.out))), encoding="utf-8")
+        page = self.out / "site" / "index.html"
+        with mock.patch.dict(os.environ, {"JIRA_BASE_URL": "https://jira.example.com"}):
+            self.assertEqual(dashboard.main(["--config", str(config), "--env-file", str(self.out / "none.env"),
+                                             "--out", str(page)]), 0)
+        text = page.read_text(encoding="utf-8")
+        self.assertNotIn("<script>", text)
+        self.assertIn("&lt;script&gt;", text)
+        self.assertIn('href="https://jira.example.com/browse/PROJ-1"', text)
+        self.assertIn("No UAC posted yet.", text)
 
 
 if __name__ == "__main__":
