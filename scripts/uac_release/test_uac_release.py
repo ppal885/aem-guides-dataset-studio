@@ -1224,6 +1224,17 @@ class ReleaseDashboardTests(unittest.TestCase):
         self.assertIn('href="https://jira.example.com/browse/PROJ-1"', text)
         self.assertIn("No UAC posted yet.", text)
 
+    @unittest.skipIf(os.name == "nt", "POSIX permissions")
+    def test_page_folder_is_readable_by_the_web_server_under_a_strict_umask(self) -> None:
+        old = os.umask(0o077)
+        try:
+            page = self.out / "site" / "index.html"
+            dashboard.write_atomic(page, "<!doctype html>")
+        finally:
+            os.umask(old)
+        self.assertEqual(page.parent.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(page.stat().st_mode & 0o777, 0o644)
+
 
 if __name__ == "__main__":
     unittest.main()
