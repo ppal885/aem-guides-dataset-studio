@@ -18,3 +18,6 @@ CONFIG=/opt/uac-release/config.json
 
 # 06:00 on the 1st: monthly learning report for the previous month.
 0 6 1 * * cd $REPO && /usr/bin/python3 scripts/uac_release/uac_learning_harvester.py --config $CONFIG --env-file /opt/uac-release/uac.env --report last >> /opt/uac-release/cron.log 2>&1
+
+# Every 30 minutes: rebuild the read-only release page served at http://<vm>:4502/uac-release (never calls Jira).
+*/30 * * * * cd $REPO && /usr/bin/python3 scripts/uac_release/release_dashboard.py --config $CONFIG --env-file /opt/uac-release/uac.env --out /var/www/uac-release/index.html >> /opt/uac-release/cron.log 2>&1

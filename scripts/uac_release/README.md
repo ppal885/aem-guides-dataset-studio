@@ -240,6 +240,23 @@ or set aside with a reason). A tool missing from the Copilot session is not an u
 skill script `vm_evidence_call.py` calls the backend at `$AEM_STUDIO_URL/mcp`, so set `AEM_STUDIO_URL` in
 `uac.env`. `--check-dir` runs the same check, so run it again after editing a UAC by hand.
 
+## Release page
+
+`release_dashboard.py` (cron every 30 minutes) writes one read-only page to
+`/var/www/uac-release/index.html`, which nginx serves at `http://<vm>:4502/uac-release`. It reads only the
+run files (`<output_dir>/<KEY>/status.json`, `jira-source.json`, `field-body.txt` and
+`<output_dir>/learning/records.jsonl`); it never calls Jira. `JIRA_BASE_URL` from the env file is used
+only for ticket links. The page shows:
+- **UAC posted:** tickets whose UAC passed every check and was posted (to the field, or as a draft
+  comment waiting for QE in the review-first flow), with the number of criteria.
+- **UAC not posted:** every other picked ticket with its reason - the first failed check (all of them
+  behind a click), a field that already had text, a dry run, or an unexpected error.
+- **Edited by a person:** the newest harvester record per ticket a person changed, with who, when and
+  how many criteria were kept, changed, removed and added.
+
+Run it once by hand to check: `python3 scripts/uac_release/release_dashboard.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env --out /var/www/uac-release/index.html`.
+The nginx route comes from `setup_vm.py`; run `python3 setup_vm.py --dashboard-only` once to add it.
+
 ## Learning from QE edits
 
 `uac_learning_harvester.py` (cron 02:30 nightly) reads every ticket this automation posted to the
