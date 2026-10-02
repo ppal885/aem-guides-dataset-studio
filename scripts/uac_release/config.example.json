@@ -1,7 +1,7 @@
 {
-  "jql": "project = GUIDES AND fixVersion = \"2701\" AND issuetype = \"Customer Request\" AND sprint in openSprints() AND resolution = Unresolved AND \"Acceptance Criteria\" is EMPTY AND (labels is EMPTY OR labels != QEVision_UAC_DONE)",
+  "jql": "project = GUIDES AND fixVersion in unreleasedVersions(GUIDES) AND issuetype = \"Customer Request\" AND sprint in openSprints() AND resolution = Unresolved AND \"Acceptance Criteria\" is EMPTY AND (labels is EMPTY OR labels != QEVision_UAC_DONE)",
   "tickets": [],
-  "approved_scope_jql": "project = GUIDES AND fixVersion = \"2701\" AND issuetype = \"Customer Request\"",
+  "approved_scope_jql": "project = GUIDES AND fixVersion in unreleasedVersions(GUIDES) AND issuetype = \"Customer Request\"",
   "max_tickets": 10,
   "output_dir": "/opt/uac-release/runs",
   "acceptance_criteria_field": "customfield_13400",
