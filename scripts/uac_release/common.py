@@ -37,6 +37,10 @@ JIRA_SOURCE_FILE = "jira-source.json"
 HOTFIX_SCOPE_FILE = "HOTFIX_SCOPE.json"
 EVIDENCE_FILE = "UAC_EVIDENCE.json"
 RUNTIME_FALLBACK_FILE = "RUNTIME_FALLBACK.json"
+# The UAC is in the Acceptance Criteria field, but Jira did not render it as wiki markup:
+# no comment or done label was added, and the ticket is never generated again.
+WRITTEN_UNRENDERED = "WRITTEN_UNRENDERED"
+FINAL_STATES = {"POSTED", "FIELD_KEPT", WRITTEN_UNRENDERED}
 
 
 def load_env_file(path: Path) -> None:
@@ -190,7 +194,7 @@ def run_each(keys: list[str], handle, logger: logging.Logger, output_dir: Path) 
                 ticket_dir = output_dir / key
                 status = read_status(ticket_dir)
                 status["last_error"] = message
-                if status.get("state") not in {"POSTED", "FIELD_KEPT"}:
+                if status.get("state") not in FINAL_STATES:
                     status["state"] = "ERROR"
                 write_status(ticket_dir, status)
             except Exception:  # noqa: BLE001 - never let status bookkeeping hide the real error

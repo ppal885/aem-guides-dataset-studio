@@ -238,11 +238,43 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(common.read_status(self.out / "PROJ-1")["state"], "FIELD_KEPT")
         self.assertEqual(self._run(FakeJira()), "SKIPPED", "the next run does not write it again")
 
-    def test_runner_fails_when_the_field_does_not_render(self) -> None:
+    def test_field_that_does_not_render_is_recorded_as_written_not_failed(self) -> None:
         jira = FakeJira(rendered_ok=False)
-        self.assertEqual(self._run(jira), "FAILED")
-        self.assertNotIn("labels", [c[0] for c in jira.calls], "no done label on a broken field")
-        self.assertIn("did not render", common.read_status(self.out / "PROJ-1")["problems"][0])
+        self.assertEqual(self._run(jira), common.WRITTEN_UNRENDERED)
+        kinds = [c[0] for c in jira.calls]
+        self.assertIn("set_field", kinds, "the UAC is in the field")
+        self.assertNotIn("labels", kinds, "no done label on a broken field")
+        self.assertNotIn("comment", kinds)
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], common.WRITTEN_UNRENDERED)
+        self.assertIn("did not render", status["problems"][0])
+        self.assertEqual(self._run(FakeJira()), "SKIPPED", "the next run does not generate it again")
+
+    def test_field_rendered_accepts_the_first_label_number_the_uac_used(self) -> None:
+        self.assertTrue(runner.field_rendered("*Acceptance Criteria 1:* x", "<p><b>Acceptance Criteria 1:</b> x</p>"))
+        self.assertTrue(runner.field_rendered("_Note: n_\n\n*Acceptance Criteria 01:* x",
+                                              "<p><b>Acceptance Criteria 01:</b> x</p>"))
+        self.assertFalse(runner.field_rendered("*Acceptance Criteria 1:* x", "<p>*Acceptance Criteria 1:* x</p>"))
+
+    def test_uac_numbered_from_1_is_posted(self) -> None:
+        jira = FakeJira()
+        jira.get_field = lambda key, field, rendered=False: (
+            "<p><b>Acceptance Criteria 1:</b> x</p>" if rendered else jira.field_value)
+        unpadded = fake_copilot(True)
+
+        def copilot(cmd, **kwargs):
+            result = unpadded(cmd, **kwargs)
+            uac = self.out / "PROJ-1" / common.UAC_FILE
+            uac.write_text(uac.read_text(encoding="utf-8").replace("Criteria 01", "Criteria 1")
+                           .replace("Criteria 02", "Criteria 2"), encoding="utf-8")
+            return result
+        with mock.patch.object(runner.subprocess, "run", copilot), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "POSTED")
+
+    def test_cron_sets_a_path_that_finds_copilot(self) -> None:
+        cron = (Path(runner.__file__).parent / "uac-release.cron").read_text(encoding="utf-8")
+        self.assertRegex(cron, r"(?m)^PATH=.*/usr/local/bin", "cron's default PATH has no npm global bin")
 
     def test_runtime_fallback_uac_is_written_with_the_failed_gates_listed(self) -> None:
         base = fake_copilot(True)

@@ -48,6 +48,9 @@ def not_posted_reason(status: dict) -> tuple[str, list[str]]:
         return f"Unexpected error: {status['last_error']}", problems
     if state == "FIELD_KEPT":
         return "The Acceptance Criteria field already had text, so the UAC was not written over it.", []
+    if state == common.WRITTEN_UNRENDERED:
+        return ("Written into the Acceptance Criteria field, but Jira did not render it as expected; "
+                "no comment or done label was added. Check the field in Jira.", problems)
     if state == "READY":
         return "Dry run only: the UAC passed the checks, but nothing was posted.", []
     if state == "FAILED" and problems:

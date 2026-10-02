@@ -589,6 +589,13 @@ def post_decision_request(key: str, config: dict, jira, logger, ticket_dir: Path
     return "POSTED"
 
 
+def field_rendered(field_body: str, rendered: str) -> bool:
+    """True when Jira rendered the first criterion label in bold, whatever its number ("1" or "01")."""
+    first = re.search(r"\*(Acceptance Criteria \d+):\*", field_body)
+    label = first.group(1) if first else "Acceptance Criteria 01"
+    return f"<b>{label}:</b>" in rendered
+
+
 def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict, field_body: str,
                 plan_copy: Path, review_notes: list[str], suggested_body: str, decision_body: str = "") -> str:
     """Write the checked UAC into an empty Acceptance Criteria field and mark it written by the skill."""
@@ -602,12 +609,17 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
     attachment_id = jira.attach_file(key, plan_copy)
     jira.set_field(key, field, field_body)
     rendered = jira.get_field(key, field, rendered=True) or ""
-    if "<b>Acceptance Criteria 01:</b>" not in rendered:
-        status.update(state="FAILED", attachment_id=attachment_id,
-                      problems=["the Acceptance Criteria field was written but did not render as expected; check it in Jira"])
+    if not field_rendered(field_body, rendered):
+        # The UAC is in the field now: record it as written, so it is not reported as "not posted"
+        # and the next run does not generate it again.
+        status.update(state=common.WRITTEN_UNRENDERED, attachment_id=attachment_id,
+                      posted_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                      posted_sha256=common.sha256_file(ticket_dir / "field-body.txt"),
+                      problems=["the UAC was written into the Acceptance Criteria field but did not render as "
+                                "expected, so no comment or done label was added; check the field in Jira"])
         common.write_status(ticket_dir, status)
-        logger.error("%s: field written but did not render as expected; check it in Jira", key)
-        return "FAILED"
+        logger.error("%s: UAC written into the field but it did not render as expected; check it in Jira", key)
+        return common.WRITTEN_UNRENDERED
     comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes, suggested_body,
                                                        status.get("runtime_fallback")))
     jira.update_labels(key, add=[config["labels"]["posted"]])
@@ -624,7 +636,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     out_root = Path(config["output_dir"])
     ticket_dir = out_root / key
     status = common.read_status(ticket_dir)
-    if status.get("state") in {"POSTED", "FIELD_KEPT"} and not config.get("regenerate_existing"):
+    if status.get("state") in common.FINAL_STATES and not config.get("regenerate_existing"):
         logger.info("%s: already %s, skipping", key, status["state"])
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
@@ -726,7 +738,8 @@ def health(config: dict, jira, logger) -> list[str]:
         if not ok:
             problems.append(f"Dataset Studio MCP unreachable ({detail}); documentation research would be skipped")
     if not shutil.which(config.get("copilot", {}).get("command", "copilot")):
-        problems.append("Copilot CLI not found on PATH")
+        problems.append("Copilot CLI not found on PATH; under cron set PATH in the crontab to the folders that hold "
+                        "copilot and node (see uac-release.cron)")
     return problems
 
 
@@ -784,7 +797,8 @@ def main(argv: list[str] | None = None) -> int:
                 logger.info("tickets: %s", ", ".join(keys) or "none")
                 results, errors = common.run_each(
                     keys, lambda key: process_ticket(key, config, jira, logger, args.dry_run), logger, out)
-        exit_code = 2 if health_problems else 1 if any(v in ("FAILED", "ERROR") for v in results.values()) else 0
+        exit_code = 2 if health_problems else 1 if any(
+            v in ("FAILED", "ERROR", common.WRITTEN_UNRENDERED) for v in results.values()) else 0
     except Exception as exc:  # noqa: BLE001 - record and alert on anything that stops the run
         logger.exception("run %s stopped", run_id)
         alerts.append(f"The run stopped before finishing: {type(exc).__name__}: {exc}")
@@ -793,6 +807,9 @@ def main(argv: list[str] | None = None) -> int:
     for key, result in results.items():
         if result == "ERROR":
             alerts.append(f"{key}: unexpected error - {errors.get(key, 'see the log')}")
+        elif result == common.WRITTEN_UNRENDERED:
+            alerts.append(f"{key}: UAC written into the Acceptance Criteria field but it did not render as "
+                          "expected; no comment or done label was added - check the field in Jira")
         elif result == "FAILED":
             problems = common.read_status(out / key).get("problems") or ["see status.json"]
             more = f" (and {len(problems) - 1} more)" if len(problems) > 1 else ""

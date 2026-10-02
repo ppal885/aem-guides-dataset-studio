@@ -199,7 +199,8 @@ cat /opt/uac-release/runs/GUIDES-12345/status.json
 grep -iE "update_jira_issue|add_jira_comment|upload_attachment" /opt/uac-release/runs/GUIDES-12345/copilot-transcript.md   # must print nothing
 
 # 7. Schedule it
-crontab -e        # paste the two lines from scripts/uac_release/uac-release.cron (fix REPO/CONFIG)
+crontab -e        # paste the lines from scripts/uac_release/uac-release.cron (fix REPO/CONFIG, and PATH so
+                  # it holds the folders of `command -v copilot` and `command -v node`)
 crontab -l
 ```
 
@@ -234,6 +235,11 @@ Schedule: `uac-release.cron` (Linux) or `register_windows_tasks.ps1` (Windows).
 - `UAC.md` has 1-10 Acceptance Criteria and no blocked vocabulary.
 
 Anything else is marked `FAILED` in `<output_dir>/<KEY>/status.json` and nothing is posted.
+
+After writing the field the runner reads it back rendered and expects the first criterion label in bold
+(`Acceptance Criteria 1:` or `01:`, whichever the UAC used). When it is not, the UAC is already in the field:
+the ticket is recorded as `WRITTEN_UNRENDERED` (no comment, no `QEVision_UAC_DONE`), an alert names it, and it
+is never generated again. Check that the field uses the wiki renderer.
 
 ## Evidence record
 
