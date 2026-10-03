@@ -20,14 +20,15 @@ WHAT IT CHECKS in a UAC folder
    with source, exact query, result (ok, empty or unavailable) and count.
 5. "doc_findings": every Doc Researcher finding that cites a documentation source (doc: ref) is
    dispositioned exactly once - AC (the listed Acceptance Criteria exist and their Source line
-   names the documentation), SUGGESTED (the listed suggested check exists) or SET_ASIDE (with a
-   concrete reason of at least five words). A rewrite
-   that drops the documentation from a Source line fails here.
+   names the documentation), TEST_PLAN (checked in the full test plan, test-plan.md names it) or
+   SET_ASIDE (with a concrete reason of at least five words). A rewrite that drops the documentation
+   from a Source line fails here. SUGGESTED is no longer an answer.
 6. "scenario": the reporter's own steps or requested outcome (text copied from the ticket) and, for
    every Acceptance Criterion, the step it follows (CUSTOMER), the step it guards as a QE regression or
-   edge-case check (REGRESSION, no TBD needed). A check that follows a scenario the reporter did not
-   hit (ADJACENT, for example one an investigator found) is a suggested check, never a criterion. The
-   reporter's step done another way - another entry point, configuration state or item type listed in
+   edge-case check (REGRESSION, no TBD needed). A criterion on a scenario the reporter did not hit
+   (ADJACENT, for example one an investigator found or a similar ticket's UAC) may be an Acceptance
+   Criterion when it matters - usually a "still works as before" check - and its Source line names
+   where it comes from. The reporter's step done another way - another entry point, configuration state or item type listed in
    "action_variants" - is VARIANT and stays a criterion. At least one criterion follows the reporter's
    scenario.
 7. "failure_path": when the ticket says that items inside a job, queue or batch fail, get stuck or
@@ -37,7 +38,8 @@ WHAT IT CHECKS in a UAC folder
    tickets covered it, against 9% of other batch tickets).
 8. "similar_uacs" (written by similar_uac_compare.py): the human UACs of the most similar resolved
    tickets and the dimensions each covers. "compared" needs every dimension answered - AC (an existing
-   Acceptance Criterion covers it), TBD (that criterion asks it) or NOT_APPLICABLE with a reason;
+   Acceptance Criterion covers it), TBD (that criterion asks it), TEST_PLAN (test-plan.md names it) or
+   NOT_APPLICABLE with a reason;
    "none_found" needs the queries tried; "unavailable" needs the reason.
 9. Hotfix or backport tickets (from jira-source.json): HOTFIX_SCOPE.json passes
    hotfix_scope_check.py.
@@ -46,11 +48,11 @@ WHAT IT CHECKS in a UAC folder
    then UAC.md starts with a "Note:" line saying the root cause is not confirmed yet, and no Acceptance
    Criterion other than a REGRESSION check rests only on code. When the ticket does report a root cause
    or fix, UNCONFIRMED needs a reason why that text is not the fix.
-11. "Suggested checks (QE decide):": checks found only by our own research (documentation, code, a
-   similar or parent ticket, an investigator's other scenario) go below the Acceptance Criteria as
-   "- Suggested check NN:" lines, each with a Source line and a "Why suggested:" line, at most three.
-   They are not posted as Acceptance Criteria: QE moves the ones they want into the criteria. A
-   criterion that follows a scenario the reporter did not hit (ADJACENT) must be a suggested check.
+11. No "Suggested checks" section: a check our own research found (documentation, code, a similar or
+   parent ticket, an investigator's other scenario, parity) that matters is an Acceptance Criterion -
+   usually a "still works as before" check, or a sub-point of the criterion with the same outcome - and
+   one that does not matter enough goes to the full test plan or is set aside with a reason. A UAC.md
+   with a "Suggested checks" heading or "- Suggested check NN:" line is refused.
 12. Size: the delivered criteria (with their sub-points, the Scope line and the Out of scope list, but not
    the Source, TBD or Note lines) stay within MAX_BODY_WORDS, and each Source line within MAX_SOURCE_WORDS.
    In the 386 human UACs of the corpus the median is 122 words and 90% are under 337; blind comparisons
@@ -69,9 +71,9 @@ WHAT IT CHECKS in a UAC folder
    (mechanism.reverse_action), an item with a different history (mechanism.item_origin), and the forms of
    the value the change reads or shows - empty, missing, special characters (mechanism.value_shapes, an AC
    lists at least two in "shapes" and names each). Each is an AC
-   that names it, a TBD, or not applicable with a reason; never only a suggested check - except a route,
-   switch or item type known only from the code (basis CODE), which is a TBD or a suggested check, never an
-   AC. A research-found variant (DOCUMENTATION or CODE basis, or a reverse action, item history or value
+   that names it, a TBD, or not applicable with a reason. A route, switch or item type known only from the
+   code (basis CODE) is a TBD, TEST_PLAN, or an AC that checks it still works as before - never new
+   behaviour read from the code. A research-found variant (DOCUMENTATION or CODE basis, or a reverse action, item history or value
    form) with the same outcome as an AC may be TEST_PLAN: named in test-plan.md, left out of the delivered
    UAC. A criterion that covers one of them is scenario VARIANT. When the ticket generates output (any
    output type), entry_points also names each documented generation route - the output preset from the map,
@@ -123,10 +125,12 @@ DOC_MARKERS = ("experience league", "experienceleague", "helpx.adobe.com", "doc:
 EMPTY_REASONS = {"", "n/a", "na", "none", "tbd", "-", "not relevant", "not needed", "out of scope"}
 _AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)",
                        re.M | re.S)
-SUGGESTED_HEADER = "Suggested checks (QE decide):"
+# The delivered UAC no longer has a "Suggested checks (QE decide):" section: research checks that matter are
+# Acceptance Criteria, the rest go to the full test plan. The patterns stay only to refuse an old-style section.
 _SUGGESTED_HEADER = re.compile(r"^Suggested checks\b.*$", re.M)
-_SUGGESTED_BLOCK = re.compile(r"^- Suggested check (\d+):(.*?)(?=^- Suggested check \d+:|\Z)", re.M | re.S)
-MAX_SUGGESTED = 3
+_SUGGESTED_LINE = re.compile(r"^- Suggested check \d+:", re.M)
+_SUGGESTED_GONE = ("SUGGESTED is no longer an answer: a research check that matters is an Acceptance Criterion "
+                   "(usually a \"still works as before\" check or a sub-point); otherwise TEST_PLAN or set it aside")
 MAX_BODY_WORDS = 350
 MAX_SOURCE_WORDS = 30
 PRE_EXISTING_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
@@ -315,7 +319,7 @@ def history_problems(evidence: dict) -> list[str]:
     return problems
 
 
-def doc_finding_problems(evidence: dict, doc_research: dict, uac_text: str) -> list[str]:
+def doc_finding_problems(evidence: dict, doc_research: dict, uac_text: str, plan_text: str = "") -> list[str]:
     findings = [f for f in (doc_research or {}).get("findings") or [] if isinstance(f, dict)]
     documented = [i for i, f in enumerate(findings, 1)
                   if any(str(r).startswith("doc:") for r in f.get("source_refs") or [])]
@@ -349,10 +353,13 @@ def doc_finding_problems(evidence: dict, doc_research: dict, uac_text: str) -> l
         elif entry.get("disposition") == "SET_ASIDE":
             if len(str(entry.get("reason") or "").split()) < 5:
                 problems.append(f"documentation finding {index} is set aside without a concrete reason")
+        elif entry.get("disposition") == "TEST_PLAN":
+            problems += _test_plan_problems(f"documentation finding {index}", claim or f"finding {index}",
+                                            None, plan_text)
         elif entry.get("disposition") == "SUGGESTED":
-            problems += _suggested_ref_problems(f"documentation finding {index}", entry, uac_text)
+            problems.append(f"documentation finding {index}: {_SUGGESTED_GONE}")
         else:
-            problems.append(f"documentation finding {index}: disposition must be AC, SUGGESTED or SET_ASIDE")
+            problems.append(f"documentation finding {index}: disposition must be AC, TEST_PLAN or SET_ASIDE")
     for index in sorted(set(entries) - set(documented)):
         problems.append(f"doc_findings names finding {index}, which is not a documentation finding in "
                         f"{DOC_RESEARCH_FILE}")
@@ -386,9 +393,9 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
     return {
         "preflight": preflight_problems(evidence.get("preflight")), "rag_probes": rag_problems(evidence),
         "history_attempts": history_problems(evidence),
-        "doc_findings": doc_finding_problems(evidence, doc_research, uac),
+        "doc_findings": doc_finding_problems(evidence, doc_research, uac, plan),
         "scenario": scenario_problems(evidence, uac, source), "failure_path": failure_path_problems(evidence, uac, source),
-        "similar_uacs": similar_uac_problems(evidence, uac), "suggested_checks": suggested_problems(uac),
+        "similar_uacs": similar_uac_problems(evidence, uac, plan), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac, source),
         "action_variants": action_variant_problems(evidence, uac, source, plan),
@@ -450,8 +457,10 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
     """Every Acceptance Criterion follows the reporter's own scenario (CUSTOMER) or guards it (REGRESSION).
 
     An investigator's comment often finds a different scenario from the one the reporter hit (for example
-    a deleted project when the reporter's job completed). A criterion built on that other scenario is
-    ADJACENT: it must not become the core contract, so it goes to the suggested checks for QE to decide.
+    a deleted project when the reporter's job completed). A criterion built on that other scenario, or on a
+    similar ticket's UAC, is ADJACENT: it may be an Acceptance Criterion when it matters (usually a "still works
+    as before" check, its Source line naming where it comes from), but it never replaces the reporter's own
+    scenario - at least one criterion still follows it.
     The reporter's step done through another entry point, configuration state or item type is VARIANT: it
     stays a criterion when "action_variants" lists it for that criterion."""
     scenario = evidence.get("scenario")
@@ -487,8 +496,9 @@ def scenario_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
             if _normalize(entry.get("step")) not in steps:
                 problems.append(f"Acceptance Criteria {ac:02d}: its step is not one of scenario.customer_steps")
         elif kind == "ADJACENT":
-            problems.append(f"Acceptance Criteria {ac:02d} follows a scenario the reporter did not hit; move it to "
-                            f"\"{SUGGESTED_HEADER}\" so QE decides whether it belongs in this ticket")
+            if not re.search(r"Source:\**\s*\S", blocks[ac]):
+                problems.append(f"Acceptance Criteria {ac:02d} follows a scenario the reporter did not hit; its Source "
+                                "line must name the documentation page, code or ticket it comes from")
         else:
             problems.append(f"Acceptance Criteria {ac:02d}: scenario must be {', '.join(SCENARIO_KINDS)}")
     if blocks and customer_acs == 0:
@@ -566,10 +576,10 @@ def failure_path_problems(evidence: dict, uac_text: str, source: dict | None) ->
 
 # --- similar human UACs ---------------------------------------------------------------------------------
 SIMILAR_STATES = ("compared", "none_found", "unavailable")
-SIMILAR_DISPOSITIONS = ("AC", "TBD", "SUGGESTED", "NOT_APPLICABLE")
+SIMILAR_DISPOSITIONS = ("AC", "TBD", "TEST_PLAN", "NOT_APPLICABLE")
 
 
-def similar_uac_problems(evidence: dict, uac_text: str) -> list[str]:
+def similar_uac_problems(evidence: dict, uac_text: str, plan_text: str = "") -> list[str]:
     """Every dimension of the most similar human UACs is covered, asked or set aside with a reason."""
     block = evidence.get("similar_uacs")
     if not isinstance(block, dict):
@@ -589,13 +599,16 @@ def similar_uac_problems(evidence: dict, uac_text: str) -> list[str]:
         for entry in uac.get("dimensions") or []:
             name = f"similar UAC {uac.get('key')}: \"{entry.get('dimension')}\""
             disposition = entry.get("disposition")
-            if disposition not in SIMILAR_DISPOSITIONS:
-                problems.append(f"{name} has no answer; say AC, TBD, SUGGESTED or NOT_APPLICABLE")
+            if disposition == "SUGGESTED":
+                problems.append(f"{name}: {_SUGGESTED_GONE}")
+            elif disposition not in SIMILAR_DISPOSITIONS:
+                problems.append(f"{name} has no answer; say AC, TBD, TEST_PLAN or NOT_APPLICABLE")
             elif disposition == "NOT_APPLICABLE":
                 if len(str(entry.get("reason") or "").split()) < 5:
                     problems.append(f"{name} is not applicable without a concrete reason")
-            elif disposition == "SUGGESTED":
-                problems += _suggested_ref_problems(name, entry, uac_text)
+            elif disposition == "TEST_PLAN":
+                problems += _test_plan_problems(f"similar UAC {uac.get('key')}", str(entry.get("dimension") or ""), None,
+                                                plan_text)
             else:
                 ac = entry.get("ac")
                 if not isinstance(ac, int) or ac not in blocks:
@@ -605,49 +618,20 @@ def similar_uac_problems(evidence: dict, uac_text: str) -> list[str]:
     return problems
 
 
-# --- suggested checks ----------------------------------------------------------------------------------
-def suggested_blocks(uac_text: str) -> dict[int, str]:
-    """The "- Suggested check NN:" blocks below the "Suggested checks" heading."""
-    header = _SUGGESTED_HEADER.search(uac_text or "")
-    if not header:
-        return {}
-    return {int(n): body for n, body in _SUGGESTED_BLOCK.findall(uac_text[header.end():])}
-
-
-def _suggested_ref_problems(name: str, entry: dict, uac_text: str) -> list[str]:
-    number = entry.get("suggested")
-    if not isinstance(number, int) or isinstance(number, bool) or number not in suggested_blocks(uac_text):
-        return [f"{name}: Suggested check {number!r} does not exist"]
-    return []
-
-
+# --- no suggested checks ------------------------------------------------------------------------------
 def suggested_problems(uac_text: str) -> list[str]:
-    """Suggested checks sit below every Acceptance Criterion, each with its source and why it is suggested."""
+    """The delivered UAC has no "Suggested checks" section any more.
+
+    A check our own research found that matters is an Acceptance Criterion (usually a "still works as before"
+    check, or a sub-point of the criterion with the same outcome); one that does not matter enough goes to the
+    full test plan or is set aside with a reason in the record."""
     text = uac_text or ""
-    header = _SUGGESTED_HEADER.search(text)
-    if not header:
-        if re.search(r"^- Suggested check \d+:", text, re.M):
-            return [f"suggested checks need the heading \"{SUGGESTED_HEADER}\" above them"]
-        return []
-    problems = []
-    if re.search(r"^- Acceptance Criteria \d+:", text[header.end():], re.M):
-        problems.append(f"every Acceptance Criterion must come before \"{SUGGESTED_HEADER}\"")
-    if re.search(r"^Out of scope\b", text[header.end():], re.M | re.I):
-        problems.append(f"the Out of scope list belongs above \"{SUGGESTED_HEADER}\", right after the criteria")
-    blocks = suggested_blocks(text)
-    if not blocks:
-        problems.append(f"\"{SUGGESTED_HEADER}\" has no \"- Suggested check NN:\" line; remove the heading")
-    if len(blocks) > MAX_SUGGESTED:
-        problems.append(f"{len(blocks)} suggested checks; keep the {MAX_SUGGESTED} that matter most - QE reads "
-                        "every one")
-    for number, body in sorted(blocks.items()):
-        if not re.search(r"Source:\**\s*\S", body):
-            problems.append(f"Suggested check {number:02d} has no Source line")
-        why = re.search(r"Why suggested:\**\s*(.+)", body)
-        if not why or len(why.group(1).split()) < 5:
-            problems.append(f"Suggested check {number:02d} needs a \"Why suggested:\" line saying what it guards "
-                            "and why it is not an Acceptance Criterion")
-    return problems
+    if _SUGGESTED_HEADER.search(text) or _SUGGESTED_LINE.search(text):
+        return ["UAC.md has a \"Suggested checks\" section; there are no suggested checks any more - write each check "
+                "that matters as an Acceptance Criterion (a \"still works as before\" check or a sub-point, within the "
+                "ten-criteria cap) whose Source line names the documentation page, code or ticket, and move the rest "
+                f"to the full test plan ({PLAN_FILE})"]
+    return []
 
 
 # --- root cause or fix known ---------------------------------------------------------------------------
@@ -689,8 +673,9 @@ def fix_basis_problems(evidence: dict, uac_text: str, source: dict | None) -> li
     """Say whether the root cause or fix is known and, when it is not, keep guesses out of the criteria.
 
     Posting is never blocked for want of a root cause: many tickets never get one. A UAC written without
-    it says so at the top, and a criterion that rests only on code (a guess at the mechanism) becomes a
-    suggested check. A REGRESSION check around the reporter's scenario may still cite code."""
+    it says so at the top, and a criterion that rests only on code (a guess at the mechanism) is refused unless
+    it is a REGRESSION check that the reporter's scenario still works as before; otherwise it goes to the full
+    test plan."""
     block = evidence.get("fix_basis")
     if not isinstance(block, dict) or block.get("status") not in FIX_STATES:
         return [f"fix_basis is missing: say whether the root cause or fix is known ({', '.join(FIX_STATES)})"]
@@ -716,22 +701,21 @@ def fix_basis_problems(evidence: dict, uac_text: str, source: dict | None) -> li
     for number, body in sorted((int(n), b) for n, b in _AC_BLOCK.findall(text)):
         if kinds.get(number) != "REGRESSION" and _code_only(body):
             problems.append(f"Acceptance Criteria {number:02d} rests only on code while the root cause is not "
-                            f"confirmed; tie it to what the customer reported, or move it to \"{SUGGESTED_HEADER}\"")
+                            "confirmed; tie it to what the customer reported, make it a REGRESSION check that it "
+                            f"still works as before, or move it to the full test plan ({PLAN_FILE})")
     return problems
 
 
 # --- size ------------------------------------------------------------------------------------------
-_LABEL_LINE = re.compile(r"^\s*(?:\*\*)?(?:Source|TBD|Why suggested):", re.I)
+_LABEL_LINE = re.compile(r"^\s*(?:\*\*)?(?:Source|TBD):", re.I)
 
 
 def size_problems(uac_text: str) -> list[str]:
     """Keep the delivered UAC near the size of a human UAC, and every Source line short."""
     text = uac_text or ""
-    header = _SUGGESTED_HEADER.search(text)
-    body = text[:header.start()] if header else text
     problems = []
     words, current = 0, "a criterion"
-    for line in body.splitlines():
+    for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.lower().startswith("note:"):
             continue
@@ -800,6 +784,9 @@ def pre_existing_problems(evidence: dict, uac_text: str, source: dict | None = N
 
 # --- entry points, configuration switches and mechanism variants ---------------------------------------
 VARIANT_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
+# A criterion that checks existing behaviour is kept: the only kind of AC a code-only variant may have.
+_AS_BEFORE = re.compile(r"\b(?:as before|still works?|still \w+s\b|unchanged|not change|no change|stays? the same|"
+                        r"remains?|continues? to|same as before)", re.I)
 # Where a route, switch or item type comes from. CODE alone never makes new behaviour a criterion: in blind
 # comparisons, routes and modes read only from the code were criteria the human UAC did not have.
 VARIANT_BASES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DEVELOPER_COMMENT", "DOCUMENTATION", "CODE")
@@ -873,7 +860,8 @@ def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text:
                             needs_basis: bool = True, plan_text: str = "") -> list[str]:
     """One variant: an AC that names it, a TBD on the AC it governs, or not applicable with a reason.
 
-    A variant known only from the code (basis CODE) is a TBD or a suggested check, never an AC. A variant found by
+    A variant known only from the code (basis CODE) is a TBD, TEST_PLAN, or an AC that checks it still works as
+    before - never new behaviour read from the code. A variant found by
     our own research (DOCUMENTATION or CODE, or a reverse action, item history or value form) whose expected outcome
     is the same as a criterion may be TEST_PLAN: checked in the full test plan, not listed in the delivered UAC."""
     if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
@@ -884,19 +872,17 @@ def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text:
     if needs_basis and disposition != "NOT_APPLICABLE" and basis not in VARIANT_BASES:
         return [f"{label} \"{name}\": basis must be {', '.join(VARIANT_BASES)} - where this route, switch or item "
                 "type comes from"]
-    if needs_basis and basis == "CODE":
-        if disposition == "AC":
-            return [f"{label} \"{name}\" is known only from the code: make it a TBD or a suggested check, not an "
-                    "Acceptance Criterion"]
-        if disposition == "SUGGESTED":
-            number = entry.get("suggested")
-            return [] if isinstance(number, int) and number in suggested_blocks(uac_text) else [
-                f"{label} \"{name}\": suggested check {number!r} does not exist"]
+    if disposition == "SUGGESTED":
+        return [f"{label} \"{name}\": {_SUGGESTED_GONE}"]
+    if needs_basis and basis == "CODE" and disposition == "AC":
+        acs = _ac_list(entry.get("acs", entry.get("ac")))
+        if not acs or not all(ac in blocks and _AS_BEFORE.search(blocks[ac]) for ac in acs):
+            return [f"{label} \"{name}\" is known only from the code: an Acceptance Criterion may only check that it "
+                    "still works as before; otherwise make it a TBD or TEST_PLAN"]
     if disposition == "TEST_PLAN":
         return _test_plan_problems(label, name, basis if needs_basis else None, plan_text)
     if disposition not in VARIANT_DISPOSITIONS:
-        return [f"{label} \"{name}\": disposition must be {', '.join(VARIANT_DISPOSITIONS)} - a variant of the "
-                "ticket's own action is never only a suggested check (unless it is known only from the code)"]
+        return [f"{label} \"{name}\": disposition must be {', '.join(VARIANT_DISPOSITIONS)} or TEST_PLAN"]
     if disposition == "NOT_APPLICABLE":
         reason = str(entry.get("reason") or "")
         if len(reason.split()) < 5:
@@ -1001,9 +987,9 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
     stored, and the topic reference when the reporter used a map reference while the ticket asked for the
     general behaviour ("users can move content while others refer to it"). On a move ticket the human UAC
     also moved the item back and moved an item with a different origin (created in the target folder). They
-    are ACs or TBDs, never suggested checks: they are the ticket's own action, not a scenario found only by
-    research. The exception is a route, switch or item type known only from the code: it would assert
-    behaviour nobody asked for, so it is a TBD or a suggested check."""
+    are ACs or TBDs: they are the ticket's own action, not a scenario found only by research. A route, switch
+    or item type known only from the code would assert behaviour nobody asked for, so it is a TBD, TEST_PLAN,
+    or an AC that checks it still works as before."""
     block = evidence.get("action_variants")
     if not isinstance(block, dict):
         return ["action_variants is missing: list every way the user performs the ticket's action (entry_points), "

@@ -7864,10 +7864,11 @@ def test_scenario_and_failure_path() -> None:
         {"ac": 2, "scenario": "ADJACENT"},
     ]}
     adjacent = uc.scenario_problems({"scenario": scenario}, uac, source)
-    check("an adjacent-scenario criterion fails", any("did not hit" in p for p in adjacent))
+    check("an adjacent-scenario criterion that names its source may be an Acceptance Criterion", adjacent == [])
+    sourceless = uac.replace("  **Source:** investigation comment.\n", "")
+    check("an adjacent-scenario criterion without a Source line fails",
+          any("did not hit" in p for p in uc.scenario_problems({"scenario": scenario}, sourceless, source)))
     with_tbd = uac + "  **TBD:** Is project deletion part of this ticket?\n"
-    check("an adjacent-scenario criterion fails even with a TBD: it is a suggested check",
-          any("Suggested checks" in p for p in uc.scenario_problems({"scenario": scenario}, with_tbd, source)))
     only_adjacent = {"customer_steps": [step], "acs": [{"ac": 1, "scenario": "ADJACENT"}, {"ac": 2, "scenario": "ADJACENT"}]}
     check("a UAC with no criterion on the reporter's scenario fails",
           any("reporter's own scenario" in p for p in uac_completeness_check_mod.scenario_problems(
@@ -7916,7 +7917,7 @@ def test_scenario_and_failure_path() -> None:
           uc.failure_path_problems({}, uac, {"summary": "Preview title", "description": "wrong title"}) == [])
 
 
-def test_fix_basis_and_suggested_checks() -> None:
+def test_fix_basis_and_no_suggested_checks() -> None:
     uc = uac_completeness_check_mod
     jst = jira_safe_text_mod
     step = "The translation job shows Completed but 310 files stay In Progress."
@@ -7962,40 +7963,43 @@ def test_fix_basis_and_suggested_checks() -> None:
         "  **Source:** investigation comment.\n"
         "  **Why suggested:** an investigator found this path; the reporter did not delete a project.\n"
     )
-    check("well-formed suggested checks pass", uc.suggested_problems(suggested) == [])
-    check("a suggested check is not an Acceptance Criterion",
-          sorted(int(n) for n, _ in uc._AC_BLOCK.findall(suggested)) == [1, 2]
-          and "Suggested" not in dict((int(n), b) for n, b in uc._AC_BLOCK.findall(suggested))[2])
-    check("a suggested check without why fails",
-          any("Why suggested" in p for p in uc.suggested_problems(suggested.replace("  **Why suggested:**", "  Note:"))))
+    check("a UAC without suggested checks passes", uc.suggested_problems(body) == [])
+    check("a UAC with a Suggested checks section is refused",
+          any("write each check that matters as an Acceptance Criterion" in p for p in uc.suggested_problems(suggested)))
     loose = body + "- Suggested check 01: something.\n  **Source:** x.\n"
-    check("suggested checks without the heading fail", any("heading" in p for p in uc.suggested_problems(loose)))
-    late = suggested + "- Acceptance Criteria 03: Verify something else.\n  **Source:** ticket.\n"
-    check("an Acceptance Criterion after the suggested checks fails",
-          any("must come before" in p for p in uc.suggested_problems(late)))
-    many = body + "\nSuggested checks (QE decide):\n" + "".join(
-        f"- Suggested check {n:02d}: check {n}.\n  **Source:** doc.\n  **Why suggested:** found only in the documentation page.\n"
-        for n in range(1, 7))
-    check("more than five suggested checks fails", any("6 suggested checks" in p for p in uc.suggested_problems(many)))
+    check("a Suggested check line without the heading is refused too", uc.suggested_problems(loose) != [])
+    check("a suggested section is not an Acceptance Criterion",
+          sorted(int(n) for n, _ in uc._AC_BLOCK.findall(suggested)) == [1, 2])
+    as_ac = body + ("- Acceptance Criteria 03: Deleting a translation project still clears its In Progress entries "
+                    "as before.\n  **Source:** Experience League translation page.\n")
     adjacent = {"customer_steps": [step], "acs": [{"ac": 1, "scenario": "CUSTOMER", "step": step},
-                                                  {"ac": 2, "scenario": "ADJACENT"}]}
-    check("an adjacent criterion must be a suggested check",
-          any("move it to" in p for p in uc.scenario_problems({"scenario": adjacent}, suggested, source)))
+                                                  {"ac": 2, "scenario": "REGRESSION", "step": step},
+                                                  {"ac": 3, "scenario": "ADJACENT"}]}
+    check("a research check that matters is an Acceptance Criterion",
+          uc.scenario_problems({"scenario": adjacent}, as_ac, source) == [] and uc.suggested_problems(as_ac) == [])
     doc_research = {"findings": [{"claim": "Deleting a project rejects its jobs.", "source_refs": ["doc:translation"]}]}
-    check("a documentation finding can be answered by a suggested check",
-          uc.doc_finding_problems({"doc_findings": [{"finding": 1, "disposition": "SUGGESTED", "suggested": 1}]},
-                                  doc_research, suggested) == [])
-    check("a documentation finding pointing at a missing suggested check fails",
-          any("does not exist" in p for p in uc.doc_finding_problems(
-              {"doc_findings": [{"finding": 1, "disposition": "SUGGESTED", "suggested": 4}]}, doc_research, suggested)))
+    check("a documentation finding answered SUGGESTED is refused",
+          any("no longer an answer" in p for p in uc.doc_finding_problems(
+              {"doc_findings": [{"finding": 1, "disposition": "SUGGESTED", "suggested": 1}]}, doc_research, suggested)))
+    plan = "Regression: deleting a translation project rejects its jobs."
+    check("a documentation finding may go to the full test plan",
+          uc.doc_finding_problems({"doc_findings": [{"finding": 1, "disposition": "TEST_PLAN"}]},
+                                  doc_research, body, plan) == [])
+    check("a documentation finding sent to a test plan that does not name it fails",
+          any("does not name it" in p for p in uc.doc_finding_problems(
+              {"doc_findings": [{"finding": 1, "disposition": "TEST_PLAN"}]}, doc_research, body, "unrelated text")))
+    similar = {"similar_uacs": {"status": "compared", "uacs": [{"key": "GUIDES-1", "dimensions": [
+        {"dimension": "project deletion", "disposition": "SUGGESTED", "suggested": 1}]}]}}
+    check("a similar-UAC dimension answered SUGGESTED is refused",
+          any("no longer an answer" in p for p in uc.similar_uac_problems(similar, suggested)))
+    similar["similar_uacs"]["uacs"][0]["dimensions"][0] = {"dimension": "project deletion", "disposition": "TEST_PLAN"}
+    check("a similar-UAC dimension may go to the full test plan",
+          uc.similar_uac_problems(similar, body, "Delete the translation project and check its jobs.") == [])
 
     field = jst.jira_field_body(note + suggested)
     check("the Jira field keeps the not-confirmed note on top", field.startswith("_Note: The root cause"))
-    check("the Jira field leaves the suggested checks out",
+    check("the Jira field drops a legacy suggested section",
           "Suggested" not in field and "*Acceptance Criteria 02:*" in field)
-    rendered = jst.suggested_checks_body(note + suggested)
-    check("the suggested checks render for the draft comment",
-          rendered.startswith("*Suggested check 01:*") and "* Why suggested:" in rendered)
     check("a UAC without suggested checks renders none", jst.suggested_checks_body(body) == "")
 
 
@@ -8037,10 +8041,9 @@ def test_human_uac_shape() -> None:
           field.endswith("*Out of scope:*\n* Topic titles.\n* HTML5 output."))
     blocks = dict((int(n), b) for n, b in uc._AC_BLOCK.findall(uac))
     check("the last criterion does not swallow the Out of scope list", "Topic titles" not in blocks[2])
-    late = uac + "\nSuggested checks (QE decide):\n- Suggested check 01: x.\n  **Source:** y.\n  **Why suggested:** found only in the documentation page.\n"
-    check("an Out of scope list above the suggested checks is fine", uc.suggested_problems(late) == [])
-    wrong = uac.replace("Out of scope:", "PLACEHOLDER") + "\nSuggested checks (QE decide):\n- Suggested check 01: x.\n  **Source:** y.\n  **Why suggested:** found only in the documentation page.\nOut of scope:\n- z.\n"
-    check("an Out of scope list below the suggested checks is refused", any("Out of scope" in p for p in uc.suggested_problems(wrong)))
+    check("a UAC with Scope and Out of scope but no suggested checks passes", uc.suggested_problems(uac) == [])
+    late = uac + "\nSuggested checks (QE decide):\n- Suggested check 01: x.\n  **Source:** y.\n"
+    check("a Suggested checks section after the Out of scope list is refused", uc.suggested_problems(late) != [])
 
 
 def test_uac_size_and_pre_existing_items() -> None:
@@ -8060,13 +8063,9 @@ def test_uac_size_and_pre_existing_items() -> None:
     long_body = short.replace("Saving a topic stores its word count.", "Saving a topic stores its word count " + "and more " * 200 + ".")
     check("delivered criteria over the word budget fail", any("words; keep them within" in p for p in uc.size_problems(long_body)))
     suggestions = short + "\nSuggested checks (QE decide):\n" + "".join(
-        f"- Suggested check {n:02d}: " + "word " * 100 + "\n  **Source:** doc.\n  **Why suggested:** found only in the documentation page.\n"
-        for n in range(1, 4))
-    check("suggested checks do not count toward the word budget", uc.size_problems(suggestions) == [])
-    check("four suggested checks is one too many", any("4 suggested checks" in p for p in uc.suggested_problems(
-        short + "\nSuggested checks (QE decide):\n" + "".join(
-            f"- Suggested check {n:02d}: x.\n  **Source:** doc.\n  **Why suggested:** found only in the documentation page.\n"
-            for n in range(1, 5)))))
+        f"- Suggested check {n:02d}: " + "word " * 100 + "\n  **Source:** doc.\n" for n in range(1, 5))
+    check("a legacy suggested section counts toward the word budget", any(
+        "words; keep them within" in p for p in uc.size_problems(suggestions)))
 
     check("a missing pre-existing answer fails", any("pre_existing_items is missing" in p for p in uc.pre_existing_problems({}, short)))
     check("an AC answer that names a real criterion passes",
@@ -8231,9 +8230,7 @@ def test_not_named_reasons_and_scope_boundaries() -> None:
            "  **Source:** Ticket description.\n"
            "Out of scope:\n"
            "- V2 baselines (the new baseline mode).\n"
-           "- External paste from Word or Excel.\n"
-           "Suggested checks (QE decide):\n"
-           "- Suggested check 01: x.\n  **Source:** doc.\n  **Why suggested:** doc only.\n")
+           "- External paste from Word or Excel.\n")
     check("the Out of scope list is read", uc.out_of_scope_items(uac) == [
         "V2 baselines (the new baseline mode).", "External paste from Word or Excel."])
     good = {"scope_boundaries": [
@@ -8316,7 +8313,7 @@ def test_input_sources() -> None:
         {"input_sources": [word, {"name": "Excel", "basis": "DOCUMENTATION", "disposition": "NOT_APPLICABLE",
                                   "reason": "the ticket only reports Word, not mentioned by the reporter"}]},
         blocks, uac, paste)))
-    check("an input source parked as a suggestion is refused", any("never only a suggested check" in p for p in
+    check("an input source answered SUGGESTED is refused", any("no longer an answer" in p for p in
           uc.input_source_problems({"input_sources": [word, dict(docs, disposition="SUGGESTED")]}, blocks, uac, paste)))
     check("a ticket that brings nothing in needs no input sources", uc.input_source_problems({}, blocks, uac, other) == [])
 
@@ -8372,18 +8369,16 @@ def test_action_variants() -> None:
             "its reference.\n"
             "  - a reference with an empty href, and one with no href at all\n"
             "  **Source:** QE variant of the ticket's move.\n"
-            "Suggested checks (QE decide):\n"
-            "- Suggested check 01: The same move with the new baseline mode on.\n"
-            "  **Source:** Code.\n"
-            "  **Why suggested:** Found only in the code.\n")
+            "- Acceptance Criteria 05: The same move with the new baseline mode on or off still works as before.\n"
+            "  **Source:** Code.\n")
     good = {"action_variants": {
         "entry_points": [{"name": "drag and drop from the Repository panel", "basis": "TICKET", "disposition": "AC",
                           "ac": 1},
                          {"name": "Insert from the toolbar", "basis": "DOCUMENTATION", "disposition": "AC", "ac": 1}],
         "config_switches": [{"name": "UUID file names", "basis": "DEVELOPER_COMMENT", "states": ["enabled", "disabled"],
                              "disposition": "AC", "acs": [2]},
-                            {"name": "new baseline mode", "basis": "CODE", "disposition": "SUGGESTED",
-                             "suggested": 1}],
+                            {"name": "new baseline mode", "basis": "CODE", "states": ["on", "off"],
+                             "disposition": "AC", "acs": [5]}],
         "mechanism": {"general_ask": True, "variants": [
             {"name": "map reference", "basis": "TICKET", "disposition": "AC", "ac": 3},
             {"name": "key reference", "basis": "TICKET", "disposition": "TBD", "ac": 3}],
@@ -8417,8 +8412,8 @@ def test_action_variants() -> None:
     check("an entry point the criterion does not name fails",
           any("does not name it" in p for p in variant(entry_points=[{"name": "context menu", "basis": "TICKET", "disposition": "AC",
                                                                       "ac": 1}])))
-    check("an entry point parked as a suggestion fails",
-          any("never only a suggested check" in p for p in variant(entry_points__1__disposition="SUGGESTED")))
+    check("an entry point answered SUGGESTED fails",
+          any("no longer an answer" in p for p in variant(entry_points__1__disposition="SUGGESTED")))
     check("a switch with one state fails", any("at least two states" in p for p in variant(
         config_switches__0__states=["enabled"])))
     check("a switch state no criterion covers fails", any("when it is off" in p for p in variant(
@@ -8447,19 +8442,21 @@ def test_action_variants() -> None:
           == [])
     check("a variant without a basis fails", any("basis must be" in p for p in variant(
         entry_points__0__basis=None)))
-    check("a code-only route cannot be an Acceptance Criterion", any("known only from the code" in p for p in variant(
+    check("a code-only route on a new-behaviour criterion fails", any("known only from the code" in p for p in variant(
         entry_points__1__basis="CODE")))
-    check("a code-only switch may be a suggested check", variant(config_switches__1__suggested=1) == [])
-    check("a code-only suggestion must exist", any("suggested check 5" in p for p in variant(
-        config_switches__1__suggested=5)))
-    check("a suggestion is still refused for a ticket-based route", any("never only a suggested check" in p
-                                                                        for p in variant(
+    check("a code-only switch on a still-works-as-before criterion passes", variant() == [])
+    check("a code-only switch on a new-behaviour criterion fails", any("known only from the code" in p for p in variant(
+        config_switches__1__acs=[2])))
+    check("a code-only switch may be a TBD", variant(config_switches__1__disposition="TBD",
+                                                     config_switches__1__acs=[3]) == [])
+    check("SUGGESTED is refused for a ticket-based route too", any("no longer an answer" in p for p in variant(
         entry_points__0__disposition="SUGGESTED")))
 
     step = "Move the referenced map before saving"
     scenario = {"scenario": {"customer_steps": [step], "acs": [
         {"ac": 1, "scenario": "CUSTOMER", "step": step}, {"ac": 2, "scenario": "VARIANT", "step": step},
-        {"ac": 3, "scenario": "VARIANT", "step": step}, {"ac": 4, "scenario": "VARIANT", "step": step}]}}
+        {"ac": 3, "scenario": "VARIANT", "step": step}, {"ac": 4, "scenario": "VARIANT", "step": step},
+        {"ac": 5, "scenario": "REGRESSION", "step": step}]}}
     check("VARIANT criteria listed in action_variants pass the scenario check",
           uc.scenario_problems({**scenario, **good}, uac, None) == [])
     check("a VARIANT criterion action_variants does not list fails",
@@ -18257,7 +18254,7 @@ def main() -> int:
     test_hotfix_scope_check()
     test_uac_completeness_check()
     test_scenario_and_failure_path()
-    test_fix_basis_and_suggested_checks()
+    test_fix_basis_and_no_suggested_checks()
     test_gate_firing_log()
     test_human_uac_shape()
     test_uac_size_and_pre_existing_items()

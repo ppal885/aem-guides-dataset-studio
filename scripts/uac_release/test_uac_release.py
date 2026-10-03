@@ -27,10 +27,8 @@ UAC = (
     "- Acceptance Criteria 02: Verify that an empty report shows a message.\n"
     "  **Source:** Ticket description.\n"
     "  **TBD:** Which message text should be shown?\n"
-    "\nSuggested checks (QE decide):\n"
-    "- Suggested check 01: Verify that the report also opens from the Map dashboard.\n"
+    "- Acceptance Criteria 03: The report still opens from the Map dashboard as before.\n"
     "  **Source:** Experience League report page.\n"
-    "  **Why suggested:** the documentation lists a second entry point the ticket does not name.\n"
 )
 
 
@@ -59,6 +57,8 @@ SURFACES = [
      "disposition": "TBD", "ac": 2},
     {"surface": "Email notification", "evidence": ["https://experienceleague.adobe.com/notify"],
      "authority": "DOCUMENTATION", "disposition": "OUT_OF_SCOPE", "reason": "the email is sent by another product"},
+    {"surface": "Map dashboard", "evidence": ["https://experienceleague.adobe.com/report"],
+     "authority": "DOCUMENTATION", "disposition": "AC", "ac": 3},
 ]
 
 
@@ -134,7 +134,8 @@ EVIDENCE = {
     "similar_uacs": {"status": "none_found", "queries": ["component = Publishing AND text ~ report"], "uacs": []},
     "scenario": {"customer_steps": ["The report must open from the Map console."], "acs": [
         {"ac": 1, "scenario": "CUSTOMER", "step": "The report must open from the Map console."},
-        {"ac": 2, "scenario": "CUSTOMER", "step": "The report must open from the Map console."}]},
+        {"ac": 2, "scenario": "CUSTOMER", "step": "The report must open from the Map console."},
+        {"ac": 3, "scenario": "ADJACENT"}]},
     "fix_basis": {"status": "UNCONFIRMED"},
     "pre_existing_items": {"disposition": "NOT_APPLICABLE", "reason": "the report screen stores nothing made before the change"},
     "action_variants": {"entry_points": [{"name": "the only route", "disposition": "NOT_APPLICABLE",
@@ -219,38 +220,33 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(field_body.startswith("_Note: The root cause"))
         self.assertIn("{{ReportServlet.java}}", field_body)
         self.assertNotIn("Suggested", field_body)
-        self.assertIn("*Acceptance Criteria 03:* Verify that the report also opens from the Map dashboard.", field_body,
-                      "suggested checks become Acceptance Criteria in the field")
+        self.assertIn("*Acceptance Criteria 03:* The report still opens from the Map dashboard as before.", field_body,
+                      "a research check that matters is an Acceptance Criterion")
         self.assertIn("* Source: Experience League report page.", field_body)
-        self.assertNotIn("Why suggested", field_body)
         self.assertIn(("set_field", "PROJ-1", "customfield_1", field_body), jira.calls)
         self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls)
         comment = jira.calls[2][2]
-        self.assertIn("UAC written by the test-plan skill", comment)
-        self.assertNotIn("Suggested check", comment, "no separate suggested-checks comment")
-        self.assertNotIn("UAC_Approved", comment)
+        self.assertEqual(comment, "*Full test plan:* [^PROJ-1-test-plan.md]", "the comment is only the test plan")
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["state"], "POSTED", "the harvester learns from it")
         self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
-        self.assertEqual(status["suggested"], [])
-        self.assertEqual(status["suggested_merged"], ["Verify that the report also opens from the Map dashboard."])
+        self.assertNotIn("suggested", status, "there are no suggested checks to record")
+        self.assertNotIn("suggested_merged", status)
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
 
-    def test_suggested_checks_are_numbered_after_the_criteria_and_before_out_of_scope(self) -> None:
-        text = ("- Acceptance Criteria 1: A works.\n  **Source:** ticket\n"
-                "- Acceptance Criteria 2: B works.\n  **Source:** ticket\n\n"
-                "Out of scope:\n- C\n\n"
-                "Suggested checks (QE decide):\n"
-                "- Suggested check 01: D works.\n  **Source:** doc page\n  **Why suggested:** docs list it\n")
-        merged, moved = runner.merge_suggested_into_criteria(text)
-        self.assertEqual(moved, ["D works."])
-        self.assertIn("- Acceptance Criteria 3: D works.\n  **Source:** doc page\n\nOut of scope:", merged)
-        self.assertNotIn("Suggested", merged)
-        self.assertNotIn("Why suggested", merged)
+    def test_written_comment_is_only_the_full_test_plan(self) -> None:
+        self.assertEqual(runner.written_comment("PROJ-1-test-plan.md"), "*Full test plan:* [^PROJ-1-test-plan.md]")
 
-    def test_uac_without_suggested_checks_is_unchanged(self) -> None:
-        text = "- Acceptance Criteria 01: A works.\n  **Source:** ticket\n"
-        self.assertEqual(runner.merge_suggested_into_criteria(text), (text, []))
+    def test_prompt_no_longer_asks_for_suggested_checks(self) -> None:
+        self.assertNotIn("Suggested checks (QE decide)", runner.PROMPT)
+        self.assertNotIn("SUGGESTED", runner.PROMPT)
+        self.assertIn("still works as before", runner.PROMPT)
+
+    def test_a_uac_with_a_suggested_section_is_refused(self) -> None:
+        check = common.import_skill_module("uac_completeness_check")
+        legacy = UAC + "\nSuggested checks (QE decide):\n- Suggested check 01: D works.\n  **Source:** doc page\n"
+        self.assertTrue(check.suggested_problems(legacy))
+        self.assertEqual(check.suggested_problems(UAC), [])
 
     def test_runner_never_overwrites_a_filled_field(self) -> None:
         jira = FakeJira(field_value="Criteria written by a person")
@@ -319,8 +315,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "POSTED")
         self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls, "a fallback UAC is posted too")
         comment = [c for c in jira.calls if c[0] == "comment"][0][2]
-        self.assertIn("*Runtime gates not passed - please check these points*", comment)
-        self.assertIn("* BehavioralCompletenessGate: research still pending", comment)
+        self.assertNotIn("Runtime gates", comment, "the gates stay in status.json and the release page")
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["runtime_fallback"], ["BehavioralCompletenessGate: research still pending",
                                                       "FinalQEPlanRenderer: no criteria to render"])
@@ -641,7 +636,7 @@ class RunnerTests(unittest.TestCase):
             problems = runner.hotfix_scope_problems(ticket, hotfix)
         self.assertEqual(problems, ["hotfix scope: Acceptance Criteria 02: not a hotfix regression"])
 
-    def test_orphan_notes_go_to_the_comment_and_do_not_fail_the_ticket(self) -> None:
+    def test_orphan_notes_stay_in_status_and_do_not_fail_the_ticket(self) -> None:
         jira = FakeJira()
         note = "Acceptance Criteria 2 is not tied to any ticket sentence"
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
@@ -650,29 +645,28 @@ class RunnerTests(unittest.TestCase):
             result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
         self.assertEqual(result, "POSTED")
         comment = [c for c in jira.calls if c[0] == "comment"][0][2]
-        self.assertIn("*Please check*", comment)
-        self.assertIn(note, comment)
+        self.assertNotIn(note, comment, "review notes are not posted to the ticket")
         self.assertEqual(common.read_status(self.out / "PROJ-1")["review_notes"], [note])
 
     def test_orphan_acceptance_criterion_fails(self) -> None:
         self.assertEqual(runner.orphan_ac_problems(self._ticket_with("PROJ-8", UAC)), [])
-        extra = UAC + ("- Acceptance Criteria 03: Verify that an export with no rows shows an empty file.\n"
+        extra = UAC + ("- Acceptance Criteria 04: Verify that an export with no rows shows an empty file.\n"
                        "  **Source:** Ticket description.\n")
         found = runner.orphan_ac_problems(self._ticket_with("PROJ-9", extra))
         self.assertEqual(len(found), 1)
-        self.assertIn("Acceptance Criteria 3 is not tied to any ticket sentence", found[0])
+        self.assertIn("Acceptance Criteria 4 is not tied to any ticket sentence", found[0])
 
     def test_regression_ac_on_a_discovered_surface_is_not_an_orphan(self) -> None:
-        extra = UAC + ("- Acceptance Criteria 03: Verify that the Report dialog still opens as before.\n"
+        extra = UAC + ("- Acceptance Criteria 04: Verify that the Report dialog still opens as before.\n"
                        "  **Source:** src/controllers/report_dialog.ts line 40.\n")
         surfaces = SURFACES + [{"surface": "Report dialog", "evidence": ["src/controllers/report_dialog.ts:40"],
-                                "authority": "CODE_REUSE", "disposition": "AC", "ac": 3}]
+                                "authority": "CODE_REUSE", "disposition": "AC", "ac": 4}]
         self.assertEqual(runner.orphan_ac_problems(self._ticket_with("PROJ-10", extra, surfaces=surfaces)), [])
 
     def test_one_ticket_sentence_can_drive_several_criteria(self) -> None:
-        extra = UAC + ("- Acceptance Criteria 03: Verify that an export with no rows shows an empty file.\n"
+        extra = UAC + ("- Acceptance Criteria 04: Verify that an export with no rows shows an empty file.\n"
                        "  **Source:** Ticket description.\n")
-        coverage = [dict(COVERAGE[0], ac=[1, 3])] + COVERAGE[1:]
+        coverage = [dict(COVERAGE[0], ac=[1, 4])] + COVERAGE[1:]
         ticket = self._ticket_with("PROJ-14", extra, coverage=coverage)
         self.assertEqual(runner.orphan_ac_problems(ticket), [])
         self.assertEqual(runner.source_coverage_problems(ticket, SOURCE, own_name="uac.bot"), [])
