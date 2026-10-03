@@ -139,7 +139,7 @@ NGINX_CONF = r"""server {
         limit_except GET HEAD { deny all; }
         try_files /index.html =404;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-MOiLslSrJQ5o29rDsyOvu4cUaxN5xi02TiFc0sNc1Vw='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-3HCZ+8Fv9h5K/4AeA7iDSGP/sOeY4BJEFOW8LPu286A='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
@@ -149,7 +149,7 @@ NGINX_CONF = r"""server {
         limit_except GET HEAD { deny all; }
         try_files $uri =404;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-MOiLslSrJQ5o29rDsyOvu4cUaxN5xi02TiFc0sNc1Vw='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-3HCZ+8Fv9h5K/4AeA7iDSGP/sOeY4BJEFOW8LPu286A='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header Referrer-Policy "no-referrer" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
