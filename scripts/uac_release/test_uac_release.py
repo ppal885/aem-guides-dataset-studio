@@ -218,18 +218,39 @@ class RunnerTests(unittest.TestCase):
         field_body = (self.out / "PROJ-1" / "field-body.txt").read_text(encoding="utf-8")
         self.assertTrue(field_body.startswith("_Note: The root cause"))
         self.assertIn("{{ReportServlet.java}}", field_body)
-        self.assertNotIn("Suggested", field_body, "suggested checks never go into the Acceptance Criteria field")
+        self.assertNotIn("Suggested", field_body)
+        self.assertIn("*Acceptance Criteria 03:* Verify that the report also opens from the Map dashboard.", field_body,
+                      "suggested checks become Acceptance Criteria in the field")
+        self.assertIn("* Source: Experience League report page.", field_body)
+        self.assertNotIn("Why suggested", field_body)
         self.assertIn(("set_field", "PROJ-1", "customfield_1", field_body), jira.calls)
         self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls)
         comment = jira.calls[2][2]
         self.assertIn("UAC written by the test-plan skill", comment)
-        self.assertIn("*Suggested check 01:*", comment)
+        self.assertNotIn("Suggested check", comment, "no separate suggested-checks comment")
         self.assertNotIn("UAC_Approved", comment)
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["state"], "POSTED", "the harvester learns from it")
         self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
-        self.assertEqual(status["suggested"], ["Verify that the report also opens from the Map dashboard."])
+        self.assertEqual(status["suggested"], [])
+        self.assertEqual(status["suggested_merged"], ["Verify that the report also opens from the Map dashboard."])
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
+
+    def test_suggested_checks_are_numbered_after_the_criteria_and_before_out_of_scope(self) -> None:
+        text = ("- Acceptance Criteria 1: A works.\n  **Source:** ticket\n"
+                "- Acceptance Criteria 2: B works.\n  **Source:** ticket\n\n"
+                "Out of scope:\n- C\n\n"
+                "Suggested checks (QE decide):\n"
+                "- Suggested check 01: D works.\n  **Source:** doc page\n  **Why suggested:** docs list it\n")
+        merged, moved = runner.merge_suggested_into_criteria(text)
+        self.assertEqual(moved, ["D works."])
+        self.assertIn("- Acceptance Criteria 3: D works.\n  **Source:** doc page\n\nOut of scope:", merged)
+        self.assertNotIn("Suggested", merged)
+        self.assertNotIn("Why suggested", merged)
+
+    def test_uac_without_suggested_checks_is_unchanged(self) -> None:
+        text = "- Acceptance Criteria 01: A works.\n  **Source:** ticket\n"
+        self.assertEqual(runner.merge_suggested_into_criteria(text), (text, []))
 
     def test_runner_never_overwrites_a_filled_field(self) -> None:
         jira = FakeJira(field_value="Criteria written by a person")

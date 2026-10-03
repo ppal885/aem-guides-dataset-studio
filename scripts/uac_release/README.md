@@ -10,7 +10,7 @@ JQL -> copilot -p per ticket -> checks -> AC field + attachment + comment + QEVi
 ```
 
 When the checks pass, the runner writes the UAC into the Acceptance Criteria field, reads the
-rendered field back, attaches the full test plan, leaves a short comment (suggested checks and review
+rendered field back, attaches the full test plan, leaves a short comment (review
 notes), adds `labels.posted` (`QEVision_UAC_DONE`: the UAC was written by the skill) and sends the
 decision request. No person reviews it before it is posted; QE edits the field afterwards and the
 harvester learns from those edits. A field that already holds text is never overwritten: the ticket
@@ -211,10 +211,11 @@ Windows VM: same steps in PowerShell, then register the tasks once (elevated):
 `.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env`
 
 Daily use: nothing to run. The UAC is already in the Acceptance Criteria field with
-`QEVision_UAC_DONE`; to change the criteria, edit the field, and no label is needed. The runner's
-comment lists *Suggested checks (QE decide)*: checks found only by our own research
-(documentation, code, a similar ticket). They are never copied into the field; add the ones you want to
-the field, and the monthly report counts them as promoted. When the root cause is not
+`QEVision_UAC_DONE`; to change the criteria, edit the field, and no label is needed. Checks found only
+by our own research (documentation, code, a similar ticket), which Copilot writes as "Suggested checks"
+in `UAC.md`, are written into the field as the last Acceptance Criteria, with their Source line; there is
+no separate suggested-checks comment. Remove the ones you do not want from the field; the harvester learns
+from the removals. When the root cause is not
 confirmed yet, the UAC starts with a note saying so. Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
 
 ## Run it

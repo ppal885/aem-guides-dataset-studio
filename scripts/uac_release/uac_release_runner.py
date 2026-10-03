@@ -544,7 +544,47 @@ def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
     return lines
 
 
-def written_comment(plan_name: str, review_notes: list[str] | None = None, suggested_body: str = "",
+_SUGGESTED_HEADING = re.compile(r"^Suggested checks\b.*$", re.MULTILINE)
+_SUGGESTED_CHECK = re.compile(
+    r"^-\s*Suggested check \d+:\s*(.+?)\s*$((?:\n[ \t]+(?:\*\*)?(?:Source|Why suggested):(?:\*\*)?\s*.+)*)",
+    re.MULTILINE)
+_SUGGESTED_SOURCE = re.compile(r"^[ \t]+(?:\*\*)?Source:(?:\*\*)?\s*(.+)$", re.MULTILINE)
+_OUT_OF_SCOPE = re.compile(r"^Out of scope:?\s*$", re.MULTILINE | re.IGNORECASE)
+
+
+def merge_suggested_into_criteria(uac_text: str) -> tuple[str, list[str]]:
+    """Move the "Suggested checks" into the Acceptance Criteria, numbered after the last criterion.
+
+    QE wants every check in the Acceptance Criteria field, not in a separate comment. Each check keeps
+    its Source line; the "Why suggested" line is dropped. Returns the UAC text without a suggested-checks
+    section, and the statements that were moved."""
+    heading = _SUGGESTED_HEADING.search(uac_text)
+    if not heading:
+        return uac_text, []
+    criteria, suggested = uac_text[:heading.start()].rstrip(), uac_text[heading.start():]
+    numbers = [int(n) for n in re.findall(r"^- Acceptance Criteria (\d+):", criteria, re.MULTILINE)]
+    width = 2 if re.search(r"^- Acceptance Criteria 0\d:", criteria, re.MULTILINE) or not numbers else 1
+    number = max(numbers, default=0)
+    blocks, moved = [], []
+    for match in _SUGGESTED_CHECK.finditer(suggested):
+        statement, subs = match.groups()
+        number += 1
+        block = f"- Acceptance Criteria {number:0{width}d}: {statement}"
+        source = _SUGGESTED_SOURCE.search(subs or "")
+        if source:
+            block += f"\n  **Source:** {source.group(1).strip()}"
+        blocks.append(block)
+        moved.append(statement)
+    if not blocks:
+        return criteria + "\n", []
+    out_of_scope = _OUT_OF_SCOPE.search(criteria)
+    if out_of_scope:
+        head, tail = criteria[:out_of_scope.start()].rstrip(), criteria[out_of_scope.start():]
+        return head + "\n" + "\n".join(blocks) + "\n\n" + tail + "\n", moved
+    return criteria + "\n" + "\n".join(blocks) + "\n", moved
+
+
+def written_comment(plan_name: str, review_notes: list[str] | None = None,
                     fallback_gates: list[str] | None = None) -> str:
     if fallback_gates is None:
         how = "it passed the automated checks but no person reviewed it before posting"
@@ -559,10 +599,6 @@ def written_comment(plan_name: str, review_notes: list[str] | None = None, sugge
     if fallback_gates is not None:
         text += ("\n\n----\n*Runtime gates not passed - please check these points*\n"
                  + "".join(f"* {gate}\n" for gate in fallback_gates or ["not recorded"]))
-    if suggested_body:
-        text += ("\n\n----\n*Suggested checks (QE decide)* - found by our own research, not by the ticket. "
-                 "They are not in the Acceptance Criteria field. To use one, add it to the field; "
-                 "ignore the rest.\n\n" + suggested_body)
     if review_notes:
         text += ("\n\n----\n*Please check* (automatic review notes)\n"
                  + "".join(f"* {note}\n" for note in review_notes))
@@ -597,7 +633,7 @@ def field_rendered(field_body: str, rendered: str) -> bool:
 
 
 def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict, field_body: str,
-                plan_copy: Path, review_notes: list[str], suggested_body: str, decision_body: str = "") -> str:
+                plan_copy: Path, review_notes: list[str], decision_body: str = "") -> str:
     """Write the checked UAC into an empty Acceptance Criteria field and mark it written by the skill."""
     field = config["acceptance_criteria_field"]
     current = (jira.get_field(key, field) or "").strip()
@@ -620,7 +656,7 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
         common.write_status(ticket_dir, status)
         logger.error("%s: UAC written into the field but it did not render as expected; check it in Jira", key)
         return common.WRITTEN_UNRENDERED
-    comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes, suggested_body,
+    comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes,
                                                        status.get("runtime_fallback")))
     jira.update_labels(key, add=[config["labels"]["posted"]])
     status.update(state="POSTED", comment_id=comment_id, attachment_id=attachment_id,
@@ -691,10 +727,12 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         return "FAILED"
     jira_text = common.import_skill_module("jira_safe_text")
     uac_text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
-    field_body = jira_text.jira_field_body(uac_text)
-    suggested_body = jira_text.suggested_checks_body(uac_text)
+    # Every check goes into the Acceptance Criteria field; nothing is left for a separate comment.
+    field_text, merged = merge_suggested_into_criteria(uac_text)
+    field_body = jira_text.jira_field_body(field_text)
     (ticket_dir / "field-body.txt").write_text(field_body, encoding="utf-8")
-    status["suggested"] = re.findall(r"^- Suggested check \d+:\s*(.+?)\s*$", uac_text, re.MULTILINE)
+    status["suggested"] = []
+    status["suggested_merged"] = merged
     status.update(state="READY", problems=[], uac_sha256=common.sha256_file(ticket_dir / common.UAC_FILE))
     warnings = decision_problems(ticket_dir)
     decision_body = ""
@@ -721,7 +759,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     plan_copy = ticket_dir / f"{key}-test-plan.md"
     shutil.copyfile(ticket_dir / common.PLAN_FILE, plan_copy)
     return write_field(key, config, jira, logger, ticket_dir, status, field_body, plan_copy,
-                       review_notes, suggested_body, decision_body)
+                       review_notes, decision_body)
 
 
 def health(config: dict, jira, logger) -> list[str]:
