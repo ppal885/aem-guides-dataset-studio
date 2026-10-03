@@ -211,11 +211,11 @@ Windows VM: same steps in PowerShell, then register the tasks once (elevated):
 `.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env`
 
 Daily use: nothing to run. The UAC is already in the Acceptance Criteria field with
-`QEVision_UAC_DONE`; to change the criteria, edit the field, and no label is needed. Checks found only
-by our own research (documentation, code, a similar ticket), which Copilot writes as "Suggested checks"
-in `UAC.md`, are written into the field as the last Acceptance Criteria, with their Source line; there is
-no separate suggested-checks comment. Remove the ones you do not want from the field; the harvester learns
-from the removals. When the root cause is not
+`QEVision_UAC_DONE`; to change the criteria, edit the field, and no label is needed. There are no
+suggested checks: a check found by our own research (documentation, code, a similar ticket) that matters
+is an Acceptance Criterion, usually a "still works as before" check, whose Source line names the
+documentation page, code or ticket; the rest is in the attached full test plan. Remove the criteria you do
+not want from the field; the harvester learns from the removals. When the root cause is not
 confirmed yet, the UAC starts with a note saying so. Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
 
 ## Run it

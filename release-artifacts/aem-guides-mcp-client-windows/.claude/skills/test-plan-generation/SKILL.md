@@ -650,18 +650,25 @@ dropped silently:
 1. **Acceptance Criterion** - the behaviour rests on the ticket, an attachment, an accepted UAC, a product
    or PM decision, or the confirmed fix; or it is a QE regression check guarding the reporter's own
    scenario. When QE can state a testable outcome for such a behaviour, it is an AC, not an Open Question
-   (`qe_completeness_coverage`, `reviewer_request_coverage`).
+   (`qe_completeness_coverage`, `reviewer_request_coverage`). A check our own research found - a
+   documentation page, the code, a similar or parent ticket's UAC, an investigator's other scenario, or
+   parity - that matters is an AC too: usually a "still works as before" AC, or a sub-point of the AC with
+   the same expected outcome. Its Source line names the documentation page, code or similar ticket.
 2. **TBD on the AC it governs** - a product decision is still open. In the full record it is also an
    `OQ-##` entry. Create a standalone AC for a TBD only when no AC governs it.
-3. **Suggested check (QE decide)** - found only by our own research: a documentation page, the code, a
-   similar or parent ticket's UAC, an investigator's other scenario, or parity nobody asked for. At most
-   three, below the criteria, never copied into the Jira field (`uac_completeness_check.py`).
+3. **Full test plan or set aside** - a research finding that does not matter enough for the UAC is checked
+   in the full test plan (TEST_PLAN; test-plan.md names it) or set aside with a reason in the record.
 4. **Out of scope or not applicable** - with a concrete reason, in the full record.
 
+There is no "Suggested checks" section: not in the delivered UAC, not in the Jira field, not in the
+comment (`uac_completeness_check.suggested_problems` refuses one). The ten-AC cap still holds, so a
+research check that cannot fit as an AC or a sub-point goes to the full test plan.
+
 A surface found only in documentation or code gets at most a "still works as before" AC or a TBD
-(`uac_release_runner.surface_inventory_problems`). A criterion on a scenario the reporter did not hit is a
-suggested check. The reporter's own action done another way is not a different scenario - see "Every way
-to do the ticket's action" below.
+(`uac_release_runner.surface_inventory_problems`). A criterion on a scenario the reporter did not hit
+(ADJACENT) is a research check: an AC only when it matters, and never in place of the reporter's own
+scenario. The reporter's own action done another way is not a different scenario - see "Every way to do
+the ticket's action" below.
 
 **Size.** Write the fewest ACs that cover the behaviour: at most ten (`ac_contract.validate_ac_count` in
 `uac_linter`). In the human UAC corpus the median ticket has 6 criteria of about 15 words each, a quarter
@@ -675,8 +682,8 @@ own research - a route, switch, input source or item type with basis DOCUMENTATI
 action, item history or value form - whose expected outcome is the same as an AC may be answered TEST_PLAN:
 it is checked in the full test plan (test-plan.md must name it) and left out of the delivered UAC. A variant
 the ticket, an attachment or a decision names stays in the UAC as an AC or a TBD. Merge same-outcome cases into one AC and list the cases in a
-short clause; split only when the required behaviour or outcome differs. Consolidation only reorganizes: every checkable point survives as an AC clause, a TBD, a
-suggested check, or in the full-record markdown. Two ACs with content-word overlap of 0.6 or more are merged
+short clause; split only when the required behaviour or outcome differs. Consolidation only reorganizes: every checkable point survives as an AC clause, a TBD, or
+in the full test plan record. Two ACs with content-word overlap of 0.6 or more are merged
 (`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
 distinct product contract; no recap AC.
 
@@ -719,8 +726,8 @@ or NOT_APPLICABLE with a reason. An empty list needs a reason, and is refused wh
 says the change reaches other areas (`uac_completeness_check.shared_consumer_problems`).
 
 **Every way to do the ticket's action.** The reporter shows one path; the human UAC covers the action.
-Record in `UAC_EVIDENCE.json` "action_variants", and make each an AC (or a TBD), never only a suggested
-check - these criteria are scenario VARIANT:
+Record in `UAC_EVIDENCE.json` "action_variants", and make each an AC (or a TBD) - these criteria are
+scenario VARIANT:
 - **entry_points** - every route to the same action: drag and drop, the toolbar, a dialog, the context
   menu, a keyboard shortcut, an API. When the reporter dragged a file in, the toolbar insert is part of the
   ticket too. Merge routes with the same outcome into one AC and list them as sub-points. When the ticket
@@ -735,7 +742,7 @@ check - these criteria are scenario VARIANT:
   content can come from: the reporter's application and the others the same conversion handles (Word,
   Google Docs, Excel, a web page, another topic or view, another file format). At least two, each an AC, a TBD
   or NOT_APPLICABLE with a reason; "the ticket only reports Word" is not a reason. A Word-table paste ticket's
-  human UAC covered Google Docs, an HTML page and Excel where ours made them suggested checks
+  human UAC covered Google Docs, an HTML page and Excel where ours left them out of the criteria
   (`uac_completeness_check.input_source_problems`).
 - **config_switches** - every configuration, feature flag or setting that changes what the action stores or
   shows, with the result in each state ("with UUID file names enabled the GUID is inserted; when disabled
@@ -756,9 +763,9 @@ check - these criteria are scenario VARIANT:
   the delivered UAC stays short. A held-out run of ten tickets still averaged 5.2 criteria where the human UACs
   of small fixes had 37 to 46 words.
 Each entry records its **basis**: TICKET, ATTACHMENT, PRODUCT_DECISION, DEVELOPER_COMMENT, DOCUMENTATION or
-CODE. A route, switch or item type known only from the code is a TBD or a suggested check, never an AC: in
-blind comparisons, routes and modes read only from the code were criteria the human UAC did not have, and
-they cost QE review time. Blind comparisons with human UACs missed the other variants while covering the
+CODE. A route, switch or item type known only from the code is a TBD, TEST_PLAN, or an AC that checks it
+still works as before - never new behaviour read from the code: in blind comparisons, routes and modes read
+only from the code were criteria the human UAC did not have, and they cost QE review time. Blind comparisons with human UACs missed the other variants while covering the
 reporter's single path (`uac_completeness_check.action_variant_problems`). NOT_APPLICABLE needs a reason
 that says why the route, switch or item cannot do the action; "nobody named it" or "the reporter did not
 use it" is why it is a variant, and the checker refuses it (Map Collection was dropped this way on two
@@ -793,10 +800,6 @@ Scope: <what this ticket covers, when the ticket or a decision sets it, e.g. Nat
   **TBD:** <open product decision>?
 Out of scope:                                          (optional, when a decision excludes something)
 - <excluded item>
-Suggested checks (QE decide):
-- Suggested check 01: <check>
-  **Source:** <source>
-  **Why suggested:** <what it guards and why it is not an Acceptance Criterion>
 ```
 
 - The label is spelled out as `Acceptance Criteria 01`, never `AC-01`, because Jira auto-links and strikes
@@ -837,7 +840,7 @@ Suggested checks (QE decide):
 - Presentation vs record: retain the eleven-section hash-bound compatibility record and evidence appendix for auditability, but never present either as the canonical result. The default Claude/Codex response is the canonical runtime's `rendered_output`.
 - The canonical renderer may emit these non-empty sections, in order: `Issue understanding`, `Publishing / product scope`, `Acceptance contract` or `Proposed acceptance contract`, `Product decisions required`, `Semantic coverage`, `Structural / hierarchy coverage`, `Referenced content coverage`, `Configuration / state coverage`, `Transformation / processing coverage`, `Generated output validation`, `Reference / link integrity`, `Negative / boundary coverage`, `Failure / recovery coverage`, `Lifecycle coverage`, `Cross-mode regression`, `NFR coverage`, `Explicit out of scope`, `Investigated and rejected`, `Evidence gaps`, and `Coverage gate result`. Do not show empty sections or manually compress away a material disposition.
 - `render_compact_view.py` and its four-section output are legacy compatibility projections only. They may be generated for an explicitly requested historical record, but they cannot replace, rewrite, authorize, or be posted instead of the canonical runtime result.
-- The delivered Acceptance Criteria format (label, Source and TBD lines, suggested checks, plain text, the ten-AC cap) is defined once in "## Acceptance Scope And The Delivered UAC" above.
+- The delivered Acceptance Criteria format (label, Source and TBD lines, no suggested checks, plain text, the ten-AC cap) is defined once in "## Acceptance Scope And The Delivered UAC" above.
 - Project full-record `Regression Areas` into smart `P3 [Regression]` Action/Expected scenarios under compact `Test Scenarios`; never expose a separate compact Regression heading.
 - Performance analysis never adds another compact section. Its internal manifest decision is visible in compact output only through a justified `(Performance)` AC when required; a conditional QA-impact question remains in the hidden full record.
 - Keep `Understanding From Jira`, `Expected Behaviour`, `Scope From Git`, `Code Touched`, `Lines Changed`, `Automation Coverage & Gaps`, and `Appendix A` in the full `.md` artifact. `Test Scenarios` remains visible in compact output. Show the complete record or any named hidden section only when the user explicitly requests it.
@@ -911,7 +914,8 @@ decides what to investigate, "## Acceptance Scope And The Delivered UAC" decides
   and what it must preserve; turn fix-introduced risks into negative ACs; take the automation verdict from
   tests the fix added; scope sign-off to what the developer's verification did not exercise
   (`root_cause_fix_driven`). An unconfirmed implementation choice is a TBD. When no fix is known, lead with the
-  not-confirmed Note and make code-only mechanism guesses suggested checks. A later root-cause comment means
+  not-confirmed Note and keep code-only mechanism guesses out of the ACs (full test plan, or a "still works as
+  before" REGRESSION AC). A later root-cause comment means
   the UAC must be reviewed (`uac_staleness_watch.py`).
 - **Working as designed and reproducibility, before fix ACs on incident tickets.** If reproduction is
   unconfirmed, lead with a reproduction strategy and keep fix ACs Proposed. Separate confirmed expected
@@ -922,7 +926,7 @@ decides what to investigate, "## Acceptance Scope And The Delivered UAC" decides
 - **Hotfix and backport scope.** Every AC rests on a hotfix ticket line or on code the hotfix diff changes;
   a parent ticket's ACs are an oracle only (`hotfix_scope_check.py`).
 - **Compare with similar human UACs** (`similar_uac_compare.py`, related tickets first) and answer every
-  dimension AC, TBD, SUGGESTED or NOT_APPLICABLE. A similar UAC is a checklist, never authority.
+  dimension AC, TBD, TEST_PLAN or NOT_APPLICABLE. A similar UAC is a checklist, never authority.
 - **No manifest omission bypass.** Populate signal-activated blocks through the v3 workflow; an ordinary
   waiver of `behavior_model`, `coverage_hypotheses` or `verifications` hard-fails
   (`references/manifest-completeness.md`).

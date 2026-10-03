@@ -12,7 +12,7 @@ One scheduled run:
      description and comments, and every attachment, is mapped to the UAC, and that every
      place the feature appears (from documentation and code) is covered;
   5. writes the UAC into an empty Acceptance Criteria field, checks the field rendered,
-     attaches the plan, comments (suggested checks, review notes), adds the posted label
+     attaches the plan, comments (review notes), adds the posted label
      (the UAC was written by the skill) and, when the UAC has TBDs, sends the decision
      request (DECISIONS.md) as its own comment. A field that already holds text is never
      overwritten.
@@ -40,11 +40,13 @@ agents, and Experience League documentation. Do not write anything to Jira.
 When finished, write these files:
 1. {uac_path}: only the delivered UAC block - a flat list of "- Acceptance Criteria NN: ..." lines,
    each followed by an indented "**Source:** ..." line and, when a decision is open, a "**TBD:** ...?" line.
-   Acceptance Criteria are only what the ticket, an attachment, a product decision or the confirmed fix
-   asks for, and QE regression checks around the reporter's scenario. Checks found only by your own
-   research (documentation, code, a similar or parent ticket, an investigator's other scenario) go after
-   them under the line "Suggested checks (QE decide):" as "- Suggested check NN: ..." lines, each with an
-   indented "**Source:** ..." and "**Why suggested:** ..." line - at most three, only ones that matter.
+   Acceptance Criteria are what the ticket, an attachment, a product decision or the confirmed fix asks
+   for, and QE regression checks around the reporter's scenario. A check your own research found
+   (documentation, code, a similar or parent ticket's UAC, an investigator's other scenario, parity) that
+   matters is also an Acceptance Criterion - usually a "still works as before" check, or a sub-point of the
+   criterion with the same outcome - and its Source line names the documentation page, code or ticket.
+   Research checks that do not matter enough go to the full test plan (file 2), not to the UAC. There is no
+   "Suggested checks" section. Keep at most ten criteria; an open product decision stays a TBD.
    Keep the criteria (with sub-points, Scope and Out of scope) within 350 words and each Source line within
    30 words: name the ticket, comment, documentation page or commit; file paths and line numbers go in the
    test plan.
@@ -98,18 +100,20 @@ When finished, write these files:
    tried | not_applicable with a reason), at least three "rag_probes" and two "history_attempts" (use
    scripts/vm_evidence_call.py when the tools are not in your tool list), and "doc_findings": one entry per
    documentation finding of the UAC Doc Researcher, {{"finding": <1-based index>, "disposition": "AC",
-   "ac": [<numbers>]}} or {{"finding": <index>, "disposition": "SET_ASIDE", "reason": "..."}}.
+   "ac": [<numbers>]}}, {{"finding": <index>, "disposition": "TEST_PLAN"}} (the test plan names it) or
+   {{"finding": <index>, "disposition": "SET_ASIDE", "reason": "..."}}.
    Also "scenario": {{"customer_steps": [<the reporter's own steps or requested outcome, copied>], "acs":
    [{{"ac": <number>, "scenario": "CUSTOMER" | "REGRESSION" | "VARIANT", "step": "<one of customer_steps>"}} or
-   {{"ac": <number>, "scenario": "ADJACENT"}} is not allowed: move such a check to the suggested checks]}}.
+   {{"ac": <number>, "scenario": "ADJACENT"}} for a research check on a scenario the reporter did not hit; at
+   least one criterion follows the reporter's own scenario]}}.
    Also "scope_boundaries": [{{"boundary": "<a limit the ticket, a developer or product decided, e.g. V2
    baseline is out of scope>", "basis": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT",
    "disposition": "OUT_OF_SCOPE" (named in the UAC's Out of scope list) | "AC", "ac": <number>}}] (or [] with
    "scope_boundaries_reason").
    Also "action_variants": {{"entry_points": [{{"name": "<route, e.g. toolbar insert>", "basis": "TICKET" |
    "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT" | "DOCUMENTATION" | "CODE", "disposition": "AC" |
-   "TBD" | "NOT_APPLICABLE" | "SUGGESTED" (CODE only, with "suggested": <number>) | "TEST_PLAN" (DOCUMENTATION or
-   CODE basis, same outcome as an AC; the test plan names it and the UAC stays short), "ac": <number>, "reason":
+   "TBD" | "NOT_APPLICABLE" | "TEST_PLAN" (DOCUMENTATION or CODE basis, same outcome as an AC; the test plan
+   names it and the UAC stays short), "ac": <number>, "reason":
    "..."}}], "config_switches": [{{"name": "...", "basis": "...", "states": ["enabled", "disabled"],
    "disposition": "AC", "acs": [<numbers>]}}] (or [] with "config_switches_reason"), "mechanism":
    {{"general_ask": true | false, "variants": [<same shape as entry_points>], "reason": "...",
@@ -124,8 +128,8 @@ When finished, write these files:
    template applied with Apply Preset Changes), the result in each state of every switch that changes
    it, the other item or reference types when the ticket asks for general behaviour, the action done the
    other way round, and an item with a different history. These are criteria (scenario VARIANT) that name
-   the route, state or type, never only suggested checks - except one known only from the code (basis
-   CODE), which is a TBD or a suggested check.
+   the route, state or type. One known only from the code (basis CODE) is a TBD, TEST_PLAN, or an AC that
+   checks it still works as before.
    Also "pre_existing_items": {{"disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac": <number>, "outcome":
    "UNCHANGED" | "CHANGED", "basis": "<TICKET | ATTACHMENT | PRODUCT_DECISION | DEVELOPER_COMMENT, needed for
    CHANGED>", "quote": "<for CHANGED: the ticket sentence that decided it, copied>", "reason": "..."}} - what
@@ -149,8 +153,7 @@ When finished, write these files:
    Also "similar_uacs": run the skill's scripts/similar_uac_compare.py (--ticket-source the ticket's
    jira-source.json, --key, --component, --evidence this file; for a hotfix or backport add --also with its
    parent ticket) and answer every listed dimension of the
-   similar human UACs with "disposition": "AC" | "TBD" | "SUGGESTED" | "NOT_APPLICABLE", "ac" (or
-   "suggested": <Suggested check number>) and "reason". A documentation finding may also be "SUGGESTED".
+   similar human UACs with "disposition": "AC" | "TBD" | "TEST_PLAN" | "NOT_APPLICABLE", "ac" and "reason".
 Runtime fallback: this invocation asks for runtime-fallback authoring. When the canonical runtime ends
 blocked, waiting, or with no deliverable Acceptance Criteria after its bounded attempts, do not stop: write
 files 1, 2 and 3 yourself from the evidence you already verified, following every rule above and the skill,
@@ -512,12 +515,11 @@ def check_outputs(ticket_dir: Path) -> list[str]:
         problems.append("test plan failed validate_test_plan.py: " + (result.stdout + result.stderr).strip()[-600:])
     text = uac.read_text(encoding="utf-8")
     count = len(re.findall(r"^- Acceptance Criteria \d+:", text, re.MULTILINE))
-    suggested = re.findall(r"^- Suggested check \d+:\s*(.+)$", text, re.MULTILINE)
     if not 1 <= count <= 10:
         problems.append(f"UAC.md has {count} Acceptance Criteria (expected 1-10)")
     vocabulary = common.import_skill_module("guides_vocabulary")
     lines = "\n".join(f"- AC-{i:02d}: {m}" for i, m in enumerate(
-        re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", text, re.MULTILINE) + suggested, 1))
+        re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", text, re.MULTILINE), 1))
     blocked, _ = vocabulary.check(lines)
     problems.extend(f"vocabulary: {b}" for b in blocked)
     return problems
@@ -542,46 +544,6 @@ def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
     if not lines and isinstance(data, dict) and data.get("canonical_status"):
         lines.append(f"canonical runtime status: {data['canonical_status']}")
     return lines
-
-
-_SUGGESTED_HEADING = re.compile(r"^Suggested checks\b.*$", re.MULTILINE)
-_SUGGESTED_CHECK = re.compile(
-    r"^-\s*Suggested check \d+:\s*(.+?)\s*$((?:\n[ \t]+(?:\*\*)?(?:Source|Why suggested):(?:\*\*)?\s*.+)*)",
-    re.MULTILINE)
-_SUGGESTED_SOURCE = re.compile(r"^[ \t]+(?:\*\*)?Source:(?:\*\*)?\s*(.+)$", re.MULTILINE)
-_OUT_OF_SCOPE = re.compile(r"^Out of scope:?\s*$", re.MULTILINE | re.IGNORECASE)
-
-
-def merge_suggested_into_criteria(uac_text: str) -> tuple[str, list[str]]:
-    """Move the "Suggested checks" into the Acceptance Criteria, numbered after the last criterion.
-
-    QE wants every check in the Acceptance Criteria field, not in a separate comment. Each check keeps
-    its Source line; the "Why suggested" line is dropped. Returns the UAC text without a suggested-checks
-    section, and the statements that were moved."""
-    heading = _SUGGESTED_HEADING.search(uac_text)
-    if not heading:
-        return uac_text, []
-    criteria, suggested = uac_text[:heading.start()].rstrip(), uac_text[heading.start():]
-    numbers = [int(n) for n in re.findall(r"^- Acceptance Criteria (\d+):", criteria, re.MULTILINE)]
-    width = 2 if re.search(r"^- Acceptance Criteria 0\d:", criteria, re.MULTILINE) or not numbers else 1
-    number = max(numbers, default=0)
-    blocks, moved = [], []
-    for match in _SUGGESTED_CHECK.finditer(suggested):
-        statement, subs = match.groups()
-        number += 1
-        block = f"- Acceptance Criteria {number:0{width}d}: {statement}"
-        source = _SUGGESTED_SOURCE.search(subs or "")
-        if source:
-            block += f"\n  **Source:** {source.group(1).strip()}"
-        blocks.append(block)
-        moved.append(statement)
-    if not blocks:
-        return criteria + "\n", []
-    out_of_scope = _OUT_OF_SCOPE.search(criteria)
-    if out_of_scope:
-        head, tail = criteria[:out_of_scope.start()].rstrip(), criteria[out_of_scope.start():]
-        return head + "\n" + "\n".join(blocks) + "\n\n" + tail + "\n", moved
-    return criteria + "\n" + "\n".join(blocks) + "\n", moved
 
 
 def written_comment(plan_name: str, review_notes: list[str] | None = None,
@@ -727,12 +689,9 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         return "FAILED"
     jira_text = common.import_skill_module("jira_safe_text")
     uac_text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
-    # Every check goes into the Acceptance Criteria field; nothing is left for a separate comment.
-    field_text, merged = merge_suggested_into_criteria(uac_text)
-    field_body = jira_text.jira_field_body(field_text)
+    # Every check is an Acceptance Criterion in the field; there are no suggested checks.
+    field_body = jira_text.jira_field_body(uac_text)
     (ticket_dir / "field-body.txt").write_text(field_body, encoding="utf-8")
-    status["suggested"] = []
-    status["suggested_merged"] = merged
     status.update(state="READY", problems=[], uac_sha256=common.sha256_file(ticket_dir / common.UAC_FILE))
     warnings = decision_problems(ticket_dir)
     decision_body = ""

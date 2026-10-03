@@ -93,10 +93,11 @@ def _split_suggested(text: str) -> tuple[str, str]:
 
 
 def suggested_checks_body(text: str) -> str:
-    """Render the "Suggested checks (QE decide)" part of a UAC block as Jira wiki, or "" when it has none.
+    """Render a legacy "Suggested checks" part of a UAC block as Jira wiki, or "" when it has none.
 
-    Suggested checks are never copied into the Acceptance Criteria field; they are shown in the draft
-    comment so QE can move the ones they want into the criteria."""
+    The delivered UAC no longer has suggested checks: research checks that matter are Acceptance
+    Criteria and the rest go to the full test plan (uac_completeness_check refuses the section). This
+    stays only so an old UAC block still parses; nothing posts its output any more."""
     _, part = _split_suggested(text)
     blocks = []
     for match in _SUGGESTED.finditer(part):
@@ -142,8 +143,8 @@ def jira_field_body(text: str) -> str:
     A "Note:" line before the first criterion (for example that the root cause is not confirmed yet)
     is kept as an italic line on top, and a "Scope:" line as a bold-labelled line. Short case
     sub-points ("  - ...") under a criterion become nested bullets. An "Out of scope:" list after
-    the criteria is kept as a bold-labelled list. The "Suggested checks" part is left out: see
-    suggested_checks_body.
+    the criteria is kept as a bold-labelled list. A legacy "Suggested checks" part (no longer
+    written) is left out.
     """
     text, _ = _split_suggested(text or "")
     out_of_scope = ""

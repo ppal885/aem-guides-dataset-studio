@@ -194,7 +194,10 @@ def similarity(a: str, b: str) -> float:
 
 
 def mark_promoted(entries: list[dict], suggested: list[str]) -> list[dict]:
-    """An added criterion that matches one of our suggested checks was promoted by QE, not missed by us."""
+    """An added criterion that matches one of our suggested checks was promoted by QE, not missed by us.
+
+    Only records of UACs posted while suggested checks existed carry a "suggested" list; the delivered UAC
+    has none any more, so new records have an empty list and promoted stays 0."""
     left = list(suggested or [])
     for entry in entries:
         if entry["kind"] != "added" or not left:
@@ -578,7 +581,7 @@ def monthly_report(config: dict, month: str) -> Path:
     lines = [f"# UAC learning report {month}", "",
              f"{len(records)} ticket version(s) harvested. Accepted = kept unchanged; changed = wording or "
              "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it); promoted = QE moved one "
-             "of our suggested checks into the criteria. "
+             "of our suggested checks into the criteria (older UACs only; the UAC no longer has suggested checks). "
              "Missed screens = screens (panel, console, dashboard, app, ...) that a QE-added criterion names and our "
              "posted UAC never mentioned, counted so a recurring screen miss shows up in the data before any rule changes.",
              ""]
