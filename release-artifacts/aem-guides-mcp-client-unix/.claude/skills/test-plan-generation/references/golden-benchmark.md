@@ -6,6 +6,11 @@
 - The suite contains 18 Jira cases: three each for Editor, Authoring, Publishing, Platform, Schematron, and Integration. It covers `required`, `conditional`, and `not_required` performance decisions.
 - Seeded goldens are development evidence only. They cannot establish or update a production baseline until an accountable QE reviewer verifies every case's Jira relationship and performance decision, records that case's reviewer and review time, and changes manifest `golden_status` to `approved` in a reviewed change.
 
+## Blind50 For Rule Changes
+
+- A change to a skill rule (SKILL.md, a reference the skill loads, or a checker that decides what becomes an Acceptance Criterion) is measured on blind50 before it merges: `scripts/uac_eval/BLIND50.md`, scored with `python scripts/uac_eval/blind50_score.py --compare <tag>`. The pull request shows the table; a change that lowers precision beyond the noise or raises WRONG per ticket is not merged.
+- Never add a blind50 ticket or its human UAC to a rule, an example, a prior or a miss probe.
+
 ## Blind Evaluation
 
 - The evaluator owns the golden manifest. The candidate sees only `run.json`, `candidate-contract.md`, `artifact-schemas.json`, and each case's `case-input.json` and `task.md`.

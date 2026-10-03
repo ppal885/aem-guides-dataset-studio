@@ -202,6 +202,8 @@ output/test-plans/*gate-receipt*.md
 dita_examples/community/*/
 scripts/uac_eval/corpus.jsonl
 scripts/uac_eval/train_priors.json
+# Blind50 benchmark data: Jira text and human UACs, kept local (see scripts/uac_eval/BLIND50.md).
+scripts/uac_eval/blind50/
 
 # deploy build stamp
 BUILD_COMMIT
