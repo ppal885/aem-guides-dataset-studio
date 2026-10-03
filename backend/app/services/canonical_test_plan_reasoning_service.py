@@ -1543,6 +1543,7 @@ def _render_written_criterion(criterion: "WrittenAcceptanceCriterion") -> str:
         if (
             sub_point.kind == AcceptanceSubPointKind.TBD_QUESTION
             and "(TBD)" not in text
+            and not text.startswith("TBD")
         ):
             text = f"{text} (TBD)"
         parts.append(f"- {_as_manual_qe_check(text)}")
@@ -5004,6 +5005,31 @@ def _semantic_candidate_key(value: str) -> tuple[str, ...]:
     ]
     polarity = "__NEGATIVE__" if negative else "__POSITIVE__"
     return (polarity, *terms)
+
+
+# C2: the only blockers that still deliver a TBD criterion.  Every other
+# blocker (authority, problem-only, sufficiency, integrity) keeps the candidate
+# out of the contract and visible under evidence gaps with its reason.
+_UNRESOLVED_DECISION_REASON = "A blocking product decision remains unresolved."
+_UNRESOLVED_CLASSIFICATION_REASON = (
+    "The existing-vs-new behavior classification is unresolved."
+)
+_TBD_ELIGIBLE_REASONS = frozenset(
+    {_UNRESOLVED_DECISION_REASON, _UNRESOLVED_CLASSIFICATION_REASON}
+)
+_DECISION_OWNER_BY_SUBJECT = {
+    AuthoritySubject.PRODUCT_CONTRACT: "product owner",
+    AuthoritySubject.ACTUAL_IMPLEMENTATION: "developer",
+}
+
+
+def _is_tbd_promotion(decision: AcceptancePromotionDecision) -> bool:
+    """A BLOCKED candidate whose only blockers are unresolved decisions."""
+
+    return (
+        decision.status == PromotionStatus.BLOCKED
+        and decision.resulting_disposition == CoverageDisposition.ACCEPTANCE_TBD
+    )
 
 
 def _candidate_terminal_disposition(
@@ -9536,11 +9562,9 @@ class CanonicalTestPlanReasoningService:
                             "evidence outside the portion's bindings."
                         )
             if unresolved:
-                reasons.append("A blocking product decision remains unresolved.")
+                reasons.append(_UNRESOLVED_DECISION_REASON)
             if unresolved_classification:
-                reasons.append(
-                    "The existing-vs-new behavior classification is unresolved."
-                )
+                reasons.append(_UNRESOLVED_CLASSIFICATION_REASON)
                 unresolved = True
             # P2 defense in depth: a candidate resting only on problem/gap
             # statements can never promote (Reviewer failure class
@@ -9580,6 +9604,10 @@ class CanonicalTestPlanReasoningService:
                 if promotable and candidate.accepted_human_contract
                 else CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
                 if promotable
+                # C2: blocked only by an open decision -> delivered as a TBD
+                # criterion; any other blocker stays an open question.
+                else CoverageDisposition.ACCEPTANCE_TBD
+                if unresolved and set(reasons) <= _TBD_ELIGIBLE_REASONS
                 else CoverageDisposition.OPEN_QUESTION
                 if unresolved
                 else CoverageDisposition.UNSUPPORTED_INFERENCE
@@ -9608,12 +9636,20 @@ class CanonicalTestPlanReasoningService:
             if row.status == PromotionStatus.PROMOTED and row.reasons
             for reason in row.reasons
         ]
-        blocking_failures = [
+        blocked_reasons = [
             f"{row.candidate_id}: {reason}"
             for row in decisions
             if row.status == PromotionStatus.BLOCKED
             for reason in row.reasons
         ]
+        # C2: partial promotion.  Promoted and TBD candidates are delivered
+        # even when others are blocked; the gate blocks only when nothing is
+        # deliverable.  Undelivered candidates stay visible with their reasons.
+        delivered = any(
+            row.status == PromotionStatus.PROMOTED or _is_tbd_promotion(row)
+            for row in decisions
+        )
+        blocking_failures: list[str] = []
         if not candidates:
             blocking_failures.append(
                 "No supported acceptance-contract candidate is available."
@@ -9623,9 +9659,8 @@ class CanonicalTestPlanReasoningService:
                     "Material scope remains unresolved: "
                     + ", ".join(scope.unresolved_fields)
                 )
-        if candidates and not any(
-            row.status == PromotionStatus.PROMOTED for row in decisions
-        ):
+        if candidates and not delivered:
+            blocking_failures.extend(blocked_reasons)
             blocking_failures.append(
                 "No acceptance-contract candidate passed the promotion gate."
             )
@@ -9637,6 +9672,8 @@ class CanonicalTestPlanReasoningService:
             or blocking_failures
             else GateStatus.PASSED
         )
+        if status != GateStatus.PASSED and delivered:
+            blocking_failures = blocked_reasons + blocking_failures
         return (
             GateDecision(
                 gate="AcceptancePromotionGate",
@@ -9763,6 +9800,7 @@ class CanonicalTestPlanReasoningService:
         facts: ContractFactSet,
         dispositions: list[CoverageDispositionRecord] | None = None,
         clarifications: list[HumanClarification] | None = None,
+        questions: list[MissingQuestion] | None = None,
     ) -> list[WrittenAcceptanceCriterion]:
         """D2 Writer: turn admitted candidates into testable acceptance criteria.
 
@@ -9899,6 +9937,75 @@ class CanonicalTestPlanReasoningService:
                         evidence_ids=list(candidate.evidence_ids),
                     )
                 )
+
+        # C2: a candidate blocked only by an unresolved decision keeps its
+        # supported outcome and carries the open decision as a "TBD:" line
+        # naming who decides when known.  Nothing beyond the gate-admitted
+        # statement and the recorded question text is written.
+        questions_by_id = {row.question_id: row for row in questions or []}
+        for decision in promotions:
+            if not _is_tbd_promotion(decision):
+                continue
+            candidate = candidate_by_id.get(decision.candidate_id)
+            if candidate is None:
+                continue
+            requested = _is_requested_capability(candidate.statement)
+            outcome = (
+                _derive_tbd_question(candidate.statement)
+                if requested
+                else _derive_outcome_statement(candidate.statement)
+                or _as_outcome_sentence(candidate.statement)
+            )
+            if not outcome or outcome.casefold() in seen_outcomes:
+                continue
+            seen_outcomes.add(outcome.casefold())
+            sub_points: list[AcceptanceSubPoint] = []
+            for question_id in candidate.unresolved_decision_ids:
+                question = questions_by_id.get(question_id)
+                if question is None:
+                    continue
+                text = " ".join(question.question.split()).rstrip(" ?.")
+                if not text:
+                    continue
+                owner = _DECISION_OWNER_BY_SUBJECT.get(question.authority_subject)
+                label = f"TBD ({owner} decides)" if owner else "TBD"
+                sub_points.append(
+                    AcceptanceSubPoint(
+                        text=f"{label}: {text}?",
+                        kind=AcceptanceSubPointKind.TBD_QUESTION,
+                        source_fact_ids=list(question.source_fact_ids),
+                    )
+                )
+            if (
+                _UNRESOLVED_CLASSIFICATION_REASON in decision.reasons
+                or not sub_points
+            ):
+                sub_points.append(
+                    AcceptanceSubPoint(
+                        text=(
+                            "TBD: Is this existing behavior or new behavior "
+                            "in this change?"
+                        ),
+                        kind=AcceptanceSubPointKind.TBD_QUESTION,
+                    )
+                )
+            written.append(
+                WrittenAcceptanceCriterion(
+                    outcome=outcome,
+                    sub_points=sub_points,
+                    unresolved=requested,
+                    source_line=_acceptance_source_line(
+                        list(candidate.source_fact_ids),
+                        facts_by_id,
+                        list(candidate.evidence_ids),
+                        clarification_source_lines,
+                    ),
+                    source_candidate_ids=[candidate.candidate_id],
+                    source_fact_ids=list(candidate.source_fact_ids),
+                    source_disposition_ids=list(candidate.source_disposition_ids),
+                    evidence_ids=list(candidate.evidence_ids),
+                )
+            )
 
         # D1-c: acceptance-material but unresolved coverage renders as a (TBD)
         # question INSIDE the contract.  It is attached to the criterion it
@@ -10289,9 +10396,13 @@ class CanonicalTestPlanReasoningService:
                 if record_id:
                     section_items["acceptance_contract"].append((rendered, record_id))
         for decision in promotions:
-            if decision.status == PromotionStatus.PROMOTED:
+            if decision.status == PromotionStatus.PROMOTED or (
+                _is_tbd_promotion(decision)
+                and written_by_candidate.get(decision.candidate_id)
+            ):
                 candidate = candidate_by_id[decision.candidate_id]
-                promoted_ids.append(candidate.candidate_id)
+                if decision.status == PromotionStatus.PROMOTED:
+                    promoted_ids.append(candidate.candidate_id)
                 statement = candidate.statement
                 if (
                     facts.contract_mode == ContractMode.HUMAN_ACCEPTED_CONTRACT
