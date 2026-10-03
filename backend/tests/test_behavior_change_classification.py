@@ -363,7 +363,10 @@ def test_promotion_gate_blocks_unknown_behavior_classification() -> None:
         "behavior classification is unresolved" in reason
         for reason in decisions[0].reasons
     )
-    assert gate.status == GateStatus.BLOCKED
+    # C2: blocked only by the unresolved classification -> delivered as a
+    # TBD criterion (never PROMOTED), so the gate no longer blocks.
+    assert decisions[0].resulting_disposition == CoverageDisposition.ACCEPTANCE_TBD
+    assert gate.status == GateStatus.PASSED
 
     (answered,) = _classify([accept], [jira])
     gate_ok, decisions_ok = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
