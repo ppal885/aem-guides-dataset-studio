@@ -226,9 +226,7 @@ class RunnerTests(unittest.TestCase):
         self.assertIn(("set_field", "PROJ-1", "customfield_1", field_body), jira.calls)
         self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls)
         comment = jira.calls[2][2]
-        self.assertIn("UAC written by the test-plan skill", comment)
-        self.assertNotIn("uggested", comment, "the comment has no suggested-checks section")
-        self.assertNotIn("UAC_Approved", comment)
+        self.assertEqual(comment, "*Full test plan:* [^PROJ-1-test-plan.md]", "the comment is only the test plan")
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["state"], "POSTED", "the harvester learns from it")
         self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
@@ -236,11 +234,8 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("suggested_merged", status)
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
 
-    def test_written_comment_has_no_suggested_section(self) -> None:
-        for gates in (None, ["uac_completeness: scenario"]):
-            comment = runner.written_comment("PROJ-1-test-plan.md", ["review note"], gates)
-            self.assertNotIn("uggested", comment)
-            self.assertNotIn("QE decide", comment)
+    def test_written_comment_is_only_the_full_test_plan(self) -> None:
+        self.assertEqual(runner.written_comment("PROJ-1-test-plan.md"), "*Full test plan:* [^PROJ-1-test-plan.md]")
 
     def test_prompt_no_longer_asks_for_suggested_checks(self) -> None:
         self.assertNotIn("Suggested checks (QE decide)", runner.PROMPT)
@@ -320,8 +315,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "POSTED")
         self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls, "a fallback UAC is posted too")
         comment = [c for c in jira.calls if c[0] == "comment"][0][2]
-        self.assertIn("*Runtime gates not passed - please check these points*", comment)
-        self.assertIn("* BehavioralCompletenessGate: research still pending", comment)
+        self.assertNotIn("Runtime gates", comment, "the gates stay in status.json and the release page")
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["runtime_fallback"], ["BehavioralCompletenessGate: research still pending",
                                                       "FinalQEPlanRenderer: no criteria to render"])
@@ -642,7 +636,7 @@ class RunnerTests(unittest.TestCase):
             problems = runner.hotfix_scope_problems(ticket, hotfix)
         self.assertEqual(problems, ["hotfix scope: Acceptance Criteria 02: not a hotfix regression"])
 
-    def test_orphan_notes_go_to_the_comment_and_do_not_fail_the_ticket(self) -> None:
+    def test_orphan_notes_stay_in_status_and_do_not_fail_the_ticket(self) -> None:
         jira = FakeJira()
         note = "Acceptance Criteria 2 is not tied to any ticket sentence"
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
@@ -651,8 +645,7 @@ class RunnerTests(unittest.TestCase):
             result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
         self.assertEqual(result, "POSTED")
         comment = [c for c in jira.calls if c[0] == "comment"][0][2]
-        self.assertIn("*Please check*", comment)
-        self.assertIn(note, comment)
+        self.assertNotIn(note, comment, "review notes are not posted to the ticket")
         self.assertEqual(common.read_status(self.out / "PROJ-1")["review_notes"], [note])
 
     def test_orphan_acceptance_criterion_fails(self) -> None:

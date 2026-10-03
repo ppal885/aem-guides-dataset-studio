@@ -10,8 +10,8 @@ JQL -> copilot -p per ticket -> checks -> AC field + attachment + comment + QEVi
 ```
 
 When the checks pass, the runner writes the UAC into the Acceptance Criteria field, reads the
-rendered field back, attaches the full test plan, leaves a short comment (review
-notes), adds `labels.posted` (`QEVision_UAC_DONE`: the UAC was written by the skill) and sends the
+rendered field back, attaches the full test plan, leaves one comment that holds only the full test plan
+link (review notes and runtime gates stay in `status.json` and on the release page), adds `labels.posted` (`QEVision_UAC_DONE`: the UAC was written by the skill) and sends the
 decision request. No person reviews it before it is posted; QE edits the field afterwards and the
 harvester learns from those edits. A field that already holds text is never overwritten: the ticket
 is recorded as `FIELD_KEPT`, gets no label and is not written again.
@@ -19,9 +19,8 @@ is recorded as `FIELD_KEPT`, gets no label and is not written again.
 **Runtime fallback.** When the skill's canonical runtime ends blocked or with no deliverable criteria,
 Copilot still writes the UAC and the test plan from the evidence it already verified, under the skill's
 authoring rules, and records the gates that did not pass in `RUNTIME_FALLBACK.json`. The runner's own
-checks still apply. The UAC is posted like any other; the comment adds "Runtime gates not passed - please
-check these points" with each gate and its reason, `status.json` keeps them as `runtime_fallback`, and the
-release page marks the row.
+checks still apply. The UAC is posted like any other; `status.json` keeps the gates as `runtime_fallback`
+and the release page marks the row. The ticket comment stays the test plan link only.
 
 Copilot CLI only **generates**. It is denied every Jira write tool; all Jira writes are done
 by the runner, after the checks.

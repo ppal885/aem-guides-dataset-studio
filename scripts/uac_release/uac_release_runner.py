@@ -546,25 +546,10 @@ def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
     return lines
 
 
-def written_comment(plan_name: str, review_notes: list[str] | None = None,
-                    fallback_gates: list[str] | None = None) -> str:
-    if fallback_gates is None:
-        how = "it passed the automated checks but no person reviewed it before posting"
-    else:
-        how = ("the skill's runtime did not pass every gate, so the UAC was written from the evidence "
-               "gathered and passed the runner's checks; no person reviewed it before posting")
-    text = (
-        f"*UAC written by the test-plan skill* into the Acceptance Criteria field (generated automatically; {how}).\n"
-        "* To change the criteria, edit the Acceptance Criteria field; your edits are learned automatically.\n"
-        f"* Full test plan: [^{plan_name}]"
-    )
-    if fallback_gates is not None:
-        text += ("\n\n----\n*Runtime gates not passed - please check these points*\n"
-                 + "".join(f"* {gate}\n" for gate in fallback_gates or ["not recorded"]))
-    if review_notes:
-        text += ("\n\n----\n*Please check* (automatic review notes)\n"
-                 + "".join(f"* {note}\n" for note in review_notes))
-    return text
+def written_comment(plan_name: str) -> str:
+    """The posted comment holds only the full test plan link. Review notes and runtime gates that did not
+    pass stay in status.json and on the release page, never in the ticket."""
+    return f"*Full test plan:* [^{plan_name}]"
 
 
 def post_decision_request(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict,
@@ -618,8 +603,7 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
         common.write_status(ticket_dir, status)
         logger.error("%s: UAC written into the field but it did not render as expected; check it in Jira", key)
         return common.WRITTEN_UNRENDERED
-    comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes,
-                                                       status.get("runtime_fallback")))
+    comment_id = jira.add_comment(key, written_comment(plan_copy.name))
     jira.update_labels(key, add=[config["labels"]["posted"]])
     status.update(state="POSTED", comment_id=comment_id, attachment_id=attachment_id,
                   posted_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
