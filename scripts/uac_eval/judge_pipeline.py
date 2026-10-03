@@ -34,8 +34,54 @@ from judge import _judge  # noqa: E402
 import precision as prec  # noqa: E402
 
 
-def _pipeline_plan(vm: str, token: str, jira_key: str) -> tuple[str, str]:
-    """Return (plan_markdown, status) from the real canonical runtime."""
+_CANDIDATE_PREFIX = re.compile(r"^[\w.:-]+:\s+(?=[A-Z])")
+
+
+def gate_decisions(response: dict) -> list[dict]:
+    """The canonical runtime's gate decisions that did not pass, as {gate, status, failures}.
+
+    The MCP bridge returns them at the top level; the pipeline DTO nests them under
+    qe_review_package.canonical_result. Only what the runtime reported is copied."""
+    rows = response.get("gate_decisions")
+    if rows is None:
+        rows = (((response.get("qe_review_package") or {}).get("canonical_result") or {})
+                .get("gate_decisions"))
+    out = []
+    for row in rows or []:
+        if not isinstance(row, dict) or str(row.get("status") or "").upper() == "PASSED":
+            continue
+        out.append({"gate": str(row.get("gate") or ""), "status": str(row.get("status") or ""),
+                    "failures": [str(f) for f in row.get("failures") or []]})
+    return out
+
+
+def reason_key(failure: str) -> str:
+    """A failure without its leading candidate/question id, so the same reason groups together."""
+    return _CANDIDATE_PREFIX.sub("", failure.strip(), count=1)
+
+
+def gate_summary(per: list[dict]) -> list[dict]:
+    """Per gate: how many tickets it stopped and its most common reasons (from the saved per rows)."""
+    tickets: dict[str, set] = defaultdict(set)
+    reasons: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    status: dict[str, str] = {}
+    for row in per:
+        for gate in row.get("pipeline_gates") or []:
+            name = gate["gate"]
+            tickets[name].add(row.get("key"))
+            status[name] = gate["status"]
+            for reason in {reason_key(f) for f in gate["failures"]}:
+                reasons[name][reason] += 1
+    summary = []
+    for name in sorted(tickets, key=lambda n: (-len(tickets[n]), n)):
+        top = sorted(reasons[name].items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+        summary.append({"gate": name, "status": status[name], "tickets": len(tickets[name]),
+                        "reasons": [{"reason": r, "tickets": c} for r, c in top]})
+    return summary
+
+
+def _pipeline_plan(vm: str, token: str, jira_key: str) -> tuple[str, str, list[dict]]:
+    """Return (plan_markdown, status, gates that did not pass) from the real canonical runtime."""
     try:
         r = requests.post(
             vm.rstrip("/") + "/api/v1/mcp/guides-test-plan-generator",
@@ -44,16 +90,16 @@ def _pipeline_plan(vm: str, token: str, jira_key: str) -> tuple[str, str]:
             timeout=300, verify=False,
         )
         if r.status_code != 200:
-            return "", f"http_{r.status_code}"
+            return "", f"http_{r.status_code}", []
         d = r.json()
         plan = d.get("plan_markdown") or ""
         if not plan:
             op = d.get("output_payload") or {}
             plan = op.get("plan_markdown") or op.get("rendered_output") or ""
-        return plan, d.get("status", "")
+        return plan, d.get("status", ""), gate_decisions(d)
     except Exception as exc:
         sys.stderr.write(f"pipeline fail {jira_key}: {exc}\n")
-        return "", "error"
+        return "", "error", []
 
 
 def main() -> int:
@@ -110,8 +156,9 @@ def main() -> int:
         key = row.get("key")
         rec = {"key": key, "component": _norm_component(row.get("component", []))}
         # real pipeline
-        plan, status = _pipeline_plan(args.vm, args.token, key)
+        plan, status, gates = _pipeline_plan(args.vm, args.token, key)
         rec["pipeline_status"] = status
+        rec["pipeline_gates"] = gates
         rec["pipeline_chars"] = len(plan)
         cands = {"pipeline": plan}
         # baseline
@@ -184,9 +231,19 @@ def main() -> int:
             f"pipeline {pl.get('coverage_pct')}/{pl_prec}/{pl.get('combined_pct')} "
             f"[ac={pl.get('ac_count')}, over_decomp={pl.get('over_decomposition')}, "
             f"dup_pairs={pl.get('redundancy_pairs')}, judge_redundant={pl.get('judge_redundant')}]")
+    gates = gate_summary(per)
+    lines += ["", "## Why the pipeline did not deliver (gates that did not pass)", ""]
+    if gates:
+        lines += ["| gate | status | tickets | top reasons (tickets) |", "|---|---|---|---|"]
+        for g in gates:
+            top = "; ".join(f"{r['reason']} ({r['tickets']})" for r in g["reasons"]).replace("|", "/")
+            lines.append(f"| {g['gate']} | {g['status']} | {g['tickets']} | {top} |")
+    else:
+        lines.append("Every gate passed on every ticket (or the runtime reported no gate decisions).")
     Path(args.out).write_text("\n".join(lines), encoding="utf-8")
     _keys = ("coverage", "det_precision", "combined", "halluc", "redundant", "judge_precision", "holistic")
-    Path(args.out).with_suffix(".json").write_text(json.dumps({"per": per, "agg": {m: {k: _m(m, k) for k in _keys} for m in agg}}, indent=2), encoding="utf-8")
+    Path(args.out).with_suffix(".json").write_text(json.dumps({"per": per, "agg": {m: {k: _m(m, k) for k in _keys} for m in agg},
+                                                             "gate_summary": gates}, indent=2), encoding="utf-8")
     print(json.dumps({"test": len(test), "baseline_combined": _m("baseline", "combined"), "pipeline_cov": _m("pipeline", "coverage"), "pipeline_precision": _m("pipeline", "det_precision"), "pipeline_combined": _m("pipeline", "combined"), "out": args.out}))
     return 0
 

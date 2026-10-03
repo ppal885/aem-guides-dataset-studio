@@ -6,7 +6,7 @@
   <link rel="icon" href="data:,">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-MOiLslSrJQ5o29rDsyOvu4cUaxN5xi02TiFc0sNc1Vw='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com 'sha256-3HCZ+8Fv9h5K/4AeA7iDSGP/sOeY4BJEFOW8LPu286A='; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <meta name="referrer" content="no-referrer">
   <title>UAC Eval Observability</title>
@@ -1122,6 +1122,17 @@
         <ul id="gateEffectHistory" class="change-list"></ul>
       </section>
 
+      <section id="gateBlockPanel" class="panel" aria-labelledby="gateBlockTitle" hidden>
+        <div class="panel-head">
+          <div>
+            <h2 id="gateBlockTitle">Why the pipeline did not deliver</h2>
+            <p class="panel-copy">Canonical runtime gates that did not pass in the latest run, with their most common reasons. Reported by judge_pipeline.py; not recomputed here.</p>
+          </div>
+          <span id="gateBlockMeta" class="insight-count">Waiting for data</span>
+        </div>
+        <ul id="gateBlockList" class="change-list"></ul>
+      </section>
+
       <section class="panel what-changed" aria-labelledby="whatChangedTitle">
         <div class="panel-head">
           <div>
@@ -2110,8 +2121,38 @@
         }
       }
 
+      function renderGateBlocks(run) {
+        const panel = byId("gateBlockPanel");
+        if (!panel) return;
+        const gates = run && Array.isArray(run.gate_summary) ? run.gate_summary.filter(isObject) : null;
+        if (!gates) {
+          panel.hidden = true;
+          return;
+        }
+        panel.hidden = false;
+        const meta = byId("gateBlockMeta");
+        if (meta) meta.textContent = gates.length ? `${run.run_id} · ${gates.length} gate${gates.length === 1 ? "" : "s"}` : `${run.run_id} · every gate passed`;
+        const list = byId("gateBlockList");
+        if (!list) return;
+        list.textContent = "";
+        gates.forEach((gate) => {
+          const li = document.createElement("li");
+          const reasons = Array.isArray(gate.reasons) ? gate.reasons.filter(isObject) : [];
+          const head = document.createElement("strong");
+          head.textContent = `${gate.gate} (${gate.status}): ${gate.tickets} ticket${gate.tickets === 1 ? "" : "s"}`;
+          li.appendChild(head);
+          reasons.forEach((r) => {
+            const line = document.createElement("div");
+            line.textContent = `${r.reason} — ${r.tickets}`;
+            li.appendChild(line);
+          });
+          list.appendChild(li);
+        });
+      }
+
       function render(runs, gateEffect) {
         renderGateEffect(gateEffect);
+        renderGateBlocks(runs.length ? runs[runs.length - 1] : null);
         if (!runs.length) {
           state.runs = [];
           state.latestRows = [];

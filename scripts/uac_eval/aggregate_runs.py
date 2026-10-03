@@ -108,6 +108,8 @@ def normalize_run(path: Path, value: dict[str, Any]) -> dict[str, Any]:
             "agg_pipeline": _normalize_metrics(agg.get("pipeline")),
             "agg_baseline": _normalize_metrics(agg.get("baseline")),
             "per": [_normalize_per_item(item, path.name) for item in value["per"]],
+            # Copied as reported by judge_pipeline.py; null for runs saved before it was recorded.
+            "gate_summary": value.get("gate_summary") if isinstance(value.get("gate_summary"), list) else None,
         }
     )
     return record
@@ -247,6 +249,10 @@ def run_self_tests() -> None:
         "per": new_per,
     }
 
+    new_run["gate_summary"] = [{"gate": "AcceptancePromotionGate", "status": "BLOCKED", "tickets": 1,
+                                "reasons": [{"reason": "A blocking product decision remains unresolved.",
+                                             "tickets": 1}]}]
+
     with tempfile.TemporaryDirectory(prefix="aggregate-runs-test-") as tmp:
         directory = Path(tmp)
         _write_fixture(directory / "judge_pipeline_old.json", old_run, 1_700_000_000)
@@ -292,6 +298,8 @@ def run_self_tests() -> None:
         _require(runs[1]["seed"] == 17 and runs[1]["vm"] == "fixture-vm", "JSON run context is copied")
         _require(runs[1]["agg_pipeline"]["det_precision"] == 75, "reported precision is preserved")
         _require(runs[1]["agg_baseline"]["no_ac_section"] == 1, "reported no-AC count is preserved")
+        _require(runs[0]["gate_summary"] is None, "a run saved before gates were recorded has a null gate summary")
+        _require(runs[1]["gate_summary"] == new_run["gate_summary"], "the reported gate summary is copied unchanged")
 
         # gate-effect series is collected from its own glob, sorted by mtime, reduction derived
         _write_fixture(
