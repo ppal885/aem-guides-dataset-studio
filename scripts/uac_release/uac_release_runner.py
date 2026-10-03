@@ -544,7 +544,47 @@ def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
     return lines
 
 
-def written_comment(plan_name: str, review_notes: list[str] | None = None, suggested_body: str = "",
+_SUGGESTED_HEADING = re.compile(r"^Suggested checks\b.*$", re.MULTILINE)
+_SUGGESTED_CHECK = re.compile(
+    r"^-\s*Suggested check \d+:\s*(.+?)\s*$((?:\n[ \t]+(?:\*\*)?(?:Source|Why suggested):(?:\*\*)?\s*.+)*)",
+    re.MULTILINE)
+_SUGGESTED_SOURCE = re.compile(r"^[ \t]+(?:\*\*)?Source:(?:\*\*)?\s*(.+)$", re.MULTILINE)
+_OUT_OF_SCOPE = re.compile(r"^Out of scope:?\s*$", re.MULTILINE | re.IGNORECASE)
+
+
+def merge_suggested_into_criteria(uac_text: str) -> tuple[str, list[str]]:
+    """Move the "Suggested checks" into the Acceptance Criteria, numbered after the last criterion.
+
+    QE wants every check in the Acceptance Criteria field, not in a separate comment. Each check keeps
+    its Source line; the "Why suggested" line is dropped. Returns the UAC text without a suggested-checks
+    section, and the statements that were moved."""
+    heading = _SUGGESTED_HEADING.search(uac_text)
+    if not heading:
+        return uac_text, []
+    criteria, suggested = uac_text[:heading.start()].rstrip(), uac_text[heading.start():]
+    numbers = [int(n) for n in re.findall(r"^- Acceptance Criteria (\d+):", criteria, re.MULTILINE)]
+    width = 2 if re.search(r"^- Acceptance Criteria 0\d:", criteria, re.MULTILINE) or not numbers else 1
+    number = max(numbers, default=0)
+    blocks, moved = [], []
+    for match in _SUGGESTED_CHECK.finditer(suggested):
+        statement, subs = match.groups()
+        number += 1
+        block = f"- Acceptance Criteria {number:0{width}d}: {statement}"
+        source = _SUGGESTED_SOURCE.search(subs or "")
+        if source:
+            block += f"\n  **Source:** {source.group(1).strip()}"
+        blocks.append(block)
+        moved.append(statement)
+    if not blocks:
+        return criteria + "\n", []
+    out_of_scope = _OUT_OF_SCOPE.search(criteria)
+    if out_of_scope:
+        head, tail = criteria[:out_of_scope.start()].rstrip(), criteria[out_of_scope.start():]
+        return head + "\n" + "\n".join(blocks) + "\n\n" + tail + "\n", moved
+    return criteria + "\n" + "\n".join(blocks) + "\n", moved
+
+
+def written_comment(plan_name: str, review_notes: list[str] | None = None,
                     fallback_gates: list[str] | None = None) -> str:
     if fallback_gates is None:
         how = "it passed the automated checks but no person reviewed it before posting"
@@ -559,10 +599,6 @@ def written_comment(plan_name: str, review_notes: list[str] | None = None, sugge
     if fallback_gates is not None:
         text += ("\n\n----\n*Runtime gates not passed - please check these points*\n"
                  + "".join(f"* {gate}\n" for gate in fallback_gates or ["not recorded"]))
-    if suggested_body:
-        text += ("\n\n----\n*Suggested checks (QE decide)* - found by our own research, not by the ticket. "
-                 "They are not in the Acceptance Criteria field. To use one, add it to the field; "
-                 "ignore the rest.\n\n" + suggested_body)
     if review_notes:
         text += ("\n\n----\n*Please check* (automatic review notes)\n"
                  + "".join(f"* {note}\n" for note in review_notes))
@@ -589,8 +625,15 @@ def post_decision_request(key: str, config: dict, jira, logger, ticket_dir: Path
     return "POSTED"
 
 
+def field_rendered(field_body: str, rendered: str) -> bool:
+    """True when Jira rendered the first criterion label in bold, whatever its number ("1" or "01")."""
+    first = re.search(r"\*(Acceptance Criteria \d+):\*", field_body)
+    label = first.group(1) if first else "Acceptance Criteria 01"
+    return f"<b>{label}:</b>" in rendered
+
+
 def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict, field_body: str,
-                plan_copy: Path, review_notes: list[str], suggested_body: str, decision_body: str = "") -> str:
+                plan_copy: Path, review_notes: list[str], decision_body: str = "") -> str:
     """Write the checked UAC into an empty Acceptance Criteria field and mark it written by the skill."""
     field = config["acceptance_criteria_field"]
     current = (jira.get_field(key, field) or "").strip()
@@ -602,13 +645,18 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
     attachment_id = jira.attach_file(key, plan_copy)
     jira.set_field(key, field, field_body)
     rendered = jira.get_field(key, field, rendered=True) or ""
-    if "<b>Acceptance Criteria 01:</b>" not in rendered:
-        status.update(state="FAILED", attachment_id=attachment_id,
-                      problems=["the Acceptance Criteria field was written but did not render as expected; check it in Jira"])
+    if not field_rendered(field_body, rendered):
+        # The UAC is in the field now: record it as written, so it is not reported as "not posted"
+        # and the next run does not generate it again.
+        status.update(state=common.WRITTEN_UNRENDERED, attachment_id=attachment_id,
+                      posted_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                      posted_sha256=common.sha256_file(ticket_dir / "field-body.txt"),
+                      problems=["the UAC was written into the Acceptance Criteria field but did not render as "
+                                "expected, so no comment or done label was added; check the field in Jira"])
         common.write_status(ticket_dir, status)
-        logger.error("%s: field written but did not render as expected; check it in Jira", key)
-        return "FAILED"
-    comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes, suggested_body,
+        logger.error("%s: UAC written into the field but it did not render as expected; check it in Jira", key)
+        return common.WRITTEN_UNRENDERED
+    comment_id = jira.add_comment(key, written_comment(plan_copy.name, review_notes,
                                                        status.get("runtime_fallback")))
     jira.update_labels(key, add=[config["labels"]["posted"]])
     status.update(state="POSTED", comment_id=comment_id, attachment_id=attachment_id,
@@ -624,7 +672,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     out_root = Path(config["output_dir"])
     ticket_dir = out_root / key
     status = common.read_status(ticket_dir)
-    if status.get("state") in {"POSTED", "FIELD_KEPT"} and not config.get("regenerate_existing"):
+    if status.get("state") in common.FINAL_STATES and not config.get("regenerate_existing"):
         logger.info("%s: already %s, skipping", key, status["state"])
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
@@ -679,10 +727,12 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         return "FAILED"
     jira_text = common.import_skill_module("jira_safe_text")
     uac_text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
-    field_body = jira_text.jira_field_body(uac_text)
-    suggested_body = jira_text.suggested_checks_body(uac_text)
+    # Every check goes into the Acceptance Criteria field; nothing is left for a separate comment.
+    field_text, merged = merge_suggested_into_criteria(uac_text)
+    field_body = jira_text.jira_field_body(field_text)
     (ticket_dir / "field-body.txt").write_text(field_body, encoding="utf-8")
-    status["suggested"] = re.findall(r"^- Suggested check \d+:\s*(.+?)\s*$", uac_text, re.MULTILINE)
+    status["suggested"] = []
+    status["suggested_merged"] = merged
     status.update(state="READY", problems=[], uac_sha256=common.sha256_file(ticket_dir / common.UAC_FILE))
     warnings = decision_problems(ticket_dir)
     decision_body = ""
@@ -709,7 +759,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     plan_copy = ticket_dir / f"{key}-test-plan.md"
     shutil.copyfile(ticket_dir / common.PLAN_FILE, plan_copy)
     return write_field(key, config, jira, logger, ticket_dir, status, field_body, plan_copy,
-                       review_notes, suggested_body, decision_body)
+                       review_notes, decision_body)
 
 
 def health(config: dict, jira, logger) -> list[str]:
@@ -726,7 +776,8 @@ def health(config: dict, jira, logger) -> list[str]:
         if not ok:
             problems.append(f"Dataset Studio MCP unreachable ({detail}); documentation research would be skipped")
     if not shutil.which(config.get("copilot", {}).get("command", "copilot")):
-        problems.append("Copilot CLI not found on PATH")
+        problems.append("Copilot CLI not found on PATH; under cron set PATH in the crontab to the folders that hold "
+                        "copilot and node (see uac-release.cron)")
     return problems
 
 
@@ -784,7 +835,8 @@ def main(argv: list[str] | None = None) -> int:
                 logger.info("tickets: %s", ", ".join(keys) or "none")
                 results, errors = common.run_each(
                     keys, lambda key: process_ticket(key, config, jira, logger, args.dry_run), logger, out)
-        exit_code = 2 if health_problems else 1 if any(v in ("FAILED", "ERROR") for v in results.values()) else 0
+        exit_code = 2 if health_problems else 1 if any(
+            v in ("FAILED", "ERROR", common.WRITTEN_UNRENDERED) for v in results.values()) else 0
     except Exception as exc:  # noqa: BLE001 - record and alert on anything that stops the run
         logger.exception("run %s stopped", run_id)
         alerts.append(f"The run stopped before finishing: {type(exc).__name__}: {exc}")
@@ -793,6 +845,9 @@ def main(argv: list[str] | None = None) -> int:
     for key, result in results.items():
         if result == "ERROR":
             alerts.append(f"{key}: unexpected error - {errors.get(key, 'see the log')}")
+        elif result == common.WRITTEN_UNRENDERED:
+            alerts.append(f"{key}: UAC written into the Acceptance Criteria field but it did not render as "
+                          "expected; no comment or done label was added - check the field in Jira")
         elif result == "FAILED":
             problems = common.read_status(out / key).get("problems") or ["see status.json"]
             more = f" (and {len(problems) - 1} more)" if len(problems) > 1 else ""

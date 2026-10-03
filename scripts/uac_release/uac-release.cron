@@ -3,6 +3,11 @@
 # keep it and the Jira settings in /opt/uac-release/uac.env (chmod 600); the scripts load it.
 REPO=/opt/repos/aem-guides-dataset-studio
 CONFIG=/opt/uac-release/config.json
+# cron starts with PATH=/usr/bin:/bin, where neither `copilot` nor `node` (npm install -g) is found;
+# without this line the runner's health check stops every night with "Copilot CLI not found on PATH".
+# Use the folders `dirname $(command -v copilot)` and `dirname $(command -v node)` print in your shell
+# (for nvm, e.g. /home/<user>/.nvm/versions/node/v22.x.y/bin).
+PATH=/usr/local/bin:/usr/bin:/bin
 
 # 01:30 every night: generate the UACs and write each one that passes the checks into the
 # Acceptance Criteria field, with the QEVision_UAC_DONE label.

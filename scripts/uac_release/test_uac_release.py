@@ -218,18 +218,39 @@ class RunnerTests(unittest.TestCase):
         field_body = (self.out / "PROJ-1" / "field-body.txt").read_text(encoding="utf-8")
         self.assertTrue(field_body.startswith("_Note: The root cause"))
         self.assertIn("{{ReportServlet.java}}", field_body)
-        self.assertNotIn("Suggested", field_body, "suggested checks never go into the Acceptance Criteria field")
+        self.assertNotIn("Suggested", field_body)
+        self.assertIn("*Acceptance Criteria 03:* Verify that the report also opens from the Map dashboard.", field_body,
+                      "suggested checks become Acceptance Criteria in the field")
+        self.assertIn("* Source: Experience League report page.", field_body)
+        self.assertNotIn("Why suggested", field_body)
         self.assertIn(("set_field", "PROJ-1", "customfield_1", field_body), jira.calls)
         self.assertIn(("labels", "PROJ-1", ["QEVision_UAC_DONE"], []), jira.calls)
         comment = jira.calls[2][2]
         self.assertIn("UAC written by the test-plan skill", comment)
-        self.assertIn("*Suggested check 01:*", comment)
+        self.assertNotIn("Suggested check", comment, "no separate suggested-checks comment")
         self.assertNotIn("UAC_Approved", comment)
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["state"], "POSTED", "the harvester learns from it")
         self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
-        self.assertEqual(status["suggested"], ["Verify that the report also opens from the Map dashboard."])
+        self.assertEqual(status["suggested"], [])
+        self.assertEqual(status["suggested_merged"], ["Verify that the report also opens from the Map dashboard."])
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
+
+    def test_suggested_checks_are_numbered_after_the_criteria_and_before_out_of_scope(self) -> None:
+        text = ("- Acceptance Criteria 1: A works.\n  **Source:** ticket\n"
+                "- Acceptance Criteria 2: B works.\n  **Source:** ticket\n\n"
+                "Out of scope:\n- C\n\n"
+                "Suggested checks (QE decide):\n"
+                "- Suggested check 01: D works.\n  **Source:** doc page\n  **Why suggested:** docs list it\n")
+        merged, moved = runner.merge_suggested_into_criteria(text)
+        self.assertEqual(moved, ["D works."])
+        self.assertIn("- Acceptance Criteria 3: D works.\n  **Source:** doc page\n\nOut of scope:", merged)
+        self.assertNotIn("Suggested", merged)
+        self.assertNotIn("Why suggested", merged)
+
+    def test_uac_without_suggested_checks_is_unchanged(self) -> None:
+        text = "- Acceptance Criteria 01: A works.\n  **Source:** ticket\n"
+        self.assertEqual(runner.merge_suggested_into_criteria(text), (text, []))
 
     def test_runner_never_overwrites_a_filled_field(self) -> None:
         jira = FakeJira(field_value="Criteria written by a person")
@@ -238,11 +259,43 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(common.read_status(self.out / "PROJ-1")["state"], "FIELD_KEPT")
         self.assertEqual(self._run(FakeJira()), "SKIPPED", "the next run does not write it again")
 
-    def test_runner_fails_when_the_field_does_not_render(self) -> None:
+    def test_field_that_does_not_render_is_recorded_as_written_not_failed(self) -> None:
         jira = FakeJira(rendered_ok=False)
-        self.assertEqual(self._run(jira), "FAILED")
-        self.assertNotIn("labels", [c[0] for c in jira.calls], "no done label on a broken field")
-        self.assertIn("did not render", common.read_status(self.out / "PROJ-1")["problems"][0])
+        self.assertEqual(self._run(jira), common.WRITTEN_UNRENDERED)
+        kinds = [c[0] for c in jira.calls]
+        self.assertIn("set_field", kinds, "the UAC is in the field")
+        self.assertNotIn("labels", kinds, "no done label on a broken field")
+        self.assertNotIn("comment", kinds)
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], common.WRITTEN_UNRENDERED)
+        self.assertIn("did not render", status["problems"][0])
+        self.assertEqual(self._run(FakeJira()), "SKIPPED", "the next run does not generate it again")
+
+    def test_field_rendered_accepts_the_first_label_number_the_uac_used(self) -> None:
+        self.assertTrue(runner.field_rendered("*Acceptance Criteria 1:* x", "<p><b>Acceptance Criteria 1:</b> x</p>"))
+        self.assertTrue(runner.field_rendered("_Note: n_\n\n*Acceptance Criteria 01:* x",
+                                              "<p><b>Acceptance Criteria 01:</b> x</p>"))
+        self.assertFalse(runner.field_rendered("*Acceptance Criteria 1:* x", "<p>*Acceptance Criteria 1:* x</p>"))
+
+    def test_uac_numbered_from_1_is_posted(self) -> None:
+        jira = FakeJira()
+        jira.get_field = lambda key, field, rendered=False: (
+            "<p><b>Acceptance Criteria 1:</b> x</p>" if rendered else jira.field_value)
+        unpadded = fake_copilot(True)
+
+        def copilot(cmd, **kwargs):
+            result = unpadded(cmd, **kwargs)
+            uac = self.out / "PROJ-1" / common.UAC_FILE
+            uac.write_text(uac.read_text(encoding="utf-8").replace("Criteria 01", "Criteria 1")
+                           .replace("Criteria 02", "Criteria 2"), encoding="utf-8")
+            return result
+        with mock.patch.object(runner.subprocess, "run", copilot), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False), "POSTED")
+
+    def test_cron_sets_a_path_that_finds_copilot(self) -> None:
+        cron = (Path(runner.__file__).parent / "uac-release.cron").read_text(encoding="utf-8")
+        self.assertRegex(cron, r"(?m)^PATH=.*/usr/local/bin", "cron's default PATH has no npm global bin")
 
     def test_runtime_fallback_uac_is_written_with_the_failed_gates_listed(self) -> None:
         base = fake_copilot(True)

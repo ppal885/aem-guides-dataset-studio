@@ -10,7 +10,7 @@ JQL -> copilot -p per ticket -> checks -> AC field + attachment + comment + QEVi
 ```
 
 When the checks pass, the runner writes the UAC into the Acceptance Criteria field, reads the
-rendered field back, attaches the full test plan, leaves a short comment (suggested checks and review
+rendered field back, attaches the full test plan, leaves a short comment (review
 notes), adds `labels.posted` (`QEVision_UAC_DONE`: the UAC was written by the skill) and sends the
 decision request. No person reviews it before it is posted; QE edits the field afterwards and the
 harvester learns from those edits. A field that already holds text is never overwritten: the ticket
@@ -141,17 +141,20 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    ```
    Use a Jira account that can only comment, attach and edit fields on these tickets.
 6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.json` and set:
-   - `jql`: which tickets need a UAC. The example picks open Customer Request tickets with
-     fix version `2701` in the current sprint (`sprint in openSprints()`), whoever the QE is,
-     and the Acceptance Criteria field is still empty. Change `2701` for each release. Keep
+   - `jql`: which tickets need a UAC. The example picks open Customer Request tickets in the
+     `AEMGuides_CurrentDevSprint` sprint (tickets in it are fixed in the coming release), whoever the
+     QE is, and the Acceptance Criteria field is still empty. The sprint name stays the same every
+     release, so nothing changes per release (no fix version to edit). To pin one release instead, add
+     `fixVersion = "2702"`. Keep
      `resolution = Unresolved` so closed tickets are skipped. Keep `(labels is EMPTY OR labels != QEVision_UAC_DONE)`:
      plain `labels != X` in JQL also drops tickets that have no labels at all.
    - `tickets`: optional exact list, e.g. `["GUIDES-12345", "GUIDES-23456"]`. When it is not
      empty it is used instead of `jql` (useful before the fix version or sprint is set).
    - `max_tickets`: the most tickets one nightly run takes from `jql` (default 100). Tickets
      left over are picked up the next night.
-   - `approved_scope_jql`: the same fix version and issue type, without the sprint or other filters;
-     the staleness watch uses it to keep checking posted tickets after the sprint ends.
+   - `approved_scope_jql`: the release scope without the sprint (`fixVersion in unreleasedVersions(GUIDES)`
+     and the issue type); the staleness watch uses it to keep checking posted tickets after they leave the
+     sprint.
    - `output_dir`, `add_dirs`, `mcp_health_url`.
 7. **Check the Copilot flags on your version** with `copilot --help` (the scripts use `-p`, `-s`,
    `--no-ask-user`, `--share`, `--add-dir`, `--allow-all-tools`, `--allow-tool`, `--deny-tool`),
@@ -199,7 +202,8 @@ cat /opt/uac-release/runs/GUIDES-12345/status.json
 grep -iE "update_jira_issue|add_jira_comment|upload_attachment" /opt/uac-release/runs/GUIDES-12345/copilot-transcript.md   # must print nothing
 
 # 7. Schedule it
-crontab -e        # paste the two lines from scripts/uac_release/uac-release.cron (fix REPO/CONFIG)
+crontab -e        # paste the lines from scripts/uac_release/uac-release.cron (fix REPO/CONFIG, and PATH so
+                  # it holds the folders of `command -v copilot` and `command -v node`)
 crontab -l
 ```
 
@@ -207,10 +211,11 @@ Windows VM: same steps in PowerShell, then register the tasks once (elevated):
 `.\scripts\uac_release\register_windows_tasks.ps1 -Repo C:\repos\aem-guides-dataset-studio -Config C:\uac-release\config.json -EnvFile C:\uac-release\uac.env`
 
 Daily use: nothing to run. The UAC is already in the Acceptance Criteria field with
-`QEVision_UAC_DONE`; to change the criteria, edit the field, and no label is needed. The runner's
-comment lists *Suggested checks (QE decide)*: checks found only by our own research
-(documentation, code, a similar ticket). They are never copied into the field; add the ones you want to
-the field, and the monthly report counts them as promoted. When the root cause is not
+`QEVision_UAC_DONE`; to change the criteria, edit the field, and no label is needed. Checks found only
+by our own research (documentation, code, a similar ticket), which Copilot writes as "Suggested checks"
+in `UAC.md`, are written into the field as the last Acceptance Criteria, with their Source line; there is
+no separate suggested-checks comment. Remove the ones you do not want from the field; the harvester learns
+from the removals. When the root cause is not
 confirmed yet, the UAC starts with a note saying so. Logs: `/opt/uac-release/runs/logs/` and `/opt/uac-release/cron.log`.
 
 ## Run it
@@ -234,6 +239,11 @@ Schedule: `uac-release.cron` (Linux) or `register_windows_tasks.ps1` (Windows).
 - `UAC.md` has 1-10 Acceptance Criteria and no blocked vocabulary.
 
 Anything else is marked `FAILED` in `<output_dir>/<KEY>/status.json` and nothing is posted.
+
+After writing the field the runner reads it back rendered and expects the first criterion label in bold
+(`Acceptance Criteria 1:` or `01:`, whichever the UAC used). When it is not, the UAC is already in the field:
+the ticket is recorded as `WRITTEN_UNRENDERED` (no comment, no `QEVision_UAC_DONE`), an alert names it, and it
+is never generated again. Check that the field uses the wiki renderer.
 
 ## Evidence record
 
