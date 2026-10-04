@@ -601,17 +601,18 @@ class RunnerTests(unittest.TestCase):
         ticket.mkdir()
         (ticket / common.UAC_FILE).write_text(
             UAC.replace("The report still opens from the Map dashboard as before.",
-                        "The report still opens as before from the Map dashboard, Baseline panel, Review panel "
-                        "and Output history."), encoding="utf-8")
+                        "The report still opens as before from the Map dashboard, Baseline panel, Review panel, "
+                        "Map Collection, Output history and Translation panel."), encoding="utf-8")
 
         def problems(entries):
             (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(entries), encoding="utf-8")
             return runner.surface_inventory_problems(ticket)
 
-        extra = [dict(SURFACES[3], surface=name) for name in ("Baseline panel", "Review panel")]
+        extra = [dict(SURFACES[3], surface=name)
+                 for name in ("Baseline panel", "Review panel", "Map Collection", "Output history")]
         self.assertEqual(problems(SURFACES + extra), [])
-        too_many = SURFACES + extra + [dict(SURFACES[3], surface="Output history")]
-        self.assertIn("Acceptance Criteria 3 lists 4 screens found only by research; keep at most 3 and move the "
+        too_many = SURFACES + extra + [dict(SURFACES[3], surface="Translation panel")]
+        self.assertIn("Acceptance Criteria 3 lists 6 screens found only by research; keep at most 5 and move the "
                       "rest to TEST_PLAN", problems(too_many))
 
     def test_attachment_screens_must_be_in_the_surface_inventory(self) -> None:
