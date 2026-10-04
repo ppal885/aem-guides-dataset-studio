@@ -579,6 +579,41 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(any("authority None is not one of" in p
                             for p in problems([{k: v for k, v in SURFACES[0].items() if k != "authority"}] + SURFACES[1:])))
 
+    def test_discovered_surface_can_go_to_the_test_plan(self) -> None:
+        ticket = self.out / "PROJ-10"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+
+        def problems(entries):
+            (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(entries), encoding="utf-8")
+            return runner.surface_inventory_problems(ticket)
+
+        to_plan = SURFACES[:3] + [{k: v for k, v in SURFACES[3].items() if k != "ac"} | {"disposition": "TEST_PLAN"}]
+        self.assertTrue(any("the full test plan does not name this surface" in p for p in problems(to_plan)))
+        (ticket / common.PLAN_FILE).write_text("## Regression\n- The Map dashboard still opens the report.\n",
+                                               encoding="utf-8")
+        self.assertEqual(problems(to_plan), [])
+        asked = [dict(SURFACES[0], disposition="TEST_PLAN")] + SURFACES[1:]
+        self.assertTrue(any("needs an Acceptance Criterion or a TBD, not TEST_PLAN" in p for p in problems(asked)))
+
+    def test_one_criterion_lists_few_discovered_surfaces(self) -> None:
+        ticket = self.out / "PROJ-11"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(
+            UAC.replace("The report still opens from the Map dashboard as before.",
+                        "The report still opens as before from the Map dashboard, Baseline panel, Review panel "
+                        "and Output history."), encoding="utf-8")
+
+        def problems(entries):
+            (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(entries), encoding="utf-8")
+            return runner.surface_inventory_problems(ticket)
+
+        extra = [dict(SURFACES[3], surface=name) for name in ("Baseline panel", "Review panel")]
+        self.assertEqual(problems(SURFACES + extra), [])
+        too_many = SURFACES + extra + [dict(SURFACES[3], surface="Output history")]
+        self.assertIn("Acceptance Criteria 3 lists 4 screens found only by research; keep at most 3 and move the "
+                      "rest to TEST_PLAN", problems(too_many))
+
     def test_attachment_screens_must_be_in_the_surface_inventory(self) -> None:
         ticket = self.out / "PROJ-7"
         ticket.mkdir()
