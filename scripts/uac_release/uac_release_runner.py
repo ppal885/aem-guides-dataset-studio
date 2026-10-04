@@ -101,10 +101,12 @@ When finished, write these files:
    widget, panel, component, service or API the change touches. One object per place:
    {{"surface": "<on-screen name, e.g. Review UI>", "evidence": ["<documentation URL>" or
    "<repo file>:<line>", ...], "authority": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" |
-   "DOCUMENTATION" | "CODE_REUSE", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE", "ac": <Acceptance
-   Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE>"}}. For AC, the Acceptance
-   Criterion text must name the surface. A DOCUMENTATION or CODE_REUSE surface may only get an AC
-   that checks it still works as before, or a TBD.
+   "DOCUMENTATION" | "CODE_REUSE", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "TEST_PLAN", "ac":
+   <Acceptance Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE>"}}. For AC, the
+   Acceptance Criterion text must name the surface. A DOCUMENTATION or CODE_REUSE surface is usually
+   TEST_PLAN: the full test plan (file 2) names it as a regression check and the UAC stays short. Give it
+   an AC only when the changed behaviour itself reaches that screen, and then only a check that it still
+   works as before (or a TBD); one criterion names at most {max_discovered} such surfaces.
 7. {hotfix_scope_path}: ONLY when the ticket is a hotfix, a backport or a private patch - the scope of
    every Acceptance Criterion, as the skill's scripts/hotfix_scope_check.py describes:
    {{"ticket_lines": [<the hotfix ticket's own requirement lines>], "diffs": [{{"repo": "<clone path>",
@@ -157,8 +159,8 @@ When finished, write these files:
    whether the new behaviour is behind a setting and off by default (ask in a TBD when nobody decided it).
    Also "shared_consumers": {{"mechanism": "<what the change touches that other screens read>", "consumers":
    [{{"name": "<screen, e.g. outline panel>", "disposition": "AC" | "TEST_PLAN" | "NOT_APPLICABLE", "ac":
-   <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - list them as sub-points of one "still
-   works as before" criterion.
+   <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - a consumer is usually TEST_PLAN; an AC
+   consumer (one the changed behaviour itself reaches) is a sub-point of one "still works as before" criterion.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or merged pull request>"}}, {{"status": "PROPOSED", "signal": "<the ticket text, copied, that
    links a fix pull request nobody has reviewed or merged>"}}, {{"status": "NOT_A_DEFECT", "reason": "<the new
@@ -186,9 +188,12 @@ and make them pass scripts/validate_test_plan.py and scripts/uac_completeness_ch
 name>", "reason": "<why it did not pass, one sentence>"}}]}}. Never invent evidence or report a failed gate
 as passed. Do not write this file when the canonical runtime delivered the UAC.
 Write in simple English with AEM Guides names a QE sees on screen."""
-SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
+SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE", "TEST_PLAN")
 SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
 DISCOVERED_AUTHORITIES = ("DOCUMENTATION", "CODE_REUSE")
+# A screen found only by research is a regression check in the test plan; one criterion that lists many of
+# them is the long "still works" route list QE review flags as noise.
+MAX_DISCOVERED_SURFACES_PER_AC = 3
 REGRESSION_MARKERS = ("still", "as before", "as they do today", "as it does today", "unchanged", "not changed",
                       "does not change", "keeps", "keep working")
 _CODE_REF = re.compile(r"^\S+\.[A-Za-z0-9]+:\d+(?:-\d+)?$")
@@ -509,6 +514,8 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
     if not isinstance(entries, list) or not entries or not all(isinstance(e, dict) for e in entries):
         return [f"{common.SURFACE_INVENTORY_FILE} must be a non-empty JSON list of objects"]
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
+    plan_file = ticket_dir / common.PLAN_FILE
+    plan = _normalize(plan_file.read_text(encoding="utf-8", errors="replace")) if plan_file.is_file() else ""
     lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
     blocks = {int(n): body for n, body in re.findall(
         r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", uac, re.M | re.S)}
@@ -541,11 +548,26 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
             elif (disposition == "AC" and authority in DISCOVERED_AUTHORITIES
                   and not any(f" {m} " in f" {_normalize(lines[ac])} " for m in REGRESSION_MARKERS)):
                 problems.append(f"{label}: found only by {authority}, so Acceptance Criteria {ac} may only check that it "
-                                "still works as before; ask about new behaviour there in a TBD")
+                                "still works as before; ask about new behaviour there in a TBD, or move it to TEST_PLAN")
             elif disposition == "TBD" and "TBD:" not in blocks[ac]:
                 problems.append(f"{label}: Acceptance Criteria {ac} has no TBD line")
+        elif disposition == "TEST_PLAN":
+            if authority not in DISCOVERED_AUTHORITIES:
+                problems.append(f"{label}: the ticket, an attachment or a decision asks for it, so it needs an "
+                                "Acceptance Criterion or a TBD, not TEST_PLAN")
+            elif surface and _normalize(surface) not in plan:
+                problems.append(f"{label}: TEST_PLAN, but the full test plan does not name this surface")
         elif str(entry.get("reason") or "").strip().lower() in EMPTY_REASONS:
             problems.append(f"{label}: OUT_OF_SCOPE needs a concrete reason")
+    discovered_per_ac: dict[int, int] = {}
+    for entry in entries:
+        if entry.get("disposition") == "AC" and entry.get("authority") in DISCOVERED_AUTHORITIES \
+                and isinstance(entry.get("ac"), int):
+            discovered_per_ac[entry["ac"]] = discovered_per_ac.get(entry["ac"], 0) + 1
+    for ac, count in sorted(discovered_per_ac.items()):
+        if count > MAX_DISCOVERED_SURFACES_PER_AC:
+            problems.append(f"Acceptance Criteria {ac} lists {count} screens found only by research; keep at most "
+                            f"{MAX_DISCOVERED_SURFACES_PER_AC} and move the rest to TEST_PLAN")
     if not has_doc:
         problems.append("the surface inventory cites no documentation page")
     if not has_code:
@@ -776,7 +798,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            hotfix_scope_path=ticket_dir / common.HOTFIX_SCOPE_FILE,
                            evidence_path=ticket_dir / common.EVIDENCE_FILE,
                            fallback_path=ticket_dir / common.RUNTIME_FALLBACK_FILE,
-                           linked_docs_path=ticket_dir / linked_docs.LINKED_DOCS_FILE)
+                           linked_docs_path=ticket_dir / linked_docs.LINKED_DOCS_FILE,
+                           max_discovered=MAX_DISCOVERED_SURFACES_PER_AC)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()
