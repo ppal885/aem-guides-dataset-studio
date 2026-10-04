@@ -896,6 +896,16 @@ class LearningHarvesterTests(unittest.TestCase):
         issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-05T09:30:00.000+0000", "uac.bot")])
         self.assertEqual(harvester.harvest(self.config, self.jira_with(issue), self.log, "uac.bot"), [])
 
+    def test_field_now_records_any_change_for_the_release_page(self) -> None:
+        issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-05T09:30:00.000+0000", "uac.bot")])
+        harvester.harvest(self.config, self.jira_with(issue), self.log, "uac.bot")
+        now = json.loads((self.out / "PROJ-1" / harvester.FIELD_NOW_FILE).read_text(encoding="utf-8"))
+        self.assertEqual((now["criteria"], now["changed"], now["last_change_by"]), (3, True, "uac.bot"),
+                         "an edit made with our own account still shows on the release page")
+        harvester.harvest(self.config, self.jira_with(_issue(POSTED_FIELD, "In Progress", [])), self.log, "uac.bot")
+        now = json.loads((self.out / "PROJ-1" / harvester.FIELD_NOW_FILE).read_text(encoding="utf-8"))
+        self.assertEqual((now["criteria"], now["changed"]), (3, False))
+
     def test_open_questions_are_not_part_of_a_criterion(self) -> None:
         text = ("Understanding: the list is out of order.\n\n"
                 "AC-01: The Conditions panel lists conditions by label.\n"
@@ -1385,6 +1395,21 @@ class ReleaseDashboardTests(unittest.TestCase):
         where = {r["key"]: r["where"] for r in posted}
         self.assertIn("runtime gates not passed", where["PROJ-1"])
         self.assertEqual(where["PROJ-2"], "Acceptance Criteria field")
+
+    def test_a_field_changed_after_posting_shows_both_counts(self) -> None:
+        body = "\n".join(f"*Acceptance Criteria {n:02d}:* c{n}" for n in range(1, 10))
+        self.ticket("PROJ-1", {"state": "POSTED"}, "Save timeout", body)
+        self.ticket("PROJ-2", {"state": "POSTED"}, "Untouched", "*Acceptance Criteria 01:* a")
+        (self.out / "PROJ-1" / dashboard.FIELD_NOW_FILE).write_text(json.dumps(
+            {"criteria": 7, "changed": True, "last_change_at": "2026-10-04T08:15:00.000+0530",
+             "last_change_by": "prashantp"}), encoding="utf-8")
+        (self.out / "PROJ-2" / dashboard.FIELD_NOW_FILE).write_text(json.dumps(
+            {"criteria": 1, "changed": False}), encoding="utf-8")
+        posted, _ = dashboard.collect_tickets(self.out)
+        page = dashboard.render(posted, [], [], 0, "https://jira.example", "now")
+        self.assertIn("9 &rarr; 7 (edited)", page)
+        self.assertIn("last by prashantp at 2026-10-04 08:15", page)
+        self.assertEqual(dashboard._criteria_cell(posted[1]), "1")
 
     def test_tickets_split_into_posted_and_not_posted_with_reasons(self) -> None:
         self.ticket("PROJ-1", {"state": "POSTED", "posted_at": "2026-10-02T07:05:00+0000"}, "Report",
