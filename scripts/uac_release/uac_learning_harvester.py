@@ -11,7 +11,9 @@ Nightly (harvest):
     added     - QE wrote a criterion we did not have (we missed it)
     changed   - QE kept the idea but changed its wording or expected result
   Only a human's edit counts: when every change to the field after the post was made by the
-  automation's own Jira user, nothing is recorded. When the field is unchanged, the UAC is recorded
+  automation's own Jira user, nothing is recorded. The posted version compared is the automation
+  account's last write before the human edit (from the changelog; field-body.txt when Jira has no
+  text), so a later same-account rewrite is never counted as a QE change. When the field is unchanged, the UAC is recorded
   as accepted only once the ticket has moved on (status in "learning_accepted_statuses", default
   UAT, Closed, Resolved, Done); before that, an untouched field means nothing yet.
   One record per ticket version goes to <output_dir>/learning/records.jsonl, with the old text, the
@@ -429,6 +431,15 @@ def write_field_now(ticket_dir: Path, posted_text: str, current_text: str, chang
     (ticket_dir / FIELD_NOW_FILE).write_text(json.dumps(now, indent=2), encoding="utf-8")
 
 
+def generated_baseline(changes: list[dict], generators: set[str], human: list[dict]) -> str:
+    """The generated version a QE edit is compared with: the automation account's last write before the
+    last human edit (or its last write when no human edited). A session that re-wrote the posted UAC with
+    the same account must not have its changes counted as QE changes. Empty when Jira has no such text."""
+    end = changes.index(human[-1]) if human else len(changes)
+    written = [c["to"] for c in changes[:end] if c["by"] in generators and c["to"]]
+    return written[-1] if written else ""
+
+
 def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, state: dict) -> dict | None:
     """Return a learning record for this ticket, or None when there is nothing new to learn."""
     status = common.read_status(ticket_dir)
@@ -447,6 +458,7 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, sta
     if human and changes[-1]["by"] in generators and human[-1]["to"]:
         # A later write by the automation's own user is not a QE edit: learn from the last human version.
         current_text = human[-1]["to"]
+    posted_text = generated_baseline(changes, generators, human) or posted_text
     evidence_path = ticket_dir / common.EVIDENCE_FILE
     try:
         evidence = json.loads(evidence_path.read_text(encoding="utf-8-sig")) if evidence_path.is_file() else {}
