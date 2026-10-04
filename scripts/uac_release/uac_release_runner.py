@@ -103,10 +103,10 @@ When finished, write these files:
    "<repo file>:<line>", ...], "authority": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" |
    "DOCUMENTATION" | "CODE_REUSE", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "TEST_PLAN", "ac":
    <Acceptance Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE>"}}. For AC, the
-   Acceptance Criterion text must name the surface. A DOCUMENTATION or CODE_REUSE surface is usually
-   TEST_PLAN: the full test plan (file 2) names it as a regression check and the UAC stays short. Give it
-   an AC only when the changed behaviour itself reaches that screen, and then only a check that it still
-   works as before (or a TBD); one criterion names at most {max_discovered} such surfaces.
+   Acceptance Criterion text must name the surface. A DOCUMENTATION or CODE_REUSE surface may only get an
+   AC that checks it still works as before, or a TBD; when it does not matter enough for the UAC it is
+   TEST_PLAN (the full test plan, file 2, names it). One criterion names at most {max_discovered} such
+   surfaces.
 7. {hotfix_scope_path}: ONLY when the ticket is a hotfix, a backport or a private patch - the scope of
    every Acceptance Criterion, as the skill's scripts/hotfix_scope_check.py describes:
    {{"ticket_lines": [<the hotfix ticket's own requirement lines>], "diffs": [{{"repo": "<clone path>",
@@ -159,8 +159,8 @@ When finished, write these files:
    whether the new behaviour is behind a setting and off by default (ask in a TBD when nobody decided it).
    Also "shared_consumers": {{"mechanism": "<what the change touches that other screens read>", "consumers":
    [{{"name": "<screen, e.g. outline panel>", "disposition": "AC" | "TEST_PLAN" | "NOT_APPLICABLE", "ac":
-   <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - a consumer is usually TEST_PLAN; an AC
-   consumer (one the changed behaviour itself reaches) is a sub-point of one "still works as before" criterion.
+   <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - list the AC consumers as sub-points of one
+   "still works as before" criterion.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or merged pull request>"}}, {{"status": "PROPOSED", "signal": "<the ticket text, copied, that
    links a fix pull request nobody has reviewed or merged>"}}, {{"status": "NOT_A_DEFECT", "reason": "<the new
@@ -191,9 +191,9 @@ Write in simple English with AEM Guides names a QE sees on screen."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE", "TEST_PLAN")
 SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
 DISCOVERED_AUTHORITIES = ("DOCUMENTATION", "CODE_REUSE")
-# A screen found only by research is a regression check in the test plan; one criterion that lists many of
-# them is the long "still works" route list QE review flags as noise.
-MAX_DISCOVERED_SURFACES_PER_AC = 3
+# A criterion listing six or more screens found only by research is the long route list QE review flags as
+# noise; up to five is a normal "still works as before" check.
+MAX_DISCOVERED_SURFACES_PER_AC = 5
 REGRESSION_MARKERS = ("still", "as before", "as they do today", "as it does today", "unchanged", "not changed",
                       "does not change", "keeps", "keep working")
 _CODE_REF = re.compile(r"^\S+\.[A-Za-z0-9]+:\d+(?:-\d+)?$")
