@@ -78,7 +78,9 @@ def collect_tickets(out: Path) -> tuple[list[dict], list[dict]]:
         if row["state"] in WHERE and not status.get("last_error"):
             row["where"] = WHERE[row["state"]]
             if status.get("runtime_fallback") is not None:
-                row["where"] += " (runtime gates not passed; listed in the ticket comment)"
+                row["where"] += " (runtime gates not passed)"
+            if status.get("linked_docs_unread"):
+                row["where"] += " (linked design document not read)"
             posted.append(row)
         else:
             row["reason"], row["problems"] = not_posted_reason(status)

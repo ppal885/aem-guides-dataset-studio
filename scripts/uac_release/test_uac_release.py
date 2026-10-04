@@ -18,6 +18,7 @@ import uac_learning_harvester as harvester  # noqa: E402
 import uac_staleness_watch as staleness  # noqa: E402
 import uac_release_runner as runner  # noqa: E402
 import release_dashboard as dashboard  # noqa: E402
+import linked_docs  # noqa: E402
 
 UAC = (
     "Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer reported and "
@@ -1354,6 +1355,107 @@ class ReleaseDashboardTests(unittest.TestCase):
             os.umask(old)
         self.assertEqual(page.parent.stat().st_mode & 0o777, 0o755)
         self.assertEqual(page.stat().st_mode & 0o777, 0o644)
+
+
+WIKI = "https://wiki.corp.adobe.com/spaces/projecttrack/pages/4066975661/Asset+translation+status+API"
+
+
+class FakeWiki:
+    def __init__(self, text: str = "<h2>Response</h2><table><tr><th>status</th><td>IN_SYNC</td></tr></table>"):
+        self.text = text
+
+    def fetch(self, url):
+        return "4066975661", "Asset translation status API", linked_docs.storage_to_text(self.text)
+
+
+class LinkedDocsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self.tmp.name)
+        self.config = make_config(self.out)
+        self.log = logging.getLogger("test")
+        self.source = dict(SOURCE, comments=SOURCE["comments"] + [
+            {"id": "9", "author": "dev.lead", "body": "Design document to be reviewed " + WIKI},
+            {"id": "10", "author": "uac.bot", "body": "see https://wiki.corp.adobe.com/pages/viewpage.action?pageId=1"},
+        ])
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_links_come_from_the_description_and_human_comments_only(self) -> None:
+        source = {"description": "Spec: [design|https://wiki.corp.adobe.com/display/DOC/My+Page]. "
+                                 "Other: https://example.com/x",
+                  "comments": self.source["comments"]}
+        self.assertEqual(linked_docs.find_links(source, "uac.bot"),
+                         ["https://wiki.corp.adobe.com/display/DOC/My+Page", WIKI])
+
+    def test_page_id_from_every_wiki_link_form(self) -> None:
+        client = linked_docs.WikiClient("https://wiki.corp.adobe.com", "t")
+        self.assertEqual(client.page_id(WIKI), "4066975661")
+        self.assertEqual(client.page_id("https://wiki.corp.adobe.com/pages/viewpage.action?pageId=42"), "42")
+        with mock.patch.object(client, "_get", return_value={"results": [{"id": 77}]}) as get:
+            self.assertEqual(client.page_id("https://wiki.corp.adobe.com/display/DOC/My+Page"), "77")
+        self.assertIn("title=My+Page", get.call_args[0][0])
+
+    def test_storage_format_becomes_readable_text(self) -> None:
+        text = linked_docs.storage_to_text("<h2>Errors</h2><ul><li>404 &amp; missing</li><li>403</li></ul>"
+                                           "<table><tr><th>field</th><td>status</td></tr></table>")
+        self.assertIn("Errors", text)
+        self.assertIn("- 404 & missing", text)
+        self.assertIn("| field | status", text)
+
+    def test_without_a_wiki_token_every_link_is_recorded_as_unreadable(self) -> None:
+        entries = linked_docs.collect(self.source, self.out, "uac.bot", None)
+        self.assertEqual([e["status"] for e in entries], ["UNREADABLE"])
+        self.assertIn("WIKI_PAT", entries[0]["reason"])
+        self.assertEqual(len(linked_docs.unread(entries)), 1)
+
+    def test_a_read_page_is_saved_for_the_copilot_session(self) -> None:
+        entries = linked_docs.collect(self.source, self.out, "uac.bot", FakeWiki())
+        self.assertEqual(entries[0]["status"], "READ")
+        text = Path(entries[0]["file"]).read_text(encoding="utf-8")
+        self.assertIn("Asset translation status API", text)
+        self.assertIn("IN_SYNC", text)
+        saved = json.loads((self.out / linked_docs.LINKED_DOCS_FILE).read_text(encoding="utf-8"))
+        self.assertEqual(saved, entries)
+
+    def test_a_failing_page_does_not_stop_the_others(self) -> None:
+        wiki = FakeWiki()
+        wiki.fetch = mock.Mock(side_effect=RuntimeError("wiki GET failed: HTTP 403"))
+        entries = linked_docs.collect(self.source, self.out, "uac.bot", wiki)
+        self.assertEqual(entries[0]["status"], "UNREADABLE")
+        self.assertIn("403", entries[0]["reason"])
+
+    def _run(self, coverage, wiki) -> str:
+        jira = FakeJira(source=self.source)
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True, coverage=coverage)),                 mock.patch.object(runner, "check_outputs", return_value=[]),                 mock.patch.object(runner.linked_docs.WikiClient, "from_env", return_value=wiki):
+            return runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
+
+    def _coverage(self, linked: bool) -> list:
+        design = {"source": "comment:9", "text": "Design document to be reviewed " + WIKI, "disposition": "AC", "ac": 1}
+        page = {"source": f"linked:{WIKI}", "text": "status IN_SYNC", "disposition": "AC", "ac": 1}
+        return COVERAGE + [design] + ([page] if linked else [])
+
+    def test_prompt_points_the_session_at_the_downloaded_pages(self) -> None:
+        self.assertIn("{linked_docs_path}", runner.PROMPT)
+        self.assertIn("do not try to open the wiki yourself", runner.PROMPT)
+
+    def test_a_downloaded_page_is_evidence_not_a_gate(self) -> None:
+        self.assertEqual(self._run(self._coverage(False), FakeWiki()), "POSTED",
+                         "a page the UAC does not cite never blocks the UAC")
+
+    def test_a_mapped_page_is_posted(self) -> None:
+        self.assertEqual(self._run(self._coverage(True), FakeWiki()), "POSTED")
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["linked_docs_unread"], [])
+        self.assertTrue((self.out / "PROJ-1" / linked_docs.LINKED_DOCS_DIR / "4066975661.md").is_file())
+
+    def test_an_unreadable_page_still_writes_the_uac_and_is_flagged(self) -> None:
+        self.assertEqual(self._run(self._coverage(False), None), "POSTED", "the UAC is always written")
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(len(status["linked_docs_unread"]), 1)
+        posted, _ = dashboard.collect_tickets(self.out)
+        self.assertIn("linked design document not read", posted[0]["where"])
 
 
 if __name__ == "__main__":

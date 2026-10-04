@@ -4,7 +4,8 @@
 One scheduled run:
   1. health checks: Jira auth, Dataset Studio MCP health URL, Copilot CLI present;
   2. finds tickets with the configured JQL;
-  3. runs `copilot -p` once per ticket with the test-plan-generation skill, writing
+  3. downloads the wiki pages the ticket links to (design documents; WIKI_PAT) and
+     runs `copilot -p` once per ticket with the test-plan-generation skill, writing
      UAC.md, test-plan.md, the UAC Doc Researcher result and the source coverage map
      into <output_dir>/<KEY>/;
   4. checks the files (plan validator, AC count 1-10, blocked vocabulary), that the
@@ -33,10 +34,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
+import linked_docs  # noqa: E402
 
 PROMPT = """Generate the UAC for Jira {key} using the test-plan-generation skill.
 Follow the skill fully: live Jira, attachments, product and automation clones, the researcher
 agents, and Experience League documentation. Do not write anything to Jira.
+Linked documents: {linked_docs_path} lists every wiki page (design document, specification) linked from the
+ticket. The runner already downloaded each page with status READ into the file named in "file"; read every
+one in full before writing the Acceptance Criteria, and do not try to open the wiki yourself. A design
+document is the developer's or product owner's decision for what it specifies (endpoint, inputs, responses,
+status values, errors, permissions, limits, configuration): a behaviour it states is an Acceptance Criterion
+whose Source line names the document title, not a TBD. Ask a TBD only for what the document leaves open or
+marks as still under review. For a page with status UNREADABLE, the TBD for what it would decide names the
+document title or link.
 When finished, write these files:
 1. {uac_path}: only the delivered UAC block - a flat list of "- Acceptance Criteria NN: ..." lines,
    each followed by an indented "**Source:** ..." line and, when a decision is open, a "**TBD:** ...?" line.
@@ -72,12 +82,13 @@ When finished, write these files:
 5. {source_coverage_path}: a JSON list that maps EVERY sentence and bullet of the Jira description,
    every sentence of every comment (skip comments posted by this automation), and every
    attachment to the UAC, before you write it. One object per item:
-   {{"source": "description" | "comment:<id>" | "attachment:<filename>", "text": "<the exact
-   sentence, copied>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
+   {{"source": "description" | "comment:<id>" | "attachment:<filename>" | "linked:<url from {linked_docs_path}>",
+   "text": "<the exact
+   sentence, copied; for a linked page, the requirement copied from it>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
    "ac": <Acceptance Criteria number, or a list when one sentence drives several criteria, for AC
    and TBD>, "reason": "<why, for OUT_OF_SCOPE and NOT_MATERIAL>"}}. A TBD must point at the
    Acceptance Criterion whose TBD line asks it. Every Acceptance Criterion must be driven by a
-   ticket sentence, an attachment or a requested screen, or carry a TBD. An
+   ticket sentence, an attachment, a linked page or a requested screen, or carry a TBD. An
    attachment entry also has "surfaces": ["<every product screen the attachment shows>"].
 6. {surface_inventory_path}: a JSON list of every place in the product where the feature appears or
    where its items open, found in the documentation AND by searching the code for every reuse of each
@@ -614,6 +625,24 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
     return "POSTED"
 
 
+def fetch_linked_docs(key: str, config: dict, jira, logger, ticket_dir: Path) -> list[dict]:
+    """Download the wiki pages the ticket links to (LINKED_DOCS.json). Never raises."""
+    try:
+        source = jira.get_source(key)
+        own_name = str((jira.myself() or {}).get("name") or "")
+    except Exception as exc:  # noqa: BLE001 - the Copilot session still reads the ticket itself
+        logger.warning("%s: could not read the ticket to find linked pages: %s", key, exc)
+        source, own_name = {}, ""
+    hosts = tuple(config.get("linked_doc_hosts") or linked_docs.DEFAULT_HOSTS)
+    entries = linked_docs.collect(source, ticket_dir, own_name, linked_docs.WikiClient.from_env(), hosts)
+    for entry in entries:
+        if entry["status"] == "READ":
+            logger.info("%s: linked page read: %s", key, entry.get("title") or entry["url"])
+        else:
+            logger.warning("%s: linked page not read: %s (%s)", key, entry["url"], entry.get("reason"))
+    return entries
+
+
 def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     out_root = Path(config["output_dir"])
     ticket_dir = out_root / key
@@ -626,8 +655,10 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
                  common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE, common.EVIDENCE_FILE,
-                 common.RUNTIME_FALLBACK_FILE):
+                 common.RUNTIME_FALLBACK_FILE, linked_docs.LINKED_DOCS_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
+    shutil.rmtree(ticket_dir / linked_docs.LINKED_DOCS_DIR, ignore_errors=True)
+    links = fetch_linked_docs(key, config, jira, logger, ticket_dir)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
                            doc_research_path=ticket_dir / common.DOC_RESEARCH_FILE,
@@ -635,7 +666,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            surface_inventory_path=ticket_dir / common.SURFACE_INVENTORY_FILE,
                            hotfix_scope_path=ticket_dir / common.HOTFIX_SCOPE_FILE,
                            evidence_path=ticket_dir / common.EVIDENCE_FILE,
-                           fallback_path=ticket_dir / common.RUNTIME_FALLBACK_FILE)
+                           fallback_path=ticket_dir / common.RUNTIME_FALLBACK_FILE,
+                           linked_docs_path=ticket_dir / linked_docs.LINKED_DOCS_FILE)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()
@@ -647,7 +679,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         exit_code = run.returncode
     except subprocess.TimeoutExpired:
         exit_code = "timeout"
-    status.update({"key": key, "copilot_exit": exit_code, "copilot_seconds": round(time.time() - started)})
+    status.update({"key": key, "copilot_exit": exit_code, "copilot_seconds": round(time.time() - started),
+                   "linked_docs_unread": linked_docs.unread(links)})
     if exit_code != 0:
         problems = [f"Copilot CLI exit {exit_code}"]
     else:
