@@ -27,6 +27,7 @@ LINKED_DOCS_FILE = "LINKED_DOCS.json"
 LINKED_DOCS_DIR = "linked-docs"
 DEFAULT_HOSTS = ("wiki.corp.adobe.com",)
 MAX_CHARS = 200_000
+MAX_LINKED_FROM_PAGE = 10  # a page that is only an index of links: its linked wiki pages are read too
 _URL = re.compile(r"https?://[^\s|\]\[<>\"'{}]+")
 _PAGE_ID_PATH = re.compile(r"/pages/(\d+)(?:/|$)")
 _DISPLAY_PATH = re.compile(r"^/display/([^/]+)/([^/?#]+)")
@@ -82,6 +83,11 @@ class _TextParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         self.parts.append(data)
+
+    def unknown_decl(self, data: str) -> None:
+        # Code blocks (request examples, JSON schemas) are CDATA inside the code macro.
+        if data.startswith("CDATA["):
+            self.parts.append("\n" + data[len("CDATA["):] + "\n")
 
 
 def storage_to_text(storage: str) -> str:
@@ -152,7 +158,10 @@ def collect(source: dict, ticket_dir: Path, own_name: str = "", client: WikiClie
     """Fetch every linked wiki page into <ticket_dir>/linked-docs/ and write LINKED_DOCS.json. Never raises."""
     entries: list[dict] = []
     folder = ticket_dir / LINKED_DOCS_DIR
-    for url in find_links(source, own_name, hosts):
+    queue = [(url, "") for url in find_links(source, own_name, hosts)]
+    seen_urls, seen_pages = {url for url, _ in queue}, set()
+    while queue:
+        url, via = queue.pop(0)
         if client is None:
             entries.append({"url": url, "status": "UNREADABLE",
                             "reason": "WIKI_PAT is not set in the env file, so the runner cannot log in to the wiki"})
@@ -160,8 +169,16 @@ def collect(source: dict, ticket_dir: Path, own_name: str = "", client: WikiClie
         try:
             page_id, title, text = client.fetch(url)
         except Exception as exc:  # noqa: BLE001 - one unreadable page must not stop the ticket
-            entries.append({"url": url, "status": "UNREADABLE", "reason": str(exc)[:200]})
+            entries.append({"url": url, "status": "UNREADABLE", "reason": str(exc)[:200], **({"via": via} if via else {})})
             continue
+        if page_id in seen_pages:
+            continue
+        seen_pages.add(page_id)
+        if not via:
+            children = [u for u in find_links({"description": text}, "", hosts) if u not in seen_urls]
+            for child in children[:MAX_LINKED_FROM_PAGE]:
+                seen_urls.add(child)
+                queue.append((child, url))
         if not text:
             entries.append({"url": url, "page_id": page_id, "title": title, "status": "UNREADABLE",
                             "reason": "the page has no text"})
@@ -171,7 +188,7 @@ def collect(source: dict, ticket_dir: Path, own_name: str = "", client: WikiClie
         truncated = len(text) > MAX_CHARS
         path.write_text(f"# {title}\n\nSource: {url}\n\n{text[:MAX_CHARS]}\n", encoding="utf-8")
         entries.append({"url": url, "page_id": page_id, "title": title, "status": "READ",
-                        "file": str(path.resolve()), "truncated": truncated})
+                        "file": str(path.resolve()), "truncated": truncated, **({"via": via} if via else {})})
     for url in find_pull_requests(source, own_name):
         entries.append({"url": url, "kind": "pull_request", "status": "LINKED",
                         "note": "a proposed fix; read its diff in the matching clone"})

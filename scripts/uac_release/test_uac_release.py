@@ -1421,6 +1421,26 @@ class LinkedDocsTests(unittest.TestCase):
         saved = json.loads((self.out / linked_docs.LINKED_DOCS_FILE).read_text(encoding="utf-8"))
         self.assertEqual(saved, entries)
 
+    def test_code_blocks_are_kept(self) -> None:
+        text = linked_docs.storage_to_text('<p>Submit</p><ac:structured-macro ac:name="code"><ac:plain-text-body>'
+                                           '<![CDATA[POST /api/x\n{"mapPath": "/a"}]]></ac:plain-text-body>'
+                                           '</ac:structured-macro>')
+        self.assertIn("POST /api/x", text)
+        self.assertIn('"mapPath"', text)
+
+    def test_pages_linked_from_an_index_page_are_read_once(self) -> None:
+        child_a = "https://wiki.corp.adobe.com/spaces/x/pages/2/Product+Note"
+        child_b = "https://wiki.corp.adobe.com/spaces/x/pages/3/Design+Document"
+        pages = {WIKI: ("1", "Index", f"{child_a}\n{child_b}\n{WIKI}"),
+                 child_a: ("2", "Product Note", f"note text {WIKI}"),
+                 child_b: ("3", "Design Document", "POST /bin/guides/v1/translation/map/references")}
+        wiki = FakeWiki()
+        wiki.fetch = lambda url: pages[url]
+        entries = linked_docs.collect(self.source, self.out, "uac.bot", wiki)
+        self.assertEqual([e["title"] for e in entries], ["Index", "Product Note", "Design Document"])
+        self.assertEqual([e.get("via", "") for e in entries], ["", WIKI, WIKI])
+        self.assertTrue(all(e["status"] == "READ" for e in entries))
+
     def test_a_failing_page_does_not_stop_the_others(self) -> None:
         wiki = FakeWiki()
         wiki.fetch = mock.Mock(side_effect=RuntimeError("wiki GET failed: HTTP 403"))
