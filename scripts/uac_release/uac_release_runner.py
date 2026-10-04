@@ -93,7 +93,9 @@ When finished, write these files:
    and TBD>, "reason": "<why, for OUT_OF_SCOPE and NOT_MATERIAL>"}}. A TBD must point at the
    Acceptance Criterion whose TBD line asks it. Every Acceptance Criterion must be driven by a
    ticket sentence, an attachment, a linked page or a requested screen, or carry a TBD. An
-   attachment entry also has "surfaces": ["<every product screen the attachment shows>"].
+   image, video or document attachment entry also has "surfaces": ["<every product screen the attachment
+   shows>"]; a log, data or code attachment does not. Status pings (ETA or update requests), bot notices,
+   credential lines and access links are not requirements: leave them out and never copy credentials.
 6. {surface_inventory_path}: a JSON list of every place in the product where the feature appears or
    where its items open, found in the documentation AND by searching the code for every reuse of each
    widget, panel, component, service or API the change touches. One object per place:
@@ -200,6 +202,19 @@ _EMBED = re.compile(r"![^!\s][^!]*!")
 _HEADING = re.compile(r"^h[1-6]\.\s*")
 _BULLET = re.compile(r"^\s*(?:[*#-]+)\s+")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# Jira lines that never hold a requirement: status pings, bot notices, credential and access-link lines.
+# The model rightly leaves these out of source coverage (and must never copy credentials). A ping is only
+# skipped when short, so a long sentence that also asks for an ETA still has to be mapped.
+_STATUS_PING = re.compile(r"\b(?:eta|an update|any update|update on this|been picked up|picked this up)\b")
+_STATUS_PING_MAX_WORDS = 16
+_NOT_A_REQUIREMENT = re.compile(
+    r"\bcrm is watching this ticket\b|\bprogressing without uac\b|\bcredentials? shared\b"
+    r"|\bshared (?:the )?credentials\b|\b(?:username|password)\s*[:=]|\buse this link\b|\baccess the link\b")
+_LEADING_CHATTER = re.compile(r"^(?:(?:hi|hey|hello|cc|fyi|thanks|thank you)\b[\s,:;!-]*)+")
+_INVISIBLE = re.compile("[​-‍⁠﻿]")
+# Attachments that cannot show a product screen do not need "surfaces".
+NON_VISUAL_ATTACHMENTS = (".txt", ".log", ".json", ".xml", ".dita", ".ditamap", ".har", ".csv", ".zip", ".gz",
+                          ".md", ".yaml", ".yml", ".properties", ".java", ".js", ".ts", ".py", ".sql")
 DOC_RESEARCHER = "uac-doc-researcher"
 GATE_LOG_FILE = "gate-firing.jsonl"
 DOC_RESEARCH_STATUSES = ("ANSWER_FOUND", "PARTIAL", "NOT_FOUND", "SOURCE_UNAVAILABLE", "CONFLICTED")
@@ -278,6 +293,22 @@ def _normalize(text: str) -> str:
     return " ".join(text.split()).strip(" .,:;!?-")
 
 
+def _strip_markup(text: str) -> str:
+    text = _SKIPPED_BLOCK.sub(" ", _INVISIBLE.sub("", text))
+    return _EMBED.sub(" ", _MENTION.sub(" ", _WIKI_LINK.sub(r"\1", text)))
+
+
+def _words(text: str) -> str:
+    """Letters and digits only, so bullets, dashes, quotes and link markup never break a copied sentence."""
+    return " ".join(re.findall(r"[^\W_]+", _strip_markup(text).lower()))
+
+
+def _is_requirement(clause: str) -> bool:
+    if _NOT_A_REQUIREMENT.search(clause):
+        return False
+    return not (_STATUS_PING.search(clause) and len(clause.split()) <= _STATUS_PING_MAX_WORDS)
+
+
 def source_clauses(source: dict, own_name: str = "") -> list[tuple[str, str]]:
     """Split the live Jira description and human comments into sentences a UAC must cover."""
     parts = [("description", source.get("description") or "")]
@@ -285,12 +316,12 @@ def source_clauses(source: dict, own_name: str = "") -> list[tuple[str, str]]:
               if not own_name or c.get("author") != own_name]
     clauses = []
     for label, text in parts:
-        text = _EMBED.sub(" ", _MENTION.sub(" ", _WIKI_LINK.sub(r"\1", _SKIPPED_BLOCK.sub(" ", text))))
+        text = _strip_markup(text)
         for line in text.splitlines():
             line = _BULLET.sub("", _HEADING.sub("", line.strip()))
             for sentence in _SENTENCE_END.split(line):
-                clause = _normalize(sentence)
-                if len(clause.split()) >= MIN_CLAUSE_WORDS:
+                clause = _LEADING_CHATTER.sub("", _normalize(sentence))
+                if len(clause.split()) >= MIN_CLAUSE_WORDS and _is_requirement(clause):
                     clauses.append((label, clause))
     return clauses
 
@@ -324,9 +355,9 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
                 problems.append(f"source coverage item {number}: Acceptance Criteria {entry.get('ac')} has no TBD line")
         elif str(entry.get("reason") or "").strip().lower() in EMPTY_REASONS:
             problems.append(f"source coverage item {number}: {disposition} needs a concrete reason")
-    covered = [_normalize(str(e.get("text") or "")) for e in entries]
+    covered = [f" {_words(str(e.get('text') or ''))} " for e in entries]
     missing = [(label, clause) for label, clause in source_clauses(source, own_name)
-               if not any(clause in text for text in covered)]
+               if not any(f" {_words(clause)} " in text for text in covered)]
     if missing:
         shown = "; ".join(f"{label}: \"{clause[:80]}\"" for label, clause in missing[:5])
         problems.append(f"{len(missing)} Jira sentence(s) are not mapped to the UAC, e.g. {shown}")
@@ -356,6 +387,8 @@ def attachment_surface_problems(ticket_dir: Path, source: dict, own_name: str = 
             continue
         name = str(entry["source"])[len("attachment:"):]
         if name in own_files:
+            continue
+        if name.lower().endswith(NON_VISUAL_ATTACHMENTS) and not entry.get("surfaces"):
             continue
         surfaces = [str(s).strip() for s in entry.get("surfaces") or [] if str(s).strip()]
         if not surfaces:

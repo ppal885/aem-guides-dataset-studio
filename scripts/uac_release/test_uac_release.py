@@ -485,6 +485,49 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(any("needs a concrete reason" in p for p in problems(empty_reason)))
         self.assertTrue(any("not one of" in p for p in problems([dict(COVERAGE[0], disposition="MAYBE")] + COVERAGE[1:])))
 
+    def test_source_coverage_ignores_chatter_and_copy_differences(self) -> None:
+        ticket = self.out / "PROJ-8"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+        source = {
+            "description": "• Customer case: E-002460814\n"
+                           "The customer follows the official doc ([doc link|https://x/doc]) and configures copilot.\n"
+                           "server: https://author.example.net [credentials shared with ]\n"
+                           "direct link to access map on server: use this link",
+            "comments": [{"id": "1", "author": "a", "body": "Hi, can you please share an ETA on this"},
+                         {"id": "2", "author": "b", "body": "hey , has this task been picked up"},
+                         {"id": "3", "author": "c", "body": "cc : issues have been created for the​ output failure"},
+                         {"id": "4", "author": "d", "body": "Dynamics CRM is Watching this ticket E-1"}],
+        }
+        self.assertEqual([c for _, c in runner.source_clauses(source)], [
+            "• customer case: e-002460814",
+            "the customer follows the official doc (doc link) and configures copilot",
+            "issues have been created for the output failure",
+        ])
+        coverage = [{"source": "description", "text": "Customer case: E-002460814", "disposition": "NOT_MATERIAL",
+                     "reason": "support case id"},
+                    {"source": "description", "text": "The customer follows the official doc (doc link) and configures "
+                     "copilot.", "disposition": "AC", "ac": 1},
+                    {"source": "comment:3", "text": "issues have been created for the output failure",
+                     "disposition": "NOT_MATERIAL", "reason": "tracking note"}]
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
+        self.assertEqual(runner.source_coverage_problems(ticket, source), [])
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage[1:]), encoding="utf-8")
+        self.assertTrue(any("1 Jira sentence(s)" in p and "customer case" in p
+                            for p in runner.source_coverage_problems(ticket, source)))
+        long_ping = ("can you share an eta and confirm the export button keeps the selected language "
+                     "for every map in the batch")
+        self.assertEqual(runner.source_clauses({"description": long_ping}), [("description", long_ping)])
+
+    def test_log_attachment_needs_no_surfaces(self) -> None:
+        ticket = self.out / "PROJ-9"
+        ticket.mkdir()
+        (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(SURFACES), encoding="utf-8")
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps([
+            {"source": "attachment:logs 11 Aug.txt", "text": "server log", "disposition": "NOT_MATERIAL",
+             "reason": "log excerpt"}]), encoding="utf-8")
+        self.assertEqual(runner.attachment_surface_problems(ticket, SOURCE), [])
+
     def test_ticket_without_surface_inventory_is_not_posted(self) -> None:
         jira = FakeJira()
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True, surfaces=None)), \
