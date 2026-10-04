@@ -33,6 +33,21 @@ _DISPLAY_PATH = re.compile(r"^/display/([^/]+)/([^/?#]+)")
 _BLOCK_TAGS = {"p", "div", "br", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "table", "blockquote"}
 
 
+_PULL_REQUEST = re.compile(r"https?://[^\s|\]\[<>\"'{}]+/pull/\d+")
+
+
+def find_pull_requests(source: dict, own_name: str = "") -> list[str]:
+    """Unique pull request URLs in the description and in comments not written by the automation."""
+    texts = [source.get("description") or ""]
+    texts += [c.get("body") or "" for c in source.get("comments") or [] if not own_name or c.get("author") != own_name]
+    found: list[str] = []
+    for text in texts:
+        for url in _PULL_REQUEST.findall(text):
+            if url not in found:
+                found.append(url)
+    return found
+
+
 def find_links(source: dict, own_name: str = "", hosts: tuple[str, ...] = DEFAULT_HOSTS) -> list[str]:
     """Unique wiki page URLs in the description and in comments not written by the automation, in order."""
     texts = [source.get("description") or ""]
@@ -157,6 +172,9 @@ def collect(source: dict, ticket_dir: Path, own_name: str = "", client: WikiClie
         path.write_text(f"# {title}\n\nSource: {url}\n\n{text[:MAX_CHARS]}\n", encoding="utf-8")
         entries.append({"url": url, "page_id": page_id, "title": title, "status": "READ",
                         "file": str(path.resolve()), "truncated": truncated})
+    for url in find_pull_requests(source, own_name):
+        entries.append({"url": url, "kind": "pull_request", "status": "LINKED",
+                        "note": "a proposed fix; read its diff in the matching clone"})
     (ticket_dir / LINKED_DOCS_FILE).write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
     return entries
 
@@ -164,4 +182,4 @@ def collect(source: dict, ticket_dir: Path, own_name: str = "", client: WikiClie
 def unread(entries: list[dict]) -> list[str]:
     """One line per linked page the runner could not read."""
     return [f"linked page not read: {e['url']} ({e.get('reason') or 'unknown reason'})"
-            for e in entries if e.get("status") != "READ"]
+            for e in entries if e.get("status") == "UNREADABLE"]

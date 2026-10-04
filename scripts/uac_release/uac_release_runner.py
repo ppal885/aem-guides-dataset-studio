@@ -39,8 +39,8 @@ import linked_docs  # noqa: E402
 PROMPT = """Generate the UAC for Jira {key} using the test-plan-generation skill.
 Follow the skill fully: live Jira, attachments, product and automation clones, the researcher
 agents, and Experience League documentation. Do not write anything to Jira.
-Linked documents: {linked_docs_path} lists every wiki page (design document, specification) linked from the
-ticket. The runner already downloaded each page with status READ into the file named in "file"; read every
+Linked documents: {linked_docs_path} lists every wiki page (design document, specification) and every pull
+request linked from the ticket. The runner already downloaded each page with status READ into the file named in "file"; read every
 one in full before writing the Acceptance Criteria, and do not try to open the wiki yourself. A design
 document is the developer's or product owner's decision for what it specifies (endpoint, inputs, responses,
 status values, errors, permissions, limits, configuration): a behaviour it states is an Acceptance Criterion
@@ -58,17 +58,21 @@ When finished, write these files:
    Research checks that do not matter enough go to the full test plan (file 2), not to the UAC. There is no
    "Suggested checks" section. Keep at most ten criteria; an open product decision stays a TBD.
    Keep the criteria (with sub-points, Scope and Out of scope) within 350 words and each Source line within
-   30 words: name the ticket, comment, documentation page or commit; file paths and line numbers go in the
-   test plan.
+   30 words: name the ticket, comment, attachment, design document or documentation page title, or the fix
+   pull request. Never a clone revision or commit hash, a file path, or a class, method or test name: those
+   go in the test plan (the runner removes them from Source lines).
    State each criterion as the expected outcome in plain words (no "Verify that" prefix is needed), and
    under a criterion list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A fact the ticket or a developer comment already decided (a feature
    flag, a preset argument, a default, a parity target such as "same as AEM Sites") is written as a
    criterion, not a TBD. When the ticket or a product decision sets the scope, add a "Scope: ..." line
    before the first criterion and an "Out of scope:" line with "- ..." items right after the criteria.
-   When the root cause or fix is not confirmed (see fix_basis below), the first line is exactly:
+   When fix_basis (below) is UNCONFIRMED, the first line is exactly:
    "Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer
    reported and will be checked again when the fix is known."
+   When it is PROPOSED, the first line is exactly: "Note: A fix is proposed in a linked pull request but is
+   not reviewed yet. These criteria cover what the customer reported and the proposed fix, and will be
+   checked again when the fix is final." CONFIRMED and NOT_A_DEFECT have no Note line.
 2. {plan_path}: the full eleven-section test plan record that passes scripts/validate_test_plan.py.
 3. {decisions_path}: ONLY when the UAC has at least one TBD - a short decision request for the
    developer or product owner, in Markdown with exactly these three sections:
@@ -154,9 +158,16 @@ When finished, write these files:
    <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - list them as sub-points of one "still
    works as before" criterion.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
-   cause, fix or pull request>"}} or {{"status": "UNCONFIRMED", "reason": "<why, when the ticket has a
-   root-cause or fix comment that is not the fix>"}}. Many tickets never get a root cause: UNCONFIRMED is
-   fine, but then no Acceptance Criterion except a REGRESSION check may rest only on code. And, when the
+   cause, fix or merged pull request>"}}, {{"status": "PROPOSED", "signal": "<the ticket text, copied, that
+   links a fix pull request nobody has reviewed or merged>"}}, {{"status": "NOT_A_DEFECT", "reason": "<the new
+   capability the ticket asks for, e.g. a new API or template field>"}} or {{"status": "UNCONFIRMED",
+   "reason": "<why, when the ticket has a root-cause or fix comment that is not the fix>"}}. Every pull
+   request listed in {linked_docs_path} (kind "pull_request") is a fix someone proposed: fetch it in the
+   matching clone (git fetch origin pull/<number>/head, or the branch named in the comment) and read the
+   diff. Its Acceptance Criteria check what the fix changes and the risks it introduces (for example a
+   lookup that now returns an empty list must not look like "no results", and a skipped check must not
+   remove a protection such as a delete warning). Many tickets never get a root cause: UNCONFIRMED is fine,
+   but then no Acceptance Criterion except a REGRESSION check may rest only on code. And, when the
    ticket says items inside
    a job, queue or batch fail or get stuck,
    "failure_path": {{"failing_item_outcome" | "remaining_items" | "user_notice": {{"disposition": "AC" |
@@ -643,6 +654,71 @@ def fetch_linked_docs(key: str, config: dict, jira, logger, ticket_dir: Path) ->
     return entries
 
 
+_NOTE_ROOT_CAUSE = re.compile(r"^Note:.*(?:not confirmed|fix is proposed).*\n*", re.M | re.I)
+_SOURCE_LINE = re.compile(r"^(\s*\*\*Source:\*\*\s*)(.+)$", re.M)
+_CODE_TOKEN = re.compile(
+    r"\b(?=[0-9a-f]*[0-9])(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"  # a commit or clone revision
+    r"|\b(?:[A-Z][a-z0-9]+){2,}(?:IT|Test|Tests)?\b"          # a class name such as TranslationStateService
+    r"|\b[a-z]+[A-Z]\w*\("                                   # a method call
+    r"|[\w.-]*/[\w.-]+/[\w./-]+"                              # a repository path
+    r"|\b[\w-]+\.(?:java|ts|tsx|js|jsx|py|xsl|scss|css|jsp|html)\b")
+_CAMEL_ALLOWED = {"JavaScript", "PowerPoint", "SharePoint", "OneDrive", "GitHub", "YouTube", "FrameMaker",
+                  "RoboHelp", "WordPress", "DocBook", "MathML", "PostgreSQL", "ExperienceLeague"}
+
+
+def _code_piece(piece: str, keep: set[str]) -> bool:
+    for match in _CODE_TOKEN.finditer(piece):
+        token = match.group(0)
+        if token in _CAMEL_ALLOWED or any(token in name for name in keep):
+            continue
+        if "/" in token and token.lower().startswith(("http", "experienceleague", "wiki.")):
+            continue
+        return True
+    return False
+
+
+def clean_source_lines(uac_text: str, attachments: list[str] = ()) -> tuple[str, list[str]]:
+    """Drop clone revisions, file paths and code names from Source lines; a QE reader cannot open them."""
+    keep = {name for name in attachments if name}
+    removed: list[str] = []
+
+    def clean(match: re.Match) -> str:
+        pieces = [p.strip() for p in re.split(r";", match.group(2)) if p.strip()]
+        kept = []
+        for piece in pieces:
+            parts = [part.strip() for part in piece.split(",") if part.strip()]
+            good = [part for part in parts if not _code_piece(part, keep)]
+            removed.extend(part for part in parts if _code_piece(part, keep))
+            if good:
+                kept.append(", ".join(good))
+        text = "; ".join(kept) or "QE regression around the reported scenario (code references are in the test plan)"
+        return match.group(1) + text.rstrip(".") + "."
+    return _SOURCE_LINE.sub(clean, uac_text), removed
+
+
+def normalize_note(uac_text: str, fix_status: str) -> str:
+    """The Note line says what is known about the fix, decided from fix_basis, never left to wording."""
+    check = common.import_skill_module("uac_completeness_check")
+    body = _NOTE_ROOT_CAUSE.sub("", uac_text).lstrip("\n")
+    note = {"UNCONFIRMED": check.UNCONFIRMED_NOTE, "PROPOSED": check.PROPOSED_NOTE}.get(fix_status, "")
+    return f"{note}\n\n{body}" if note else body
+
+
+def deliverable_uac(ticket_dir: Path, source: dict | None) -> tuple[str, list[str]]:
+    """UAC.md as it goes to the field: the Note line set from fix_basis and clean Source lines."""
+    text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
+    evidence_file = ticket_dir / common.EVIDENCE_FILE
+    try:
+        evidence = json.loads(evidence_file.read_text(encoding="utf-8-sig")) if evidence_file.is_file() else {}
+    except ValueError:
+        evidence = {}
+    status = str(((evidence or {}).get("fix_basis") or {}).get("status") or "")
+    if status:
+        text = normalize_note(text, status)
+    names = [str(a.get("filename") or "") for a in (source or {}).get("attachments") or []]
+    return clean_source_lines(text, names)
+
+
 def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     out_root = Path(config["output_dir"])
     ticket_dir = out_root / key
@@ -705,7 +781,10 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         logger.error("%s: UAC not written - %s", key, "; ".join(problems))
         return "FAILED"
     jira_text = common.import_skill_module("jira_safe_text")
-    uac_text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
+    uac_text, removed_sources = deliverable_uac(ticket_dir, source)
+    if removed_sources:
+        status["source_code_refs_removed"] = removed_sources
+        logger.info("%s: removed code references from Source lines: %s", key, "; ".join(removed_sources))
     # Every check is an Acceptance Criterion in the field; there are no suggested checks.
     field_body = jira_text.jira_field_body(uac_text)
     (ticket_dir / "field-body.txt").write_text(field_body, encoding="utf-8")

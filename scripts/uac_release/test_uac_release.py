@@ -219,7 +219,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(kinds[:4], ["attach", "set_field", "comment", "labels"])
         field_body = (self.out / "PROJ-1" / "field-body.txt").read_text(encoding="utf-8")
         self.assertTrue(field_body.startswith("_Note: The root cause"))
-        self.assertIn("{{ReportServlet.java}}", field_body)
+        self.assertNotIn("ReportServlet", field_body, "code names never reach the field")
+        self.assertIn("* Source: Ticket description.", field_body)
         self.assertNotIn("Suggested", field_body)
         self.assertIn("*Acceptance Criteria 03:* The report still opens from the Map dashboard as before.", field_body,
                       "a research check that matters is an Acceptance Criterion")
@@ -234,6 +235,7 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("suggested", status, "there are no suggested checks to record")
         self.assertNotIn("suggested_merged", status)
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
+        self.assertEqual(status["source_code_refs_removed"], ["ReportServlet.java line 10."])
 
     def test_written_comment_is_only_the_full_test_plan(self) -> None:
         self.assertEqual(runner.written_comment("PROJ-1-test-plan.md"), "*Full test plan:* [^PROJ-1-test-plan.md]")
@@ -1456,6 +1458,57 @@ class LinkedDocsTests(unittest.TestCase):
         self.assertEqual(len(status["linked_docs_unread"]), 1)
         posted, _ = dashboard.collect_tickets(self.out)
         self.assertIn("linked design document not read", posted[0]["where"])
+
+
+class DeliveryCleanupTests(unittest.TestCase):
+    """The Note line and Source lines in the field are decided by the runner, not by wording."""
+
+    def test_note_follows_fix_basis(self) -> None:
+        check = common.import_skill_module("uac_completeness_check")
+        self.assertTrue(runner.normalize_note(UAC, "NOT_A_DEFECT").startswith("- Acceptance Criteria 01"),
+                        "a new capability has no root-cause note")
+        self.assertTrue(runner.normalize_note(UAC, "CONFIRMED").startswith("- Acceptance Criteria 01"))
+        proposed = runner.normalize_note(UAC, "PROPOSED")
+        self.assertTrue(proposed.startswith(check.PROPOSED_NOTE))
+        self.assertNotIn("not confirmed", proposed)
+        self.assertEqual(runner.normalize_note(proposed, "UNCONFIRMED").count("Note:"), 1)
+
+    def test_source_lines_lose_revisions_paths_and_code_names_but_keep_attachments(self) -> None:
+        text = ("- Acceptance Criteria 01: x.\n"
+                "  **Source:** GUIDES-1 comment 58244293; inspected starling commit 16a8982; Starling PublishListener.\n"
+                "- Acceptance Criteria 02: y.\n"
+                "  **Source:** GUIDES-1 description and {{componentMapping.json}}.\n")
+        out, removed = runner.clean_source_lines(text, ["componentMapping.json"])
+        self.assertIn("**Source:** GUIDES-1 comment 58244293.", out)
+        self.assertIn("{{componentMapping.json}}", out)
+        self.assertEqual(removed, ["inspected starling commit 16a8982", "Starling PublishListener."])
+
+    def test_pull_requests_linked_in_comments_are_listed_for_the_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"description": "", "comments": [
+                {"author": "bot", "body": "PR [starling #1|https://git.corp.adobe.com/A/starling/pull/8294] needs review"}]}
+            entries = linked_docs.collect(source, Path(tmp), "uac.bot", None)
+        self.assertEqual(entries, [{"url": "https://git.corp.adobe.com/A/starling/pull/8294", "kind": "pull_request",
+                                    "status": "LINKED", "note": "a proposed fix; read its diff in the matching clone"}])
+        self.assertEqual(linked_docs.unread(entries), [], "a linked pull request is not an unread page")
+
+    def test_completeness_check_knows_proposed_and_new_capability_tickets(self) -> None:
+        check = common.import_skill_module("uac_completeness_check")
+        source = {"description": "Add an API.", "comments": [{"body": "Fix: https://x/y/pull/1 needs review"}]}
+        ok = check.fix_basis_problems({"fix_basis": {"status": "PROPOSED", "signal": "Fix: https://x/y/pull/1 needs review"}},
+                                      runner.normalize_note(UAC, "PROPOSED"), source)
+        self.assertEqual(ok, [])
+        self.assertTrue(check.fix_basis_problems({"fix_basis": {"status": "PROPOSED", "signal": "Fix: https://x/y/pull/1 needs review"}},
+                                                 UAC, source), "PROPOSED needs the proposed-fix note")
+        feature = {"fix_basis": {"status": "NOT_A_DEFECT", "reason": "the ticket asks for a new status API"}}
+        self.assertEqual(check.fix_basis_problems(feature, runner.normalize_note(UAC, "NOT_A_DEFECT"), source), [])
+        self.assertTrue(check.fix_basis_problems(feature, UAC, source), "a new capability has no root-cause note")
+
+    def test_new_miss_probes_are_active(self) -> None:
+        lib = common.import_skill_module("miss_probe_library")
+        status = {p["probe_id"]: lib.effective_status(p)[0] for p in lib.load_library()}
+        for probe in ("MP-018", "MP-019", "MP-020", "MP-021"):
+            self.assertEqual(status.get(probe), "ACTIVE", probe)
 
 
 if __name__ == "__main__":
