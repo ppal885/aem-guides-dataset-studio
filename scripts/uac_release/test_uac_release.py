@@ -896,6 +896,28 @@ class LearningHarvesterTests(unittest.TestCase):
         issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-05T09:30:00.000+0000", "uac.bot")])
         self.assertEqual(harvester.harvest(self.config, self.jira_with(issue), self.log, "uac.bot"), [])
 
+    def test_a_same_account_rewrite_is_the_baseline_for_qe_edits(self) -> None:
+        rewritten = POSTED_FIELD.replace("* Source: Ticket description; {{ReportServlet.java}} line 10.",
+                                         "* Source: Ticket description.")
+
+        def history(*writes):
+            return [{"created": at, "author": {"name": by}, "items": [{"fieldId": "customfield_1", "toString": text}]}
+                    for at, by, text in writes]
+
+        posted = ("2026-01-01T10:00:00.000+0000", "uac.bot", POSTED_FIELD)
+        session = ("2026-01-01T15:00:00.000+0000", "uac.bot", rewritten)
+        issue = _issue(HUMAN_FIELD, "In Progress", [])
+        issue["changelog"]["histories"] = history(posted, session,
+                                                  ("2026-01-05T09:30:00.000+0000", "qe.lead", HUMAN_FIELD))
+        [record] = harvester.harvest(self.config, self.jira_with(issue), self.log, "uac.bot")
+        self.assertEqual(record["posted_text"], rewritten, "the session's rewrite is not counted as a QE change")
+        self.assertEqual(record["editor"], "qe.lead")
+
+        accepted = _issue(rewritten, "UAT", [])
+        accepted["changelog"]["histories"] = history(posted, session)
+        [record] = harvester.harvest(self.config, self.jira_with(accepted), self.log, "uac.bot")
+        self.assertEqual(record["outcome"], "ACCEPTED_AS_IS")
+
     def test_field_now_records_any_change_for_the_release_page(self) -> None:
         issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-05T09:30:00.000+0000", "uac.bot")])
         harvester.harvest(self.config, self.jira_with(issue), self.log, "uac.bot")
