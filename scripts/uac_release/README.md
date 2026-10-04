@@ -137,8 +137,15 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    JIRA_BASE_URL=https://jira.corp.adobe.com
    JIRA_PAT=<Jira personal access token>
    COPILOT_GITHUB_TOKEN=<GitHub token with Copilot access>
+   WIKI_PAT=<wiki.corp.adobe.com personal access token, read-only use>
    ```
    Use a Jira account that can only comment, attach and edit fields on these tickets.
+   `WIKI_PAT` lets the runner read the design documents and specifications a ticket links to (in its
+   description or a comment). The Copilot session cannot log in to the wiki itself, so the runner downloads
+   each linked page into `<KEY>/linked-docs/`, lists them in `LINKED_DOCS.json`, and the skill uses them as
+   evidence. Create the token on wiki.corp.adobe.com under Profile > Settings > Personal Access Tokens. A
+   link the runner cannot read never blocks the UAC: it is shown on the release page as "linked design
+   document not read". `linked_doc_hosts` in the config changes which hosts count as wiki links.
 6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.json` and set:
    - `jql`: which tickets need a UAC. The example picks open Customer Request tickets in the
      `AEMGuides_CurrentDevSprint` sprint (tickets in it are fixed in the coming release), whoever the
