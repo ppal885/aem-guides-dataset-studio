@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 
 AC_PATTERN = re.compile(r"Acceptance Criteria \d+:")
+FIELD_NOW_FILE = "field-now.json"  # written by uac_learning_harvester.py on its nightly read of Jira
 
 WHERE = {
     "POSTED": "Acceptance Criteria field",
@@ -74,6 +75,7 @@ def collect_tickets(out: Path) -> tuple[list[dict], list[dict]]:
             "state": str(status.get("state") or ""),
             "updated": str(status.get("posted_at") or status.get("updated_at") or ""),
             "criteria": len(AC_PATTERN.findall(body.read_text(encoding="utf-8"))) if body.is_file() else 0,
+            "field_now": _read_json(ticket_dir / FIELD_NOW_FILE) or {},
         }
         if row["state"] in WHERE and not status.get("last_error"):
             row["where"] = WHERE[row["state"]]
@@ -132,11 +134,22 @@ def _table(headers: list[str], rows: list[str], empty: str) -> str:
     return f'<div class="wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
 
 
+def _criteria_cell(row: dict) -> str:
+    """Posted count; when the field changed after posting, also its count now and who changed it last."""
+    posted = str(row["criteria"] or "-")
+    now = row.get("field_now") or {}
+    if not now.get("changed"):
+        return posted
+    at = str(now.get("last_change_at") or "")[:16].replace("T", " ") or "unknown time"
+    title = _e(f"Changed in Jira after posting, last by {now.get('last_change_by') or 'unknown'} at {at}")
+    return f"<span title=\"{title}\">{posted} &rarr; {_e(now.get('criteria', '?'))} (edited)</span>"
+
+
 def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accepted: int,
            jira_url: str, generated: str) -> str:
     posted_rows = [
         f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
-        f"<td>{_e(r['where'])}</td><td class=\"num\">{r['criteria'] or '-'}</td><td>{_when(r['updated'])}</td></tr>"
+        f"<td>{_e(r['where'])}</td><td class=\"num\">{_criteria_cell(r)}</td><td>{_when(r['updated'])}</td></tr>"
         for r in posted
     ]
     not_posted_rows = []
@@ -202,7 +215,8 @@ details ul {{ margin:6px 0 0; padding-left:18px; color:var(--muted); }}
 <div class="cards">{cards}</div>
 
 <h2>UAC posted</h2>
-<p class="hint">Tickets where the UAC passed every check and was posted.</p>
+<p class="hint">Tickets where the UAC passed every check and was posted. Criteria is the number posted; "9 &rarr; 7 (edited)"
+means the field was changed in Jira afterwards (read on the harvester's nightly run; hover for who and when).</p>
 {_table(["Ticket", "Summary", "Posted to", "Criteria", "When"], posted_rows, "No UAC posted yet.")}
 
 <h2>UAC not posted</h2>
@@ -210,7 +224,8 @@ details ul {{ margin:6px 0 0; padding-left:18px; color:var(--muted); }}
 <div class="reasons">{_table(["Ticket", "Summary", "Reason", "Last run"], not_posted_rows, "Every picked ticket was posted.")}</div>
 
 <h2>Edited by a person</h2>
-<p class="hint">Posted UACs a person changed afterwards; the harvester learns from these edits. Edits by the automation's own Jira user are not counted.
+<p class="hint">Posted UACs a person changed afterwards; the harvester learns from these edits. Edits made with the automation's own Jira account are not counted here, even when a person made them; they
+still show as "edited" in the posted table.
 Counts are per criterion. {accepted} more ticket(s) were accepted without edits.</p>
 {_table(["Ticket", "Summary", "Edited by", "When", "Kept", "Changed", "Removed", "Added"], edit_rows, "No human edits harvested yet.")}
 </main>

@@ -53,6 +53,9 @@ LEARNING_DIR = "learning"
 RECORDS_FILE = "records.jsonl"
 STATE_FILE = "state.json"
 FIELD_BODY_FILE = "field-body.txt"
+# What the Acceptance Criteria field holds now, written on every harvest so the release page can show a
+# field changed after posting without calling Jira. Written for any change, whoever made it.
+FIELD_NOW_FILE = "field-now.json"
 AC_FIELD_NAME = "Acceptance Criteria"
 DEFAULT_ACCEPTED_STATUSES = ("UAT", "Closed", "Resolved", "Done")
 MATCH_THRESHOLD = 0.5
@@ -414,6 +417,18 @@ def backfill(config: dict, jira, logger, generators: set[str], keys: list[str], 
     return records
 
 
+def write_field_now(ticket_dir: Path, posted_text: str, current_text: str, changes: list[dict]) -> None:
+    """Record the field's current criteria count and its last change, for the release page."""
+    last = changes[-1] if changes else {}
+    now = {
+        "criteria": sum(1 for c in parse_criteria(current_text) if not c.get("struck")),
+        "changed": _sha(current_text) != _sha(posted_text),
+        "last_change_at": last.get("at", ""), "last_change_by": last.get("by", ""),
+        "checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+    (ticket_dir / FIELD_NOW_FILE).write_text(json.dumps(now, indent=2), encoding="utf-8")
+
+
 def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, state: dict) -> dict | None:
     """Return a learning record for this ticket, or None when there is nothing new to learn."""
     status = common.read_status(ticket_dir)
@@ -428,6 +443,7 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, sta
     changes = ac_field_changes(issue, field_id)
     human = [c for c in changes if c["by"] and c["by"] not in generators]
     current_text = fields.get(field_id) or ""
+    write_field_now(ticket_dir, posted_text, current_text, changes)
     if human and changes[-1]["by"] in generators and human[-1]["to"]:
         # A later write by the automation's own user is not a QE edit: learn from the last human version.
         current_text = human[-1]["to"]
