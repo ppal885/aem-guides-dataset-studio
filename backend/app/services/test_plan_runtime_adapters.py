@@ -178,6 +178,12 @@ class LegacyCompatibilityProjector:
             and bool(result.gate_decisions)
             and all(row.status == GateStatus.PASSED for row in result.gate_decisions)
             and not _canonical_uac_delivery_failures(result)
+            # C2: a partial result (a TBD criterion or a blocked candidate)
+            # is delivered for review but is never postable.
+            and not any(
+                row.get("status") == PromotionStatus.BLOCKED.value
+                for row in result.output_payload.get("promotion_decisions") or []
+            )
         )
 
     def project_result(

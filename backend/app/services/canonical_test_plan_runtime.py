@@ -1474,6 +1474,7 @@ class CanonicalTestPlanRuntime:
                 facts,
                 dispositions,
                 admitted_clarifications,
+                questions=questions,
             ),
         )
         # A5 host mediation: computed once, consumed by the renderer and the
