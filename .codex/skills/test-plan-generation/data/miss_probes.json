@@ -669,6 +669,146 @@
       "counterexamples_checked": true,
       "equivalence_key": "failure-before-destructive-cleanup",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-018",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "after their review task",
+          "task is closed",
+          "task is completed",
+          "completes the task",
+          "marked as done",
+          "mark as done",
+          "after completing",
+          "closed review",
+          "after the task"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "TERMINAL_STATE",
+        "candidate_template": "when the ticket is about what a user can reach after a task or item changes state (completed, closed, done), state what that user can still do in the new state: open and read, reply to existing items, add new items, or nothing - and what stays blocked"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261004-POST-STATE-ACTIONS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Access tickets name the screen the user lost but rarely say which actions should come back. Restoring access can restore too much (editing a closed task) or too little (read only when replies are expected). Counterexample checked: a pure display defect with no state change does not need it.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "post-state-change-allowed-actions",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-019",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "does not report any error",
+          "does not report an error",
+          "no error is reported",
+          "not reported as an error",
+          "validation is missing",
+          "add validation",
+          "improve validation",
+          "should report an error"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "NEGATIVE_BOUNDARY",
+        "candidate_template": "when the ticket asks for a missing validation error, check the reported invalid shape, the related invalid shapes of the same rule (one more, a span or reference past the limit), and the valid shapes next to the limit that must not raise a false error (fewer items, merged or spanned items, a corrected item)"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261004-VALIDATION-BOTH-SIDES-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A new validation is judged only on the reported example, so it is often too narrow (misses the other invalid shapes of the same rule) or too eager (flags valid content near the limit). Counterexample checked: a ticket that removes an existing error message needs only the regression side.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "validation-both-sides-of-the-limit",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-020",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "images do not render",
+          "image does not render",
+          "image is not shown",
+          "image path",
+          "rendition path",
+          "image component",
+          "images are missing"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "REPRO_DIMENSION",
+        "candidate_template": "when an embedded object (image, media, graphic) is resolved or rendered wrongly, check the same object in its other placements and forms: inside a table, a figure or a list, referenced by key, an SVG, and with width and height set"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261004-OBJECT-PLACEMENTS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "The reporter shows one image in one topic, but the resolving code serves every placement of the object. A fix that only handles the reported placement leaves the others broken. Counterexample checked: when the ticket names one placement as the only scope, the rest are out of scope.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "embedded-object-placements",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-021",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "access in templates",
+          "available in templates",
+          "in the page layout",
+          "in pdf templates",
+          "title field",
+          "map title",
+          "shows the entire",
+          "prints both"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "DOWNSTREAM_REGRESSION",
+        "candidate_template": "when the ticket makes a value available to output templates or changes which value is shown, list every place that value appears in the output (cover page, header, footer, table of contents, the file's document properties, output history) and check each one"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261004-VALUE-OUTPUT-PLACES-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A title or metadata value is read by several output places, not only the one in the screenshot. Changing or exposing it in one place leaves the others showing the old value. Counterexample checked: a value used by exactly one documented place needs no list.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "value-every-output-place",
+      "status": "ACTIVE"
     }
   ]
 }

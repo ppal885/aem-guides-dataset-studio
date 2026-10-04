@@ -44,10 +44,13 @@ WHAT IT CHECKS in a UAC folder
 9. Hotfix or backport tickets (from jira-source.json): HOTFIX_SCOPE.json passes
    hotfix_scope_check.py.
 10. "fix_basis": whether the root cause or fix is known. CONFIRMED needs the ticket text that says it.
-   UNCONFIRMED is fine - many tickets never get a root-cause comment or a linked pull request - but
-   then UAC.md starts with a "Note:" line saying the root cause is not confirmed yet, and no Acceptance
-   Criterion other than a REGRESSION check rests only on code. When the ticket does report a root cause
-   or fix, UNCONFIRMED needs a reason why that text is not the fix.
+   PROPOSED: a fix pull request is linked but not reviewed or merged; it needs the ticket text that links
+   it, and UAC.md starts with the proposed-fix "Note:" line. NOT_A_DEFECT: the ticket asks for a new
+   capability (an API, an option, a template field), so there is no root cause and no Note line; it needs
+   a reason. UNCONFIRMED is fine - many tickets never get a root-cause comment or a linked pull request -
+   but then UAC.md starts with a "Note:" line saying the root cause is not confirmed yet. Unless the fix is
+   CONFIRMED or PROPOSED, no Acceptance Criterion other than a REGRESSION check rests only on code. When
+   the ticket does report a root cause or fix, UNCONFIRMED needs a reason why that text is not the fix.
 11. No "Suggested checks" section: a check our own research found (documentation, code, a similar or
    parent ticket, an investigator's other scenario, parity) that matters is an Acceptance Criterion -
    usually a "still works as before" check, or a sub-point of the criterion with the same outcome - and
@@ -639,9 +642,11 @@ def suggested_problems(uac_text: str) -> list[str]:
 FIX_SIGNAL = re.compile(
     r"\broot[\s-]*cause\b|\bRCA\b|\bcaused by\b|\bfix(?:ed)? in\b|\bthe fix\b|/pull/\d+|\bpull request\b"
     r"|\bPR\s*#?\d+|\bmerged\b|\bcherry[\s-]*pick", re.IGNORECASE)
-FIX_STATES = ("CONFIRMED", "UNCONFIRMED")
+FIX_STATES = ("CONFIRMED", "PROPOSED", "UNCONFIRMED", "NOT_A_DEFECT")
 UNCONFIRMED_NOTE = ("Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer "
                     "reported and will be checked again when the fix is known.")
+PROPOSED_NOTE = ("Note: A fix is proposed in a linked pull request but is not reviewed yet. These criteria cover what "
+                 "the customer reported and the proposed fix, and will be checked again when the fix is final.")
 _CODE_SOURCE = re.compile(
     r"\b[\w./-]+\.(?:java|jsx?|tsx?|py|xslt?|scss|css|html?|groovy|kt|jsp)\b|\bcommit\s+[0-9a-f]{7,}\b|/pull/\d+",
     re.IGNORECASE)
@@ -680,24 +685,39 @@ def fix_basis_problems(evidence: dict, uac_text: str, source: dict | None) -> li
     if not isinstance(block, dict) or block.get("status") not in FIX_STATES:
         return [f"fix_basis is missing: say whether the root cause or fix is known ({', '.join(FIX_STATES)})"]
     problems = []
-    if block["status"] == "CONFIRMED":
+    status = block["status"]
+    text = uac_text or ""
+    first_ac = re.search(r"^- Acceptance Criteria \d+:", text, re.M)
+    head = text[:first_ac.start()] if first_ac else text
+    if status in ("CONFIRMED", "PROPOSED"):
         signal = _normalize(block.get("signal"))
         if not signal:
-            problems.append("fix_basis is CONFIRMED without the ticket text that reports the root cause or fix")
+            problems.append(f"fix_basis is {status} without the ticket text that reports the root cause or fix")
         elif source and signal not in _ticket_text(source):
             problems.append("fix_basis.signal is not text from the ticket; copy the comment that reports the root "
                             "cause or fix")
+        if status == "PROPOSED" and not re.search(r"^Note:.*fix is proposed", head, re.M | re.I):
+            problems.append(f"a fix is proposed but not reviewed, so UAC.md must start with: {PROPOSED_NOTE}")
         return problems
+    if status == "NOT_A_DEFECT":
+        if not _reason_ok(block.get("reason")):
+            problems.append("fix_basis NOT_A_DEFECT needs a reason: what new capability the ticket asks for")
+        if re.search(r"^Note:.*not confirmed", head, re.M | re.I):
+            problems.append("the ticket asks for a new capability, so UAC.md has no root-cause Note line")
+        return problems + _code_only_problems(evidence, text)
     signals = fix_signals(source)
     if signals and not _reason_ok(block.get("reason")):
         problems.append(f"the ticket reports a root cause or fix (\"{signals[0][:80]}\"); record fix_basis "
                         "CONFIRMED with that text, or give a reason why it is not the fix")
-    text = uac_text or ""
-    first_ac = re.search(r"^- Acceptance Criteria \d+:", text, re.M)
-    if not re.search(r"^Note:.*not confirmed", text[:first_ac.start()] if first_ac else text, re.M | re.I):
+    if not re.search(r"^Note:.*not confirmed", head, re.M | re.I):
         problems.append(f"the root cause is not confirmed, so UAC.md must start with: {UNCONFIRMED_NOTE}")
+    return problems + _code_only_problems(evidence, text)
+
+
+def _code_only_problems(evidence: dict, text: str) -> list[str]:
     kinds = {e.get("ac"): e.get("scenario") for e in (evidence.get("scenario") or {}).get("acs") or []
              if isinstance(e, dict)}
+    problems = []
     for number, body in sorted((int(n), b) for n, b in _AC_BLOCK.findall(text)):
         if kinds.get(number) != "REGRESSION" and _code_only(body):
             problems.append(f"Acceptance Criteria {number:02d} rests only on code while the root cause is not "
