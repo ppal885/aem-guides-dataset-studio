@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from app.core.schemas_canonical_test_plan_runtime import (
     GenerationProfile,
     IssueDomain,
@@ -134,6 +136,7 @@ def _disabled_runtime() -> CanonicalTestPlanRuntime:
     )
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_all_fj00_cases_are_current_runtime_equivalent_in_shadow_mode() -> None:
     records = [
         json.loads(line)
@@ -237,6 +240,7 @@ def test_all_fj00_cases_are_current_runtime_equivalent_in_shadow_mode() -> None:
         assert all(text not in serialized_result for text in shadow_texts)
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_straightforward_fj00_case_makes_zero_shadow_calls() -> None:
     records = [
         json.loads(line)

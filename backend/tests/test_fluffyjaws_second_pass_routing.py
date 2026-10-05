@@ -665,6 +665,7 @@ def test_missing_provider_falls_back_with_a_no_call_routing_record() -> None:
     ]
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj00_second_pass_call_set_is_conservative_and_deterministic() -> None:
     expected_counts = [16, 12, 6, 2, 0]
     expected_skips = [
@@ -724,6 +725,7 @@ def _stable_stage_trace(result) -> list[dict[str, object]]:
     ]
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_second_pass_cannot_expand_acceptance_criteria_or_change_plan() -> None:
     record, fixture, *_rest = _baseline_inputs(3)
     disabled_runtime = CanonicalTestPlanRuntime()
@@ -840,6 +842,7 @@ def test_provider_failure_preserves_blocking_p0_as_an_open_question() -> None:
     assert "fj09-secret-timeout" not in trace.model_dump_json()
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_provider_failure_preserves_unresolved_p1_and_needs_review() -> None:
     _baseline, fixture, *_rest = _baseline_inputs(3)
     disabled_runtime = CanonicalTestPlanRuntime()
@@ -901,6 +904,7 @@ def test_provider_failure_preserves_unresolved_p1_and_needs_review() -> None:
     assert failed.gate_decisions == disabled.gate_decisions
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_second_pass_executor_error_falls_back_without_crashing_generation() -> None:
     class RaisingExecutor:
         def execute(self, *_args, **_kwargs):

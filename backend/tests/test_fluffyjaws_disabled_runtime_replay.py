@@ -6,6 +6,8 @@ import ast
 import json
 from pathlib import Path
 
+import pytest
+
 from app.core.schemas_canonical_test_plan_runtime import (
     GenerationProfile,
     RuntimeEntryPoint,
@@ -67,6 +69,7 @@ def _stable_stage_trace(result: object) -> list[dict[str, object]]:
     ]
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj00_frozen_artifacts_remain_valid_after_authorized_reasoning_change() -> None:
     records = [
         json.loads(line)

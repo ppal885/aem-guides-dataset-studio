@@ -1825,6 +1825,7 @@ def _baseline_fixture(index: int) -> tuple[dict[str, Any], dict[str, Any]]:
     return rows[index], rows[index]["fixture"]
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_runtime_fuses_only_routed_questions_without_generating_uac() -> None:
     baseline, fixture = _baseline_fixture(3)
     disabled_runtime = CanonicalTestPlanRuntime()
@@ -1930,6 +1931,7 @@ def test_runtime_fuses_only_routed_questions_without_generating_uac() -> None:
     assert FLUFFYJAWS_SHADOW_TRACE_SCHEMA not in serialized
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 @pytest.mark.parametrize("baseline_index", range(5))
 def test_fj18_controls_second_pass_influence_for_every_fj00_fixture(
     baseline_index: int,
@@ -2013,6 +2015,7 @@ def test_fj18_controls_second_pass_influence_for_every_fj00_fixture(
         assert decision.influence_lineages == ()
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj18_unexplained_output_growth_rolls_back_to_disabled_result() -> None:
     _baseline, fixture = _baseline_fixture(3)
     disabled_runtime = CanonicalTestPlanRuntime(
@@ -2152,6 +2155,7 @@ def _coherent_plan_mutation(second_pass, plan_payload):
         ("contract_mode", SecondPassInfluenceReason.PLAN_CONTRACT_CHANGED),
     ],
 )
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj18_rolls_back_public_output_and_contract_mutations(
     mutation: str,
     expected_reason: SecondPassInfluenceReason,
@@ -2200,6 +2204,7 @@ def test_fj18_rolls_back_public_output_and_contract_mutations(
     assert selected is disabled
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj18_malformed_dynamic_projection_fails_closed_without_exception() -> None:
     disabled, enabled, disabled_trace, enabled_trace, provider_trace = _fj18_pair()
     output_payload = deepcopy(enabled.output_payload)
@@ -2242,6 +2247,7 @@ def test_fj18_malformed_dynamic_projection_fails_closed_without_exception() -> N
         ("trace_erasure", SecondPassInfluenceReason.TRACE_RESULT_MISMATCH),
     ],
 )
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj18_blocks_unbound_sidecars_and_trace_mutations(
     mutation: str,
     expected_reason: SecondPassInfluenceReason,
@@ -2327,6 +2333,7 @@ def test_fj18_blocks_unbound_sidecars_and_trace_mutations(
     assert selected is disabled
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj18_blocks_cross_question_provider_evidence_reassignment() -> None:
     disabled, enabled, disabled_trace, enabled_trace, provider_trace = _fj18_pair()
     question_ids = list(provider_trace.fused_evidence_ids_by_question)
@@ -2354,6 +2361,7 @@ def test_fj18_blocks_cross_question_provider_evidence_reassignment() -> None:
     assert selected is disabled
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj18_provider_trace_getter_returns_a_deep_copy() -> None:
     _disabled, _enabled, _disabled_trace, _enabled_trace, provider_trace = (
         _fj18_pair()
@@ -2385,6 +2393,7 @@ class _TraceDroppingSecondPassService:
         return result
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_fj18_runtime_call_site_rolls_back_when_route_trace_is_missing() -> None:
     _baseline, fixture = _baseline_fixture(3)
     request = CanonicalTestPlanRuntime().build_request(
@@ -2418,6 +2427,7 @@ def test_fj18_runtime_call_site_rolls_back_when_route_trace_is_missing() -> None
     assert selected.output_sha256 == disabled.output_sha256
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_provider_scale_text_cannot_change_domain_impact_or_candidates() -> None:
     _baseline, fixture = _baseline_fixture(3)
     disabled_runtime = CanonicalTestPlanRuntime()
@@ -2481,6 +2491,7 @@ def test_provider_scale_text_cannot_change_domain_impact_or_candidates() -> None
     assert "3000" not in enabled.rendered_output
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_semantic_stage_hash_commits_assessment_not_operational_identity() -> None:
     _baseline, fixture = _baseline_fixture(3)
 

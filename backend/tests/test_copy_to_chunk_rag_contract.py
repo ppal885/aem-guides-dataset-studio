@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from app.services import chat_service, doc_retriever_service
 
 
@@ -8,6 +10,7 @@ def _chunk_path() -> Path:
     return Path(__file__).resolve().parents[1] / "storage" / "manual_copy_to_chunk_behavior_chunks.json"
 
 
+@pytest.mark.local_data("backend/storage/manual_copy_to_chunk_behavior_chunks.json")
 def test_copy_to_chunk_chunks_capture_normative_rules_and_boundaries():
     chunks = json.loads(_chunk_path().read_text(encoding="utf-8"))
 
@@ -21,6 +24,7 @@ def test_copy_to_chunk_chunks_capture_normative_rules_and_boundaries():
     assert "does not prove by-topic splitting" in corpus
 
 
+@pytest.mark.local_data("backend/storage/manual_copy_to_chunk_behavior_chunks.json")
 def test_copy_to_chunk_chunks_load_before_general_corpus():
     chunks = doc_retriever_service._load_chunks()
     ids = [chunk.get("id") or chunk.get("chunk_id") for chunk in chunks]
