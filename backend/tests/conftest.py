@@ -26,6 +26,15 @@ from app.db.session import engine
 from app.main import app
 
 
+@pytest.fixture
+def anyio_backend() -> str:
+    """Run @pytest.mark.anyio tests on asyncio only, the event loop the app runs on.
+
+    Without this the anyio plugin also runs every such test on trio, which is not a project dependency.
+    A test that parametrizes anyio_backend itself still overrides this."""
+    return "asyncio"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _initialize_test_database():
     """Keep the test database schema aligned with model and migration changes."""
