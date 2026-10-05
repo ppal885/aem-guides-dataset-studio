@@ -78,6 +78,8 @@ jobs:
         if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
 
     - name: Test with pytest
+      env:
+        PYTHONPATH: ${{ github.workspace }}/backend
       run: |
         cd backend
         pytest tests/ -v --tb=short
