@@ -519,6 +519,40 @@ class RunnerTests(unittest.TestCase):
                      "for every map in the batch")
         self.assertEqual(runner.source_clauses({"description": long_ping}), [("description", long_ping)])
 
+    def test_support_template_metadata_and_status_pings_need_no_mapping(self) -> None:
+        # Lines from GUIDES-51134, 51558, 51870, 52444 and 53402 that failed real runs.
+        source = {
+            "description": "\u2022 IMS Org ID: 8E84279C699C715B0A495E50@AdobeOrg\n"
+                           "\u2022 Internal discussion thread: Slack link\n"
+                           "\u2022 Internal SME discussion: Slack link\n"
+                           "\u2022 Slack thread: [https://cq-dev.slack.com/archives/C1/p17812]\n"
+                           "\u2022 Program/Env ID : TD-1 stage\n"
+                           "\u2022 Program / Environment : cm-p185304-e1959210 (stage) \u2013 author url https://autho\n"
+                           "Posted on guides channel: [https://cq-dev.slack.com/archives/C1/p1785]\n"
+                           "Full investigation available here: [https://aemcs-workspace.adobe.com/bot/dynamic]\n"
+                           "user: pkumar5@expediagroup.com ; editor load 08:42:43\n"
+                           "1) Go to [http://ip/libs/fmdita/report/report.html/content/dam/samples/en/travel]\n"
+                           "Headings below H1 render as H1 in the Sites output.",
+            "comments": [
+                {"id": "1", "author": "a", "body": "This case is pending from 2 days ago can you please prioritize this"},
+                {"id": "2", "author": "b", "body": "Can you please update here"},
+                {"id": "3", "author": "c", "body": "Could you let me know which release would this bug be fixed in "
+                                                 "so that I can inform the customer"},
+            ],
+        }
+        self.assertEqual([c for _, c in runner.source_clauses(source)],
+                         ["headings below h1 render as h1 in the sites output"])
+
+    def test_a_rewritten_link_does_not_break_a_copied_sentence(self) -> None:
+        ticket = self.out / "PROJ-10"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+        source = {"description": "Open the report from [http://ip/libs/fmdita/report/report.html] and export it."}
+        coverage = [{"source": "description", "text": "Open the report from http://<host>/libs/fmdita/report "
+                     "and export it.", "disposition": "AC", "ac": 1}]
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
+        self.assertEqual(runner.source_coverage_problems(ticket, source), [])
+
     def test_log_attachment_needs_no_surfaces(self) -> None:
         ticket = self.out / "PROJ-9"
         ticket.mkdir()

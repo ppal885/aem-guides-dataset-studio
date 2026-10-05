@@ -210,11 +210,20 @@ _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 # Jira lines that never hold a requirement: status pings, bot notices, credential and access-link lines.
 # The model rightly leaves these out of source coverage (and must never copy credentials). A ping is only
 # skipped when short, so a long sentence that also asks for an ETA still has to be mapped.
-_STATUS_PING = re.compile(r"\b(?:eta|an update|any update|update on this|been picked up|picked this up)\b")
+_STATUS_PING = re.compile(r"\b(?:eta|an update|any update|update on this|been picked up|picked this up"
+                          r"|please update|update here|prioriti[sz]e this|pending from)\b")
 _STATUS_PING_MAX_WORDS = 16
 _NOT_A_REQUIREMENT = re.compile(
     r"\bcrm is watching this ticket\b|\bprogressing without uac\b|\bcredentials? shared\b"
     r"|\bshared (?:the )?credentials\b|\b(?:username|password)\s*[:=]|\buse this link\b|\baccess the link\b")
+# Support-template metadata lines (org ids, environments, Slack and investigation links, user/load-time log
+# lines) and release-scheduling questions never state product behaviour, so the UAC does not have to map them.
+_TICKET_METADATA = re.compile(
+    r"^[\u2022\u00b7\s]*(?:ims org(?:anization)? id|program\s*/\s*env(?:ironment)?(?:\s*id)?|environment id"
+    r"|author url|internal (?:sme )?discussion(?: thread)?|slack (?:thread|link)|posted on (?:the )?guides channel"
+    r"|full investigation (?:is )?available here|user\s*:\s*\S+@\S+)"
+    r"|\bwhich release (?:would|will) (?:this|the) (?:bug|issue|ticket|fix) be (?:fixed|delivered|released)\b")
+_URL = re.compile(r"\[?\b(?:https?://|www\.)\S+")
 _LEADING_CHATTER = re.compile(r"^(?:(?:hi|hey|hello|cc|fyi|thanks|thank you)\b[\s,:;!-]*)+")
 _INVISIBLE = re.compile("[​-‍⁠﻿]")
 # Attachments that cannot show a product screen do not need "surfaces".
@@ -304,12 +313,13 @@ def _strip_markup(text: str) -> str:
 
 
 def _words(text: str) -> str:
-    """Letters and digits only, so bullets, dashes, quotes and link markup never break a copied sentence."""
-    return " ".join(re.findall(r"[^\W_]+", _strip_markup(text).lower()))
+    """Letters and digits only, without URLs, so bullets, dashes, quotes, link markup and a shortened or
+    rewritten link never break a copied sentence."""
+    return " ".join(re.findall(r"[^\W_]+", _URL.sub(" ", _strip_markup(text)).lower()))
 
 
 def _is_requirement(clause: str) -> bool:
-    if _NOT_A_REQUIREMENT.search(clause):
+    if _NOT_A_REQUIREMENT.search(clause) or _TICKET_METADATA.search(clause):
         return False
     return not (_STATUS_PING.search(clause) and len(clause.split()) <= _STATUS_PING_MAX_WORDS)
 
@@ -325,7 +335,7 @@ def source_clauses(source: dict, own_name: str = "") -> list[tuple[str, str]]:
         for line in text.splitlines():
             line = _BULLET.sub("", _HEADING.sub("", line.strip()))
             for sentence in _SENTENCE_END.split(line):
-                clause = _LEADING_CHATTER.sub("", _normalize(sentence))
+                clause = _LEADING_CHATTER.sub("", _normalize(_URL.sub(" ", sentence)))
                 if len(clause.split()) >= MIN_CLAUSE_WORDS and _is_requirement(clause):
                     clauses.append((label, clause))
     return clauses
