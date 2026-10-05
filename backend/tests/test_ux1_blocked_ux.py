@@ -195,9 +195,12 @@ def test_raw_entities_project_to_typed_dimension_question() -> None:
         _facts("Export jobs must write a completion marker."),
     )
     assert questions
+    # 06abf7456: an unusable closure entity falls back to the subject the
+    # ticket itself states, so the question stays researchable.
     for question in questions:
         assert _human_question_safe(question.question)
-        assert "the affected behavior" in question.question
+        assert "Export jobs" in question.question
+        assert "handler.ts" not in question.question
     # Typed dimension and lineage are preserved for research routing.
     assert questions[0].dimension == SemanticDimension.DIRECT_CONSUMERS
     assert questions[0].source_closure_ids
@@ -237,9 +240,11 @@ def test_many_clean_entities_never_reconstitute_a_comma_dump() -> None:
         _facts("Export jobs must write a completion marker."),
     )
     assert questions
+    # 06abf7456: entities that cannot name a product subject fall back to the
+    # subject the ticket itself states instead of a generic placeholder.
     for question in questions:
         assert _human_question_safe(question.question)
-        assert "the affected behavior" in question.question
+        assert "Export jobs" in question.question
         assert "skip_feature_if_flag" not in question.question
         assert question.question.count(",") == 0
 
@@ -414,7 +419,21 @@ def _facts(text: str, fact_type: ContractFactType | None = None):
 
 def _render(gates):
     scope = ScopeResolution()
-    facts = _facts("The export job writes a completion marker.")
+    # 5c6037d4a: the renderer fails closed unless every P0/P1 coverage row is
+    # projected by the Writer output it is handed, and each criterion carries
+    # an openable source.  Render like the runtime does: a Jira-sourced fact
+    # and the Writer's criteria passed explicitly.
+    base = _facts("The export job writes a completion marker.")
+    facts = base.model_copy(
+        update={
+            "facts": [
+                fact.model_copy(
+                    update={"source_reference": "jira:GUIDES-99104:$.description"}
+                )
+                for fact in base.facts
+            ]
+        }
+    )
     dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
         facts, [], [], [], scope, []
     )
@@ -425,10 +444,14 @@ def _render(gates):
     _gate, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
         candidates, facts, scope, dispositions
     )
+    written = CANONICAL_REASONING_SERVICE.write_acceptance_criteria(
+        candidates, promotions, facts, dispositions
+    )
     return CANONICAL_REASONING_SERVICE.render_final_plan(
         _render_request(), facts, scope, CanonicalBehaviorModel(), [], [],
         [], dispositions, candidates, promotions, gates,
         acceptance_resolution=resolution,
+        written_acceptance_criteria=written,
     )
 
 

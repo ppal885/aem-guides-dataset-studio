@@ -169,7 +169,12 @@ def test_only_applicable_p1_regression_coverage_is_fused():
     )
 
 
-def test_fused_sub_points_are_bounded_per_criterion():
+def test_fused_sub_points_are_complete_and_not_duplicated_per_criterion():
+    # 5c6037d4a ("Enforce complete canonical UAC delivery") deliberately removed
+    # the former 4-sub-point cap: every applicable P1 regression variant must be
+    # visible in the contract, so the writer projection completeness gate can
+    # prove each P1 decision was delivered.  Each variant still appears once,
+    # under the one criterion it qualifies.
     rows = [
         _regression_row(
             f"The Topic List report keeps behavior number {index} intact "
@@ -180,7 +185,10 @@ def test_fused_sub_points_are_bounded_per_criterion():
 
     written = _write(rows)
 
-    assert len(_sub_texts(written)) <= 4, (
-        "the contract must stay scannable; the coverage matrix carries the "
-        "long tail"
+    subs = _sub_texts(written)
+    assert len(written) == 1
+    assert sorted(subs) == sorted(row.candidate for row in rows)
+    assert len(set(subs)) == len(subs)
+    assert {row.disposition_id for row in rows} <= set(
+        written[0].source_disposition_ids
     )

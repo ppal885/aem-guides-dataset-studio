@@ -297,12 +297,21 @@ def test_clarification_bound_to_a_wrong_question_is_rejected() -> None:
 
 
 def test_answering_one_question_does_not_unblock_another() -> None:
+    # 5c6037d4a made a terminology probe non-blocking (RESEARCH_REQUIRED) when
+    # Jira separately states the desired behavior.  The ticket statements are
+    # therefore context here, so the terminology decision is still an
+    # independent blocking question that the DITA-OT clarification must not
+    # release.
     facts = ContractFactSet(
         contract_mode=ContractMode.EVIDENCE_BACKED_PROPOSED_CONTRACT,
         facts=[
-            _fact("The generated output must include the merged appendix."),
             _fact(
-                "The observable output differs between DITA-OT processing modes."
+                "The generated output must include the merged appendix.",
+                ContractFactType.CONTEXT_STATEMENT,
+            ),
+            _fact(
+                "The observable output differs between DITA-OT processing modes.",
+                ContractFactType.CONTEXT_STATEMENT,
             ),
             _fact(
                 'What does the human term "cleanup" mean?',

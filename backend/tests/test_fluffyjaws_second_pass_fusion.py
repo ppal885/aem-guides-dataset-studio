@@ -2540,13 +2540,21 @@ def test_semantic_stage_hash_commits_assessment_not_operational_identity() -> No
 
 
 def test_forbidden_planner_and_reasoning_call_sites_do_not_reference_fluffyjaws() -> None:
-    paths = [
-        _WORKSPACE / "backend/app/services/canonical_test_plan_reasoning_service.py",
+    reasoning = (
+        _WORKSPACE / "backend/app/services/canonical_test_plan_reasoning_service.py"
+    ).read_text(encoding="utf-8").casefold()
+    assert "fluffyjaws" not in reasoning
+    assert "reasoningevidenceshadowservice" not in reasoning
+
+    # b3de85cb0 deliberately wired the FluffyJaws connector into SKILL.md, but only as
+    # mode-gated SUPPORTING_DISCOVERY that is off by default and never an AC basis.
+    skill_paths = [
         _WORKSPACE / ".codex/skills/test-plan-generation/SKILL.md",
         _WORKSPACE / ".claude/skills/test-plan-generation/SKILL.md",
         _WORKSPACE / "skills/test-plan-generation/SKILL.md",
     ]
-    for path in paths:
+    for path in skill_paths:
         source = path.read_text(encoding="utf-8").casefold()
-        assert "fluffyjaws" not in source
         assert "reasoningevidenceshadowservice" not in source
+        assert "fluffyjaws connector is optional supporting discovery, off by default" in source
+        assert "a fluffyjaws finding is never an authority and never becomes an ac on its own" in source

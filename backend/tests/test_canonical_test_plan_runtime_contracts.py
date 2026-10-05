@@ -2195,6 +2195,28 @@ def test_all_rejected_implementation_candidates_block_the_run() -> None:
     assert LEGACY_COMPATIBILITY_PROJECTOR.is_postable(result) is False
 
 
+_INCOMPLETE_RESEARCH_STATUS_VALUES = {
+    "PENDING",
+    "PARTIAL",
+    "NOT_FOUND",
+    "SOURCE_UNAVAILABLE",
+    "CONFLICTED",
+}
+
+
+def _incomplete_research_question_ids(payload: dict) -> set[str]:
+    # 84046b636 routes DITA-construct questions to the mandatory
+    # DITA_SPECIFICATION + DITA_OT_DOCUMENTATION pair.  While that research is
+    # incomplete the question must stay open: the renderer may never finalize
+    # it (51a85f085), even when local evidence confirmed the hypothesis.
+    return {
+        row["question_id"]
+        for row in payload["question_research"]
+        if row["research_requirement"] != "NONE"
+        and row["research_status"] in _INCOMPLETE_RESEARCH_STATUS_VALUES
+    }
+
+
 def test_fj16_material_hypotheses_are_dispositioned_exactly_once() -> None:
     result = _canonical_result()
     dispositions = result.output_payload["coverage_dispositions"]
@@ -2211,10 +2233,14 @@ def test_fj16_material_hypotheses_are_dispositioned_exactly_once() -> None:
     questions = {
         row["question_id"]: row for row in result.output_payload["missing_questions"]
     }
+    incomplete = _incomplete_research_question_ids(result.output_payload)
     for hypothesis in hypotheses:
         disposition = linked[hypothesis["hypothesis_id"]][0]
         question = questions[hypothesis["derived_from_question_id"]]
-        if hypothesis["state"] == HypothesisState.UNRESOLVED.value:
+        if (
+            hypothesis["state"] == HypothesisState.UNRESOLVED.value
+            or question["question_id"] in incomplete
+        ):
             assert disposition["disposition"] == CoverageDisposition.OPEN_QUESTION.value
         elif question["dimension"] is not None:
             assert disposition["disposition"] not in {
@@ -2242,6 +2268,7 @@ def test_fj16_resolved_questions_leave_open_question_sections_but_unresolved_rem
         row["question_id"]: row for row in result.output_payload["missing_questions"]
     }
     hypotheses = result.output_payload["hypotheses"]
+    incomplete = _incomplete_research_question_ids(result.output_payload)
     section_ids = {
         section["section_key"]: set(section["source_record_ids"])
         for section in result.output_payload["structured_plan"]["sections"]
@@ -2261,7 +2288,10 @@ def test_fj16_resolved_questions_leave_open_question_sections_but_unresolved_rem
                 )
     for hypothesis in hypotheses:
         question = questions[hypothesis["derived_from_question_id"]]
-        if hypothesis["state"] == HypothesisState.UNRESOLVED.value:
+        if (
+            hypothesis["state"] == HypothesisState.UNRESOLVED.value
+            or question["question_id"] in incomplete
+        ):
             assert question["question_id"] in open_ids or (
                 tbd_by_question.get(question["question_id"], set()) & open_ids
             )

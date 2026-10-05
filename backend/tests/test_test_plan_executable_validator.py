@@ -57,10 +57,11 @@ def _valid_plan() -> str:
 - Re-run unrelated publishing queues and output types that share job-state handling to confirm concurrent execution does not leave jobs non-terminal or corrupt generated output.
 
 **Automation Coverage & Gaps**
+- Main feature coverage: Not covered - no existing test exercises overlapping publishes to the same output.
 - AC-01 - Not covered: add `concurrentPublish` in `C:\\api-tests\\PublishIT.java`; API layer; setup fixture; poll status endpoint; timeout from suite configuration; assert terminal success and output integrity; cleanup fixture; tag `publishing-concurrency`.
 
 **Open Questions**
-- Confirm the approved retry budget and SLA; QA impact: the answer defines polling duration, terminal-failure timing, and sign-off thresholds.
+- OQ-01: Confirm the approved retry budget and SLA. QA impact: the answer defines polling duration, terminal-failure timing, and sign-off thresholds.
 """
 
 

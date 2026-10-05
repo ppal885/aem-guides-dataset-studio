@@ -313,16 +313,21 @@ def test_cli_selection_equals_http_canonical_field() -> None:
         "CANONICAL_MIRROR:IDENTICAL_TO:"
         "qe_review_package.canonical_result.plan_markdown"
     )
+    # fa9d753bb fixed the writer projection, so this fixture now delivers a
+    # complete canonical UAC; the compatibility AC field mirrors exactly the
+    # Writer's criteria (the fail-closed path is pinned separately below).
     assert dumped["output_provenance"]["acceptance_criteria"] == (
-        "BLOCKED:CANONICAL_UAC_DELIVERY_INCOMPLETE"
+        "CANONICAL_WRITER_MIRROR:COMPLETE_P0_P1_ONLY"
     )
     assert dumped["output_provenance"]["canonical"] == (
         "qe_review_package.canonical_result.plan_markdown"
     )
-    assert dumped["acceptance_criteria"] == []
-    assert dumped["qe_review_package"]["canonical_result"]["uac_delivery"][
-        "complete"
-    ] is False
+    canonical_result = dumped["qe_review_package"]["canonical_result"]
+    assert canonical_result["uac_delivery"]["complete"] is True
+    assert canonical_result["uac_delivery"]["failures"] == []
+    writer_rows = canonical_result["output_payload"]["written_acceptance_criteria"]
+    assert writer_rows
+    assert len(dumped["acceptance_criteria"]) == len(writer_rows)
 
 
 def test_compatibility_projection_fails_closed_when_writer_coverage_is_missing() -> None:
