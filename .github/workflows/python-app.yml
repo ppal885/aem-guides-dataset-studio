@@ -75,8 +75,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r backend/requirements-dev.txt
-        # mcp_server.py (repo root) is imported by backend tests and needs the MCP SDK
-        pip install -r requirements-mcp.txt
 
     - name: Test with pytest
       env:
@@ -84,4 +82,30 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
       run: |
         cd backend
-        pytest tests/ -v --tb=short
+        # test_ask_dita_expert_fast_path.py imports mcp_server.py, whose MCP SDK needs anyio>=4.5 and cannot
+        # share an environment with the pinned FastAPI; the mcp-server job runs it in its own environment.
+        pytest tests/ -v --tb=short --ignore=tests/test_ask_dita_expert_fast_path.py
+
+  mcp-server:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: false
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install MCP server dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest python-dotenv structlog -r requirements-mcp.txt
+
+    - name: Test the MCP server (mcp_server.py) in its own environment
+      env:
+        PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
+      run: python -m pytest --noconftest -v backend/tests/test_ask_dita_expert_fast_path.py
