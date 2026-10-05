@@ -142,6 +142,7 @@ def test_required_controlled_miss_maps_to_exact_root(
     ) == 1
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_debugger_uses_frozen_run_and_hashes_human_reference_without_leakage() -> None:
     result = _run()
     frozen_payload = result.model_dump(mode="json")
@@ -168,6 +169,7 @@ def test_debugger_uses_frozen_run_and_hashes_human_reference_without_leakage() -
     assert diagnosis.AUTO_MUTATION is False
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_debugger_reports_unavailable_stages_without_fabricating_them() -> None:
     result = _run(tenant_id="pfix19-not-implemented")
 
@@ -194,6 +196,7 @@ def test_debugger_reports_unavailable_stages_without_fabricating_them() -> None:
     assert diagnosis.SEMANTIC_BLAST_RADIUS.state == DiagnosticFieldState.NOT_IMPLEMENTED
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_debugger_fails_closed_for_present_dimension_wrong_run_and_unknown_dimension() -> None:
     result = _run(tenant_id="pfix19-closed")
 
@@ -208,6 +211,7 @@ def test_debugger_fails_closed_for_present_dimension_wrong_run_and_unknown_dimen
         debug_qe_miss(result.run_id, "JIRA_SPECIFIC_LITERAL")
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_debugger_requires_a_frozen_generation_and_rejects_unsafe_reference() -> None:
     clear_last_qe_miss_debug_snapshot()
     with pytest.raises(LookupError, match="frozen canonical generation"):
@@ -225,6 +229,7 @@ def test_debugger_requires_a_frozen_generation_and_rejects_unsafe_reference() ->
         )
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_diagnostic_capture_and_debug_call_do_not_change_baseline_output() -> None:
     first = _run(tenant_id="pfix19-regression")
     before = first.output_sha256

@@ -1018,7 +1018,7 @@ def _xml_block_looks_unsafe(xml_text: str, question: str) -> bool:
         return True
     if "<reference" in lowered and "<refbody" not in lowered:
         return True
-    if _looks_like_dita_structure_question(question) and "<body>" in lowered and not any(
+    if _looks_like_dita_structure_question(question) and "<body>" in lowered and not re.search(r"<topic[\s>]", lowered) and not any(
         marker in lowered for marker in ("<taskbody", "<conbody", "<refbody")
     ):
         return True

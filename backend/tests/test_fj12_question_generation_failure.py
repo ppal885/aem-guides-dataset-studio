@@ -127,6 +127,7 @@ def _run(case: dict[str, object], runtime: CanonicalTestPlanRuntime):
     return runtime.generate_backend_compatibility(request=request, packet=packet)
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/12_after_raw_trace.json")
 @pytest.mark.parametrize("case", _cases(), ids=lambda row: str(row["case_id"]))
 def test_generic_question_family_is_identical_with_and_without_fluffyjaws(
     case: dict[str, object],
@@ -272,6 +273,7 @@ def test_failure_taxonomy_is_complete_and_production_has_no_case_routes() -> Non
     }
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/12_before_raw_trace.json")
 def test_before_and_after_raw_trace_artifacts_are_machine_valid() -> None:
     before = json.loads(
         (_WORKSPACE / "analysis" / "fluffyjaws" / "12_before_raw_trace.json").read_text(

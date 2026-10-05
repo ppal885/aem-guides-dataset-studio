@@ -1,4 +1,6 @@
 """Pytest fixtures for testing."""
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -24,6 +26,24 @@ from app.db.learned_prompt_models import LearnedPromptEntry  # noqa: F401
 from app.db.migrations import run_migrations
 from app.db.session import engine
 from app.main import app
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip a @pytest.mark.local_data test when its gitignored data is not on this machine.
+
+    Frozen corpora, traces and curated chunk files (analysis/, benchmark/v2/train_mining/,
+    backend/storage/*.json) stay out of git because they can hold Jira or customer content. The tests
+    that read them run on machines that have the data and are reported as skipped, with the missing
+    paths, everywhere else."""
+    for item in items:
+        for marker in item.iter_markers(name="local_data"):
+            missing = [path for path in marker.args if not (_REPO_ROOT / path).exists()]
+            if missing:
+                item.add_marker(pytest.mark.skip(reason="needs gitignored local data: " + ", ".join(missing)))
+                break
 
 
 @pytest.fixture

@@ -7,6 +7,11 @@ from app.generator.glossary_abbrev import generate_dita_glossary_abbrev_dataset
 from app.jobs.schemas import DatasetConfig
 
 
+def _glossentry_keys(files):
+    """Glossentry files are stored as .dita (the AEM Guides/DITA convention); identify them by root element."""
+    return [k for k in files if k.endswith(".dita") and b"<glossentry " in files[k]]
+
+
 @pytest.fixture
 def config():
     return DatasetConfig(name="test", seed="test-seed", root_folder="/tmp", recipes=[])
@@ -16,8 +21,8 @@ def test_glossary_abbrev_generates_valid_structure(config):
     """Generator produces glossary-map.ditamap, glossentry files, usage topics, manifest."""
     files = generate_dita_glossary_abbrev_dataset(config, "/tmp")
     assert any("glossary-map.ditamap" in k for k in files)
-    assert any("api.glossentry" in k for k in files)
-    assert any("aem.glossentry" in k for k in files)
+    assert any(k.endswith("/api.dita") for k in _glossentry_keys(files))
+    assert any(k.endswith("/aem.dita") for k in _glossentry_keys(files))
     assert any("topic_glossary_usage_01.dita" in k for k in files)
     assert any("topic_glossary_usage_10.dita" in k for k in files)
     assert any("dataset_manifest.json" in k for k in files)
@@ -27,7 +32,7 @@ def test_glossary_abbrev_generates_valid_structure(config):
 def test_glossary_abbrev_entries_have_glossterm_and_abbreviation(config):
     """Glossentry files contain glossterm, glossdef, glossAbbreviation."""
     files = generate_dita_glossary_abbrev_dataset(config, "/tmp")
-    gloss_keys = [k for k in files if k.endswith(".glossentry")]
+    gloss_keys = _glossentry_keys(files)
     assert len(gloss_keys) >= 15
     for key in gloss_keys[:3]:
         content = files[key].decode("utf-8")
@@ -67,7 +72,7 @@ def test_glossary_abbrev_custom_counts(config):
     files = generate_dita_glossary_abbrev_dataset(
         config, "/tmp", entry_count=5, usage_topic_count=3
     )
-    gloss_keys = [k for k in files if k.endswith(".glossentry")]
+    gloss_keys = _glossentry_keys(files)
     usage_keys = [k for k in files if "topic_glossary_usage_" in k and k.endswith(".dita")]
     assert len(gloss_keys) == 5
     assert len(usage_keys) == 3
@@ -81,4 +86,6 @@ def test_glossary_abbrev_map_has_keydefs_to_glossentries(config):
     content = files[map_key].decode("utf-8")
     assert "topicref" in content
     assert "keys=" in content or 'keys="' in content
-    assert ".glossentry" in content
+    gloss_filenames = {k.rsplit("/", 1)[-1] for k in _glossentry_keys(files)}
+    assert 'type="glossentry"' in content
+    assert gloss_filenames and all(f'href="{name}"' in content for name in gloss_filenames)

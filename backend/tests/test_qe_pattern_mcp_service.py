@@ -556,6 +556,7 @@ def test_empty_library_is_a_valid_empty_result() -> None:
     assert response.matched_patterns == []
 
 
+@pytest.mark.local_data("benchmark/v2/train_mining/reasoning_pattern_taxonomy_train_v2.json")
 def test_existing_train_library_is_adapted_without_production_promotion() -> None:
     records, version, source_hash = TrainV2PatternLibraryProvider().load()
 
@@ -655,6 +656,7 @@ def _approval_provider(
     )
 
 
+@pytest.mark.local_data("benchmark/v2/train_mining/reasoning_pattern_taxonomy_train_v2.json")
 def test_real_approval_overlay_can_activate_one_versioned_generic_pattern(
     tmp_path: Path,
 ) -> None:
@@ -683,6 +685,7 @@ def test_real_approval_overlay_can_activate_one_versioned_generic_pattern(
     ]
 
 
+@pytest.mark.local_data("benchmark/v2/train_mining/reasoning_pattern_taxonomy_train_v2.json")
 def test_train_provider_reuses_only_the_same_versioned_file_snapshot(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -710,6 +713,7 @@ def test_train_provider_reuses_only_the_same_versioned_file_snapshot(
     assert len(read_paths) == 2
 
 
+@pytest.mark.local_data("benchmark/v2/train_mining/reasoning_pattern_taxonomy_train_v2.json")
 def test_deep_json_parser_failure_is_reported_as_invalid_library(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -742,6 +746,7 @@ def test_deep_json_parser_failure_is_reported_as_invalid_library(
         {"validated_at": "2026-09-01T00:00:00"},
     ],
 )
+@pytest.mark.local_data("benchmark/v2/train_mining/reasoning_pattern_taxonomy_train_v2.json")
 def test_invalid_or_stale_real_approval_overlay_fails_closed(
     tmp_path: Path,
     approval_overrides: dict[str, object],

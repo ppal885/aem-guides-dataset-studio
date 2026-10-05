@@ -10,6 +10,7 @@ def _disable_required_semantic_retrieval_by_default(monkeypatch):
     monkeypatch.setenv("AEM_GUIDES_REQUIRE_SEMANTIC_RETRIEVAL", "false")
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_manual_svg_reference_chunks_are_present():
     path = Path(__file__).resolve().parents[1] / "storage" / "manual_aem_guides_doc_chunks.json"
     text = path.read_text(encoding="utf-8")
@@ -19,6 +20,7 @@ def test_manual_svg_reference_chunks_are_present():
     assert "dita-techcomm/langref/technicalcontent/svgref" in text
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_manual_syntaxdiagram_reference_chunks_are_present():
     path = Path(__file__).resolve().parents[1] / "storage" / "manual_aem_guides_doc_chunks.json"
     text = path.read_text(encoding="utf-8")
@@ -37,6 +39,7 @@ def test_manual_syntaxdiagram_reference_chunks_are_present():
     assert "dita-techcomm/langref/technicalcontent/synblk" in text
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_manual_dita_ot_troubleshooting_chunks_are_present():
     path = Path(__file__).resolve().parents[1] / "storage" / "manual_aem_guides_doc_chunks.json"
     text = path.read_text(encoding="utf-8")
@@ -50,6 +53,7 @@ def test_manual_dita_ot_troubleshooting_chunks_are_present():
     assert "https://www.dita-ot.org/dev/topics/pdf-themes" in text
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_manual_content_reuse_report_chunk_is_present():
     path = Path(__file__).resolve().parents[1] / "storage" / "manual_aem_guides_doc_chunks.json"
     text = path.read_text(encoding="utf-8")
@@ -59,6 +63,7 @@ def test_manual_content_reuse_report_chunk_is_present():
     assert "post-processing workflows must be enabled" in text
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_manual_aem_guides_curated_url_chunks_are_present():
     path = Path(__file__).resolve().parents[1] / "storage" / "manual_aem_guides_doc_chunks.json"
     text = path.read_text(encoding="utf-8")
@@ -107,6 +112,7 @@ def test_manual_aem_guides_curated_url_chunks_are_present():
         assert url in text
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_aem_guides_feature_chunks(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -228,6 +234,7 @@ def test_retrieve_relevant_docs_uses_manual_aem_guides_feature_chunks(monkeypatc
         assert expected_url in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_content_reuse_report(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -241,6 +248,7 @@ def test_retrieve_relevant_docs_uses_manual_content_reuse_report(monkeypatch):
     assert "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/user-guide/map-management-publishing/reports-aem-guide/reports-content-reuse" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_reports_decision_guide(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -254,6 +262,7 @@ def test_retrieve_relevant_docs_uses_manual_reports_decision_guide(monkeypatch):
     assert "manual://aem-guides/reports-suite-decision-guide" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_translation_decision_guide(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -267,6 +276,7 @@ def test_retrieve_relevant_docs_uses_manual_translation_decision_guide(monkeypat
     assert "manual://aem-guides/translation-workflow-decision-guide" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_dita_ot_pdf_themes(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -280,6 +290,7 @@ def test_retrieve_relevant_docs_uses_manual_dita_ot_pdf_themes(monkeypatch):
     assert "https://www.dita-ot.org/dev/topics/pdf-themes" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_dita_ot_change_bars(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -293,6 +304,7 @@ def test_retrieve_relevant_docs_uses_manual_dita_ot_change_bars(monkeypatch):
     assert "https://www.dita-ot.org/dev/topics/pdf2-creating-change-bars" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_dita_ot_args_draft(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -306,6 +318,7 @@ def test_retrieve_relevant_docs_uses_manual_dita_ot_args_draft(monkeypatch):
     assert "https://www.dita-ot.org/dev/parameters/parameters-base" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_svg_chunks(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -317,6 +330,7 @@ def test_retrieve_relevant_docs_uses_manual_svg_chunks(monkeypatch):
     assert "https://dita-lang.org/dita-techcomm/langref/technicalcontent/svgref" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_syntaxdiagram_chunks(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -330,6 +344,7 @@ def test_retrieve_relevant_docs_uses_manual_syntaxdiagram_chunks(monkeypatch):
     assert "https://dita-lang.org/dita-techcomm/langref/technicalcontent/kwd" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_synph_chunk(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -340,6 +355,7 @@ def test_retrieve_relevant_docs_uses_manual_synph_chunk(monkeypatch):
     assert "https://dita-lang.org/dita-techcomm/langref/technicalcontent/synph" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_synblk_chunk(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -350,6 +366,7 @@ def test_retrieve_relevant_docs_uses_manual_synblk_chunk(monkeypatch):
     assert "https://dita-lang.org/dita-techcomm/langref/technicalcontent/synblk" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_dita_ot_error_messages(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -363,6 +380,7 @@ def test_retrieve_relevant_docs_uses_manual_dita_ot_error_messages(monkeypatch):
     assert "https://www.dita-ot.org/dev/topics/error-messages" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_dita_command_help(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)
@@ -376,6 +394,7 @@ def test_retrieve_relevant_docs_uses_manual_dita_command_help(monkeypatch):
     assert "https://www.dita-ot.org/dev/topics/dita-command-help" in urls
 
 
+@pytest.mark.local_data("backend/storage/manual_aem_guides_doc_chunks.json")
 def test_retrieve_relevant_docs_uses_manual_dita_command_arguments(monkeypatch):
     monkeypatch.setattr(doc_retriever_service, "is_chroma_available", lambda: False)
     monkeypatch.setattr(doc_retriever_service, "is_embedding_available", lambda: False)

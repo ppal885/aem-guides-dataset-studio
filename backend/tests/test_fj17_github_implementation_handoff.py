@@ -801,6 +801,7 @@ def test_fj17_result_candidates_are_quarantined_from_behavior_graph() -> None:
     assert graph.edges == []
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/10_sample_redacted_trace_disabled.json")
 def test_fj17_preexisting_v1_trace_is_migrated_without_trusting_stale_identity() -> None:
     sample = (
         Path(__file__).resolve().parents[2]

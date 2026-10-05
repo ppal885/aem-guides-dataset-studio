@@ -127,7 +127,8 @@ async def test_build_local_fallback_response_formats_dita_ot_runtime_modules(pro
         ),
         (
             "Why does resource-only reusable content still resolve but not appear in TOC?",
-            ["resource-only", "reuse source", "toc", "conref"],
+            # Dedicated resource-only answer since 5d4a2cca3.
+            ["resource-only", "resolve reuse references", "toc", "conref"],
         ),
         (
             "I passed --filter but nothing changed. Give me exact checks and expected behavior.",
@@ -328,8 +329,14 @@ def test_should_try_dita_ot_runtime_fallback_blocks_pure_map_authoring_questions
     assert not chat_service._should_try_dita_ot_runtime_fallback(
         "What is the difference between topicref, topichead, and topicgroup?"
     )
+    # Since 14789cf8f, DITA-OT internals questions skip the canned runtime primer and are
+    # synthesized from RAG + LLM instead (_prefer_rag_synthesis).
+    internals_question = "Which DITA-OT preprocess step filters content with DITAVAL and print rules?"
+    assert chat_service._prefer_rag_synthesis(internals_question)
+    assert not chat_service._should_try_dita_ot_runtime_fallback(internals_question)
+    # Runtime-signal questions that are not internals questions still use the primer.
     assert chat_service._should_try_dita_ot_runtime_fallback(
-        "Which DITA-OT preprocess step filters content with DITAVAL and print rules?"
+        "Why can a conkeyref resolve differently after branch filtering?"
     )
 
 
@@ -409,6 +416,9 @@ async def test_chat_turn_uses_local_fallback_when_llm_is_unavailable(monkeypatch
 @pytest.mark.anyio
 async def test_chat_turn_offline_prefers_grounded_structured_answer_for_dita_questions(monkeypatch):
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
+    # Since 0656cf056 the offline fallback answers from the learned-QA seed corpus first;
+    # this test covers the grounded structured path, so isolate it from learned QA.
+    monkeypatch.setattr(chat_service, "try_build_learned_qa_fallback_answer", lambda *_args, **_kwargs: "")
     pack = build_evidence_pack(
         query="What did morerows attribute do in table?",
         tenant_id="kone",
@@ -478,6 +488,9 @@ async def test_chat_turn_offline_prefers_grounded_structured_answer_for_dita_que
 @pytest.mark.anyio
 async def test_chat_turn_offline_prefers_args_draft_guidance_for_dita_ot_pdf_question(monkeypatch):
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
+    # Since 0656cf056 the offline fallback answers from the learned-QA seed corpus first;
+    # this test covers the grounded structured path, so isolate it from learned QA.
+    monkeypatch.setattr(chat_service, "try_build_learned_qa_fallback_answer", lambda *_args, **_kwargs: "")
     pack = build_evidence_pack(
         query="What DITA-OT argument enables draft-comment in PDF?",
         tenant_id="kone",
@@ -550,6 +563,9 @@ async def test_chat_turn_offline_prefers_args_draft_guidance_for_dita_ot_pdf_que
 @pytest.mark.anyio
 async def test_chat_turn_offline_prefers_output_behavior_answer_for_glossentry_native_pdf_question(monkeypatch):
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
+    # Since 0656cf056 the offline fallback answers from the learned-QA seed corpus first;
+    # this test covers the grounded structured path, so isolate it from learned QA.
+    monkeypatch.setattr(chat_service, "try_build_learned_qa_fallback_answer", lambda *_args, **_kwargs: "")
     pack = build_evidence_pack(
         query="How does glossentry behave in Native PDF output?",
         tenant_id="kone",

@@ -161,9 +161,9 @@ def test_valid_receipt_uses_strict_records_and_preserves_status(tmp_path: Path) 
     assert [row["status"] for row in payload.criteria] == ["Proposed", "Confirmed"]
     # Non-negotiable: the [Proposed]/[Confirmed] status tag is NEVER written to Jira.
     assert payload.acceptance_criteria_text == (
-        "AC-01: an author has an editable topic; when the author saves the topic, "
+        "Acceptance Criteria 01: An author has an editable topic; when the author saves the topic, "
         "the saved value is visible after the topic is reopened.\n\n"
-        "AC-02: an author lacks edit permission; when the author attempts to save the topic, "
+        "Acceptance Criteria 02: An author lacks edit permission; when the author attempts to save the topic, "
         "the save is rejected and the stored topic remains unchanged."
     )
     assert "[Proposed]" not in payload.acceptance_criteria_text
@@ -411,7 +411,7 @@ def test_v2_format_and_subpoints_are_preserved(tmp_path):
     payload = _verify(_bundle(tmp_path, plan_text=plan))
     assert payload.criteria[0]["schema_version"] == "aem-guides-ac-v2"
     assert payload.acceptance_criteria_text == (
-        f"AC-01: {V2_STATEMENT}\n  - Check a topic with inline text."
+        f"Acceptance Criteria 01: {V2_STATEMENT}\n  - Check a topic with inline text."
     )
 
 
@@ -525,7 +525,7 @@ def test_bound_canonical_result_can_post_field_only(tmp_path):
     client = FakeJira(current="previous criteria")
     result = poster.execute_verified_post(payload, apply=True, field_only=True, client_factory=lambda: client)
     assert result.applied
-    assert client.writes == [(payload.issue, f"AC-01: {V2_STATEMENT}", None, None)]
+    assert client.writes == [(payload.issue, f"Acceptance Criteria 01: {V2_STATEMENT}", None, None)]
 
 
 @pytest.mark.parametrize("field,value", [

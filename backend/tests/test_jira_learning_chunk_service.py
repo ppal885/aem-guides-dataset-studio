@@ -111,6 +111,13 @@ def test_learning_chroma_metadata_preserves_editor_membership_customers_and_vari
             "historical_outcome": "implemented_fix",
             "is_verified_fix": True,
             "evidence_facets": ["problem", "qa_oracle"],
+            # Provenance fields became required learning metadata in a79fffa75.
+            "behavior_contract_source": "jira_expected_behavior_or_uac",
+            "behavior_contract_complete": True,
+            "root_cause_source": "jira_root_cause_field",
+            "qa_oracle_source": "jira_test_plan_field",
+            "resolution_mechanism": "product_fix",
+            "resolution_evidence_source": "jira_resolution",
         },
     )
 

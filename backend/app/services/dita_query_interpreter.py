@@ -26,6 +26,8 @@ _ELEMENT_PHRASE_ALIASES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bdraft\s+comments?\b", re.IGNORECASE), "draft-comment"),
     (re.compile(r"\brequired\s+cleanup\b", re.IGNORECASE), "required-cleanup"),
 )
+# "cross references" names links, not the <reference> topic type the plural rule would map it to.
+_CROSS_REFERENCE_PHRASE = re.compile(r"\bcross[\s-]+references?\b", re.IGNORECASE)
 _CONTEXTUAL_ATTRIBUTE_NAMES = frozenset(
     {
         "audience",
@@ -159,7 +161,7 @@ def extract_element_names(query: str, explicit_elements: list[str] | None = None
     for pattern, alias in _ELEMENT_PHRASE_ALIASES:
         if pattern.search(query or ""):
             candidates.append(alias)
-    candidates.extend(_TOKEN_PATTERN.findall(query or ""))
+    candidates.extend(_TOKEN_PATTERN.findall(_CROSS_REFERENCE_PHRASE.sub(" ", query or "")))
 
     for candidate in candidates:
         normalized = _normalize_token(candidate)

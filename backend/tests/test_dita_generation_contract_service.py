@@ -461,7 +461,8 @@ def test_contract_routes_subject_scheme_example_to_map_bundle():
     assert contract.include_map is True
     assert contract.counts["subjectscheme"] == 1
     assert contract.counts["ditamap"] == 1
-    assert any(item.name == "subjectScheme" for item in contract.required_elements)
+    # Spec registry element names are lowercase canonical ids (ed857a422); bundle validation is case-insensitive.
+    assert any(item.name.lower() == "subjectscheme" for item in contract.required_elements)
 
 
 def test_contract_routes_ditaval_example_to_map_bundle():

@@ -250,6 +250,7 @@ def test_feature_mode_defaults_to_disabled_and_rejects_invalid_values() -> None:
             FluffyJawsShadowConfig.from_environment({"FLUFFYJAWS_MODE": invalid})
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_invalid_environment_fails_disabled_without_breaking_the_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -300,6 +301,7 @@ def test_shadow_rejects_non_fluffyjaws_providers() -> None:
         )
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_disabled_mode_never_routes_provider_calls() -> None:
     (
         _record,
@@ -337,6 +339,7 @@ def test_disabled_mode_never_routes_provider_calls() -> None:
     assert get_last_fluffyjaws_shadow_trace() is None
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_registry_requires_explicit_discovery_only_opt_in() -> None:
     provider = FakeEvidenceProvider(
         _descriptor(supported_source_types=[]),
@@ -369,6 +372,7 @@ def test_registry_requires_explicit_discovery_only_opt_in() -> None:
     assert registry.eligible(query, allow_discovery_only=True) == [provider]
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_shadow_query_egress_is_denied_by_default() -> None:
     (
         _record,
@@ -408,6 +412,7 @@ def test_shadow_query_egress_is_denied_by_default() -> None:
     assert set(trace.skip_reasons.values()) == {"QUERY_EGRESS_POLICY_DENIED"}
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 @pytest.mark.parametrize("malformed_allow", ["true", 1, object()])
 def test_shadow_query_egress_requires_literal_true(malformed_allow) -> None:
     (
@@ -446,6 +451,7 @@ def test_shadow_query_egress_requires_literal_true(malformed_allow) -> None:
     assert set(trace.skip_reasons.values()) == {"QUERY_EGRESS_POLICY_DENIED"}
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_exhausted_source_allowlist_never_becomes_an_unrestricted_query() -> None:
     (
         _record,
@@ -489,6 +495,7 @@ def test_exhausted_source_allowlist_never_becomes_an_unrestricted_query() -> Non
     }
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_missing_provider_is_the_only_config_unavailable_state() -> None:
     (
         _record,
@@ -523,6 +530,7 @@ def test_missing_provider_is_the_only_config_unavailable_state() -> None:
     assert trace.metrics.provider_call_count == 0
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_blind_replay_never_dispatches_shadow_queries() -> None:
     record = _baseline_record()
     fixture = record["fixture"]
@@ -560,6 +568,7 @@ def test_blind_replay_never_dispatches_shadow_queries() -> None:
     assert provider.calls == []
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_synthesis_success_is_visible_even_without_accepted_source_evidence() -> None:
     (
         _record,
@@ -632,6 +641,7 @@ def test_synthesis_success_is_visible_even_without_accepted_source_evidence() ->
     )
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_shadow_trace_records_metrics_without_entering_the_plan() -> None:
     _record, fixture, _request, _evidence, _questions, *_rest = _runtime_inputs()
     disabled_runtime = CanonicalTestPlanRuntime(shadow_service=_disabled_service())
@@ -774,6 +784,7 @@ def test_shadow_metrics_distinguish_local_overlap_from_unique_evidence() -> None
     assert trace.calls[0].unique_evidence_ids == []
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_provider_timeout_is_trace_only_and_plan_neutral() -> None:
     _record, fixture, *_rest = _runtime_inputs()
     disabled_runtime = CanonicalTestPlanRuntime(shadow_service=_disabled_service())
@@ -824,6 +835,7 @@ def test_provider_timeout_is_trace_only_and_plan_neutral() -> None:
     assert shadow.rendered_output == disabled.rendered_output
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_internal_executor_error_is_counted_and_plan_neutral() -> None:
     _record, fixture, _request, _evidence, _questions, *_rest = _runtime_inputs()
     disabled_runtime = CanonicalTestPlanRuntime(shadow_service=_disabled_service())
@@ -878,6 +890,7 @@ def test_internal_executor_error_is_counted_and_plan_neutral() -> None:
     assert result.rendered_output == disabled.rendered_output
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_disabled_run_clears_a_previous_shadow_sidecar() -> None:
     _record, fixture, *_rest = _runtime_inputs()
     provider = _fake_provider()

@@ -5,6 +5,7 @@ import importlib.util
 from pathlib import Path
 
 import httpx
+import pytest
 
 from app.api.routes import remote_mcp
 from app.core.schemas_qe_pattern_mcp import ResolveQePatternsResponse
@@ -47,6 +48,7 @@ def test_remote_mcp_exposes_additive_structured_resolver_contract() -> None:
     assert "scope_constraints" in schema["properties"]
 
 
+@pytest.mark.local_data("benchmark/v2/train_mining/reasoning_pattern_taxonomy_train_v2.json")
 def test_remote_mcp_resolver_is_fail_closed_for_unapproved_train_patterns() -> None:
     result = remote_mcp._resolve_qe_patterns(
         {
@@ -63,6 +65,7 @@ def test_remote_mcp_resolver_is_fail_closed_for_unapproved_train_patterns() -> N
     assert result["matched_patterns"] == []
 
 
+@pytest.mark.local_data("benchmark/v2/train_mining/reasoning_pattern_taxonomy_train_v2.json")
 def test_analysis_candidates_are_observable_but_non_influential() -> None:
     result = remote_mcp._resolve_qe_patterns(
         {

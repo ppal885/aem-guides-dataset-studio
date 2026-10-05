@@ -366,6 +366,7 @@ def _project_shadow_trace() -> QuestionRetrievalTraceBundle:
     )
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_disabled_runtime_records_every_material_question_without_output_change() -> None:
     result, trace = _run_disabled_baseline()
 
@@ -690,6 +691,7 @@ def test_provider_evidence_cannot_be_reassigned_to_another_question() -> None:
         )
 
 
+@pytest.mark.local_data("analysis/fluffyjaws/00_baseline_cases.jsonl")
 def test_runtime_failure_after_question_generation_retains_partial_localization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

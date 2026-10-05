@@ -4,7 +4,9 @@ from app.services.dita_query_interpreter import extract_element_names
 
 
 def test_extract_element_names_skips_table_inside_table_of_contents_phrase():
-    assert extract_element_names("Table of contents with topics for the product.") == []
+    # "table" inside "table of contents" is not the <table> element. Since 2d75b2a0e plural words map to
+    # their element ("topics" -> topic), so that is the only element left.
+    assert extract_element_names("Table of contents with topics for the product.") == ["topic"]
 
 
 def test_extract_element_names_keeps_explicit_table_element():

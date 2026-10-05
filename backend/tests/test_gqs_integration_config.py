@@ -31,8 +31,13 @@ def test_llm_not_configured_when_opted_out_of_app_llm(clear_gqs_llm_env, monkeyp
         assert not llm_configured_for_authoring()
 
 
-def test_execution_enabled_when_app_llm_available(clear_gqs_llm_env, monkeypatch):
+def test_execution_requires_explicit_opt_in_even_when_app_llm_available(clear_gqs_llm_env, monkeypatch):
+    # Since e305b7f0f, app LLM availability alone must not enable paid QA Studio
+    # authoring; QA_STUDIO_LLM_AUTHORING=true is the explicit opt-in.
     monkeypatch.delenv("QA_STUDIO_LLM_AUTHORING", raising=False)
+    with patch("app.services.llm_service.is_llm_available", return_value=True):
+        assert not authoring_llm_execution_enabled()
+    monkeypatch.setenv("QA_STUDIO_LLM_AUTHORING", "true")
     with patch("app.services.llm_service.is_llm_available", return_value=True):
         assert authoring_llm_execution_enabled()
 

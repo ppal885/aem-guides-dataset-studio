@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from app.services import chat_service, doc_retriever_service
 from app.services.dita_query_interpreter import extract_attribute_names, extract_element_names
 
@@ -9,6 +11,7 @@ def _searchtitle_chunk_path() -> Path:
     return Path(__file__).resolve().parents[1] / "storage" / "manual_searchtitle_behavior_chunks.json"
 
 
+@pytest.mark.local_data("backend/storage/manual_searchtitle_behavior_chunks.json")
 def test_searchtitle_behavior_chunks_define_mapping_and_boundaries():
     chunks = json.loads(_searchtitle_chunk_path().read_text(encoding="utf-8"))
 
@@ -28,6 +31,7 @@ def test_searchtitle_behavior_chunks_define_mapping_and_boundaries():
     assert "composite or newer component mapping" in corpus
 
 
+@pytest.mark.local_data("backend/storage/manual_searchtitle_behavior_chunks.json")
 def test_searchtitle_behavior_chunks_are_loaded_before_general_corpus():
     chunks = doc_retriever_service._load_chunks()
 

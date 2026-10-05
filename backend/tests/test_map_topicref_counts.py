@@ -72,9 +72,9 @@ def validate_map_references(map_xml: bytes, topic_files: List[str]) -> Tuple[boo
         return False, [f"XML parse error: {e}"]
 
 
-def test_map_topicref_count(recipe_type: str, recipe_config: dict, expected_topic_count: int, expected_map_count: int = 1) -> Tuple[bool, str, dict]:
+def check_map_topicref_count(recipe_type: str, recipe_config: dict, expected_topic_count: int, expected_map_count: int = 1) -> Tuple[bool, str, dict]:
     """
-    Test that maps contain all expected topicrefs.
+    Check that maps contain all expected topicrefs (helper; not collected by pytest).
     
     Args:
         recipe_type: Type of recipe to test
@@ -196,64 +196,69 @@ def test_map_topicref_count(recipe_type: str, recipe_config: dict, expected_topi
         return False, error_msg, {}
 
 
+def _assert_check(result: Tuple[bool, str, dict]) -> None:
+    success, message, _stats = result
+    assert success, message
+
+
 def test_task_topics_large():
     """Test task_topics with 100 topics."""
-    return test_map_topicref_count(
+    _assert_check(check_map_topicref_count(
         "task_topics",
         {"topic_count": 100, "steps_per_task": 5, "include_map": True},
         expected_topic_count=100,
         expected_map_count=1
-    )
+    ))
 
 
 def test_concept_topics_medium():
     """Test concept_topics with 50 topics."""
-    return test_map_topicref_count(
+    _assert_check(check_map_topicref_count(
         "concept_topics",
         {"topic_count": 50, "sections_per_concept": 3, "include_map": True},
         expected_topic_count=50,
         expected_map_count=1
-    )
+    ))
 
 
 def test_reference_topics_large():
     """Test reference_topics with 200 topics."""
-    return test_map_topicref_count(
+    _assert_check(check_map_topicref_count(
         "reference_topics",
         {"topic_count": 200, "properties_per_ref": 5, "include_map": True},
         expected_topic_count=200,
         expected_map_count=1
-    )
+    ))
 
 
 def test_incremental_topicref_maps():
     """Test incremental_topicref_maps with multiple maps."""
-    return test_map_topicref_count(
+    _assert_check(check_map_topicref_count(
         "incremental_topicref_maps",
         {"pool_size": 500, "map_topicref_counts": [10, 50, 100, 500], "deep_folders": False},
         expected_topic_count=500,  # Total topics in pool
         expected_map_count=4  # 4 maps
-    )
+    ))
 
 
 def test_insurance_incremental():
     """Test insurance_incremental recipe."""
-    return test_map_topicref_count(
+    _assert_check(check_map_topicref_count(
         "insurance_incremental",
         {"max_topics": 1000, "map_sizes": [10, 100, 1000], "include_local_dtd_stubs": False},
         expected_topic_count=1000,
         expected_map_count=3  # 3 maps
-    )
+    ))
 
 
 def test_task_topics_small():
     """Test task_topics with 10 topics (quick smoke test)."""
-    return test_map_topicref_count(
+    _assert_check(check_map_topicref_count(
         "task_topics",
         {"topic_count": 10, "steps_per_task": 3, "include_map": True},
         expected_topic_count=10,
         expected_map_count=1
-    )
+    ))
 
 
 def main():
@@ -263,17 +268,17 @@ def main():
     print("="*60)
     
     test_cases = [
-        ("task_topics_small", test_task_topics_small),
-        ("task_topics_large", test_task_topics_large),
-        ("concept_topics_medium", test_concept_topics_medium),
-        ("reference_topics_large", test_reference_topics_large),
-        ("incremental_topicref_maps", test_incremental_topicref_maps),
-        ("insurance_incremental", test_insurance_incremental),
+        ("task_topics_small", "task_topics", {"topic_count": 10, "steps_per_task": 3, "include_map": True}, 10, 1),
+        ("task_topics_large", "task_topics", {"topic_count": 100, "steps_per_task": 5, "include_map": True}, 100, 1),
+        ("concept_topics_medium", "concept_topics", {"topic_count": 50, "sections_per_concept": 3, "include_map": True}, 50, 1),
+        ("reference_topics_large", "reference_topics", {"topic_count": 200, "properties_per_ref": 5, "include_map": True}, 200, 1),
+        ("incremental_topicref_maps", "incremental_topicref_maps", {"pool_size": 500, "map_topicref_counts": [10, 50, 100, 500], "deep_folders": False}, 500, 4),
+        ("insurance_incremental", "insurance_incremental", {"max_topics": 1000, "map_sizes": [10, 100, 1000], "include_local_dtd_stubs": False}, 1000, 3),
     ]
     
     results = {}
-    for test_name, test_func in test_cases:
-        success, message, stats = test_func()
+    for test_name, recipe_type, recipe_config, expected_topics, expected_maps in test_cases:
+        success, message, stats = check_map_topicref_count(recipe_type, recipe_config, expected_topics, expected_maps)
         results[test_name] = {
             "success": success,
             "message": message,

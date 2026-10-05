@@ -7,9 +7,15 @@ from unittest.mock import MagicMock
 
 def test_rag_status_exposes_jira_and_dita_ot_metadata(client, auth_headers: dict, monkeypatch):
     dummy_session = MagicMock()
+    opened_sessions: list[MagicMock] = []
+
+    def _session_factory():
+        opened_sessions.append(dummy_session)
+        return dummy_session
+
     monkeypatch.setattr(
         "app.api.v1.routes.ai_dataset.SessionLocal",
-        lambda: dummy_session,
+        _session_factory,
     )
     monkeypatch.setattr(
         "app.api.v1.routes.ai_dataset.get_authorized_tenant_id",
@@ -84,4 +90,7 @@ def test_rag_status_exposes_jira_and_dita_ot_metadata(client, auth_headers: dict
     assert payload["dita_ot_github"]["chunk_count"] == 0
     assert payload["dita_ot_github"]["reference_issue_count"] == 2
     assert "Curated reference issues" in payload["dita_ot_github"]["count_scope"]
-    dummy_session.close.assert_called_once()
+    # Since 88fcbf57a the endpoint opens a second session for the learned-QA
+    # sync; every session it opens must still be closed.
+    assert opened_sessions
+    assert dummy_session.close.call_count == len(opened_sessions)

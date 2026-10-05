@@ -136,7 +136,7 @@ CHAT_LLM_ILLUSTRATIVE_DITA_EXAMPLES = os.getenv("CHAT_LLM_ILLUSTRATIVE_DITA_EXAM
 CHAT_ALWAYS_LLM_FOR_SPEC = os.getenv("CHAT_ALWAYS_LLM_FOR_SPEC", "true").lower() in ("1", "true", "yes", "on")
 _STALE_NO_VERIFIED_SNIPPET_WARNING = "No verified snippet was available for this construct, so the answer omits example XML."
 _EXAMPLE_INTENT_RE = re.compile(
-    r"\b(example|snippet|show|sample|illustrat|demonstrate|give.*xml|xml.*example|code.*example)\b",
+    r"\b(examples?|snippets?|show|samples?|illustrat\w*|demonstrat\w*|give.*xml|xml.*examples?|code.*examples?)\b",
     re.IGNORECASE,
 )
 _tool_cache = None
@@ -5379,18 +5379,28 @@ _DITA_OT_RUNTIME_SIGNAL_PATTERN = re.compile(
 )
 
 
-def _should_try_dita_ot_runtime_fallback(user_content: str) -> bool:
-    """Skip DITA-OT preprocess shortcuts for pure DITA authoring/map questions."""
+def _should_try_dita_ot_runtime_fallback(user_content: str, *, offline: bool = False) -> bool:
+    """Skip DITA-OT preprocess shortcuts for pure DITA authoring/map questions.
+
+    offline: the local fallback, where no LLM runs; a DITA-OT internals question gets the deterministic
+    runtime guide there instead of being held back for RAG synthesis that will not happen."""
     query = strip_humanized_chat_prefix(user_content)
     if not query.strip():
         return False
+    if offline and is_dita_ot_internals_question(query):
+        return True
     # Deep DITA-OT internals AND broader-intent DITA questions (conref push, subject
     # scheme, per-product variation, DITAVAL flagging, filtered-source behavior) must reach
     # the grounded RAG+LLM path, not the shallow deterministic args/conref/profile primer.
     if _prefer_rag_synthesis(query):
         return False
     requested_attribute = _extract_requested_dita_attribute(query)
-    if requested_attribute and not _is_behavior_or_troubleshooting_question(query):
+    # A command-line option ("--format") is not a request about the DITA @format attribute.
+    if (
+        requested_attribute
+        and not _is_behavior_or_troubleshooting_question(query)
+        and not re.search(rf"--{re.escape(requested_attribute)}\b", query)
+    ):
         return False
     if _DITA_OT_RUNTIME_SIGNAL_PATTERN.search(query):
         return True
@@ -6076,7 +6086,7 @@ async def _build_local_fallback_response(
     issue = _fallback_issue_stub(issue_key, context)
 
     if not _looks_like_dita_xml(trimmed):
-        if _should_try_dita_ot_runtime_fallback(trimmed):
+        if _should_try_dita_ot_runtime_fallback(trimmed, offline=True):
             early_dita_ot_runtime_fallback = _build_dita_ot_preprocess_runtime_fallback_response(trimmed)
             if early_dita_ot_runtime_fallback:
                 return _finalize(early_dita_ot_runtime_fallback)

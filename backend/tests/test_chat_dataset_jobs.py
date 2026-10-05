@@ -5,7 +5,7 @@ from app.api.v1.routes import chat as chat_routes
 
 
 @pytest.mark.anyio
-async def test_execute_create_job_starts_background_generation_and_returns_contract(monkeypatch):
+async def test_execute_create_job_starts_background_generation_and_returns_contract(monkeypatch, tmp_path):
     captured: dict[str, object] = {}
 
     def fake_enforce(user_id: str) -> None:
@@ -31,6 +31,12 @@ async def test_execute_create_job_starts_background_generation_and_returns_contr
     monkeypatch.setattr(chat_tools, "create_dataset_job_record", fake_create)
     monkeypatch.setattr(chat_tools, "start_dataset_job_in_background", fake_start)
 
+    class _TmpStorage:
+        base_path = str(tmp_path)
+
+    # The local runner script (683eedf83) is written under storage; keep it in tmp.
+    monkeypatch.setattr("app.storage.get_storage", lambda: _TmpStorage())
+
     result = await chat_tools.execute_create_job(
         "task_topics",
         config={"name": "Enterprise task job"},
@@ -48,7 +54,9 @@ async def test_execute_create_job_starts_background_generation_and_returns_contr
         "status_url": "/api/v1/jobs/job-123",
         "download_url": "/api/v1/datasets/job-123/download",
         "message": "Dataset generation started. The in-chat status card will update when the ZIP is ready.",
+        "runner_script_url": "/api/v1/jobs/job-123/runner-script",
     }
+    assert (tmp_path / "runner_scripts" / "real-user-7" / "job-123.py").is_file()
 
 
 def test_chat_route_passes_authenticated_user_id_to_chat_turn(client, auth_headers, monkeypatch):

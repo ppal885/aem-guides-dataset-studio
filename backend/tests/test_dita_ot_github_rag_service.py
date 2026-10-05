@@ -286,43 +286,77 @@ def test_index_request_invalid_state_rejected(state: str):
 
 def test_rag_part_dita_ot_github_does_not_truncate_reference_rows_at_1000():
     """Curated reference rows must not be cut at RAG_SNIPPET_CHARS (1000); they use the higher reference cap."""
-    from app.services.chat_service import _rag_part_dita_ot_github, RAG_DITA_OT_GH_REFERENCE_CHARS
+    from app.services.chat_service import RAG_SNIPPET_CHARS, _build_rag_context
 
+    # The DITA-OT GitHub RAG part is built inline in _build_rag_context (0276c52c0):
+    # curated reference rows are capped at 3500 chars, live issue rows at 600.
+    reference_cap = 3500
     long_snippet = "x" * 5000
-    mock_row = {
-        "url": "https://github.com/dita-ot/dita-ot/issues/4769",
-        "title": "Hierarchical filtering test",
-        "issue_number": 4769,
-        "snippet": long_snippet,
-        "source": "dita_ot_github_reference",
-    }
-    with patch("app.services.chat_service.retrieve_dita_ot_github_for_query", return_value=[mock_row]):
-        result = _rag_part_dita_ot_github("child include propagation subject scheme")
+    live_snippet = "y" * 5000
+    mock_rows = [
+        {
+            "url": "https://github.com/dita-ot/dita-ot/issues/4769",
+            "title": "Hierarchical filtering test",
+            "issue_number": 4769,
+            "snippet": long_snippet,
+            "source": "dita_ot_github_reference",
+        },
+        {
+            "url": "https://github.com/dita-ot/dita-ot/issues/1",
+            "title": "Live issue",
+            "issue_number": 1,
+            "snippet": live_snippet,
+            "source": "dita_ot_github",
+        },
+    ]
+    from contextlib import ExitStack
 
-    assert result, "Expected non-empty result"
-    # snippet must survive beyond the old 1000-char cap
-    assert long_snippet[:1001] in result, "Snippet was cut at RAG_SNIPPET_CHARS (1000); expected higher reference cap"
+    with ExitStack() as stack:
+        # Isolate the DITA-OT GitHub part from the other RAG sources.
+        for name in (
+            "format_learned_qa_for_prompt",
+            "retrieve_relevant_docs",
+            "retrieve_dita_knowledge",
+            "retrieve_tenant_context",
+            "retrieve_tenant_examples",
+            "retrieve_claude_code_context",
+        ):
+            stack.enter_context(patch(f"app.services.chat_service.{name}", return_value=[] if name != "format_learned_qa_for_prompt" else ""))
+        stack.enter_context(patch("app.services.embedding_service.is_embedding_available", return_value=False))
+        stack.enter_context(
+            patch("app.services.dita_ot_github_rag_service.retrieve_dita_ot_github_for_query", return_value=mock_rows)
+        )
+        result = _build_rag_context("child include propagation subject scheme")
+
+    assert "DITA OPEN TOOLKIT GITHUB ISSUES:" in result
+    assert reference_cap > RAG_SNIPPET_CHARS
+    # snippet must survive beyond the old 1000-char cap, up to the reference cap
+    assert long_snippet[:reference_cap] in result, "Reference snippet was cut below the reference cap"
     # snippet must be capped at the reference cap, not pass through unbounded
-    assert len(result) < 5000 + 500, "Result unexpectedly long; reference cap may not be applied"
-    assert "x" * RAG_DITA_OT_GH_REFERENCE_CHARS in result or len(result) >= RAG_DITA_OT_GH_REFERENCE_CHARS
+    assert "x" * (reference_cap + 1) not in result, "Reference cap was not applied"
+    # live (non-reference) rows keep the short cap
+    assert "y" * 600 in result
+    assert "y" * 601 not in result
 
 
 def test_build_compact_chat_system_prompt_adds_dita_ot_addendum_when_github_issues_present():
     """System prompt must include QA-oriented answer-shape addendum when DITA-OT GitHub context is present."""
     from app.services.chat_service import _build_compact_chat_system_prompt
 
+    # Header emitted by chat_service._build_rag_context for the DITA-OT GitHub RAG part.
     rag_with_github = (
-        "DITA-OT GITHUB ISSUES (community / toolkit):\n"
-        "[1] Hierarchical filtering: child include/flag does not propagate upward\n"
-        "https://github.com/dita-ot/dita-ot/issues/4769\n"
+        "DITA OPEN TOOLKIT GITHUB ISSUES:\n"
+        "Issue: Hierarchical filtering: child include/flag does not propagate upward\n"
+        "URL: https://github.com/dita-ot/dita-ot/issues/4769\n"
         "Some snippet text here."
     )
     prompt = _build_compact_chat_system_prompt(rag_context=rag_with_github)
 
-    assert "### Known issues" in prompt, "Missing '### Known issues' section in DITA-OT GitHub addendum"
-    assert "### What's happening" in prompt, "Missing \"### What's happening\" section"
-    assert "### How to reproduce" in prompt, "Missing '### How to reproduce' section"
-    assert "DITA-OT GITHUB CONTEXT" in prompt, "Missing '# DITA-OT GITHUB CONTEXT' block header"
+    assert "# DITA-OT GITHUB CONTEXT" in prompt, "Missing '# DITA-OT GITHUB CONTEXT' block header"
+    addendum = prompt.split("# DITA-OT GITHUB CONTEXT", 1)[1]
+    assert "Explain expected vs reported toolkit behavior" in addendum
+    assert "cite issue URLs from context" in addendum
+    assert "verify on the user's OT version" in addendum
 
 
 def test_build_compact_chat_system_prompt_no_dita_ot_addendum_without_github_issues():

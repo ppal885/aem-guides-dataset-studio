@@ -8,10 +8,38 @@ from app.services.chat_multimodal_service import generate_image, generate_xml_fl
 from app.services.chat_tools import get_tool_catalog, parse_tool_intent_from_content
 
 
+# Since 683eedf83 the slash palette lists every tool with UI metadata
+# (_PALETTE_TOOLS = _TOOL_UI_META keys), not just generate_dita/flowchart.
+_EXPECTED_PALETTE_TOOLS = {
+    "browse_dataset",
+    "create_job",
+    "create_job_from_jira",
+    "find_recipes",
+    "fix_dita_xml",
+    "generate_dita",
+    "generate_dita_ot_pdf",
+    "generate_image",
+    "generate_native_pdf_config",
+    "generate_xml_flowchart",
+    "get_job_status",
+    "list_indexed_pdfs",
+    "list_jobs",
+    "lookup_aem_guides",
+    "lookup_dita_attribute",
+    "lookup_dita_spec",
+    "lookup_output_preset",
+    "review_dita_xml",
+    "search_jira_issues",
+    "search_tenant_knowledge",
+}
+
+
 def test_get_tool_catalog_exposes_only_llm_invokable_tools():
     catalog = {item["name"]: item for item in get_tool_catalog()}
 
-    assert set(catalog.keys()) == {"generate_dita", "generate_xml_flowchart"}
+    assert set(catalog.keys()) == _EXPECTED_PALETTE_TOOLS
+    llm_tool_names = {str(tool.get("name") or "") for tool in chat_tools.get_tool_definitions()}
+    assert set(catalog.keys()) <= llm_tool_names
     assert catalog["generate_xml_flowchart"]["category"] == "Visualization"
     assert catalog["generate_xml_flowchart"]["primary_arg"] == "xml"
 
@@ -143,7 +171,7 @@ def test_chat_tools_endpoint_lists_llm_chat_tools():
 
     assert response.status_code == 200
     names = {item["name"] for item in response.json()["tools"]}
-    assert names == {"generate_dita", "generate_xml_flowchart"}
+    assert names == _EXPECTED_PALETTE_TOOLS
 
 
 @pytest.mark.anyio
@@ -227,9 +255,11 @@ async def test_execute_generate_dita_uses_shared_service_with_tenant_context(mon
         tenant_id: str,
         skip_rag_check: bool = False,
         progress_run_id: str | None = None,
+        forced_jira_id: str | None = None,
     ):
         captured.update(
             {
+                "forced_jira_id": forced_jira_id,
                 "text": text,
                 "instructions": instructions,
                 "bundle_contract": bundle_contract,
@@ -263,6 +293,7 @@ async def test_execute_generate_dita_uses_shared_service_with_tenant_context(mon
     assert captured["tenant_id"] == "tenant-abc"
     assert captured["skip_rag_check"] is True
     assert captured["bundle_contract"] is None
+    assert captured["forced_jira_id"] is None
     assert result["bundle_summary"].startswith("Generated a DITA bundle")
     assert result["artifact_counts"]["map_files"] == 1
 
