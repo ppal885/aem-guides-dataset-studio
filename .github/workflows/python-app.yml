@@ -82,4 +82,37 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
       run: |
         cd backend
-        pytest tests/ -v --tb=short
+        # These tests load the MCP servers (mcp_server.py, mcp_server/server.py, the release clients), whose MCP SDK
+        # needs anyio>=4.5 and cannot share an environment with the pinned FastAPI; the mcp-server job runs them.
+        pytest tests/ -v --tb=short \
+          --ignore=tests/test_ask_dita_expert_fast_path.py \
+          --ignore=tests/test_shared_uac_feedback_client_contracts.py \
+          --deselect=tests/test_qe_pattern_mcp_interfaces.py::test_claude_desktop_server_redacts_backend_validation_details
+
+  mcp-server:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: false
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install MCP server dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest python-dotenv structlog fastapi -r requirements-mcp.txt
+
+    - name: Test the MCP servers in their own environment
+      env:
+        PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
+      run: >-
+        python -m pytest --noconftest -v
+        backend/tests/test_ask_dita_expert_fast_path.py
+        backend/tests/test_shared_uac_feedback_client_contracts.py
+        backend/tests/test_qe_pattern_mcp_interfaces.py::test_claude_desktop_server_redacts_backend_validation_details
