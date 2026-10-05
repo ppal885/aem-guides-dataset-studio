@@ -12,8 +12,10 @@ from app.evidence_gateway import repo_adapter
 
 
 def test_mcp_tools_list_contract(client, auth_headers):
+    # Root /mcp has served the remote team MCP since 193f600ad; the evidence
+    # gateway stays mounted under the versioned API prefix.
     response = client.post(
-        "/mcp",
+        "/api/v1/mcp",
         headers=auth_headers,
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
     )

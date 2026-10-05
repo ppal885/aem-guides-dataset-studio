@@ -542,9 +542,11 @@ def test_csv_customer_labels_can_be_verified_by_safe_fields_in_the_same_file():
                 "Major",
                 "Body",
                 "2026-08-01",
-                "Broadcom",
+                # Not a built-in customer label (Broadcom became one in 8387bf029),
+                # so only the same-file company field can verify this label.
+                "Northwind",
                 "",
-                "BROADCOM CORPORATION",
+                "NORTHWIND CORPORATION",
                 "Editor",
             ],
         ],
@@ -553,7 +555,7 @@ def test_csv_customer_labels_can_be_verified_by_safe_fields_in_the_same_file():
     parsed = parse_jira_csv_bytes(payload, "safe-customer-labels.csv")
 
     assert parsed.issues[0].customer_cohorts == ["Workday"]
-    assert parsed.issues[1].customer_cohorts == ["BROADCOM CORPORATION"]
+    assert parsed.issues[1].customer_cohorts == ["NORTHWIND CORPORATION"]
 
 
 def test_row_level_customer_labels_are_preserved_with_file_cohort():
