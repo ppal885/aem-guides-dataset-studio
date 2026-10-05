@@ -19,6 +19,9 @@ from app.services.jira_component_metadata_service import (
 
 
 HISTORICAL_UAC_NORMALIZATION_VERSION = "historical-uac-csv-v1"
+# canonical_component_name also resolves legacy aliases (Native_PDF -> Publishing); the source audit needs
+# to know whether the source value itself was canonical.
+_EXACT_CANONICAL_BY_TOKEN = {component.casefold(): component for component in CANONICAL_JIRA_COMPONENTS}
 SOURCE_COMPONENTS_HEADER = "Dataset Studio Original Component/s"
 COMPONENT_ASSIGNMENT_METHOD_HEADER = "Dataset Studio Component Assignment Method"
 COMPONENT_ASSIGNMENT_EVIDENCE_HEADER = "Dataset Studio Component Assignment Evidence"
@@ -75,6 +78,12 @@ def _dedupe(values: list[str]) -> list[str]:
     return output
 
 
+
+def _exact_canonical_component(value: str) -> str:
+    """The canonical component when the value is exactly one (any case or spacing), else ""."""
+    return _EXACT_CANONICAL_BY_TOKEN.get(re.sub(r"\s+", " ", str(value or "").strip()).casefold(), "")
+
+
 def _validated_components(values: Any, *, jira_key: str) -> list[str]:
     raw_values = values if isinstance(values, list) else [values]
     components: list[str] = []
@@ -125,7 +134,7 @@ def _map_source_components(values: list[str]) -> tuple[list[str], list[str], lis
     unresolved: list[str] = []
     ignored: list[str] = []
     for value in values:
-        direct = canonical_component_name(value)
+        direct = _exact_canonical_component(value)
         if direct:
             canonical.append(direct)
             continue
@@ -223,7 +232,7 @@ def normalize_historical_uac_csv_bytes(
             unresolved = []
         else:
             assigned = mapped
-            direct_count = sum(bool(canonical_component_name(value)) for value in source_components)
+            direct_count = sum(bool(_exact_canonical_component(value)) for value in source_components)
             alias_count = sum(
                 _component_token(value) in _LEGACY_COMPONENT_ALIASES for value in source_components
             )

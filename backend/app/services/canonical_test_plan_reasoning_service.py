@@ -924,7 +924,7 @@ _AC_META_PROSE_RE = re.compile(
 # that exact bookkeeping phrasing only - "(see trace)" on its own is a
 # legitimate citation suffix on a real disposition.
 _COVERAGE_FILLER_RE = re.compile(
-    r"internal evidence recorded for\s+\d+\s+closure records",
+    r"internal evidence recorded for\s+\d+\s+closure records?\b",
     re.IGNORECASE,
 )
 
@@ -2191,6 +2191,9 @@ def _product_subject_safe(text: str) -> bool:
     if not _human_question_safe(value):
         return False
     if _PRODUCT_SUBJECT_REJECT_RE.search(value):
+        return False
+    # A bare number or id ("2688") names no behavior.
+    if not re.search(r"[A-Za-z]{2,}", value):
         return False
     # A single forward slash is ordinary product wording that a reporter writes
     # as an alternation ("Map title/dc:title"); a leading slash or two or more
@@ -8352,14 +8355,18 @@ class CanonicalTestPlanReasoningService:
             # Documented existing behavior may ground a proposed baseline only
             # when this is a blocking, ticket-fact-bound question. Discovery
             # research remains traceable but cannot widen ticket acceptance.
-            if not _has_ticket_bound_baseline_anchor(question):
-                continue
-            for baseline_text, baseline_refs in documented_baseline_claims(
-                question,
-                research_by_question,
-                worker_results or [],
-                limit=2,
-            ):
+            # The anchor gates only the documented baseline; the bounded TBD below must still be reached.
+            baseline_claims = (
+                documented_baseline_claims(
+                    question,
+                    research_by_question,
+                    worker_results or [],
+                    limit=2,
+                )
+                if _has_ticket_bound_baseline_anchor(question)
+                else []
+            )
+            for baseline_text, baseline_refs in baseline_claims:
                 b_class, b_priority, b_impact = _derive_c1(
                     CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
                     has_direct_evidence=True,

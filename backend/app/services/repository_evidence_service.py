@@ -449,7 +449,7 @@ def _search_repo(
                     "line": line_no,
                     "matched_query": matched_query,
                     "snippet": snippet,
-                    "evidence_type": _classify_match(repo_id, path, text),
+                    "evidence_type": _classify_match(repo_id, path.relative_to(root), text),
                     "symbols": _extract_symbols(text, around_line=line_no),
                 },
             )
