@@ -74,12 +74,12 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest
-        if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
+        pip install -r backend/requirements-dev.txt
 
     - name: Test with pytest
       env:
-        PYTHONPATH: ${{ github.workspace }}/backend
+        # backend/ for the app package, the repo root for mcp_server.py
+        PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}
       run: |
         cd backend
         pytest tests/ -v --tb=short

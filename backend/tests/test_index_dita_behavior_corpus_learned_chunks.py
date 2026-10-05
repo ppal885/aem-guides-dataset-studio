@@ -1,12 +1,14 @@
-from pathlib import Path
-
 import importlib.util
+import sys
+from pathlib import Path
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "index_dita_behavior_corpus.py"
 spec = importlib.util.spec_from_file_location("index_dita_behavior_corpus", SCRIPT_PATH)
 indexer = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
+# dataclasses resolve the module through sys.modules, so register it before running it.
+sys.modules[spec.name] = indexer
 spec.loader.exec_module(indexer)
 
 
