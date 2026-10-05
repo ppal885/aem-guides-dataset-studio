@@ -684,6 +684,20 @@ def run_generate_dataset(
                 files_generated += len(recipe_files)
                 update_progress(f"Completed {stage_name}")
             
+            elif recipe_type == "insurance_incremental":
+                from app.generator.insurance_incremental import generate_insurance_incremental_dataset
+                recipe_files = generate_insurance_incremental_dataset(
+                    dataset_config, base,
+                    max_topics=recipe.max_topics,
+                    map_sizes=recipe.map_sizes,
+                    include_local_dtd_stubs=recipe.include_local_dtd_stubs,
+                    output_root_folder_name=recipe.output_root_folder_name,
+                    rand=rand,
+                )
+                files.update(recipe_files)
+                files_generated += len(recipe_files)
+                update_progress(f"Completed {stage_name}")
+
             elif recipe_type == "heavy_topics_tables_codeblocks":
                 from app.generator.heavy_content import generate_heavy_topics_dataset
                 recipe_files = generate_heavy_topics_dataset(
@@ -758,6 +772,9 @@ def run_generate_dataset(
                     topic_count=getattr(recipe, 'topic_count', 5000),
                     topics_per_section=getattr(recipe, 'topics_per_section', 50),
                     include_xrefs=getattr(recipe, 'include_xrefs', False),
+                    xref_scope=getattr(recipe, 'xref_scope', 'local'),
+                    flat_submap_count=getattr(recipe, 'flat_submap_count', 1),
+                    customer_style=getattr(recipe, 'customer_style', False),
                     pretty_print=getattr(recipe, 'pretty_print', True),
                     content_subject=getattr(recipe, 'content_subject', '') or '',
                     content_titles=list(getattr(recipe, 'content_titles', []) or []),

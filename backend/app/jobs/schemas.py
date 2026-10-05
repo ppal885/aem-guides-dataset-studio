@@ -707,6 +707,9 @@ class FlatHierarchicalDitaRecipe(BaseModel):
     topic_count: int = Field(default=5000, ge=1, le=25000)
     topics_per_section: int = Field(default=50, ge=1, le=1000)
     include_xrefs: bool = False
+    xref_scope: Literal["local", "peer"] = Field(default="local", description="Scope of generated xrefs between flat topics; 'peer' adds scope=\"peer\" format=\"dita\".")
+    flat_submap_count: int = Field(default=1, ge=1, le=100, description="Number of guide maps under maps/ for the flat layout; above 1 the root map uses mapref.")
+    customer_style: bool = Field(default=False, description="Write default titles, short descriptions and bodies like customer documentation.")
     pretty_print: bool = True
     content_subject: str = Field(default="", description="Subject the dataset is about (e.g. 'Kubernetes'). Drives titles, map names, and per-topic content when populated.")
     content_titles: List[str] = Field(default_factory=list, description="Per-topic titles aligned to topic indices (1..topic_count). Shorter lists fall back to subject-templated titles.")
