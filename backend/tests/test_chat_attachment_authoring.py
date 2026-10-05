@@ -1,5 +1,4 @@
 import pytest
-from app.api.v1.routes import chat as chat_routes
 
 from app.core.schemas_chat_authoring import (
     ChatAction,
@@ -85,24 +84,10 @@ def _attachments() -> list[ChatAttachmentRef]:
 
 @pytest.mark.anyio
 async def test_authoring_route_resolves_before_message_id_route(client, auth_headers, monkeypatch):
+    # Screenshot-to-DITA authoring was retired in 0656cf056: the dedicated
+    # /messages/authoring route still resolves (ahead of /messages/{message_id})
+    # and answers 410 Gone with guidance instead of streaming an authoring reply.
     session_id = chat_service.create_session()
-
-    async def fake_save_upload_asset(*, session_id: str, user_id: str, kind: str, upload):
-        return ChatAttachmentRef(
-            asset_id=f"{kind}-asset",
-            kind=kind,  # type: ignore[arg-type]
-            filename=upload.filename or f"{kind}.bin",
-            mime_type=upload.content_type or "application/octet-stream",
-            size_bytes=32,
-            url=f"/api/v1/chat/assets/{kind}-asset",
-        )
-
-    async def fake_chat_turn(*args, **kwargs):
-        yield {"type": "chunk", "content": "authoring ok"}
-        yield {"type": "done"}
-
-    monkeypatch.setattr(chat_routes, "save_upload_asset", fake_save_upload_asset)
-    monkeypatch.setattr(chat_routes, "chat_turn", fake_chat_turn)
 
     try:
         response = client.post(
@@ -117,9 +102,10 @@ async def test_authoring_route_resolves_before_message_id_route(client, auth_hea
             },
         )
 
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("text/event-stream")
-        assert "authoring ok" in response.text
+        assert response.status_code == 410
+        detail = response.json()["detail"]
+        assert "Screenshot-to-DITA authoring is no longer available" in detail
+        assert "/generate_dita" in detail
     finally:
         chat_service.delete_session(session_id)
 

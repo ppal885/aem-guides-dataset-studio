@@ -582,6 +582,9 @@ async def test_chat_turn_grounded_topicref_question_renders_map_construct_sectio
     monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
 
     session_id = chat_service.create_session()
@@ -898,6 +901,9 @@ async def test_chat_turn_grounded_ditavalref_question_renders_content_model_sect
     monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
     monkeypatch.setattr(chat_service, "_determine_answer_mode", lambda *_args, **_kwargs: "grounded_dita_answer")
 
@@ -941,6 +947,9 @@ async def test_chat_turn_grounded_choicetable_question_renders_placement_section
     monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
     monkeypatch.setattr(chat_service, "_determine_answer_mode", lambda *_args, **_kwargs: "grounded_dita_answer")
 
@@ -1139,6 +1148,9 @@ async def test_chat_turn_linklist_title_toc_question_uses_dita_semantics_not_nat
 
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
 
     session_id = chat_service.create_session()
@@ -1210,6 +1222,9 @@ async def test_chat_turn_foreign_output_question_uses_dita_output_behavior_not_n
     monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
 
     session_id = chat_service.create_session()
@@ -1624,6 +1639,9 @@ async def test_chat_turn_mixed_explain_then_generate_shows_answer_and_preview(mo
 
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
 
     session_id = chat_service.create_session()
@@ -1685,6 +1703,9 @@ async def test_chat_turn_keyscope_example_request_omits_unverified_xml_example(m
     monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
     monkeypatch.setattr(chat_service, "_determine_answer_mode", lambda *_args, **_kwargs: "grounded_dita_answer")
     monkeypatch.setattr(
@@ -1746,6 +1767,9 @@ async def test_chat_turn_keyscope_example_request_renders_verified_example_and_h
     monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
     monkeypatch.setattr(chat_service, "_determine_answer_mode", lambda *_args, **_kwargs: "grounded_dita_answer")
     monkeypatch.setattr(
@@ -2151,6 +2175,9 @@ async def test_chat_turn_aem_grounding_metadata_includes_retrieval_diagnostics(m
     monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fail_build_pack)
     monkeypatch.setattr(chat_service, "run_tool", fake_run_tool)
     monkeypatch.setattr(chat_service, "generate_text", lambda *_args, **_kwargs: pytest.fail("LLM generation should not run"))
+    # 14789cf8f made LLM synthesis the default for grounded spec answers (CHAT_ALWAYS_LLM_FOR_SPEC);
+    # this test covers the deterministic grounded renderer, so run with that default off.
+    monkeypatch.setattr(chat_service, "CHAT_ALWAYS_LLM_FOR_SPEC", False)
     monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
     monkeypatch.setattr(chat_service, "_determine_answer_mode", lambda *_args, **_kwargs: "grounded_aem_answer")
 

@@ -165,9 +165,12 @@ async def test_chat_turn_domain_question_runs_read_only_research_plan(monkeypatc
         monkeypatch.setattr(chat_service, "is_llm_available", lambda: False)
 
         events = []
+        # Since e305b7f0f, DITA element questions led by what/how/do/... that mention AEM Guides
+        # ("Do we require href in Hasinstance ...?") route to grounded_dita_answer. A mixed
+        # DITA-spec + AEM Guides UI domain question outside that pattern still runs the plan.
         async for event in chat_service.chat_turn(
             session_id,
-            "Do we require href in Hasinstance, and how should it resolve in Author view of AEM Guides?",
+            "Is href mandatory on Hasinstance and will Author view of AEM Guides resolve it?",
             tenant_id="kone",
         ):
             events.append(event)

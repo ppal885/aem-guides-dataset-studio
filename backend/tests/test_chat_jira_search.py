@@ -314,6 +314,10 @@ def test_search_related_jira_issues_uses_indexed_fallback_when_live_jira_is_unav
         password = ""
         email = ""
         api_token = ""
+        bearer_token = ""
+
+        def has_auth(self) -> bool:
+            return bool(self.bearer_token or (self.username and self.password) or (self.email and self.api_token))
 
     monkeypatch.setattr(jira_chat_search_service, "build_jira_client", lambda _tenant_id: _DummyClient())
     monkeypatch.setattr(jira_chat_search_service, "_search_live_jira", lambda *_args, **_kwargs: [])
@@ -350,6 +354,10 @@ def test_search_related_jira_issues_reports_unavailable_without_inventing_issue_
         password = ""
         email = ""
         api_token = ""
+        bearer_token = ""
+
+        def has_auth(self) -> bool:
+            return bool(self.bearer_token or (self.username and self.password) or (self.email and self.api_token))
 
     monkeypatch.setattr(jira_chat_search_service, "build_jira_client", lambda _tenant_id: _DummyClient())
     monkeypatch.setattr(jira_chat_search_service, "_search_live_jira", lambda *_args, **_kwargs: [])
@@ -374,6 +382,10 @@ def test_search_related_jira_issues_filters_out_incorrect_semantic_matches(monke
         password = ""
         email = ""
         api_token = ""
+        bearer_token = ""
+
+        def has_auth(self) -> bool:
+            return bool(self.bearer_token or (self.username and self.password) or (self.email and self.api_token))
 
     monkeypatch.setattr(jira_chat_search_service, "build_jira_client", lambda _tenant_id: _DummyClient())
     monkeypatch.setattr(jira_chat_search_service, "_search_live_jira", lambda *_args, **_kwargs: [])
@@ -409,6 +421,10 @@ def test_search_related_jira_issues_keeps_alias_matches_for_reltables(monkeypatc
         password = ""
         email = ""
         api_token = ""
+        bearer_token = ""
+
+        def has_auth(self) -> bool:
+            return bool(self.bearer_token or (self.username and self.password) or (self.email and self.api_token))
 
     monkeypatch.setattr(jira_chat_search_service, "build_jira_client", lambda _tenant_id: _DummyClient())
     monkeypatch.setattr(jira_chat_search_service, "_search_live_jira", lambda *_args, **_kwargs: [])

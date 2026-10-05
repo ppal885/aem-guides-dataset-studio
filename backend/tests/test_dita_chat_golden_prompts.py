@@ -504,6 +504,10 @@ async def test_local_fallback_golden_dita_prompts(monkeypatch, prompt, tool_resu
 
     monkeypatch.setattr(chat_service, "_build_grounded_tool_evidence_pack", fake_grounded_pack)
     monkeypatch.setattr(chat_service, "_build_rag_context", lambda *_args, **_kwargs: "")
+    # Since 0656cf056 the local fallback answers from the learned-QA seed corpus before the
+    # grounded tool path; these golden prompts exercise the grounded path, so isolate it
+    # (same isolation as test_build_local_fallback_response_prefers_grounded_publish_filtering_answer).
+    monkeypatch.setattr(chat_service, "try_build_learned_qa_fallback_answer", lambda *_args, **_kwargs: "")
 
     text = await chat_service._build_local_fallback_response(
         prompt,
