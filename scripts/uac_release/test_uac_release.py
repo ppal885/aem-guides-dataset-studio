@@ -553,6 +553,42 @@ class RunnerTests(unittest.TestCase):
         (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
         self.assertEqual(runner.source_coverage_problems(ticket, source), [])
 
+    def test_unmapped_comment_is_a_review_note_but_unmapped_description_still_fails(self) -> None:
+        ticket = self.out / "PROJ-11"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+        source = {"description": "The report must open from the Map console.",
+                  "comments": [{"id": "56176281", "author": "support.eng",
+                                "body": "Can you please send me a screen recording so that I can provide it to the customer"}]}
+        coverage = [{"source": "description", "text": "The report must open from the Map console.",
+                     "disposition": "AC", "ac": 1}]
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
+        self.assertEqual(runner.source_coverage_problems(ticket, source), [], "a comment never stops the UAC")
+        notes = runner.unmapped_comment_notes(ticket, source)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("Comment 56176281 is not covered by the UAC", notes[0])
+        self.assertIn("screen recording", notes[0])
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text("[]", encoding="utf-8")
+        self.assertTrue(any("1 Jira sentence(s)" in p and "description:" in p
+                            for p in runner.source_coverage_problems(ticket, source)),
+                        "an unmapped description sentence still stops the UAC")
+
+    def test_unmapped_comment_note_is_recorded_for_qe_not_posted_to_the_ticket(self) -> None:
+        source = dict(SOURCE, comments=SOURCE["comments"] + [
+            {"id": "99", "author": "support.eng", "body": "Can you share the server url to do UAT please"}])
+        jira = FakeJira(source=source)
+        self.assertEqual(self._run(jira), "POSTED")
+        comments = "\n".join(c[2] for c in jira.calls if c[0] == "comment")
+        self.assertNotIn("Comment 99", comments, "review notes stay off the ticket")
+        self.assertIn("Comment 99 is not covered by the UAC", common.read_status(self.out / "PROJ-1")["review_notes"][-1])
+
+    def test_rotated_logs_are_not_screens(self) -> None:
+        for name in ("request.log.2026-07-07", "access.log.2026-06-29", "error.log.1", "server.log.gz",
+                     "global-profile-listener.log.2026-06-29"):
+            self.assertTrue(runner.is_non_visual_attachment(name), name)
+        for name in ("shot.png", "recording.mp4", "screen.log.png"):
+            self.assertFalse(runner.is_non_visual_attachment(name), name)
+
     def test_log_attachment_needs_no_surfaces(self) -> None:
         ticket = self.out / "PROJ-9"
         ticket.mkdir()
@@ -1466,6 +1502,17 @@ class ReleaseDashboardTests(unittest.TestCase):
         self.assertIn("9 &rarr; 7 (edited)", page)
         self.assertIn("last by prashantp at 2026-10-04 08:15", page)
         self.assertEqual(dashboard._criteria_cell(posted[1]), "1")
+
+    def test_posted_ticket_shows_its_review_notes_behind_a_click(self) -> None:
+        self.ticket("PROJ-1", {"state": "POSTED", "review_notes": [
+            'Comment 99 is not covered by the UAC; check it is not a requirement: "share the <server> url"']},
+            "Report", "*Acceptance Criteria 01:* a")
+        self.ticket("PROJ-2", {"state": "POSTED"}, "Clean", "*Acceptance Criteria 01:* a")
+        posted, _ = dashboard.collect_tickets(self.out)
+        page = dashboard.render(posted, [], [], 0, "https://jira.example", "now")
+        self.assertIn("<summary>1 review note(s)</summary>", page)
+        self.assertIn("share the &lt;server&gt; url", page, "notes are escaped")
+        self.assertEqual(page.count("review note(s)"), 1, "a ticket without notes shows none")
 
     def test_tickets_split_into_posted_and_not_posted_with_reasons(self) -> None:
         self.ticket("PROJ-1", {"state": "POSTED", "posted_at": "2026-10-02T07:05:00+0000"}, "Report",

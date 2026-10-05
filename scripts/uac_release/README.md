@@ -79,11 +79,17 @@ marked `AC`, `TBD`, `OUT_OF_SCOPE` or `NOT_MATERIAL` (with the Acceptance Criter
 reason). The runner reads the live ticket itself (saved as `jira-source.json`), splits it into
 sentences, and marks the ticket `FAILED` when:
 - `SOURCE_COVERAGE.json` is missing or is not a JSON list;
-- any description or comment sentence (4 words or more) is not in the map;
+- any description sentence (4 words or more) is not in the map;
 - an attachment is not in the map;
 - an entry points at an Acceptance Criterion that does not exist, a `TBD` points at one with no
   TBD line, or `OUT_OF_SCOPE` / `NOT_MATERIAL` has no concrete reason;
 - the ticket cannot be read from Jira (the check fails closed).
+
+A comment sentence that is not in the map does not stop the UAC: comments are mostly coordination
+(recordings, meeting links, server URLs, fix-version questions). It becomes a review note in
+`status.json` and on the release page ("N review note(s)" on the posted row), so QE can check it is
+not a requirement. Support-template metadata (IMS org id, environment, Slack and investigation links,
+log lines), short status pings and URLs are not sentences the UAC has to map.
 
 Comments and attachments posted by the automation's own Jira account are skipped. Text inside
 `{code}` and `{noformat}` blocks is not split into sentences.
