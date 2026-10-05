@@ -10005,6 +10005,7 @@ async def _execute_tool_with_retry(
     max_retries: int = 1,
 ) -> dict:
     """Execute a tool with optional retry on transient errors."""
+    from app.core.agentic_config import agentic_config
     from app.services.chat_tools import run_tool
 
     result = await run_tool(

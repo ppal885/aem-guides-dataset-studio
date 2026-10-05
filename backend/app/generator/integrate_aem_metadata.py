@@ -4,7 +4,7 @@ Integration helper for AEM metadata into existing recipes.
 This module provides functions to enhance existing dataset generation with AEM metadata.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from app.generator.aem_metadata import AEMMetadataGenerator, generate_aem_manifest
 
 
