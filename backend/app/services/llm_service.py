@@ -113,6 +113,7 @@ def _circuit_breaker_record_success() -> None:
 
 def _circuit_breaker_is_open() -> bool:
     """Return True if circuit is open (too many failures in window)."""
+    global _llm_failure_count
     if not CIRCUIT_BREAKER_ENABLED:
         return False
     with _circuit_lock:

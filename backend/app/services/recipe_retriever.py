@@ -65,7 +65,6 @@ def _retrieve_recipes_sync(
     evidence_context: Optional[str] = None,
 ) -> list[dict]:
     """Internal sync retrieval by lexical + embedding scoring."""
-    global _recipe_embedding_cache
     exclude = set(exclude_ids or [])
     specs = discover_recipe_specs()
     effective_query = f"{evidence_context or ''} {query}".strip() if evidence_context else query
