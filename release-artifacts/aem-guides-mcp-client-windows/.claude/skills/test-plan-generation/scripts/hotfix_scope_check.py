@@ -60,9 +60,21 @@ _HOTFIX_REQUEST = re.compile(
     r"(?:\bhot\s*-?\s*fix\b|\bbackport(?:ed|ing)?\b)", re.IGNORECASE)
 
 
+# A condition ("If hotfix required, target TD2 first") plans a possible hotfix; it does not say this ticket is one.
+_HOTFIX_CONDITION = re.compile(
+    r"\b(?:if|in case|when|whether)\b[^.?!\n]{0,25}(?:\bhot\s*-?\s*fix\b|\bback\s*-?\s*port(?:ed|ing)?\b)",
+    re.IGNORECASE)
+# An environment line names what the customer runs ("Product: AEM Guides 5.1 (+ Hotfix 5.1.2.0)"), not what
+# this ticket changes.
+_ENVIRONMENT_LINE = re.compile(
+    r"^[\W_]*(?:product|version|aem guides version|environment|env|installed(?: version)?|deployment)\s*:.*$",
+    re.IGNORECASE | re.MULTILINE)
+
+
 def _statement_text(text: str) -> str:
-    """The text without questions and without requests for a hotfix or backport."""
-    return _HOTFIX_REQUEST.sub(" ", _QUESTION_SENTENCE.sub(" ", text or ""))
+    """The text without questions, requests, conditions and environment lines about a hotfix or backport."""
+    text = _ENVIRONMENT_LINE.sub(" ", text or "")
+    return _HOTFIX_CONDITION.sub(" ", _HOTFIX_REQUEST.sub(" ", _QUESTION_SENTENCE.sub(" ", text)))
 
 
 def is_hotfix(*texts: str) -> bool:

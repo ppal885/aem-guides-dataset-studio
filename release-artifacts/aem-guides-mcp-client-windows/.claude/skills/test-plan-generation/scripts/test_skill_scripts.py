@@ -8108,6 +8108,12 @@ def test_gate_false_positives_from_questions_and_side_sections() -> None:
     check("a request for a backport is not a backport ticket",
           not h.is_hotfix("", "The customer needs a backport to 5.0 as soon as possible."))
     check("a hotfix ticket is still a hotfix", h.is_hotfix("[Hotfix] 5.1.3 HF for the preview"))
+    check("an environment line naming an installed hotfix is not a hotfix ticket",
+          not h.is_hotfix("", "\u2022 Product: AEM Guides 5.1 (+ Hotfix 5.1.2.0, later 5.1.4)"))
+    check("a condition planning a possible hotfix is not a hotfix ticket",
+          not h.is_hotfix("", "\u2022 If hotfix required, target TD2 PROD Author first, then back-port to Guides 5.1.x line."))
+    check("a hotfix statement next to an environment line is still a hotfix",
+          h.is_hotfix("", "Product: AEM Guides 5.1\nThis is the hotfix for the preview title."))
     check("a backport statement is still a backport", h.is_hotfix("Backport of the preview fix to 5.0"))
     check("a hotfix statement in the description still counts",
           h.is_hotfix("", "This is the hotfix for the customer."))
