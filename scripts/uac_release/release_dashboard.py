@@ -83,6 +83,7 @@ def collect_tickets(out: Path) -> tuple[list[dict], list[dict]]:
                 row["where"] += " (runtime gates not passed)"
             if status.get("linked_docs_unread"):
                 row["where"] += " (linked design document not read)"
+            row["notes"] = [str(n) for n in status.get("review_notes") or []]
             posted.append(row)
         else:
             row["reason"], row["problems"] = not_posted_reason(status)
@@ -145,11 +146,20 @@ def _criteria_cell(row: dict) -> str:
     return f"<span title=\"{title}\">{posted} &rarr; {_e(now.get('criteria', '?'))} (edited)</span>"
 
 
+def _notes(notes: list[str] | None) -> str:
+    """Review notes (for example a comment the UAC does not cover) behind a click; QE decides on them."""
+    if not notes:
+        return ""
+    items = "".join(f"<li>{_e(n)}</li>" for n in notes)
+    return f"<details><summary>{len(notes)} review note(s)</summary><ul>{items}</ul></details>"
+
+
 def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accepted: int,
            jira_url: str, generated: str) -> str:
     posted_rows = [
         f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
-        f"<td>{_e(r['where'])}</td><td class=\"num\">{_criteria_cell(r)}</td><td>{_when(r['updated'])}</td></tr>"
+        f"<td>{_e(r['where'])}{_notes(r.get('notes'))}</td><td class=\"num\">{_criteria_cell(r)}</td>"
+        f"<td>{_when(r['updated'])}</td></tr>"
         for r in posted
     ]
     not_posted_rows = []

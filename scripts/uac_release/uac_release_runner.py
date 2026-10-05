@@ -341,6 +341,31 @@ def source_clauses(source: dict, own_name: str = "") -> list[tuple[str, str]]:
     return clauses
 
 
+def unmapped_clauses(entries: list, source: dict, own_name: str = "") -> list[tuple[str, str]]:
+    """Jira sentences (label, clause) that no SOURCE_COVERAGE.json entry copies."""
+    covered = [f" {_words(str(e.get('text') or ''))} " for e in entries if isinstance(e, dict)]
+    return [(label, clause) for label, clause in source_clauses(source, own_name)
+            if not any(f" {_words(clause)} " in text for text in covered)]
+
+
+def unmapped_comment_notes(ticket_dir: Path, source: dict | None, own_name: str = "") -> list[str]:
+    """Review notes (never failures) for comment sentences the UAC does not map.
+
+    Requirements live in the description; comments are mostly coordination (recordings, links, server
+    URLs, fix-version questions). An unmapped comment sentence is shown to QE instead of stopping the UAC."""
+    if not source:
+        return []
+    try:
+        entries = json.loads((ticket_dir / common.SOURCE_COVERAGE_FILE).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(entries, list):
+        return []
+    return [f"Comment {label[len('comment:'):]} is not covered by the UAC; check it is not a requirement: "
+            f"\"{clause[:120]}\""
+            for label, clause in unmapped_clauses(entries, source, own_name) if label.startswith("comment:")]
+
+
 def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "") -> list[str]:
     """Return problems unless every Jira sentence and attachment is mapped to the UAC."""
     path = ticket_dir / common.SOURCE_COVERAGE_FILE
@@ -370,9 +395,8 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
                 problems.append(f"source coverage item {number}: Acceptance Criteria {entry.get('ac')} has no TBD line")
         elif str(entry.get("reason") or "").strip().lower() in EMPTY_REASONS:
             problems.append(f"source coverage item {number}: {disposition} needs a concrete reason")
-    covered = [f" {_words(str(e.get('text') or ''))} " for e in entries]
-    missing = [(label, clause) for label, clause in source_clauses(source, own_name)
-               if not any(f" {_words(clause)} " in text for text in covered)]
+    missing = [(label, clause) for label, clause in unmapped_clauses(entries, source, own_name)
+               if label == "description"]
     if missing:
         shown = "; ".join(f"{label}: \"{clause[:80]}\"" for label, clause in missing[:5])
         problems.append(f"{len(missing)} Jira sentence(s) are not mapped to the UAC, e.g. {shown}")
@@ -383,6 +407,16 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
         if name and name not in mapped_files and (not own_name or attachment.get("author") != own_name):
             problems.append(f"attachment {name} is not mapped to the UAC")
     return problems
+
+
+_ROTATION_SUFFIX = re.compile(r"(?:\.(?:\d+|\d{4}-\d{2}-\d{2}(?:[-_T]\d[\d-]*)?|old|bak))+$")
+
+
+def is_non_visual_attachment(name: str) -> bool:
+    """True for files that cannot show a product screen, rotated logs included (request.log.2026-07-07,
+    error.log.1, server.log.gz)."""
+    name = name.lower()
+    return name.endswith(NON_VISUAL_ATTACHMENTS) or _ROTATION_SUFFIX.sub("", name).endswith(NON_VISUAL_ATTACHMENTS)
 
 
 def attachment_surface_problems(ticket_dir: Path, source: dict, own_name: str = "") -> list[str]:
@@ -403,7 +437,7 @@ def attachment_surface_problems(ticket_dir: Path, source: dict, own_name: str = 
         name = str(entry["source"])[len("attachment:"):]
         if name in own_files:
             continue
-        if name.lower().endswith(NON_VISUAL_ATTACHMENTS) and not entry.get("surfaces"):
+        if is_non_visual_attachment(name) and not entry.get("surfaces"):
             continue
         surfaces = [str(s).strip() for s in entry.get("surfaces") or [] if str(s).strip()]
         if not surfaces:
@@ -863,14 +897,16 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         (ticket_dir / common.DECISION_BODY_FILE).write_text(decision_body, encoding="utf-8")
         status["decisions_sha256"] = common.sha256_file(ticket_dir / common.DECISIONS_FILE)
     status["warnings"] = warnings
-    review_notes = orphan_ac_problems(ticket_dir)
+    comment_notes = unmapped_comment_notes(ticket_dir, source, own_name)
+    review_notes = orphan_ac_problems(ticket_dir) + comment_notes
     status["review_notes"] = review_notes
     fallback = runtime_fallback_gates(ticket_dir)
     if fallback is not None:
         status["runtime_fallback"] = fallback
         logger.warning("%s: written by the runtime fallback; gates not passed: %s",
                        key, "; ".join(fallback) or "not recorded")
-    log_check_firing(config, key, groups, {"orphan_acs": review_notes, "decisions": warnings})
+    log_check_firing(config, key, groups, {"orphan_acs": review_notes[:len(review_notes) - len(comment_notes)],
+                                           "unmapped_comments": comment_notes, "decisions": warnings})
     for warning in warnings + review_notes:
         logger.warning("%s: %s", key, warning)
     if dry_run:
@@ -909,7 +945,7 @@ def check_dir(ticket_dir: Path, own_name: str = "") -> int:
     problems = ticket_problems(ticket_dir, "", source, own_name)
     if source is None:
         problems.append(f"{common.JIRA_SOURCE_FILE} is missing, so ticket coverage was not checked")
-    for note in orphan_ac_problems(ticket_dir):
+    for note in orphan_ac_problems(ticket_dir) + unmapped_comment_notes(ticket_dir, source, own_name):
         print(f"WARN: {note}")
     for problem in problems:
         print(f"FAIL: {problem}")
