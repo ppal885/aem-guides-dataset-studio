@@ -1,15 +1,27 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Union
 from app.core.auth import UserIdentity, CurrentUser
 from app.db.session import Session, db_session
 from app.jobs import crud
 from app.jobs.schemas import DatasetConfig
-from app.tasks.generate_dataset import run_generate_dataset
+from app.services.dataset_job_service import run_dataset_job
 from app.core.structured_logging import get_structured_logger
 
 logger = get_structured_logger(__name__)
 router = APIRouter(prefix="/bulk", tags=["bulk"])
+
+
+def _run_job(job_id: str, config: dict) -> None:
+    """Generate one bulk job after the response; a failure is recorded on the job, never raised."""
+    try:
+        run_dataset_job(job_id, config)
+    except Exception as exc:
+        logger.error_structured(
+            "Bulk job generation failed",
+            extra_fields={"job_id": job_id, "error_type": type(exc).__name__, "error_message": str(exc)},
+            exc_info=True,
+        )
 
 class FlexibleJobRequest(BaseModel):
     """Flexible job request that accepts dict config."""
@@ -32,6 +44,7 @@ class BulkJobResponse(BaseModel):
 @router.post("/jobs")
 def create_bulk_jobs(
     bulk_request: BulkJobRequest,
+    background_tasks: BackgroundTasks,
     user: UserIdentity = CurrentUser,
     session: Session = Depends(db_session),
 ):
@@ -109,7 +122,7 @@ def create_bulk_jobs(
                 )
                 
                 # Start generation task only after successful commit
-                run_generate_dataset.delay(job.id)
+                background_tasks.add_task(_run_job, str(job.id), job.config)
                 
                 job_ids.append(str(job.id))
                 created += 1
@@ -185,9 +198,10 @@ def create_bulk_jobs(
 
 @router.post("/jobs/from-template")
 def create_bulk_jobs_from_template(
-    template_id: str,
-    variations: List[dict],
-    name_prefix: Optional[str] = None,
+    background_tasks: BackgroundTasks,
+    template_id: str = Body(..., embed=True),
+    variations: List[dict] = Body(..., embed=True),
+    name_prefix: Optional[str] = Body(None, embed=True),
     user: UserIdentity = CurrentUser,
     session: Session = Depends(db_session),
 ):
@@ -267,7 +281,7 @@ def create_bulk_jobs_from_template(
                 )
                 
                 # Start generation task only after successful commit
-                run_generate_dataset.delay(job.id)
+                background_tasks.add_task(_run_job, str(job.id), job.config)
                 
                 job_ids.append(str(job.id))
                 created += 1
@@ -335,8 +349,9 @@ def create_bulk_jobs_from_template(
 
 @router.post("/jobs/from-csv")
 def create_bulk_jobs_from_csv(
-    csv_data: str,
-    name_prefix: Optional[str] = None,
+    background_tasks: BackgroundTasks,
+    csv_data: str = Body(..., embed=True),
+    name_prefix: Optional[str] = Body(None, embed=True),
     user: UserIdentity = CurrentUser,
     session: Session = Depends(db_session),
 ):
@@ -417,7 +432,7 @@ def create_bulk_jobs_from_csv(
         
         # Use bulk create
         bulk_request = BulkJobRequest(jobs=jobs, name_prefix=name_prefix)
-        return create_bulk_jobs(bulk_request, user, session)
+        return create_bulk_jobs(bulk_request, background_tasks, user, session)
         
     except HTTPException:
         raise
