@@ -11,9 +11,12 @@ def test_extended_seed_bank_has_92_entries():
     assert len(EXTENDED_SEED_ENTRIES) == 92
 
 
-def test_learned_qa_seed_has_110_entries():
+def test_learned_qa_seed_has_111_entries():
+    # 18 original seeds + the 92 merged bank entries + the curated "7 output preset types" answer (0656cf056).
     items = json.loads(SEED_PATH.read_text(encoding="utf-8"))
-    assert len(items) == 110
+    assert len(items) == 111
+    seed_prompts = {item["prompt"].strip().lower() for item in items}
+    assert {entry["prompt"].strip().lower() for entry in EXTENDED_SEED_ENTRIES} <= seed_prompts
 
 
 def test_difficult_eval_suite_has_at_least_110_cases():
