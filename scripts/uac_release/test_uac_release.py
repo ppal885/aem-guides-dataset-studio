@@ -500,7 +500,6 @@ class RunnerTests(unittest.TestCase):
                          {"id": "4", "author": "d", "body": "Dynamics CRM is Watching this ticket E-1"}],
         }
         self.assertEqual([c for _, c in runner.source_clauses(source)], [
-            "• customer case: e-002460814",
             "the customer follows the official doc (doc link) and configures copilot",
             "issues have been created for the output failure",
         ])
@@ -512,8 +511,8 @@ class RunnerTests(unittest.TestCase):
                      "disposition": "NOT_MATERIAL", "reason": "tracking note"}]
         (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
         self.assertEqual(runner.source_coverage_problems(ticket, source), [])
-        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage[1:]), encoding="utf-8")
-        self.assertTrue(any("1 Jira sentence(s)" in p and "customer case" in p
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps([coverage[0], coverage[2]]), encoding="utf-8")
+        self.assertTrue(any("1 Jira sentence(s)" in p and "official doc" in p
                             for p in runner.source_coverage_problems(ticket, source)))
         long_ping = ("can you share an eta and confirm the export button keeps the selected language "
                      "for every map in the batch")
@@ -542,6 +541,24 @@ class RunnerTests(unittest.TestCase):
         }
         self.assertEqual([c for _, c in runner.source_clauses(source)],
                          ["headings below h1 render as h1 in the sites output"])
+
+    def test_reference_lines_need_no_mapping_but_requirements_with_colons_do(self) -> None:
+        # Lines from GUIDES-51134, 55885 and 57170 that blocked real runs, and lines that must stay.
+        source = {"description": (
+            "• Sample affected URL (stage): publish-p185304-e1959210/.../reference.html\n"
+            "• Account / Org ID: 39BFB008560A6FB87F000101@AdobeOrg (Micron Experience Cloud)\n"
+            "• Authentication performed with Adobe ID someone@example.com (member of the IMS org)\n"
+            "• Customer case: E-002460814\n"
+            "• Internal KB pointing out environment-scoping gap: [E-000874107 – Guides add-on per "
+            "environment limitation|https://kb.example.com/1]\n"
+            "• Related Jira (env-scoped MCP enablement): AEMAGT-2195\n"
+            "Max limit: 1000 assets per request\n"
+            "Expected Result: Images should render while using the core image component.\n"
+            "To confirm on the customer env, check the size of the target path/jcr:content/published-map-order")}
+        self.assertEqual([c for _, c in runner.source_clauses(source)], [
+            "max limit: 1000 assets per request",
+            "expected result: images should render while using the core image component",
+            "to confirm on the customer env, check the size of the target path/jcr:content/published-map-order"])
 
     def test_a_rewritten_link_does_not_break_a_copied_sentence(self) -> None:
         ticket = self.out / "PROJ-10"

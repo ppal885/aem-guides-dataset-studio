@@ -223,6 +223,21 @@ _TICKET_METADATA = re.compile(
     r"|author url|internal (?:sme )?discussion(?: thread)?|slack (?:thread|link)|posted on (?:the )?guides channel"
     r"|full investigation (?:is )?available here|user\s*:\s*\S+@\S+)"
     r"|\bwhich release (?:would|will) (?:this|the) (?:bug|issue|ticket|fix) be (?:fixed|delivered|released)\b")
+# "label: value" reference lines, e.g. "customer case: e-002460814", "related jira (...): aemagt-2195",
+# "internal kb ...: e-000874107", "sample affected url (stage): publish-p1-e2...". The label names a reference
+# and the value is a short identifier, so the line records where to look, not how the product must behave.
+# A line such as "max limit: 1000 assets" is kept: its label is not a reference word.
+_LABEL_VALUE = re.compile(r"^[•·\s]*(?P<label>[^:]{1,80}):\s*(?P<value>.+)$")
+_REFERENCE_LABEL = re.compile(r"\b(?:case|kb|jira|url|link|id|account|ticket|tenant|env|environment|instance|org"
+                              r"|customer|program|contact|email|e-mail|slack|investigation|dynamics|crm|reference)\b")
+_IDENTIFIER = re.compile(r"\d|@|\b[a-z]+-[a-z0-9-]+\b")
+_REFERENCE_LABEL_MAX_WORDS = 6  # a longer "label" is a sentence with a colon in it, e.g. a path like jcr:content
+_REFERENCE_VALUE_MAX_WORDS = 6
+_REFERENCE_TITLED_MAX_WORDS = 15
+# A line that only records which account was used to reproduce ("authentication performed with adobe id x@y").
+_ACCOUNT_LINE = re.compile(r"\S+@\S+\.\S+")
+_ACCOUNT_WORDS = re.compile(r"\b(?:authenticat\w*|logged in|log in|login|signed in|sign in|performed with|account"
+                            r"|adobe id|user)\b")
 _URL = re.compile(r"\[?\b(?:https?://|www\.)\S+")
 _LEADING_CHATTER = re.compile(r"^(?:(?:hi|hey|hello|cc|fyi|thanks|thank you)\b[\s,:;!-]*)+")
 _INVISIBLE = re.compile("[​-‍⁠﻿]")
@@ -318,8 +333,21 @@ def _words(text: str) -> str:
     return " ".join(re.findall(r"[^\W_]+", _URL.sub(" ", _strip_markup(text)).lower()))
 
 
+def _is_reference_line(clause: str) -> bool:
+    """A "label: value" reference (case, KB, related Jira, sample URL) or a line naming the account used."""
+    match = _LABEL_VALUE.match(clause)
+    if match and len(match.group("label").split()) <= _REFERENCE_LABEL_MAX_WORDS \
+            and _REFERENCE_LABEL.search(match.group("label")):
+        words = match.group("value").split()
+        if len(words) <= _REFERENCE_VALUE_MAX_WORDS and _IDENTIFIER.search(" ".join(words)):
+            return True
+        if words and len(words) <= _REFERENCE_TITLED_MAX_WORDS and _IDENTIFIER.search(words[0]):
+            return True  # an identifier followed by its title, e.g. "e-000874107 - guides add-on limitation"
+    return bool(_ACCOUNT_LINE.search(clause) and _ACCOUNT_WORDS.search(clause))
+
+
 def _is_requirement(clause: str) -> bool:
-    if _NOT_A_REQUIREMENT.search(clause) or _TICKET_METADATA.search(clause):
+    if _NOT_A_REQUIREMENT.search(clause) or _TICKET_METADATA.search(clause) or _is_reference_line(clause):
         return False
     return not (_STATUS_PING.search(clause) and len(clause.split()) <= _STATUS_PING_MAX_WORDS)
 
