@@ -108,6 +108,32 @@ class RunLock:
             self.path.unlink()
 
 
+POSTED_BODIES_FILE = "posted-bodies.txt"
+
+
+def text_key(text: str) -> str:
+    """Hash of a field text with all whitespace runs collapsed, so Jira's line endings do not matter."""
+    return hashlib.sha256(" ".join((text or "").split()).encode("utf-8")).hexdigest()
+
+
+def remember_posted_body(ticket_dir: Path, field_body: str) -> None:
+    """Keep a hash of every text the runner wrote into the field (field-body.txt keeps only the last one)."""
+    with (ticket_dir / POSTED_BODIES_FILE).open("a", encoding="utf-8") as handle:
+        handle.write(text_key(field_body) + "\n")
+
+
+def posted_body_keys(ticket_dir: Path) -> set[str]:
+    """Hashes of every text the runner wrote into this ticket's field, plus the current field-body.txt."""
+    keys = set()
+    path = ticket_dir / POSTED_BODIES_FILE
+    if path.is_file():
+        keys.update(line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+    body = ticket_dir / "field-body.txt"
+    if body.is_file():
+        keys.add(text_key(body.read_text(encoding="utf-8")))
+    return keys
+
+
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

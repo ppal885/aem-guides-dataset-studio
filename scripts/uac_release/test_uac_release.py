@@ -232,6 +232,8 @@ class RunnerTests(unittest.TestCase):
         status = common.read_status(self.out / "PROJ-1")
         self.assertEqual(status["state"], "POSTED", "the harvester learns from it")
         self.assertEqual(status["posted_sha256"], common.sha256_file(self.out / "PROJ-1" / "field-body.txt"))
+        self.assertIn(common.text_key(field_body), common.posted_body_keys(self.out / "PROJ-1"),
+                      "every posted text is remembered for the harvester")
         self.assertNotIn("suggested", status, "there are no suggested checks to record")
         self.assertNotIn("suggested_merged", status)
         self.assertEqual(status["uac_sha256"], common.sha256_file(self.out / "PROJ-1" / common.UAC_FILE))
@@ -1054,6 +1056,38 @@ class LearningHarvesterTests(unittest.TestCase):
         accepted["changelog"]["histories"] = history(posted, session)
         [record] = harvester.harvest(self.config, self.jira_with(accepted), self.log, "uac.bot")
         self.assertEqual(record["outcome"], "ACCEPTED_AS_IS")
+
+    def test_shared_account_edits_that_are_not_a_posted_text_are_qe_edits(self) -> None:
+        # GUIDES-54956: the cron and the QE both write as the same Jira user.
+        rerun = POSTED_FIELD.replace("an empty report shows a message", "an empty report shows a short message")
+        (self.out / "PROJ-1" / "field-body.txt").write_text(rerun, encoding="utf-8")
+        common.remember_posted_body(self.out / "PROJ-1", POSTED_FIELD)
+        common.remember_posted_body(self.out / "PROJ-1", rerun)
+
+        def history(*writes):
+            return [{"created": at, "author": {"name": "shared.user"},
+                     "items": [{"fieldId": "customfield_1", "toString": text.replace("\n", "\r\n")}]}
+                    for at, text in writes]
+
+        issue = _issue(HUMAN_FIELD, "In Progress", [])
+        issue["changelog"]["histories"] = history(("2026-10-04T05:08:00.000+0000", POSTED_FIELD),
+                                                  ("2026-10-04T08:40:00.000+0000", rerun),
+                                                  ("2026-10-06T10:08:00.000+0000", HUMAN_FIELD))
+        self.assertEqual(harvester.harvest(self.config, self.jira_with(issue), self.log, "shared.user"), [],
+                         "without the setting every write by the automation's user is generated")
+        config = dict(self.config, learning_shared_account=True)
+        [record] = harvester.harvest(config, self.jira_with(issue), self.log, "shared.user")
+        self.assertEqual(record["outcome"], "CHANGED")
+        self.assertEqual(record["editor"], "shared.user")
+        self.assertEqual(record["edited_at"], "2026-10-06T10:08:00.000+0000")
+        self.assertEqual(record["posted_text"].replace("\r\n", "\n"), rerun,
+                         "the QE edit is compared with the cron's last posted version")
+
+    def test_runner_remembers_every_posted_text(self) -> None:
+        ticket = self.out / "PROJ-1"
+        common.remember_posted_body(ticket, "a\r\nb ")
+        self.assertIn(common.text_key("a\nb"), common.posted_body_keys(ticket))
+        self.assertIn(common.text_key(POSTED_FIELD), common.posted_body_keys(ticket), "field-body.txt counts too")
 
     def test_field_now_records_any_change_for_the_release_page(self) -> None:
         issue = _issue(HUMAN_FIELD, "In Progress", [("2026-01-05T09:30:00.000+0000", "uac.bot")])
