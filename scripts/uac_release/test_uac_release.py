@@ -1589,6 +1589,13 @@ class ReleaseDashboardTests(unittest.TestCase):
         self.assertIn("runtime gates not passed", where["PROJ-1"])
         self.assertEqual(where["PROJ-2"], "Acceptance Criteria field")
 
+    def test_dashboard_hint_says_how_shared_account_edits_are_counted(self) -> None:
+        page = dashboard.render([], [], [], 0, "", "now")
+        self.assertIn("are not counted here", page)
+        shared = dashboard.render([], [], [], 0, "", "now", shared_account=True)
+        self.assertIn("share one Jira account", shared)
+        self.assertNotIn("are not counted here", shared)
+
     def test_a_field_changed_after_posting_shows_both_counts(self) -> None:
         body = "\n".join(f"*Acceptance Criteria {n:02d}:* c{n}" for n in range(1, 10))
         self.ticket("PROJ-1", {"state": "POSTED"}, "Save timeout", body)
