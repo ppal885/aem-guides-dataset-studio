@@ -788,6 +788,29 @@ class RunnerTests(unittest.TestCase):
                          "each attachment and link is alerted once")
         self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
 
+    def test_staleness_alerts_an_api_contract_written_in_a_comment(self) -> None:
+        issue = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
+                                              "items": [{"field": "Acceptance Criteria"}]}]},
+                 "fields": {"comment": {"comments": [
+                     {"id": "1", "author": {"name": "dev"}, "created": "2026-01-12T09:00:00.000+0000",
+                      "body": "API contract:\nPOST /bin/guides/v1/purge\nRequest body: {path}\nStatus codes: 200, 409"},
+                     {"id": "2", "author": {"name": "qa"}, "created": "2026-01-12T10:00:00.000+0000",
+                      "body": "Is the API ready for testing?"},
+                     {"id": "3", "author": {"name": "dev"}, "created": "2026-01-12T11:00:00.000+0000",
+                      "body": "Root cause found; the response body now has the job id. PR #812"},
+                     {"id": "4", "author": {"name": "uac.bot"}, "created": "2026-01-12T12:00:00.000+0000",
+                      "body": "GET /bin/guides/v1/status"}]}}}
+        found = staleness.new_evidence_after(issue, "2026-01-10T10:00:00.000+0000", "uac.bot")
+        self.assertEqual([(f["id"], f["what"]) for f in found], [("1", "an API contract or design in a comment"),
+                                                                 ("3", "an API contract or design in a comment")])
+        jira = FakeJira()
+        jira._json = mock.Mock(return_value=issue)
+        lines = staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], {}, "uac.bot")
+        self.assertEqual(len(lines), 2, "comment 3 is alerted once, as a root cause, not again as a contract")
+        self.assertIn("PROJ-1: a root cause or fix was reported by dev", lines[0])
+        self.assertIn("PROJ-1: dev added an API contract or design in a comment on 2026-01-12", lines[1])
+        self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
+
     def test_staleness_jql_uses_the_posted_label(self) -> None:
         jql = staleness.staleness_jql(dict(self.config, approved_scope_jql="project = PROJ"))
         self.assertEqual(jql, '(project = PROJ) AND labels = "QEVision_UAC_DONE" AND updated >= -7d')
