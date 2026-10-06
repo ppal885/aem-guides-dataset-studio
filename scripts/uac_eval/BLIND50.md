@@ -49,6 +49,11 @@ precision beyond the noise or raise WRONG per ticket. A rule that does not pass 
 |---|---|---|---|---|---|
 | Generation routes are an AC only when the change depends on the route | 13 | 55.4 -> 50.0 | 84.6 -> 87.0 | 0.27 -> 0.23 | REVERT |
 | "What must not happen" negative-case rule | 20 (6 controls) | 54.5 -> 55.1 | 89.1 -> 86.9 | 0.17 -> 0.35 | REVERT |
+| Variant matrix per product area (vm1, set of 2026-10-05) | 20 (4 controls) | 35.7 -> 34.3 | 81.3 -> 84.3 | 0.15 -> 0.15 | REVERT |
+
+The variant-matrix rule barely changed the drafts: the skill rarely added the named variants, and the labelers
+split the same human UACs differently (185 vs 204 human criteria on the same 20 tickets), so label noise on
+this set is larger than on the first one.
 
 Most misses are information decided after the ticket (UAC meetings, developer design), which no rule can
 recover; the harvester's QE-edit data (`scripts/uac_release/uac_learning_harvester.py`) is the other source

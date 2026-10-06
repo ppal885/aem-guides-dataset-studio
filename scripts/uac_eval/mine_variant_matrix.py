@@ -4,7 +4,8 @@ Blind comparisons (blind50, 2026-10-05) showed that most human UAC points our dr
 ticket never mentions: the other editor views, the other upload channels, the other translation workflows,
 the other output presets. A QE adds them from product knowledge. This script measures, on a corpus of
 NON-blind tickets, how often a human UAC names each variant family when the ticket touches an area, so the
-skill can add the families humans usually check (data/variant_matrix.json) instead of guessing.
+skill could add the families humans usually check instead of guessing. (Trial vm1, 2026-10-06: adding the
+matrix to the skill did not raise blind50 recall and was reverted; the miner stays for later analysis.)
 
 The area is detected from what the skill can see before a UAC exists (summary, description, components);
 the variant families are detected in the human Acceptance Criteria. Blind tickets must be excluded
@@ -12,7 +13,7 @@ the variant families are detected in the human Acceptance Criteria. Blind ticket
 text.
 
     python scripts/uac_eval/mine_variant_matrix.py --csv <jira_export.csv> --exclude <blind_keys.txt> \
-        --out .codex/skills/test-plan-generation/data/variant_matrix.json
+        --out variant_matrix.json
     python scripts/uac_eval/mine_variant_matrix.py --self-test
 """
 from __future__ import annotations

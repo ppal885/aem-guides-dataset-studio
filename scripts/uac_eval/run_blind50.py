@@ -74,7 +74,7 @@ def leaks(transcript_text: str, prompt: str, key: str, jira_servers: list[str], 
     """Signs that a run saw the human UAC.
 
     Repository code names human_uac.md and the Jira server in plain text, so a mention alone is not a leak.
-    A leak is: a path into the blind set (<set>/<KEY>/... or .../human_uac.md), a Jira tool call that was not
+    A leak is: a path into the blind set folder of this ticket, a Jira tool call that was not
     denied, or a draft that copies human wording (four or more 6-word phrases, i.e. a 9-word run, from human_uac.md not in
     input.json).
     """
@@ -82,7 +82,7 @@ def leaks(transcript_text: str, prompt: str, key: str, jira_servers: list[str], 
     found = []
     if ticket is not None and (f"{ticket.parent}/{key}" in text or f"{ticket.parent}\\{key}" in text):
         found.append("transcript reads the blind set folder")
-    if re.search(r"[/\\]human_uac\.md\b", text):
+    if re.search(rf"[/\\]{re.escape(key)}[/\\]human_uac\.md\b", text):
         found.append("transcript reads a human_uac.md path")
     for server in jira_servers:
         calls = re.findall(rf"^### `{re.escape(server)}[-_(.:][^`]*`(.*)$", text, re.M)
