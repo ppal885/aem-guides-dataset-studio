@@ -818,6 +818,11 @@ Out of scope:                                          (optional, when a decisio
 - Sub-points list the cases of one outcome - each construct in a matrix (map title: ph with keyref, keyword
   with conref), each row of a decision table (last modified in AEM newer: update; older or equal: keep) - the
   way 15% of human UACs nest them. A different outcome is a different criterion; at most five sub-points.
+  Each sub-point is a short case a QE understands without opening anything: the condition that varies, in
+  plain words and about twelve words or fewer ("One selected topic, and several", "A map that also has a
+  baseline"). Test data is not a case: the customer's topic and file names, preset and DITAVAL names, and
+  local sample titles go in the test plan's "Test data to prepare", never in a sub-point. A setup that holds
+  for every case belongs in the criterion sentence. Never leave an empty sub-point.
 - Scope and Out of scope: add the `Scope:` line and the `Out of scope:` list only when the ticket or a
   product decision sets them (about 10% of human UACs have an Out of scope list); never invent a scope.
 - Language: at most two lines; very simple English; state the outcome itself - do not write acceptance

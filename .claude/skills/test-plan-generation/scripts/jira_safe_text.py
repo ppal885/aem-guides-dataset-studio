@@ -66,11 +66,11 @@ def jira_comment_body(text: str) -> str:
 
 _AC_BLOCK = re.compile(
     r"^-\s*(Acceptance Criteria \d+):\s*(.+?)\s*$"
-    r"((?:\n[ \t]+(?:(?:\*\*)?(?:Source|TBD):(?:\*\*)?|-)\s*.+)*)",
+    r"((?:\n[ \t]+(?:(?:\*\*)?(?:Source|TBD):(?:\*\*)?|[-+]|\*(?!\*))\s*.+)*)",
     re.MULTILINE,
 )
 _SUB_LINE = re.compile(r"^[ \t]+(?:\*\*)?(Source|TBD):(?:\*\*)?\s*(.+)$", re.MULTILINE)
-_CASE_LINE = re.compile(r"^[ \t]+-\s*(.+?)\s*$", re.MULTILINE)
+_CASE_LINE = re.compile(r"^[ \t]+(?:[-+]|\*(?!\*))\s*(.+?)\s*$", re.MULTILINE)
 _SCOPE_LINE = re.compile(r"^Scope:\s*(.+?)\s*$", re.MULTILINE)
 _OUT_OF_SCOPE_HEADING = re.compile(r"^Out of scope:?\s*$", re.MULTILINE | re.IGNORECASE)
 _TOP_BULLET = re.compile(r"^-\s+(.+?)\s*$", re.MULTILINE)
@@ -133,8 +133,8 @@ def _wiki_text(text: str) -> str:
 def jira_field_body(text: str) -> str:
     """Render the delivered UAC block for a wiki-rendered Jira field.
 
-    Each criterion becomes a bold 'Acceptance Criteria NN:' label with its
-    Source/TBD lines as bullets. File names go in {{monospace}} so underscores
+    Each criterion becomes a bullet with a bold 'Acceptance Criteria NN:' label, and its case
+    sub-points and Source/TBD lines are nested bullets under it. File names go in {{monospace}} so underscores
     and dashes inside them cannot turn into italics or strikethrough, and
     square-bracket UI names are escaped so they do not become links. The
     'Acceptance Criteria NN' label is not issue-key shaped, so it is not
@@ -157,11 +157,13 @@ def jira_field_body(text: str) -> str:
     blocks += [f"*Scope:* {_wiki_text(scope)}" for scope in _SCOPE_LINE.findall(head)]
     for match in _AC_BLOCK.finditer(text):
         label, statement, subs = match.groups()
-        lines = [f"*{label}:* {_wiki_text(statement)}"]
+        # The criterion is a top-level bullet and its cases, Source and TBD are nested under it: a Jira list that
+        # starts at the second level renders an empty first-level bullet above it.
+        lines = [f"* *{label}:* {_wiki_text(statement)}"]
         lines += [f"** {_wiki_text(case)}" for case in _CASE_LINE.findall(subs or "")
                   if not re.match(r"(?:\*\*)?(?:Source|TBD):", case)]
         for kind, value in _SUB_LINE.findall(subs or ""):
-            lines.append(f"* {kind}: {_wiki_text(value)}")
+            lines.append(f"** {kind}: {_wiki_text(value)}")
         blocks.append("\n".join(lines))
     items = _TOP_BULLET.findall(out_of_scope)
     if items:
