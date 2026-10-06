@@ -4800,6 +4800,21 @@ def _writer_projection_completeness(
             criterion_id = matching_criteria[0].criterion_id
             status = WriterProjectionStatus.STANDALONE_AC
             reason = "Rendered as a standalone acceptance criterion."
+        elif (
+            row.disposition_id in sections_by_source_id
+            and row.priority == "P1"
+            and row.coverage_class == "QE_REGRESSION"
+        ):
+            # Research-found regression checks may live in the full test plan: the
+            # delivered UAC is capped at ten criteria.  Acceptance coverage and P0
+            # rows never take this route.
+            status = WriterProjectionStatus.TEST_PLAN_REGRESSION
+            reason = "Kept in the full test plan as a research-found QE regression check."
+            projected_texts = [
+                item
+                for section in sections_by_source_id[row.disposition_id]
+                for item in section.items
+            ]
         elif row.disposition_id in sections_by_source_id:
             status = WriterProjectionStatus.RETAINED_QE_REGRESSION
             reason = (

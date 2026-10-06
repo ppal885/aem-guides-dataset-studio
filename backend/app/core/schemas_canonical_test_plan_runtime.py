@@ -4749,6 +4749,10 @@ class WriterProjectionStatus(StrEnum):
     ATTACHED_VARIANT = "ATTACHED_VARIANT"
     ATTACHED_TBD = "ATTACHED_TBD"
     RETAINED_QE_REGRESSION = "RETAINED_QE_REGRESSION"
+    # A research-found (QE_REGRESSION) P1 check kept in the full test plan's regression section. The
+    # delivered UAC is capped at ten criteria and research checks that do not matter enough go to the
+    # test plan, so this is a complete projection, not a lost one.
+    TEST_PLAN_REGRESSION = "TEST_PLAN_REGRESSION"
     EXPLICITLY_EXCLUDED = "EXPLICITLY_EXCLUDED"
 
 
