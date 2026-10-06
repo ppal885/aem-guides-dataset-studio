@@ -744,6 +744,33 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(second, [], "an already alerted comment is not alerted again")
         self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
 
+    def test_staleness_alerts_a_contract_or_design_added_after_the_uac(self) -> None:
+        issue = {"changelog": {"histories": [{"created": "2026-10-04T05:08:00.000+0000",
+                                              "items": [{"fieldId": "customfield_1"}]}]},
+                 "fields": {
+                     "comment": {"comments": [
+                         {"id": "20", "author": {"name": "dev"}, "created": "2026-10-05T10:43:00.000+0000",
+                          "body": "[^translation-status-api-contract.md]"},
+                         {"id": "21", "author": {"name": "dev"}, "created": "2026-10-05T11:00:00.000+0000",
+                          "body": "Design: https://wiki.corp.adobe.com/spaces/x/pages/9/Design"},
+                         {"id": "22", "author": {"name": "dev"}, "created": "2026-10-01T11:00:00.000+0000",
+                          "body": "Old design: https://wiki.corp.adobe.com/spaces/x/pages/8/Old"}]},
+                     "attachment": [
+                         {"id": "301", "filename": "translation-status-api-contract.md",
+                          "author": {"name": "dev"}, "created": "2026-10-05T10:43:00.000+0000"},
+                         {"id": "300", "filename": "PROJ-1-test-plan.md",
+                          "author": {"name": "uac.bot"}, "created": "2026-10-04T05:08:00.000+0000"}]}}
+        jira = FakeJira()
+        jira._json = mock.Mock(return_value=issue)
+        state: dict = {}
+        first = staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], state, "uac.bot")
+        self.assertEqual(len(first), 2, first)
+        self.assertIn("dev added a wiki page link (design document or specification) on 2026-10-05", first[0])
+        self.assertIn("dev added the attachment translation-status-api-contract.md on 2026-10-05", first[1])
+        self.assertEqual(staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], state, "uac.bot"), [],
+                         "each attachment and link is alerted once")
+        self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
+
     def test_staleness_jql_uses_the_posted_label(self) -> None:
         jql = staleness.staleness_jql(dict(self.config, approved_scope_jql="project = PROJ"))
         self.assertEqual(jql, '(project = PROJ) AND labels = "QEVision_UAC_DONE" AND updated >= -7d')

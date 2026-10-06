@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Tell QE when a root cause or fix arrives on a ticket after its UAC was posted.
+"""Tell QE when new evidence arrives on a ticket after its UAC was posted.
 
-A UAC written before the root cause is known can describe the wrong scenario. When a later comment
-names the root cause, a fix, a pull request or a merge, the UAC should be reviewed. This script finds
-those tickets and sends one alert (on the configured alert ticket, mentioning the configured people)
-listing them. It never edits or comments on the ticket itself and never changes the UAC.
+A UAC written before the root cause, the fix, an API contract or a design document existed can describe
+the wrong thing. When any of these arrives later, the UAC should be reviewed. This script finds those
+tickets and sends one alert (on the configured alert ticket, mentioning the configured people) listing
+them. It never edits or comments on the ticket itself and never changes the UAC.
 
 For each ticket in scope that carries the posted label:
   1. find when the Acceptance Criteria field last changed (Jira changelog);
-  2. find human comments created after that time whose text reports a root cause or a fix;
-  3. alert once per such comment (remembered in <output_dir>/staleness-state.json).
+  2. find what people other than the automation added after that time: comments that report a root
+     cause or a fix, comments that link a wiki page (a design document or specification), and
+     attachments (an API contract, a design, a screenshot);
+  3. alert once per such comment or attachment (remembered in <output_dir>/staleness-state.json).
 
 Scope JQL: config "staleness_jql", else the approved scope JQL plus the posted label, limited to tickets
 updated in the last "staleness_days" days (default 7).
@@ -25,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
+import linked_docs  # noqa: E402
 
 STATE_FILE = "staleness-state.json"
 # The same signal the skill uses to decide whether a UAC was written with the root cause known.
@@ -61,11 +64,33 @@ def fix_comments_after(issue: dict, since: str, own_name: str = "") -> list[dict
     return found
 
 
+def new_evidence_after(issue: dict, since: str, own_name: str = "",
+                       hosts: tuple[str, ...] = linked_docs.DEFAULT_HOSTS) -> list[dict]:
+    """Attachments, and comments that link a wiki page, added by people after the UAC last changed."""
+    fields = issue.get("fields") or {}
+    found = []
+    for comment in (fields.get("comment") or {}).get("comments") or []:
+        author = str((comment.get("author") or {}).get("name") or "")
+        created = str(comment.get("created") or "")
+        if since and created > since and author != own_name and \
+                linked_docs.find_links({"description": comment.get("body") or ""}, "", hosts):
+            found.append({"id": str(comment.get("id")), "author": author, "created": created,
+                          "what": "a wiki page link (design document or specification)"})
+    for attachment in fields.get("attachment") or []:
+        author = str((attachment.get("author") or {}).get("name") or "")
+        created = str(attachment.get("created") or "")
+        if since and created > since and author != own_name:
+            found.append({"id": f"attachment:{attachment.get('id')}", "author": author, "created": created,
+                          "what": f"the attachment {attachment.get('filename')}"})
+    return found
+
+
 def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_name: str = "") -> list[str]:
     field_id = config["acceptance_criteria_field"]
+    hosts = tuple(config.get("linked_doc_hosts") or linked_docs.DEFAULT_HOSTS)
     lines = []
     for key in keys:
-        issue = jira._json("GET", f"/rest/api/2/issue/{key}?expand=changelog&fields=comment")
+        issue = jira._json("GET", f"/rest/api/2/issue/{key}?expand=changelog&fields=comment,attachment")
         since = last_ac_change(issue, field_id)
         if not since:
             continue
@@ -76,6 +101,12 @@ def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_na
             lines.append(f"{key}: a root cause or fix was reported by {comment['author']} on {comment['created'][:10]}, "
                          f"after the Acceptance Criteria were last changed on {since[:10]}; review the UAC")
             seen.add(comment["id"])
+        for item in new_evidence_after(issue, since, own_name, hosts):
+            if item["id"] in seen:
+                continue
+            lines.append(f"{key}: {item['author']} added {item['what']} on {item['created'][:10]}, after the "
+                         f"Acceptance Criteria were last changed on {since[:10]}; review the UAC against it")
+            seen.add(item["id"])
         if seen:
             state[key] = sorted(seen)
         logger.info("%s: UAC last changed %s", key, since[:19])
