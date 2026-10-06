@@ -1973,6 +1973,58 @@ class DeliveryCleanupTests(unittest.TestCase):
         self.assertEqual(check.fix_basis_problems(feature, runner.normalize_note(UAC, "NOT_A_DEFECT"), source), [])
         self.assertTrue(check.fix_basis_problems(feature, UAC, source), "a new capability has no root-cause note")
 
+    def test_copilot_runs_with_the_ticket_research_store(self) -> None:
+        env = runner.copilot_env(Path("/runs/PROJ-1"))
+        self.assertEqual(env["AGENT_RESEARCH_MODE"], "copilot_host")
+        self.assertEqual(Path(env["AGENT_RESEARCH_STORE"]), Path("/runs/PROJ-1") / "agent-research")
+        self.assertIn("PATH", env, "the rest of the environment is kept")
+        self.assertIn("never with --http", runner.PROMPT)
+        self.assertIn("fulfill-agent --store", runner.PROMPT)
+        self.assertIn("{research_store}", runner.PROMPT)
+
+    def test_unanswered_runtime_research_is_counted_and_noted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp)
+            pending, fulfilled = ticket / "agent-research" / "pending", ticket / "agent-research" / "fulfilled"
+            pending.mkdir(parents=True)
+            fulfilled.mkdir()
+            for name, role in (("a.json", "DOC_RESEARCHER"), ("b.json", "CODE_RESEARCHER"), ("c.json", "DOC_RESEARCHER")):
+                (pending / name).write_text(json.dumps({"worker_role": role}), encoding="utf-8")
+            (fulfilled / "c.json").write_text("{}", encoding="utf-8")
+            summary = runner.research_store_summary(ticket)
+            self.assertEqual(summary, {"requests": 3, "answered": 1,
+                                       "unanswered_by_role": {"CODE_RESEARCHER": 1, "DOC_RESEARCHER": 1}})
+            self.assertEqual(runner.research_store_notes(summary), [
+                "canonical runtime research requests not answered: 2 of 3 (1 CODE_RESEARCHER, 1 DOC_RESEARCHER); "
+                "the runtime could not use them"])
+            (fulfilled / "a.json").write_text("{}", encoding="utf-8")
+            (fulfilled / "b.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(runner.research_store_notes(runner.research_store_summary(ticket)), [])
+        self.assertEqual(runner.research_store_summary(Path(tmp) / "missing"),
+                         {"requests": 0, "answered": 0, "unanswered_by_role": {}})
+
+    def test_each_attempt_starts_with_an_empty_store_and_records_its_research(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            stale = out / "PROJ-1" / "agent-research" / "pending"
+            stale.mkdir(parents=True)
+            (stale / "old.json").write_text(json.dumps({"worker_role": "CODE_RESEARCHER"}), encoding="utf-8")
+            seen_env = {}
+            base = fake_copilot(True)
+
+            def copilot(cmd, **kwargs):
+                seen_env.update(kwargs.get("env") or {})
+                self.assertFalse((stale / "old.json").exists(), "the previous attempt's requests are gone")
+                return base(cmd, **kwargs)
+            with mock.patch.object(runner.subprocess, "run", copilot), \
+                    mock.patch.object(runner, "check_outputs", return_value=[]):
+                result = runner.process_ticket("PROJ-1", make_config(out), FakeJira(), logging.getLogger("test"),
+                                               dry_run=False)
+            self.assertEqual(result, "POSTED")
+            self.assertEqual(Path(seen_env["AGENT_RESEARCH_STORE"]), out / "PROJ-1" / "agent-research")
+            self.assertEqual(common.read_status(out / "PROJ-1")["runtime_research"],
+                             {"requests": 0, "answered": 0, "unanswered_by_role": {}})
+
     def test_skipped_code_or_attachment_researcher_is_a_review_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ticket = Path(tmp)

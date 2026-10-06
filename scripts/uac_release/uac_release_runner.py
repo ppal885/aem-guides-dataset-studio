@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -194,6 +195,17 @@ When finished, write these files:
    jira-source.json, --key, --component, --evidence this file; for a hotfix or backport add --also with its
    parent ticket) and answer every listed dimension of the
    similar human UACs with "disposition": "AC" | "TBD" | "TEST_PLAN" | "NOT_APPLICABLE", "ac" and "reason".
+Canonical runtime research: your environment already sets AGENT_RESEARCH_MODE=copilot_host and
+AGENT_RESEARCH_STORE={research_store}. Run the canonical runtime locally - python scripts/run_test_plan_pipeline.py
+{key} - and never with --http, which writes the research requests to the backend's own store where nobody
+answers them. When it returns waiting_for_agent_research, answer EVERY request before anything else:
+list them with python scripts/agent_research_bridge.py pending --store {research_store}, delegate each to the
+registered agent named by its worker_role (task tool, background mode, the whole batch at once), and submit
+each agent's strict JSON result with python scripts/agent_research_bridge.py fulfill-agent --store
+{research_store} --execution-id <id> --result <file> --model <model>. Then run the same runtime command
+again. Repeat for up to three passes; questions a later pass adds are answered the same way. A
+uac-doc-researcher result delegated this way also counts for file 4 (write one of them unchanged). Do
+not research a request yourself and do not use the runtime fallback while requests are still waiting.
 Runtime fallback: this invocation asks for runtime-fallback authoring. When the canonical runtime ends
 blocked, waiting, or with no deliverable Acceptance Criteria after its bounded attempts, do not stop: write
 files 1, 2 and 3 yourself from the evidence you already verified, following every rule above and the skill,
@@ -261,6 +273,7 @@ _INVISIBLE = re.compile("[​-‍⁠﻿]")
 NON_VISUAL_ATTACHMENTS = (".txt", ".log", ".json", ".xml", ".dita", ".ditamap", ".har", ".csv", ".zip", ".gz",
                           ".md", ".yaml", ".yml", ".properties", ".java", ".js", ".ts", ".py", ".sql")
 DOC_RESEARCHER = "uac-doc-researcher"
+RESEARCH_STORE_DIR = "agent-research"
 CODE_RESEARCHER = "uac-code-researcher"
 ATTACHMENT_RESEARCHER = "uac-attachment-researcher"
 GATE_LOG_FILE = "gate-firing.jsonl"
@@ -516,6 +529,43 @@ def _ac_numbers(value) -> list[int]:
 
 def _is_regression(text: str) -> bool:
     return any(f" {m} " in f" {_normalize(text)} " for m in REGRESSION_MARKERS)
+
+
+def copilot_env(ticket_dir: Path) -> dict[str, str]:
+    """The Copilot session's environment: the canonical runtime hands research to the session's agents and
+    writes the requests to this ticket's own store, so they can be answered and counted."""
+    env = dict(os.environ)
+    env["AGENT_RESEARCH_MODE"] = "copilot_host"
+    env["AGENT_RESEARCH_STORE"] = str(ticket_dir / RESEARCH_STORE_DIR)
+    return env
+
+
+def research_store_summary(ticket_dir: Path) -> dict:
+    """How many canonical research requests this ticket's run emitted and how many were answered."""
+    store = ticket_dir / RESEARCH_STORE_DIR
+    requests = sorted((store / "pending").glob("*.json")) if (store / "pending").is_dir() else []
+    answered = {p.name for p in (store / "fulfilled").glob("*.json")} if (store / "fulfilled").is_dir() else set()
+    roles: dict[str, int] = {}
+    for path in requests:
+        if path.name in answered:
+            continue
+        try:
+            role = str(json.loads(path.read_text(encoding="utf-8-sig")).get("worker_role") or "unknown")
+        except ValueError:
+            role = "unknown"
+        roles[role] = roles.get(role, 0) + 1
+    return {"requests": len(requests), "answered": sum(1 for p in requests if p.name in answered),
+            "unanswered_by_role": roles}
+
+
+def research_store_notes(summary: dict) -> list[str]:
+    """Review notes (never failures) for canonical research requests nobody answered."""
+    unanswered = summary["requests"] - summary["answered"]
+    if not unanswered:
+        return []
+    roles = ", ".join(f"{n} {role}" for role, n in sorted(summary["unanswered_by_role"].items()))
+    return [f"canonical runtime research requests not answered: {unanswered} of {summary['requests']} ({roles}); "
+            "the runtime could not use them"]
 
 
 def _researcher_ran(ticket_dir: Path, prompt: str, agent: str) -> bool:
@@ -968,6 +1018,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                  common.RUNTIME_FALLBACK_FILE, linked_docs.LINKED_DOCS_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     shutil.rmtree(ticket_dir / linked_docs.LINKED_DOCS_DIR, ignore_errors=True)
+    shutil.rmtree(ticket_dir / RESEARCH_STORE_DIR, ignore_errors=True)  # each attempt answers its own requests
     links = fetch_linked_docs(key, config, jira, logger, ticket_dir)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
@@ -978,6 +1029,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            evidence_path=ticket_dir / common.EVIDENCE_FILE,
                            fallback_path=ticket_dir / common.RUNTIME_FALLBACK_FILE,
                            linked_docs_path=ticket_dir / linked_docs.LINKED_DOCS_FILE,
+                           research_store=ticket_dir / RESEARCH_STORE_DIR,
                            max_discovered=MAX_DISCOVERED_SURFACES_PER_AC)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
@@ -985,7 +1037,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     logger.info("%s: running Copilot CLI", key)
     try:
         run = subprocess.run(cmd, cwd=common.REPO_ROOT, capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=timeout)
+                             encoding="utf-8", errors="replace", timeout=timeout,
+                             env=copilot_env(ticket_dir))
         (ticket_dir / "copilot-output.txt").write_text(run.stdout + "\n" + run.stderr, encoding="utf-8")
         exit_code = run.returncode
     except subprocess.TimeoutExpired:
@@ -1033,8 +1086,10 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         status["decisions_sha256"] = common.sha256_file(ticket_dir / common.DECISIONS_FILE)
     status["warnings"] = warnings
     comment_notes = unmapped_comment_notes(ticket_dir, source, own_name)
+    research = research_store_summary(ticket_dir)
+    status["runtime_research"] = research
     review_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
-                    + researcher_run_notes(ticket_dir, prompt, source, own_name))
+                    + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research))
     status["review_notes"] = review_notes
     fallback = runtime_fallback_gates(ticket_dir)
     if fallback is not None:
