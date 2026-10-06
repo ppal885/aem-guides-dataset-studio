@@ -1,0 +1,487 @@
+{
+ "areas": {
+  "baseline_version": {
+   "families": {
+    "editor_views": {
+     "rate": 0.12,
+     "tickets_naming_family": 4,
+     "variants": {
+      "Author view": 1,
+      "Preview": 2,
+      "Side-by-side view": 0,
+      "Source view": 1,
+      "Tags view": 0
+     }
+    },
+    "editors": {
+     "rate": 0.25,
+     "tickets_naming_family": 8,
+     "variants": {
+      "Assets UI": 6,
+      "Map console / Map view": 2,
+      "Repository panel": 0,
+      "old and new Editor": 1
+     }
+    },
+    "output_presets": {
+     "rate": 0.31,
+     "tickets_naming_family": 10,
+     "variants": {
+      "AEM Sites": 6,
+      "DITA-OT PDF": 0,
+      "HTML5": 1,
+      "JSON / Content Fragment": 4,
+      "Native PDF": 3,
+      "Other output presets unaffected": 0
+     }
+    },
+    "review_surfaces": {
+     "rate": 0.09,
+     "tickets_naming_family": 3,
+     "variants": {
+      "Inbox / notifications": 0,
+      "Review app / review panel": 1,
+      "Version history": 2
+     }
+    },
+    "roles": {
+     "rate": 0.12,
+     "tickets_naming_family": 4,
+     "variants": {
+      "Admin / folder-profile admin": 1,
+      "Author": 3,
+      "Permissions": 0,
+      "Reviewer": 0
+     }
+    },
+    "translation_workflows": {
+     "rate": 0.09,
+     "tickets_naming_family": 3,
+     "variants": {
+      "Human translation": 1,
+      "Machine translation": 1,
+      "Multilingual / multiple languages": 1,
+      "Translation with baseline": 1,
+      "XLIFF": 2
+     }
+    },
+    "upload_channels": {
+     "rate": 0.16,
+     "tickets_naming_family": 5,
+     "variants": {
+      "AEM Desktop app": 0,
+      "API upload": 2,
+      "Assets UI upload": 1,
+      "Oxygen connector": 1,
+      "WebDAV": 0,
+      "Zip / package": 2
+     }
+    }
+   },
+   "tickets": 32
+  },
+  "editor": {
+   "families": {
+    "editor_views": {
+     "rate": 0.3,
+     "tickets_naming_family": 14,
+     "variants": {
+      "Author view": 8,
+      "Preview": 5,
+      "Side-by-side view": 1,
+      "Source view": 7,
+      "Tags view": 1
+     }
+    },
+    "editors": {
+     "rate": 0.28,
+     "tickets_naming_family": 13,
+     "variants": {
+      "Assets UI": 3,
+      "Map console / Map view": 4,
+      "Repository panel": 3,
+      "old and new Editor": 4
+     }
+    },
+    "output_presets": {
+     "rate": 0.11,
+     "tickets_naming_family": 5,
+     "variants": {
+      "AEM Sites": 3,
+      "DITA-OT PDF": 0,
+      "HTML5": 1,
+      "JSON / Content Fragment": 3,
+      "Native PDF": 1,
+      "Other output presets unaffected": 0
+     }
+    },
+    "review_surfaces": {
+     "rate": 0.04,
+     "tickets_naming_family": 2,
+     "variants": {
+      "Inbox / notifications": 1,
+      "Review app / review panel": 1,
+      "Version history": 0
+     }
+    },
+    "roles": {
+     "rate": 0.32,
+     "tickets_naming_family": 15,
+     "variants": {
+      "Admin / folder-profile admin": 1,
+      "Author": 14,
+      "Permissions": 1,
+      "Reviewer": 0
+     }
+    },
+    "translation_workflows": {
+     "rate": 0.0,
+     "tickets_naming_family": 0,
+     "variants": {
+      "Human translation": 0,
+      "Machine translation": 0,
+      "Multilingual / multiple languages": 0,
+      "Translation with baseline": 0,
+      "XLIFF": 0
+     }
+    },
+    "upload_channels": {
+     "rate": 0.06,
+     "tickets_naming_family": 3,
+     "variants": {
+      "AEM Desktop app": 0,
+      "API upload": 0,
+      "Assets UI upload": 1,
+      "Oxygen connector": 1,
+      "WebDAV": 0,
+      "Zip / package": 2
+     }
+    }
+   },
+   "tickets": 47
+  },
+  "publishing": {
+   "families": {
+    "editor_views": {
+     "rate": 0.08,
+     "tickets_naming_family": 5,
+     "variants": {
+      "Author view": 0,
+      "Preview": 4,
+      "Side-by-side view": 1,
+      "Source view": 0,
+      "Tags view": 0
+     }
+    },
+    "editors": {
+     "rate": 0.15,
+     "tickets_naming_family": 9,
+     "variants": {
+      "Assets UI": 2,
+      "Map console / Map view": 7,
+      "Repository panel": 1,
+      "old and new Editor": 0
+     }
+    },
+    "output_presets": {
+     "rate": 0.53,
+     "tickets_naming_family": 31,
+     "variants": {
+      "AEM Sites": 20,
+      "DITA-OT PDF": 6,
+      "HTML5": 5,
+      "JSON / Content Fragment": 6,
+      "Native PDF": 12,
+      "Other output presets unaffected": 1
+     }
+    },
+    "review_surfaces": {
+     "rate": 0.0,
+     "tickets_naming_family": 0,
+     "variants": {
+      "Inbox / notifications": 0,
+      "Review app / review panel": 0,
+      "Version history": 0
+     }
+    },
+    "roles": {
+     "rate": 0.2,
+     "tickets_naming_family": 12,
+     "variants": {
+      "Admin / folder-profile admin": 3,
+      "Author": 9,
+      "Permissions": 0,
+      "Reviewer": 0
+     }
+    },
+    "translation_workflows": {
+     "rate": 0.0,
+     "tickets_naming_family": 0,
+     "variants": {
+      "Human translation": 0,
+      "Machine translation": 0,
+      "Multilingual / multiple languages": 0,
+      "Translation with baseline": 0,
+      "XLIFF": 0
+     }
+    },
+    "upload_channels": {
+     "rate": 0.0,
+     "tickets_naming_family": 0,
+     "variants": {
+      "AEM Desktop app": 0,
+      "API upload": 0,
+      "Assets UI upload": 0,
+      "Oxygen connector": 0,
+      "WebDAV": 0,
+      "Zip / package": 0
+     }
+    }
+   },
+   "tickets": 59
+  },
+  "review": {
+   "families": {
+    "editor_views": {
+     "rate": 0.12,
+     "tickets_naming_family": 3,
+     "variants": {
+      "Author view": 1,
+      "Preview": 1,
+      "Side-by-side view": 1,
+      "Source view": 0,
+      "Tags view": 0
+     }
+    },
+    "editors": {
+     "rate": 0.2,
+     "tickets_naming_family": 5,
+     "variants": {
+      "Assets UI": 4,
+      "Map console / Map view": 1,
+      "Repository panel": 0,
+      "old and new Editor": 1
+     }
+    },
+    "output_presets": {
+     "rate": 0.16,
+     "tickets_naming_family": 4,
+     "variants": {
+      "AEM Sites": 3,
+      "DITA-OT PDF": 1,
+      "HTML5": 1,
+      "JSON / Content Fragment": 1,
+      "Native PDF": 1,
+      "Other output presets unaffected": 0
+     }
+    },
+    "review_surfaces": {
+     "rate": 0.48,
+     "tickets_naming_family": 12,
+     "variants": {
+      "Inbox / notifications": 5,
+      "Review app / review panel": 8,
+      "Version history": 2
+     }
+    },
+    "roles": {
+     "rate": 0.44,
+     "tickets_naming_family": 11,
+     "variants": {
+      "Admin / folder-profile admin": 2,
+      "Author": 7,
+      "Permissions": 0,
+      "Reviewer": 7
+     }
+    },
+    "translation_workflows": {
+     "rate": 0.04,
+     "tickets_naming_family": 1,
+     "variants": {
+      "Human translation": 0,
+      "Machine translation": 0,
+      "Multilingual / multiple languages": 1,
+      "Translation with baseline": 0,
+      "XLIFF": 0
+     }
+    },
+    "upload_channels": {
+     "rate": 0.12,
+     "tickets_naming_family": 3,
+     "variants": {
+      "AEM Desktop app": 0,
+      "API upload": 2,
+      "Assets UI upload": 0,
+      "Oxygen connector": 0,
+      "WebDAV": 0,
+      "Zip / package": 1
+     }
+    }
+   },
+   "tickets": 25
+  },
+  "translation": {
+   "families": {
+    "editor_views": {
+     "rate": 0.0,
+     "tickets_naming_family": 0,
+     "variants": {
+      "Author view": 0,
+      "Preview": 0,
+      "Side-by-side view": 0,
+      "Source view": 0,
+      "Tags view": 0
+     }
+    },
+    "editors": {
+     "rate": 0.11,
+     "tickets_naming_family": 1,
+     "variants": {
+      "Assets UI": 1,
+      "Map console / Map view": 0,
+      "Repository panel": 0,
+      "old and new Editor": 0
+     }
+    },
+    "output_presets": {
+     "rate": 0.22,
+     "tickets_naming_family": 2,
+     "variants": {
+      "AEM Sites": 2,
+      "DITA-OT PDF": 1,
+      "HTML5": 1,
+      "JSON / Content Fragment": 0,
+      "Native PDF": 2,
+      "Other output presets unaffected": 0
+     }
+    },
+    "review_surfaces": {
+     "rate": 0.0,
+     "tickets_naming_family": 0,
+     "variants": {
+      "Inbox / notifications": 0,
+      "Review app / review panel": 0,
+      "Version history": 0
+     }
+    },
+    "roles": {
+     "rate": 0.0,
+     "tickets_naming_family": 0,
+     "variants": {
+      "Admin / folder-profile admin": 0,
+      "Author": 0,
+      "Permissions": 0,
+      "Reviewer": 0
+     }
+    },
+    "translation_workflows": {
+     "rate": 0.44,
+     "tickets_naming_family": 4,
+     "variants": {
+      "Human translation": 1,
+      "Machine translation": 2,
+      "Multilingual / multiple languages": 2,
+      "Translation with baseline": 0,
+      "XLIFF": 3
+     }
+    },
+    "upload_channels": {
+     "rate": 0.0,
+     "tickets_naming_family": 0,
+     "variants": {
+      "AEM Desktop app": 0,
+      "API upload": 0,
+      "Assets UI upload": 0,
+      "Oxygen connector": 0,
+      "WebDAV": 0,
+      "Zip / package": 0
+     }
+    }
+   },
+   "tickets": 9
+  },
+  "upload": {
+   "families": {
+    "editor_views": {
+     "rate": 0.24,
+     "tickets_naming_family": 4,
+     "variants": {
+      "Author view": 1,
+      "Preview": 2,
+      "Side-by-side view": 0,
+      "Source view": 0,
+      "Tags view": 1
+     }
+    },
+    "editors": {
+     "rate": 0.29,
+     "tickets_naming_family": 5,
+     "variants": {
+      "Assets UI": 5,
+      "Map console / Map view": 0,
+      "Repository panel": 0,
+      "old and new Editor": 1
+     }
+    },
+    "output_presets": {
+     "rate": 0.29,
+     "tickets_naming_family": 5,
+     "variants": {
+      "AEM Sites": 4,
+      "DITA-OT PDF": 2,
+      "HTML5": 1,
+      "JSON / Content Fragment": 1,
+      "Native PDF": 2,
+      "Other output presets unaffected": 0
+     }
+    },
+    "review_surfaces": {
+     "rate": 0.06,
+     "tickets_naming_family": 1,
+     "variants": {
+      "Inbox / notifications": 0,
+      "Review app / review panel": 1,
+      "Version history": 0
+     }
+    },
+    "roles": {
+     "rate": 0.18,
+     "tickets_naming_family": 3,
+     "variants": {
+      "Admin / folder-profile admin": 0,
+      "Author": 3,
+      "Permissions": 0,
+      "Reviewer": 0
+     }
+    },
+    "translation_workflows": {
+     "rate": 0.12,
+     "tickets_naming_family": 2,
+     "variants": {
+      "Human translation": 0,
+      "Machine translation": 1,
+      "Multilingual / multiple languages": 1,
+      "Translation with baseline": 0,
+      "XLIFF": 1
+     }
+    },
+    "upload_channels": {
+     "rate": 0.18,
+     "tickets_naming_family": 3,
+     "variants": {
+      "AEM Desktop app": 0,
+      "API upload": 0,
+      "Assets UI upload": 2,
+      "Oxygen connector": 0,
+      "WebDAV": 0,
+      "Zip / package": 1
+     }
+    }
+   },
+   "tickets": 17
+  }
+ },
+ "corpus_tickets": 127,
+ "excluded_blind_tickets": 50,
+ "schema": "aem-guides-variant-matrix-v1"
+}

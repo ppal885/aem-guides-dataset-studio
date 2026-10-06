@@ -65,10 +65,36 @@ class Blind50Tests(unittest.TestCase):
         self.assertEqual(json.loads((self.ticket / "run.json").read_text())["criteria"], 2)
 
     def test_reading_the_human_uac_or_jira_is_flagged(self) -> None:
-        with mock.patch.object(rb.subprocess, "run", fake_copilot("\ncat ../human_uac.md\ncorp-jira(get_issue)")):
+        extra = (f"\ncat {self.ticket}/human_uac.md\n### `corp-jira-get_issue`\nGUIDES-1 summary")
+        with mock.patch.object(rb.subprocess, "run", fake_copilot(extra)):
             record = rb.run_ticket(self.ticket, CONFIG, self.work, ["corp-jira"], 60)
-        self.assertIn("transcript mentions human_uac", record["leaks"])
+        self.assertIn("transcript reads the blind set folder", record["leaks"])
+        self.assertIn("transcript reads a human_uac.md path", record["leaks"])
         self.assertIn("transcript calls Jira tool corp-jira", record["leaks"])
+
+    def test_mentions_in_repository_code_and_denied_jira_calls_are_not_leaks(self) -> None:
+        extra = ("\nticket with input.json, human_uac.md, the drafts\n_FIELDS = {\"human_uac\"}\n"
+                 "deny_tools default corp-jira\n### `corp-jira-search_jira_issues` — Failed\npermission denied")
+        with mock.patch.object(rb.subprocess, "run", fake_copilot(extra)):
+            record = rb.run_ticket(self.ticket, CONFIG, self.work, ["corp-jira"], 60)
+        self.assertEqual(record["leaks"], [])
+
+    def test_a_draft_that_copies_the_human_wording_is_flagged(self) -> None:
+        (self.ticket / "human_uac.md").write_text("A works when the author saves the topic twice in a row today.",
+                                                  encoding="utf-8")
+        draft = "- Acceptance Criteria 01: A works when the author saves the topic twice in a row today.\n"
+        self.assertTrue(rb.leaks("", "", "GUIDES-1", ["corp-jira"], self.ticket, draft))
+        self.assertEqual(rb.leaks("", "", "GUIDES-1", ["corp-jira"], self.ticket, "- Acceptance Criteria 01: B."), [])
+
+    def test_a_tag_keeps_the_baseline_draft(self) -> None:
+        (self.ticket / "skill_uac.md").write_text("baseline", encoding="utf-8")
+        with mock.patch.object(rb.subprocess, "run", fake_copilot()):
+            record = rb.run_ticket(self.ticket, CONFIG, self.work, ["corp-jira"], 60, tag="vm1")
+        self.assertEqual((self.ticket / "skill_uac.md").read_text(encoding="utf-8"), "baseline")
+        self.assertTrue((self.ticket / "skill_uac_vm1.md").is_file())
+        self.assertTrue((self.ticket / "copilot-transcript_vm1.md").is_file())
+        self.assertEqual(json.loads((self.ticket / "run_vm1.json").read_text())["criteria"], 2)
+        self.assertEqual(record["tag"], "vm1")
 
     def test_set_dir_inside_the_repo_is_refused(self) -> None:
         config = Path(self.tmp.name) / "config.json"

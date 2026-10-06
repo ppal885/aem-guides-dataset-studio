@@ -687,6 +687,25 @@ in the full test plan record. Two ACs with content-word overlap of 0.6 or more a
 (`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
 distinct product contract; no recap AC.
 
+**Variants QEs usually check (`data/variant_matrix.json`).** Human QEs add variants the ticket never names:
+the other output presets for a publishing change, the review surfaces and roles for a review change, the
+translation workflows for a translation change, the Author, Source and Side-by-side views for an editor
+change. The matrix records, from human UACs of non-benchmark tickets, how often a UAC names each variant
+family when the ticket touches an area. For each area the ticket touches (detected from its summary,
+description and components), take every family with `rate` 0.3 or more and the variants in it named by at
+least two tickets:
+- Name the variants as short sub-points of the AC whose expected outcome they share ("Same result with:
+  Native PDF, AEM Sites, HTML5"). They do not add an AC and do not count toward the ten-AC cap.
+- Add a variant only when the changed behaviour reaches it. Leave out a variant the ticket or a decision
+  puts out of scope, one the change cannot reach (a Native PDF-only setting does not reach AEM Sites), and
+  one whose result would differ but is not decided - that is a TBD, never a guessed outcome.
+- When no AC shares the outcome, add one "still works as before" AC for the area and list the variants under
+  it.
+- Record each variant in `UAC_EVIDENCE.json` "variant_matrix" as the AC it is under, OUT_OF_SCOPE or
+  NOT_REACHED with a reason. The basis is QE_PRACTICE; its Source line is the ticket clause that touches the
+  area.
+Rebuild the matrix with `scripts/uac_eval/mine_variant_matrix.py`; never from benchmark (blind) tickets.
+
 **Length.** Keep the delivered criteria - with their sub-points, the Scope line and the Out of scope list -
 within 350 words (the median human UAC is 122 words and 90% are under 337; blind comparisons against human
 UACs showed ours 4 to 15 times longer). Keep each Source line within 30 words: name the ticket, comment,
