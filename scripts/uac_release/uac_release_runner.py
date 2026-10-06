@@ -740,6 +740,7 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
         return "FIELD_KEPT"
     attachment_id = jira.attach_file(key, plan_copy)
     jira.set_field(key, field, field_body)
+    common.remember_posted_body(ticket_dir, field_body)
     rendered = jira.get_field(key, field, rendered=True) or ""
     if not field_rendered(field_body, rendered):
         # The UAC is in the field now: record it as written, so it is not reported as "not posted"

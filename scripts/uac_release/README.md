@@ -298,7 +298,12 @@ note after a blank line belongs to no criterion, and an `Open Questions` heading
 a questions section that is not part of any criterion until the next label. Only a human's edit counts; edits by the automation's
 own Jira user (the account in `JIRA_PAT`, plus `learning_generator_users`) are ignored. Edits by anyone
 else - the assignee, the developer or QE - are learned. When the automation's user writes the field
-after a human edit, the record keeps the last human version and leaves that later write out. An untouched field counts as accepted only once the ticket status is in
+after a human edit, the record keeps the last human version and leaves that later write out.
+When the automation and QE use the same Jira account, set `"learning_shared_account": true`: a write by
+that account then counts as generated only when its text is one the runner posted (every posted text is
+remembered in `<ticket>/posted-bodies.txt`, besides `field-body.txt`), and any other write by it is learned
+as a QE edit. A Claude or Codex session that rewrites the field with that account is then also counted as
+a QE edit, so a dedicated automation account is still better. An untouched field counts as accepted only once the ticket status is in
 `learning_accepted_statuses` (default `UAT`, `Closed`, `Resolved`, `Done`). Each new ticket version is
 appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
 it and when.
