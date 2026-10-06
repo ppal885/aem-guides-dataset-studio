@@ -744,6 +744,26 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(second, [], "an already alerted comment is not alerted again")
         self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
 
+    def test_staleness_flags_an_api_contract_comment_but_not_a_passing_api_mention(self) -> None:
+        issue = {"fields": {"comment": {"comments": [
+            {"id": "1", "author": {"name": "dev"}, "created": "2026-01-12T09:00:00.000+0000",
+             "body": "API contract:\nPOST /bin/guides/v1/purge\nRequest body: {\"path\": ...}\nStatus codes: 200, 409"},
+            {"id": "2", "author": {"name": "qa"}, "created": "2026-01-12T10:00:00.000+0000",
+             "body": "Is the API ready for testing?"},
+            {"id": "3", "author": {"name": "dev"}, "created": "2026-01-12T11:00:00.000+0000",
+             "body": "Root cause found; the response body now has the job id. PR #812"},
+        ]}}}
+        found = staleness.fix_comments_after(issue, "2026-01-10T10:00:00.000+0000", "uac.bot")
+        self.assertEqual([(c["id"], c["kind"]) for c in found],
+                         [("1", "an API contract or design"),
+                          ("3", "a root cause or fix and an API contract or design")])
+        jira = FakeJira()
+        jira._json = mock.Mock(return_value=dict(issue, changelog={"histories": [
+            {"created": "2026-01-10T10:00:00.000+0000", "items": [{"field": "Acceptance Criteria"}]}]}))
+        lines = staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], {})
+        self.assertIn("PROJ-1: an API contract or design was reported by dev on 2026-01-12", lines[0])
+        self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
+
     def test_staleness_jql_uses_the_posted_label(self) -> None:
         jql = staleness.staleness_jql(dict(self.config, approved_scope_jql="project = PROJ"))
         self.assertEqual(jql, '(project = PROJ) AND labels = "QEVision_UAC_DONE" AND updated >= -7d')

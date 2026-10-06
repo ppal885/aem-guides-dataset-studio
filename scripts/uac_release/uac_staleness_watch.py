@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Tell QE when a root cause or fix arrives on a ticket after its UAC was posted.
+"""Tell QE when a root cause, a fix or an API contract arrives on a ticket after its UAC was posted.
 
-A UAC written before the root cause is known can describe the wrong scenario. When a later comment
-names the root cause, a fix, a pull request or a merge, the UAC should be reviewed. This script finds
+A UAC written before the root cause is known can describe the wrong scenario, and one written before the
+developer's API contract or design can miss endpoints, fields and status codes. When a later comment names
+the root cause, a fix, a pull request or a merge, or gives an API contract or design, the UAC should be
+reviewed. This script finds
 those tickets and sends one alert (on the configured alert ticket, mentioning the configured people)
 listing them. It never edits or comments on the ticket itself and never changes the UAC.
 
 For each ticket in scope that carries the posted label:
   1. find when the Acceptance Criteria field last changed (Jira changelog);
-  2. find human comments created after that time whose text reports a root cause or a fix;
+  2. find human comments created after that time whose text reports a root cause or a fix, or gives an
+     API contract or design (an HTTP method with a path, request/response body, status codes, API spec);
   3. alert once per such comment (remembered in <output_dir>/staleness-state.json).
 
 Scope JQL: config "staleness_jql", else the approved scope JQL plus the posted label, limited to tickets
@@ -29,6 +32,13 @@ import common  # noqa: E402
 STATE_FILE = "staleness-state.json"
 # The same signal the skill uses to decide whether a UAC was written with the root cause known.
 FIX_SIGNAL = common.import_skill_module("uac_completeness_check").FIX_SIGNAL
+# A developer's API contract or design: an HTTP method with a path, request/response bodies, status codes,
+# or a named API spec / design document. A passing mention of "API" is not enough.
+CONTRACT_SIGNAL = re.compile(
+    r"\b(GET|POST|PUT|PATCH|DELETE)\s+/[\w{}/.:-]+|\bAPI\s+(contract|spec(ification)?|design)\b"
+    r"|\b(request|response)\s+(body|payload|schema)\b|\bstatus\s+codes?\b|\b(swagger|openapi)\b"
+    r"|\btechnical\s+design\b|\bdesign\s+doc(ument)?\b", re.IGNORECASE)
+SIGNALS = (("a root cause or fix", FIX_SIGNAL), ("an API contract or design", CONTRACT_SIGNAL))
 AC_FIELD_NAME = "Acceptance Criteria"
 
 
@@ -51,13 +61,19 @@ def last_ac_change(issue: dict, field_id: str) -> str:
 
 
 def fix_comments_after(issue: dict, since: str, own_name: str = "") -> list[dict]:
+    """Human comments after `since` that report a root cause or fix, or give an API contract or design."""
     comments = ((issue.get("fields") or {}).get("comment") or {}).get("comments") or []
     found = []
     for comment in comments:
         author = str((comment.get("author") or {}).get("name") or "")
         created = str(comment.get("created") or "")
-        if since and created > since and author != own_name and FIX_SIGNAL.search(comment.get("body") or ""):
-            found.append({"id": str(comment.get("id")), "author": author, "created": created})
+        if not since or created <= since or author == own_name:
+            continue
+        body = comment.get("body") or ""
+        kinds = [kind for kind, signal in SIGNALS if signal.search(body)]
+        if kinds:
+            found.append({"id": str(comment.get("id")), "author": author, "created": created,
+                          "kind": " and ".join(kinds)})
     return found
 
 
@@ -73,7 +89,7 @@ def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_na
         for comment in fix_comments_after(issue, since, own_name):
             if comment["id"] in seen:
                 continue
-            lines.append(f"{key}: a root cause or fix was reported by {comment['author']} on {comment['created'][:10]}, "
+            lines.append(f"{key}: {comment['kind']} was reported by {comment['author']} on {comment['created'][:10]}, "
                          f"after the Acceptance Criteria were last changed on {since[:10]}; review the UAC")
             seen.add(comment["id"])
         if seen:

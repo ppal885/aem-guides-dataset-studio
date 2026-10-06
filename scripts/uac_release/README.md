@@ -336,7 +336,9 @@ still the generator's and the status has not reached an accepted status has noth
 
 `uac_staleness_watch.py` (cron 07:30 Mon-Fri) checks tickets that carry the posted label and were updated
 in the last `staleness_days` days (default 7; or set `staleness_jql`). When a human comment reporting a
-root cause, a fix, a pull request or a merge was added after the Acceptance Criteria field last changed,
+root cause, a fix, a pull request or a merge, or giving an API contract or design (an HTTP method with a
+path, a request/response body, status codes, an API spec or design document), was added after the
+Acceptance Criteria field last changed,
 it sends one alert on `alerts.ticket` listing the ticket. Each comment is alerted once
 (`<output_dir>/staleness-state.json`). It never comments on or edits the ticket or its UAC; QE decides
 whether to re-run the UAC. `--dry-run` only logs.
