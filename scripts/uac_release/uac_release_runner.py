@@ -94,7 +94,18 @@ When finished, write these files:
    Acceptance Criterion whose TBD line asks it. Every Acceptance Criterion must be driven by a
    ticket sentence, an attachment, a linked page or a requested screen, or carry a TBD. An
    image, video or document attachment entry also has "surfaces": ["<every product screen the attachment
-   shows>"]; a log, data or code attachment does not. Status pings (ETA or update requests), bot notices,
+   shows>"]; a log, data or code attachment does not. Every attachment entry from a person (not this
+   automation) also has "facts": [{{"fact": "<what it shows, in plain words>", "disposition": "AC" | "TBD" |
+   "NOT_MATERIAL", "ac": <number, for AC and TBD>, "reason": "<for NOT_MATERIAL>"}}] - every configuration
+   value it shows (every preset, profile or setting visible on the item, not only the one the reporter
+   used, e.g. another preset of the same map that uses a baseline), every status it shows (status icon or
+   colour, a "queued" or "success" message) and every log line that states a count or a starting state
+   (e.g. "Found 0 existing published pages", "Starting regeneration for 5 topic(s)", "BUILD SUCCESSFUL"
+   followed by no output). For a video, look at a frame at least every two seconds and at every screen
+   change, not a handful of samples. Also add each fact to the evidence catalog. A fact about the
+   reported item's starting state is a precondition of the criterion (or a TBD when the ticket does not
+   say which state is expected); a configuration on the same item that differs from the reporter's is a
+   case of the criterion. Status pings (ETA or update requests), bot notices,
    credential lines and access links are not requirements: leave them out and never copy credentials.
 6. {surface_inventory_path}: a JSON list of every place in the product where the feature appears or
    where its items open, found in the documentation AND by searching the code for every reuse of each
@@ -172,8 +183,9 @@ When finished, write these files:
    lookup that now returns an empty list must not look like "no results", and a skipped check must not
    remove a protection such as a delete warning). Many tickets never get a root cause: UNCONFIRMED is fine,
    but then no Acceptance Criterion except a REGRESSION check may rest only on code. And, when the
-   ticket says items inside
-   a job, queue or batch fail or get stuck,
+   ticket says that some of several
+   items in one job, queue or batch fail or get stuck while others go through (one item in a job is not a
+   batch; do not ask about partial failure the ticket never raised),
    "failure_path": {{"failing_item_outcome" | "remaining_items" | "user_notice": {{"disposition": "AC" |
    "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason": "..."}}}}.
    Also "similar_uacs": run the skill's scripts/similar_uac_compare.py (--ticket-source the ticket's
@@ -187,7 +199,9 @@ and make them pass scripts/validate_test_plan.py and scripts/uac_completeness_ch
 {fallback_path}: {{"canonical_status": "<the runtime's final status>", "failed_gates": [{{"gate": "<gate
 name>", "reason": "<why it did not pass, one sentence>"}}]}}. Never invent evidence or report a failed gate
 as passed. Do not write this file when the canonical runtime delivered the UAC.
-Write in simple English with AEM Guides names a QE sees on screen."""
+Write in simple English with AEM Guides names a QE sees on screen. A criterion that checks a fix says what QE
+sees when it works: the changed content in the output itself and the final status shown. A "queued" or
+"success" message, or a successful preprocessing step, is not proof that the output changed."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE", "TEST_PLAN")
 SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
 DISCOVERED_AUTHORITIES = ("DOCUMENTATION", "CODE_REUSE")
@@ -492,6 +506,24 @@ def _ac_numbers(value) -> list[int]:
 
 def _is_regression(text: str) -> bool:
     return any(f" {m} " in f" {_normalize(text)} " for m in REGRESSION_MARKERS)
+
+
+def attachment_fact_notes(ticket_dir: Path, source: dict | None, own_name: str = "") -> list[str]:
+    """Review notes (never failures) for attachments from people that list no "facts"."""
+    path = ticket_dir / common.SOURCE_COVERAGE_FILE
+    if source is None or not path.is_file():
+        return []
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError:
+        return []
+    with_facts = {str(e.get("source") or "")[len("attachment:"):] for e in entries
+                  if isinstance(e, dict) and str(e.get("source") or "").startswith("attachment:")
+                  and isinstance(e.get("facts"), list) and e.get("facts")}
+    return [f"attachment {a.get('filename')} lists no facts (configuration, status or log lines it shows)"
+            for a in source.get("attachments") or []
+            if a.get("filename") and a.get("filename") not in with_facts
+            and (not own_name or a.get("author") != own_name)]
 
 
 def orphan_ac_problems(ticket_dir: Path) -> list[str]:
@@ -927,7 +959,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         status["decisions_sha256"] = common.sha256_file(ticket_dir / common.DECISIONS_FILE)
     status["warnings"] = warnings
     comment_notes = unmapped_comment_notes(ticket_dir, source, own_name)
-    review_notes = orphan_ac_problems(ticket_dir) + comment_notes
+    review_notes = orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
     status["review_notes"] = review_notes
     fallback = runtime_fallback_gates(ticket_dir)
     if fallback is not None:
