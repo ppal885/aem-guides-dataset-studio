@@ -1982,6 +1982,21 @@ class DeliveryCleanupTests(unittest.TestCase):
         self.assertIn("fulfill-agent --store", runner.PROMPT)
         self.assertIn("{research_store}", runner.PROMPT)
 
+    def test_the_session_uses_the_backend_python(self) -> None:
+        self.assertEqual(runner.runtime_python({"runtime_python": "/opt/py311/bin/python"}), "/opt/py311/bin/python")
+        with tempfile.TemporaryDirectory() as tmp:
+            venv = Path(tmp) / "backend" / "venv" / "bin"
+            venv.mkdir(parents=True)
+            (venv / "python").write_text("", encoding="utf-8")
+            with mock.patch.object(runner.common, "REPO_ROOT", Path(tmp)):
+                self.assertEqual(runner.runtime_python({}), str(venv / "python"), "backend/venv is found")
+            with mock.patch.object(runner.common, "REPO_ROOT", Path(tmp) / "elsewhere"):
+                self.assertEqual(runner.runtime_python({}), "")
+        env = runner.copilot_env(Path("/runs/PROJ-1"), "/opt/py311/bin/python")
+        self.assertTrue(env["PATH"].startswith(str(Path("/opt/py311/bin")) + os.pathsep))
+        self.assertIn("{runtime_python} scripts/run_test_plan_pipeline.py {key}", runner.PROMPT)
+        self.assertIn("{runtime_python} scripts/agent_research_bridge.py fulfill-agent", runner.PROMPT)
+
     def test_unanswered_runtime_research_is_counted_and_noted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ticket = Path(tmp)

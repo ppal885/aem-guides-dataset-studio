@@ -196,12 +196,12 @@ When finished, write these files:
    parent ticket) and answer every listed dimension of the
    similar human UACs with "disposition": "AC" | "TBD" | "TEST_PLAN" | "NOT_APPLICABLE", "ac" and "reason".
 Canonical runtime research: your environment already sets AGENT_RESEARCH_MODE=copilot_host and
-AGENT_RESEARCH_STORE={research_store}. Run the canonical runtime locally - python scripts/run_test_plan_pipeline.py
-{key} - and never with --http, which writes the research requests to the backend's own store where nobody
+AGENT_RESEARCH_STORE={research_store}. Run the canonical runtime locally with the backend's Python -
+{runtime_python} scripts/run_test_plan_pipeline.py {key} - and never with --http, which writes the research requests to the backend's own store where nobody
 answers them. When it returns waiting_for_agent_research, answer EVERY request before anything else:
-list them with python scripts/agent_research_bridge.py pending --store {research_store}, delegate each to the
+list them with {runtime_python} scripts/agent_research_bridge.py pending --store {research_store}, delegate each to the
 registered agent named by its worker_role (task tool, background mode, the whole batch at once), and submit
-each agent's strict JSON result with python scripts/agent_research_bridge.py fulfill-agent --store
+each agent's strict JSON result with {runtime_python} scripts/agent_research_bridge.py fulfill-agent --store
 {research_store} --execution-id <id> --result <file> --model <model>. Then run the same runtime command
 again. Repeat for up to three passes; questions a later pass adds are answered the same way. A
 uac-doc-researcher result delegated this way also counts for file 4 (write one of them unchanged). Do
@@ -531,12 +531,28 @@ def _is_regression(text: str) -> bool:
     return any(f" {m} " in f" {_normalize(text)} " for m in REGRESSION_MARKERS)
 
 
-def copilot_env(ticket_dir: Path) -> dict[str, str]:
+def runtime_python(config: dict) -> str:
+    """The Python that can import the backend (the backend's virtual environment): config "runtime_python",
+    else backend/venv. The system python3 may be too old for the backend (StrEnum needs 3.11)."""
+    configured = str(config.get("runtime_python") or "").strip()
+    if configured:
+        return configured
+    for candidate in (common.REPO_ROOT / "backend" / "venv" / "bin" / "python",
+                      common.REPO_ROOT / "backend" / "venv" / "Scripts" / "python.exe"):
+        if candidate.is_file():
+            return str(candidate)
+    return ""
+
+
+def copilot_env(ticket_dir: Path, python: str = "") -> dict[str, str]:
     """The Copilot session's environment: the canonical runtime hands research to the session's agents and
-    writes the requests to this ticket's own store, so they can be answered and counted."""
+    writes the requests to this ticket's own store, so they can be answered and counted. The backend's
+    Python comes first on PATH, so a plain "python" also imports the backend."""
     env = dict(os.environ)
     env["AGENT_RESEARCH_MODE"] = "copilot_host"
     env["AGENT_RESEARCH_STORE"] = str(ticket_dir / RESEARCH_STORE_DIR)
+    if python:
+        env["PATH"] = str(Path(python).parent) + os.pathsep + env.get("PATH", "")
     return env
 
 
@@ -1030,6 +1046,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            fallback_path=ticket_dir / common.RUNTIME_FALLBACK_FILE,
                            linked_docs_path=ticket_dir / linked_docs.LINKED_DOCS_FILE,
                            research_store=ticket_dir / RESEARCH_STORE_DIR,
+                           runtime_python=runtime_python(config) or "python3",
                            max_discovered=MAX_DISCOVERED_SURFACES_PER_AC)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
@@ -1038,7 +1055,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     try:
         run = subprocess.run(cmd, cwd=common.REPO_ROOT, capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=timeout,
-                             env=copilot_env(ticket_dir))
+                             env=copilot_env(ticket_dir, runtime_python(config)))
         (ticket_dir / "copilot-output.txt").write_text(run.stdout + "\n" + run.stderr, encoding="utf-8")
         exit_code = run.returncode
     except subprocess.TimeoutExpired:
@@ -1112,6 +1129,12 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
 
 def health(config: dict, jira, logger) -> list[str]:
     problems = []
+    python = runtime_python(config)
+    if python:
+        logger.info("canonical runtime Python: %s", python)
+    else:
+        logger.warning("no backend Python found (set runtime_python in the config); the Copilot session cannot run "
+                       "the canonical runtime locally and its research requests will not be answered")
     try:
         me = jira.myself()
         logger.info("Jira auth OK as %s", me.get("name") or me.get("displayName"))
