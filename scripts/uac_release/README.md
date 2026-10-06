@@ -152,6 +152,13 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    evidence. Create the token on wiki.corp.adobe.com under Profile > Settings > Personal Access Tokens. A
    link the runner cannot read never blocks the UAC: it is shown on the release page as "linked design
    document not read". `linked_doc_hosts` in the config changes which hosts count as wiki links.
+
+   The Copilot session runs the canonical runtime locally and answers its research requests through
+   `scripts/agent_research_bridge.py`, with the requests stored in `<KEY>/agent-research/`. The runtime needs
+   the backend's Python (3.11+; a system `python3` 3.10 cannot import it). The runner uses
+   `backend/venv/bin/python` when it exists, or `runtime_python` in the config, and puts it first on the
+   session's PATH. `status.json` records `runtime_research` (requests and how many were answered), and
+   unanswered requests show as a review note on the release page.
 6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.json` and set:
    - `jql`: which tickets need a UAC. The example picks open Customer Request tickets in the
      `AEMGuides_CurrentDevSprint` sprint (tickets in it are fixed in the coming release), whoever the
