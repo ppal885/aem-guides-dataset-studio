@@ -15,7 +15,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # Acceptance Criteria field, with the QEVision_UAC_DONE label.
 30 1 * * * cd $REPO && /usr/bin/python3 scripts/uac_release/uac_release_runner.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1
 
-# 02:00 UTC (07:30 IST) Mon-Fri: alert QE when a root cause or fix arrives after a UAC was posted (read-only on tickets).
+# 02:00 UTC (07:30 IST) Mon-Fri: alert QE when a root cause, fix or API contract arrives after a UAC was posted (read-only on tickets).
 0 2 * * 1-5 cd $REPO && /usr/bin/python3 scripts/uac_release/uac_staleness_watch.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1
 
 # 02:30 UTC (08:00 IST) every night: learn from QE edits to posted UACs (read-only on Jira).

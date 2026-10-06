@@ -9,8 +9,9 @@ them. It never edits or comments on the ticket itself and never changes the UAC.
 For each ticket in scope that carries the posted label:
   1. find when the Acceptance Criteria field last changed (Jira changelog);
   2. find what people other than the automation added after that time: comments that report a root
-     cause or a fix, comments that link a wiki page (a design document or specification), and
-     attachments (an API contract, a design, a screenshot);
+     cause or a fix, comments that link a wiki page (a design document or specification), comments that
+     give an API contract or design in their text (an HTTP method with a path, a request/response body,
+     status codes, an API spec), and attachments (an API contract, a design, a screenshot);
   3. alert once per such comment or attachment (remembered in <output_dir>/staleness-state.json).
 
 Scope JQL: config "staleness_jql", else the approved scope JQL plus the posted label, limited to tickets
@@ -32,6 +33,12 @@ import linked_docs  # noqa: E402
 STATE_FILE = "staleness-state.json"
 # The same signal the skill uses to decide whether a UAC was written with the root cause known.
 FIX_SIGNAL = common.import_skill_module("uac_completeness_check").FIX_SIGNAL
+# An API contract or design written in a comment: an HTTP method with a path, request/response bodies,
+# status codes, or a named API spec / design document. A passing mention of "API" is not enough.
+CONTRACT_SIGNAL = re.compile(
+    r"\b(GET|POST|PUT|PATCH|DELETE)\s+/[\w{}/.:-]+|\bAPI\s+(contract|spec(ification)?|design)\b"
+    r"|\b(request|response)\s+(body|payload|schema)\b|\bstatus\s+codes?\b|\b(swagger|openapi)\b"
+    r"|\btechnical\s+design\b|\bdesign\s+doc(ument)?\b", re.IGNORECASE)
 AC_FIELD_NAME = "Acceptance Criteria"
 
 
@@ -66,16 +73,22 @@ def fix_comments_after(issue: dict, since: str, own_name: str = "") -> list[dict
 
 def new_evidence_after(issue: dict, since: str, own_name: str = "",
                        hosts: tuple[str, ...] = linked_docs.DEFAULT_HOSTS) -> list[dict]:
-    """Attachments, and comments that link a wiki page, added by people after the UAC last changed."""
+    """Attachments, and comments that link a wiki page or give an API contract, added by people after the UAC
+    last changed."""
     fields = issue.get("fields") or {}
     found = []
     for comment in (fields.get("comment") or {}).get("comments") or []:
         author = str((comment.get("author") or {}).get("name") or "")
         created = str(comment.get("created") or "")
-        if since and created > since and author != own_name and \
-                linked_docs.find_links({"description": comment.get("body") or ""}, "", hosts):
+        if not since or created <= since or author == own_name:
+            continue
+        body = comment.get("body") or ""
+        if linked_docs.find_links({"description": body}, "", hosts):
             found.append({"id": str(comment.get("id")), "author": author, "created": created,
                           "what": "a wiki page link (design document or specification)"})
+        elif CONTRACT_SIGNAL.search(body):
+            found.append({"id": str(comment.get("id")), "author": author, "created": created,
+                          "what": "an API contract or design in a comment"})
     for attachment in fields.get("attachment") or []:
         author = str((attachment.get("author") or {}).get("name") or "")
         created = str(attachment.get("created") or "")
