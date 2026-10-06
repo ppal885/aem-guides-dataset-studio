@@ -922,7 +922,11 @@ class RunnerTests(unittest.TestCase):
             with mock.patch.object(staleness.common.JiraClient, "from_env", return_value=jira), \
                     mock.patch.object(staleness.common, "load_env_file"), \
                     mock.patch.object(staleness.common, "send_alert", return_value=result):
-                staleness.main(["--config", str(config_path)])
+                try:
+                    staleness.main(["--config", str(config_path)])
+                finally:
+                    # main() opens a log file; Windows cannot delete the temp folder while it is open.
+                    close_logger("uac-staleness")
             self.assertEqual(state_file.is_file(), saved, result)
         self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
 
