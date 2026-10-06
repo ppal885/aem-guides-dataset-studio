@@ -1801,8 +1801,19 @@ class DeliveryCleanupTests(unittest.TestCase):
     def test_new_miss_probes_are_active(self) -> None:
         lib = common.import_skill_module("miss_probe_library")
         status = {p["probe_id"]: lib.effective_status(p)[0] for p in lib.load_library()}
-        for probe in ("MP-018", "MP-019", "MP-020", "MP-021"):
+        for probe in ("MP-018", "MP-019", "MP-020", "MP-021", "MP-022"):
             self.assertEqual(status.get(probe), "ACTIVE", probe)
+
+    def test_role_scoped_failure_probe_fires_on_service_user_writes_but_not_on_digit_runs(self) -> None:
+        lib = common.import_skill_module("miss_probe_library")
+
+        def fires(text: str) -> bool:
+            return any(c["probe_id"] == "MP-022" for c in lib.candidates_for([("description", text)]))
+        self.assertTrue(fires("The listener records modifier fmdita-serviceuser; profile reads return HTTP 400."))
+        self.assertTrue(fires("Enabling the API returns 403 Forbidden for the org."))
+        self.assertFalse(fires("Server author-p38855-e340376-cmstg, build 2026.9.0.413 reproduces it."),
+                         "a digit run such as e340376 is not a 403")
+        self.assertFalse(fires("Closing this ticket as it is not reproducible with the given steps."))
 
 
 if __name__ == "__main__":

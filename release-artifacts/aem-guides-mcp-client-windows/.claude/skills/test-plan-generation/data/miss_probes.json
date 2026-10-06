@@ -809,6 +809,45 @@
       "counterexamples_checked": true,
       "equivalence_key": "value-every-output-place",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-022",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "http 400",
+          "returned 400",
+          "return 400",
+          "returns 400",
+          "http 403",
+          "returned 403",
+          "403 forbidden",
+          "forbidden",
+          "service user",
+          "serviceuser",
+          "changed by user",
+          "only some users"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "PERMISSION_ROLE",
+        "candidate_template": "when a failure, a rejected request or an unexpected change made by a service user is reported, find which user triggered it in the logs and check by role and permission: a user without access to the item (for example only the Contributor role), a profile or folder administrator, and an administrator. A check that passes as an administrator says nothing about a user without access."
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261006-ROLE-SCOPED-FAILURE-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Errors and unexpected writes that only some users trigger are usually permission paths: a read is refused for a user without access, and the backend then falls back to a default path (for example re-creating a shared item) that a service user writes. Testing as an administrator never reproduces it, so it looks intermittent. Counterexample checked: a failure every user gets the same way needs no role split.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "role-scoped-failure",
+      "status": "ACTIVE"
     }
   ]
 }
