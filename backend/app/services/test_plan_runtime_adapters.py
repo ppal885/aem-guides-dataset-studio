@@ -107,6 +107,8 @@ def _canonical_uac_delivery_failures(result: GenerationResult) -> list[str]:
             row.status == WriterProjectionStatus.EXPLICITLY_EXCLUDED
             and row.reason.startswith(_INTERNAL_WRITER_METADATA_PREFIX)
         )
+        # Research-found checks kept in the full test plan are not part of the UAC.
+        and row.status != WriterProjectionStatus.TEST_PLAN_REGRESSION
     ]
     if not projections:
         return []

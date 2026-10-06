@@ -1069,6 +1069,88 @@ class TestWriterProjectionCompleteness:
         assert failures
         assert records[0].status == WriterProjectionStatus.EXPLICITLY_EXCLUDED
 
+    @staticmethod
+    def _regression_section(row, items):
+        from app.core.schemas_canonical_test_plan_runtime import PlanSection
+
+        section = PlanSection(
+            section_key="regression_areas",
+            title="Regression Areas",
+            items=items,
+            source_record_ids=[row.disposition_id],
+        )
+        return {row.disposition_id: [section]}
+
+    def test_research_regression_kept_in_the_test_plan_is_complete(self):
+        # The UAC holds at most ten criteria; research-found checks that do not matter enough go to the
+        # full test plan.  That is a complete projection, not lost coverage.
+        _, _, _, _, p1 = self._coverage_fixture()
+
+        records, failures = _writer_projection_completeness(
+            [p1], [], self._regression_section(p1, list(p1.variants))
+        )
+
+        assert not failures
+        assert records[0].status == WriterProjectionStatus.TEST_PLAN_REGRESSION
+        assert set(records[0].projected_variant_texts) == set(p1.variants)
+        assert not records[0].criterion_id
+
+    def test_acceptance_coverage_kept_only_in_the_test_plan_still_fails(self):
+        # P0 rows are the acceptance contract (the schema makes every P1 row QE_REGRESSION), so a P0
+        # row must reach the UAC itself.
+        _, _, _, p0, _ = self._coverage_fixture()
+
+        records, failures = _writer_projection_completeness(
+            [p0], [], self._regression_section(p0, [p0.candidate])
+        )
+        assert failures
+        assert records[0].status == WriterProjectionStatus.RETAINED_QE_REGRESSION
+
+    def test_test_plan_regression_still_needs_every_variant_in_its_section(self):
+        _, _, _, _, p1 = self._coverage_fixture()
+
+        _, failures = _writer_projection_completeness(
+            [p1], [], self._regression_section(p1, list(p1.variants)[:2])
+        )
+
+        assert any("lost typed variants" in failure for failure in failures)
+
+    def test_test_plan_regression_keeps_its_must_not_behavior(self):
+        _, _, _, _, p1 = self._coverage_fixture()
+        negative = CoverageDispositionRecord.model_validate(
+            {**p1.model_dump(), "disposition_id": "", "contract_type": "NEGATIVE", "variants": [],
+             "candidate": "Output History does not delete generated outputs when logs are purged."}
+        )
+
+        _, failures = _writer_projection_completeness(
+            [negative], [], self._regression_section(negative, ["Output History deletes generated outputs."])
+        )
+        assert any("must-not behavior" in failure for failure in failures)
+        _, failures = _writer_projection_completeness(
+            [negative], [], self._regression_section(negative, [negative.candidate])
+        )
+        assert not failures
+
+    def test_delivery_check_does_not_demand_test_plan_regressions_in_the_uac(self):
+        from app.core.schemas_canonical_test_plan_runtime import WriterProjectionRecord
+        from app.services.test_plan_runtime_adapters import _canonical_uac_delivery_failures
+
+        _, _, _, _, p1 = self._coverage_fixture()
+        record = WriterProjectionRecord(
+            coverage_disposition_id=p1.disposition_id,
+            priority="P1",
+            status=WriterProjectionStatus.TEST_PLAN_REGRESSION,
+            projected_variant_texts=list(p1.variants),
+            reason="Kept in the full test plan as a research-found QE regression check.",
+        )
+        result = SimpleNamespace(
+            structured_plan=SimpleNamespace(writer_projection_records=[record]),
+            output_payload={"written_acceptance_criteria": []},
+            rendered_output="Acceptance Criteria 01: Output History keeps its entries.",
+        )
+
+        assert _canonical_uac_delivery_failures(result) == []
+
 
 class TestResearchConflictReachesTheReader:
     """Finding C: research ran, but nothing it established reached the plan.
