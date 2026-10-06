@@ -167,7 +167,9 @@ def make_config(out: Path) -> dict:
 
 
 def fake_copilot(write_files: bool, returncode: int = 0, decisions: str = "", doc_research=DOC_RESEARCH,
-                 transcript: str = "task agent_type=uac-doc-researcher -> result", coverage=COVERAGE,
+                 transcript: str = ("task agent_type=uac-doc-researcher -> result\n"
+                                    "task agent_type=uac-code-researcher -> result\n"
+                                    "task agent_type=uac-attachment-researcher -> result"), coverage=COVERAGE,
                  surfaces=SURFACES, evidence=EVIDENCE):
     def run(cmd, **kwargs):
         prompt = cmd[cmd.index("-p") + 1]
@@ -1970,6 +1972,39 @@ class DeliveryCleanupTests(unittest.TestCase):
         feature = {"fix_basis": {"status": "NOT_A_DEFECT", "reason": "the ticket asks for a new status API"}}
         self.assertEqual(check.fix_basis_problems(feature, runner.normalize_note(UAC, "NOT_A_DEFECT"), source), [])
         self.assertTrue(check.fix_basis_problems(feature, UAC, source), "a new capability has no root-cause note")
+
+    def test_skipped_code_or_attachment_researcher_is_a_review_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp)
+            prompt = "run the uac-doc-researcher"
+            transcript = ticket / "copilot-transcript.md"
+            transcript.write_text(prompt + "\ntask agent_type=uac-doc-researcher -> result", encoding="utf-8")
+            notes = runner.researcher_run_notes(ticket, prompt, SOURCE, "uac.bot")
+            self.assertEqual(len(notes), 2, notes)
+            self.assertIn("uac-code-researcher", notes[0])
+            self.assertIn("1 attachment(s) from people", notes[1], "the automation's own test plan is not counted")
+            transcript.write_text(prompt + "\ntask agent_type=uac-code-researcher -> r\n"
+                                  "task agent_type=uac-attachment-researcher -> r", encoding="utf-8")
+            self.assertEqual(runner.researcher_run_notes(ticket, prompt, SOURCE, "uac.bot"), [])
+            transcript.write_text(prompt, encoding="utf-8")
+            (ticket / common.EVIDENCE_FILE).write_text(json.dumps(
+                {"preflight": {"clones": {"status": "unavailable"}}}), encoding="utf-8")
+            no_attachments = dict(SOURCE, attachments=[])
+            self.assertEqual(runner.researcher_run_notes(ticket, prompt, no_attachments, "uac.bot"), [],
+                             "no clones and no attachments: nothing for those researchers to do")
+
+    def test_researcher_notes_never_block_posting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            only_doc = fake_copilot(True, transcript="task agent_type=uac-doc-researcher -> result")
+            with mock.patch.object(runner.subprocess, "run", only_doc), \
+                    mock.patch.object(runner, "check_outputs", return_value=[]):
+                result = runner.process_ticket("PROJ-1", make_config(out), FakeJira(), logging.getLogger("test"),
+                                               dry_run=False)
+            self.assertEqual(result, "POSTED")
+            notes = common.read_status(out / "PROJ-1")["review_notes"]
+        self.assertTrue(any("uac-code-researcher" in n for n in notes), notes)
+        self.assertTrue(any("uac-attachment-researcher" in n for n in notes), notes)
 
     def test_attachment_without_facts_is_a_review_note_not_a_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

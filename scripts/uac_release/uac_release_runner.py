@@ -261,6 +261,8 @@ _INVISIBLE = re.compile("[​-‍⁠﻿]")
 NON_VISUAL_ATTACHMENTS = (".txt", ".log", ".json", ".xml", ".dita", ".ditamap", ".har", ".csv", ".zip", ".gz",
                           ".md", ".yaml", ".yml", ".properties", ".java", ".js", ".ts", ".py", ".sql")
 DOC_RESEARCHER = "uac-doc-researcher"
+CODE_RESEARCHER = "uac-code-researcher"
+ATTACHMENT_RESEARCHER = "uac-attachment-researcher"
 GATE_LOG_FILE = "gate-firing.jsonl"
 DOC_RESEARCH_STATUSES = ("ANSWER_FOUND", "PARTIAL", "NOT_FOUND", "SOURCE_UNAVAILABLE", "CONFLICTED")
 DECISION_SECTIONS = ("### What we found", "### Decision needed", "### Impact on the Acceptance Criteria")
@@ -514,6 +516,39 @@ def _ac_numbers(value) -> list[int]:
 
 def _is_regression(text: str) -> bool:
     return any(f" {m} " in f" {_normalize(text)} " for m in REGRESSION_MARKERS)
+
+
+def _researcher_ran(ticket_dir: Path, prompt: str, agent: str) -> bool:
+    """True when the Copilot transcript shows the agent running, beyond the prompt's own mentions of it."""
+    transcript = ticket_dir / "copilot-transcript.md"
+    text = transcript.read_text(encoding="utf-8", errors="replace") if transcript.is_file() else ""
+    echoed = prompt.count(agent)
+    if prompt and prompt in text:
+        text, echoed = text.replace(prompt, ""), 0
+    return text.count(agent) > echoed
+
+
+def researcher_run_notes(ticket_dir: Path, prompt: str, source: dict | None, own_name: str = "") -> list[str]:
+    """Review notes (never failures) when the code or attachment researcher did not run although it could.
+
+    The doc researcher is a posting check (doc_research_problems); these two are only reported, so a skipped
+    run is visible on the release page without blocking the UAC."""
+    notes = []
+    evidence_file = ticket_dir / common.EVIDENCE_FILE
+    try:
+        evidence = json.loads(evidence_file.read_text(encoding="utf-8-sig")) if evidence_file.is_file() else {}
+    except ValueError:
+        evidence = {}
+    clones = (((evidence or {}).get("preflight") or {}).get("clones") or {}).get("status")
+    if clones != "unavailable" and not _researcher_ran(ticket_dir, prompt, CODE_RESEARCHER):
+        notes.append(f"the Copilot transcript shows no {CODE_RESEARCHER} run although the product clones were "
+                     "available; code evidence comes only from the main session")
+    people = [a.get("filename") for a in (source or {}).get("attachments") or []
+              if a.get("filename") and (not own_name or a.get("author") != own_name)]
+    if people and not _researcher_ran(ticket_dir, prompt, ATTACHMENT_RESEARCHER):
+        notes.append(f"the Copilot transcript shows no {ATTACHMENT_RESEARCHER} run although the ticket has "
+                     f"{len(people)} attachment(s) from people")
+    return notes
 
 
 def attachment_fact_notes(ticket_dir: Path, source: dict | None, own_name: str = "") -> list[str]:
@@ -998,7 +1033,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         status["decisions_sha256"] = common.sha256_file(ticket_dir / common.DECISIONS_FILE)
     status["warnings"] = warnings
     comment_notes = unmapped_comment_notes(ticket_dir, source, own_name)
-    review_notes = orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
+    review_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
+                    + researcher_run_notes(ticket_dir, prompt, source, own_name))
     status["review_notes"] = review_notes
     fallback = runtime_fallback_gates(ticket_dir)
     if fallback is not None:
