@@ -848,6 +848,109 @@
       "counterexamples_checked": true,
       "equivalence_key": "role-scoped-failure",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-023",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "selecting any baseline",
+          "use baseline",
+          "no baseline",
+          "without baseline",
+          "another preset",
+          "other preset",
+          "different preset"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CONFIG_BRANCH",
+        "candidate_template": "when the failure depends on a setting of the configuration the reporter used (one preset, profile or option), list every other configuration the same item has in the ticket and its attachments (for example another preset of the same map that uses a baseline) and add the reported scenario with them as cases"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261007-SIBLING-CONFIGURATIONS-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A setting on one configuration can be read by shared code for the whole item, so other configurations of the same item (sibling presets, inherited profiles) change the outcome. The reporter's screenshots and videos usually show them. Counterexample checked: an item with only the one configuration needs no extra case.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "sibling-configurations-of-the-item",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-024",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "no output created",
+          "generation is marked failed",
+          "marked failed",
+          "marked as failed",
+          "queued for regeneration",
+          "build successful",
+          "not updated",
+          "did not update",
+          "no output"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "TERMINAL_STATE",
+        "candidate_template": "when a job or output silently does not do its work, every fix criterion names what QE sees when it works: the changed content in the output itself and the final status shown; a queued or success message, or a successful preprocessing step, is not proof"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261007-SUCCESS-ORACLE-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Generation and publishing jobs report several statuses (queued, preprocessing finished, warning, success). A criterion that only says the job succeeds can be met by the same misleading status the customer saw. Counterexample checked: a ticket about the status display itself already names the status.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "observable-success-oracle",
+      "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-025",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "found 0",
+          "0 existing",
+          "no existing",
+          "found no ",
+          "0 published",
+          "starting regeneration for"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "REPRO_DIMENSION",
+        "candidate_template": "when a quoted or attached log states the starting state of the item (for example found 0 existing published pages), make that state an explicit precondition of the criterion and cover both states (the item already published and not published yet), or ask in a TBD which one is expected"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261007-LOG-STARTING-STATE-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Logs often show that the reporter's item was in an unusual starting state (never published, empty, first run), which the steps to reproduce do not mention. A fix tested only on the usual state can miss the reported one. Counterexample checked: a log line about an unrelated item is not a precondition.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "log-stated-starting-state",
+      "status": "ACTIVE"
     }
   ]
 }

@@ -48,7 +48,8 @@ COVERAGE = [
     {"source": "comment:7", "text": "Please also check that the export button works.", "disposition": "OUT_OF_SCOPE",
      "reason": "export is a separate feature with its own ticket"},
     {"source": "attachment:shot.png", "text": "screenshot of the report", "disposition": "AC", "ac": 1,
-     "surfaces": ["Map console"]},
+     "surfaces": ["Map console"],
+     "facts": [{"fact": "the report opens from the Map console", "disposition": "AC", "ac": 1}]},
 ]
 
 SURFACES = [
@@ -1966,11 +1967,40 @@ class DeliveryCleanupTests(unittest.TestCase):
         self.assertEqual(check.fix_basis_problems(feature, runner.normalize_note(UAC, "NOT_A_DEFECT"), source), [])
         self.assertTrue(check.fix_basis_problems(feature, UAC, source), "a new capability has no root-cause note")
 
+    def test_attachment_without_facts_is_a_review_note_not_a_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp)
+            no_facts = [dict(COVERAGE[3])]
+            no_facts[0].pop("facts")
+            (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(no_facts), encoding="utf-8")
+            notes = runner.attachment_fact_notes(ticket, SOURCE, "uac.bot")
+            self.assertEqual(notes, ["attachment shot.png lists no facts (configuration, status or log lines it shows)"],
+                             "the automation's own test plan needs no facts")
+            (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(COVERAGE), encoding="utf-8")
+            self.assertEqual(runner.attachment_fact_notes(ticket, SOURCE, "uac.bot"), [])
+
+    def test_prompt_asks_for_attachment_facts_and_an_observable_result(self) -> None:
+        self.assertIn('"facts"', runner.PROMPT)
+        self.assertIn("every two seconds", runner.PROMPT)
+        self.assertIn("is not proof that the output changed", runner.PROMPT)
+        self.assertIn("one item in a job is not a", runner.PROMPT)
+
     def test_new_miss_probes_are_active(self) -> None:
         lib = common.import_skill_module("miss_probe_library")
         status = {p["probe_id"]: lib.effective_status(p)[0] for p in lib.load_library()}
-        for probe in ("MP-018", "MP-019", "MP-020", "MP-021", "MP-022"):
+        for probe in ("MP-018", "MP-019", "MP-020", "MP-021", "MP-022", "MP-023", "MP-024", "MP-025"):
             self.assertEqual(status.get(probe), "ACTIVE", probe)
+
+    def test_attachment_state_probes(self) -> None:
+        lib = common.import_skill_module("miss_probe_library")
+
+        def fired(text: str) -> set:
+            return {c["probe_id"] for c in lib.candidates_for([("evidence", text)])}
+        self.assertIn("MP-023", fired("Repeat with any baseline selected in the preset; it works. No baseline fails."))
+        self.assertIn("MP-024", fired("Although only a warning, generation terminates with No output created."))
+        self.assertIn("MP-025", fired("Log: Starting regeneration for 5 topic(s) ... Found 0 existing published pages."))
+        self.assertFalse({"MP-023", "MP-024", "MP-025"} & fired("Customer has built a temporary workaround listener."),
+                         "a workaround alone is not a sibling configuration")
 
     def test_role_scoped_failure_probe_fires_on_service_user_writes_but_not_on_digit_runs(self) -> None:
         lib = common.import_skill_module("miss_probe_library")
