@@ -63,7 +63,9 @@ When finished, write these files:
    go in the test plan (the runner removes them from Source lines).
    State each criterion as the expected outcome in plain words (no "Verify that" prefix is needed), and
    under a criterion list up to five short cases of the same outcome as indented "  - ..." lines when it
-   has a construct or case matrix. A fact the ticket or a developer comment already decided (a feature
+   has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
+   or fewer); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
+   the test plan's "Test data to prepare", never in a case line. A fact the ticket or a developer comment already decided (a feature
    flag, a preset argument, a default, a parity target such as "same as AEM Sites") is written as a
    criterion, not a TBD. When the ticket or a product decision sets the scope, add a "Scope: ..." line
    before the first criterion and an "Out of scope:" line with "- ..." items right after the criteria.

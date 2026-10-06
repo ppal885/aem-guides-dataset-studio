@@ -18108,10 +18108,18 @@ def test_generic_uac_review_fixes() -> None:
              "  **Source:** Ticket description; ReportServlet.java line 10; file_name_v2.csv.\n"
              "  **TBD:** Should the empty state show a message?\n")
     body = jst.jira_field_body(block)
-    assert body.startswith("*Acceptance Criteria 01:* Verify that the report opens.")
-    assert "\n* Source: Ticket description; {{ReportServlet.java}} line 10; {{file_name_v2.csv}}." in body
-    assert body.endswith("\n* TBD: Should the empty state show a message?")
-    assert "{noformat}" not in body and "**" not in body
+    assert body.startswith("* *Acceptance Criteria 01:* Verify that the report opens.")
+    assert "\n** Source: Ticket description; {{ReportServlet.java}} line 10; {{file_name_v2.csv}}." in body
+    assert body.endswith("\n** TBD: Should the empty state show a message?")
+    assert "{noformat}" not in body and "**Source:**" not in body and "**TBD:**" not in body
+    # Each criterion is a first-level bullet, so Jira never renders an empty bullet above its nested cases,
+    # and cases written with "*" bullets are kept like "-" bullets.
+    cases = jst.jira_field_body("- Acceptance Criteria 01: Regenerate updates the topics.\n"
+                                "  * One selected topic, and several.\n  - A map that also has a baseline.\n"
+                                "  **Source:** GUIDES-1 description.\n")
+    assert cases.splitlines() == ["* *Acceptance Criteria 01:* Regenerate updates the topics.",
+                                  "** One selected topic, and several.", "** A map that also has a baseline.",
+                                  "** Source: GUIDES-1 description."], cases
     print("test_generic_uac_review_fixes: OK")
 
 def test_customer_discovery() -> None:
