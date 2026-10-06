@@ -20,6 +20,7 @@ updated in the last "staleness_days" days (default 7).
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import sys
@@ -33,12 +34,15 @@ import linked_docs  # noqa: E402
 STATE_FILE = "staleness-state.json"
 # The same signal the skill uses to decide whether a UAC was written with the root cause known.
 FIX_SIGNAL = common.import_skill_module("uac_completeness_check").FIX_SIGNAL
-# An API contract or design written in a comment: an HTTP method with a path, request/response bodies,
-# status codes, or a named API spec / design document. A passing mention of "API" is not enough.
+# An API contract or design written in a comment: an upper-case HTTP method with a path or URL, a request
+# body/payload/schema, a list of status codes, or a named API spec / design document. A passing mention is not
+# enough: a repro step ("Delete /content/dam/...", "I get ...") or an error ("status code 500", "the response
+# body is empty") is not a contract.
 CONTRACT_SIGNAL = re.compile(
-    r"\b(GET|POST|PUT|PATCH|DELETE)\s+/[\w{}/.:-]+|\bAPI\s+(contract|spec(ification)?|design)\b"
-    r"|\b(request|response)\s+(body|payload|schema)\b|\bstatus\s+codes?\b|\b(swagger|openapi)\b"
-    r"|\btechnical\s+design\b|\bdesign\s+doc(ument)?\b", re.IGNORECASE)
+    r"(?-i:\b(?:GET|POST|PUT|PATCH|DELETE)\s+(?:/|https?://)\S+)"
+    r"|\bAPI\s+(?:contract|spec(?:ification)?|design)\b|\brequest\s+(?:body|payload|schema)\b"
+    r"|\bresponse\s+schema\b|\bstatus\s+codes?\s*[:=-]?\s*\d{3}\s*(?:,|/|and|or)\s*\d{3}"
+    r"|\b(?:swagger|openapi)\b|\btechnical\s+design\b|\bdesign\s+doc(?:ument)?\b", re.IGNORECASE)
 AC_FIELD_NAME = "Acceptance Criteria"
 
 
@@ -50,13 +54,34 @@ def staleness_jql(config: dict) -> str:
     return f'({scope}) AND labels = "{config["labels"]["posted"]}" AND updated >= -{days}d'
 
 
+def _when(value: str) -> datetime.datetime | None:
+    """A Jira timestamp (2026-01-10T10:00:00.000+0000) as an aware datetime, or None."""
+    try:
+        return datetime.datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%f%z")
+    except (TypeError, ValueError):
+        return None
+
+
+def _after(created: str, since: str) -> bool:
+    """True when `created` is later than `since`, comparing real times, not strings (offsets can differ)."""
+    a, b = _when(created), _when(since)
+    return a > b if a and b else bool(since) and created > since
+
+
+def _automation(author: str, own_name) -> bool:
+    """own_name is the automation's Jira user, or a set of generator users."""
+    return author in own_name if isinstance(own_name, (set, frozenset)) else author == own_name
+
+
 def last_ac_change(issue: dict, field_id: str) -> str:
     """ISO time of the last change to the Acceptance Criteria field, or "" when the changelog has none."""
     latest = ""
     for history in (issue.get("changelog") or {}).get("histories") or []:
         for item in history.get("items") or []:
             if item.get("fieldId") == field_id or item.get("field") == AC_FIELD_NAME:
-                latest = max(latest, str(history.get("created") or ""))
+                created = str(history.get("created") or "")
+                if not latest or _after(created, latest):
+                    latest = created
     return latest
 
 
@@ -66,7 +91,8 @@ def fix_comments_after(issue: dict, since: str, own_name: str = "") -> list[dict
     for comment in comments:
         author = str((comment.get("author") or {}).get("name") or "")
         created = str(comment.get("created") or "")
-        if since and created > since and author != own_name and FIX_SIGNAL.search(comment.get("body") or ""):
+        if since and _after(created, since) and not _automation(author, own_name) \
+                and FIX_SIGNAL.search(comment.get("body") or ""):
             found.append({"id": str(comment.get("id")), "author": author, "created": created})
     return found
 
@@ -80,7 +106,7 @@ def new_evidence_after(issue: dict, since: str, own_name: str = "",
     for comment in (fields.get("comment") or {}).get("comments") or []:
         author = str((comment.get("author") or {}).get("name") or "")
         created = str(comment.get("created") or "")
-        if not since or created <= since or author == own_name:
+        if not since or not _after(created, since) or _automation(author, own_name):
             continue
         body = comment.get("body") or ""
         if linked_docs.find_links({"description": body}, "", hosts):
@@ -92,18 +118,28 @@ def new_evidence_after(issue: dict, since: str, own_name: str = "",
     for attachment in fields.get("attachment") or []:
         author = str((attachment.get("author") or {}).get("name") or "")
         created = str(attachment.get("created") or "")
-        if since and created > since and author != own_name:
+        if since and _after(created, since) and not _automation(author, own_name):
             found.append({"id": f"attachment:{attachment.get('id')}", "author": author, "created": created,
                           "what": f"the attachment {attachment.get('filename')}"})
     return found
 
 
-def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_name: str = "") -> list[str]:
+def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_name="") -> list[str]:
+    """Alert lines for new evidence on each ticket. The ids alerted are added to `state`; the caller saves it
+    only once the alert was delivered. A ticket that cannot be read becomes an alert line of its own, so the
+    other tickets' alerts are not lost."""
     field_id = config["acceptance_criteria_field"]
     hosts = tuple(config.get("linked_doc_hosts") or linked_docs.DEFAULT_HOSTS)
+    if isinstance(own_name, str):
+        own_name = {own_name, *(config.get("learning_generator_users") or [])} - {""}
     lines = []
     for key in keys:
-        issue = jira._json("GET", f"/rest/api/2/issue/{key}?expand=changelog&fields=comment,attachment")
+        try:
+            issue = jira._json("GET", f"/rest/api/2/issue/{key}?expand=changelog&fields=comment,attachment")
+        except Exception as exc:  # noqa: BLE001 - one ticket never hides the others' alerts
+            logger.exception("%s: could not read the ticket", key)
+            lines.append(f"{key}: could not be checked for new evidence ({type(exc).__name__}: {exc})")
+            continue
         since = last_ac_change(issue, field_id)
         if not since:
             continue
@@ -162,10 +198,13 @@ def main(argv: list[str] | None = None) -> int:
         "run_id": run_id, "tool": "uac-staleness", "dry_run": args.dry_run,
         "started": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(started)),
         "seconds": round(time.time() - started), "exit_code": exit_code, "alerts": lines})
-    if not args.dry_run:
-        state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-        if jira is not None:
-            common.send_alert(config, jira, logger, "uac-staleness", run_id, lines)
+    if not args.dry_run and jira is not None:
+        result = common.send_alert(config, jira, logger, "uac-staleness", run_id, lines)
+        # Remember what was alerted only once QE has it; a failed or unconfigured alert is tried again next run.
+        if result in ("POSTED", "NONE", "SUPPRESSED"):
+            state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        else:
+            logger.warning("alert %s: the alerted comments are not marked as seen", result)
     return exit_code
 
 

@@ -56,7 +56,9 @@ def find_links(source: dict, own_name: str = "", hosts: tuple[str, ...] = DEFAUL
     links: list[str] = []
     for text in texts:
         for url in _URL.findall(text):
-            url = url.rstrip(".,;:)")
+            url = url.rstrip(".,;:")
+            while url.endswith(")") and url.count(")") > url.count("("):  # "(see https://...)" but not "API+(v2)"
+                url = url[:-1].rstrip(".,;:")
             if urllib.parse.urlsplit(url).hostname in hosts and url not in links:
                 links.append(url)
     return links
@@ -68,6 +70,7 @@ class _TextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
+        self.pending_href = ""
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
         if tag in _BLOCK_TAGS:
@@ -76,8 +79,16 @@ class _TextParser(HTMLParser):
             self.parts.append(" | ")
         elif tag == "li":
             self.parts.append("\n- ")
+        elif tag == "a":
+            # Keep the link target, so a page that is an index of links still leads to its pages.
+            href = dict(attrs).get("href") or ""
+            if href.startswith(("http://", "https://")):
+                self.pending_href = href
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self.pending_href:
+            self.parts.append(f" ({self.pending_href})")
+            self.pending_href = ""
         if tag in _BLOCK_TAGS:
             self.parts.append("\n")
 

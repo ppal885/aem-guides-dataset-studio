@@ -296,6 +296,9 @@ def doc_research_problems(ticket_dir: Path, prompt: str) -> list[str]:
     problems = []
     status = result.get("status")
     findings = result.get("findings") or []
+    if not isinstance(findings, list):
+        problems.append("UAC Doc Researcher findings must be a list")
+        findings = []
     if status not in DOC_RESEARCH_STATUSES:
         problems.append(f"UAC Doc Researcher status is {status!r}, expected one of {', '.join(DOC_RESEARCH_STATUSES)}")
     elif status in ("ANSWER_FOUND", "PARTIAL") and not findings:
@@ -303,6 +306,9 @@ def doc_research_problems(ticket_dir: Path, prompt: str) -> list[str]:
     elif status in ("NOT_FOUND", "SOURCE_UNAVAILABLE") and not result.get("limitations"):
         problems.append(f"UAC Doc Researcher returned {status} without limitations naming what was searched")
     for number, finding in enumerate(findings, 1):
+        if not isinstance(finding, dict):
+            problems.append(f"UAC Doc Researcher finding {number} is not an object")
+            continue
         refs = finding.get("source_refs") or []
         cites_doc = any(str(ref).startswith("doc:") for ref in refs)
         if cites_doc and not (finding.get("provenance") or {}).get("locator"):
@@ -574,6 +580,12 @@ def hotfix_scope_problems(ticket_dir: Path, source: dict) -> list[str]:
     return [f"hotfix scope: {p}" for p in scope_check.check(scope, uac)]
 
 
+def _criterion_text(first_line: str, block: str) -> str:
+    """The criterion and its indented "  - " case sub-points, without its Source and TBD lines."""
+    cases = [line.strip()[2:] for line in block.splitlines()[1:] if re.match(r"^\s+- ", line)]
+    return " ".join([first_line, *cases])
+
+
 def surface_inventory_problems(ticket_dir: Path) -> list[str]:
     """Return problems unless every place the feature appears is found in docs and code and covered."""
     path = ticket_dir / common.SURFACE_INVENTORY_FILE
@@ -615,7 +627,7 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
             ac = entry.get("ac")
             if not isinstance(ac, int) or ac not in lines:
                 problems.append(f"{label}: Acceptance Criteria {ac!r} does not exist in UAC.md")
-            elif disposition == "AC" and _normalize(surface) not in _normalize(lines[ac]):
+            elif disposition == "AC" and _normalize(surface) not in _normalize(_criterion_text(lines[ac], blocks[ac])):
                 problems.append(f"{label}: Acceptance Criteria {ac} does not name this surface")
             elif (disposition == "AC" and authority in DISCOVERED_AUTHORITIES
                   and not any(f" {m} " in f" {_normalize(lines[ac])} " for m in REGRESSION_MARKERS)):
@@ -709,13 +721,20 @@ def post_decision_request(key: str, config: dict, jira, logger, ticket_dir: Path
         return "NONE"
     if status.get("decision_comment_id"):
         return "ALREADY_POSTED"
-    people = jira.get_people(key) if settings.get("mention") else {}
-    names = [people.get(role, "") for role in settings.get("mention", [])] + list(settings.get("cc", []))
-    names = list(dict.fromkeys(n for n in names if n))
-    lead = " ".join(f"[~{name}]" for name in names)
-    intro = "The UAC is in the Acceptance Criteria field. These product decisions are still open:"
-    body = (f"{lead} {intro}" if lead else intro) + "\n\n" + decision_body
-    status["decision_comment_id"] = jira.add_comment(key, body)
+    try:
+        people = jira.get_people(key) if settings.get("mention") else {}
+        names = [people.get(role, "") for role in settings.get("mention", [])] + list(settings.get("cc", []))
+        names = list(dict.fromkeys(n for n in names if n))
+        lead = " ".join(f"[~{name}]" for name in names)
+        intro = "The UAC is in the Acceptance Criteria field. These product decisions are still open:"
+        body = (f"{lead} {intro}" if lead else intro) + "\n\n" + decision_body
+        status["decision_comment_id"] = jira.add_comment(key, body)
+    except Exception as exc:  # noqa: BLE001 - the UAC is already posted; the request must not undo that
+        logger.exception("%s: decision request could not be posted", key)
+        status["decision_request_error"] = f"{type(exc).__name__}: {exc}"
+        common.write_status(ticket_dir, status)
+        return "FAILED"
+    status.pop("decision_request_error", None)
     common.write_status(ticket_dir, status)
     logger.info("%s: decision request posted (comment %s)", key, status["decision_comment_id"])
     return "POSTED"
@@ -733,7 +752,10 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
     """Write the checked UAC into an empty Acceptance Criteria field and mark it written by the skill."""
     field = config["acceptance_criteria_field"]
     current = (jira.get_field(key, field) or "").strip()
-    if current and current != field_body.strip():
+    # Text this runner wrote before (a run that stopped after writing the field) is ours to replace; only
+    # text a person wrote is kept. Compare without whitespace, as Jira may return CRLF line endings.
+    ours = common.text_key(current) in common.posted_body_keys(ticket_dir) | {common.text_key(field_body)}
+    if current and not ours:
         status.update(state="FIELD_KEPT")
         common.write_status(ticket_dir, status)
         logger.info("%s: the Acceptance Criteria field already has text; not overwriting it", key)
@@ -782,7 +804,15 @@ def fetch_linked_docs(key: str, config: dict, jira, logger, ticket_dir: Path) ->
     return entries
 
 
-_NOTE_ROOT_CAUSE = re.compile(r"^Note:.*(?:not confirmed|fix is proposed).*\n*", re.M | re.I)
+# A "Note:" paragraph, including lines it wraps onto, up to a blank line, a criterion or the Scope line.
+_NOTE_PARAGRAPH = re.compile(r"^Note:[^\n]*(?:\n(?!- |Scope:|\s*$)[^\n]*)*\n*", re.M | re.I)
+
+
+def _strip_fix_note(uac_text: str) -> str:
+    def drop(match: re.Match) -> str:
+        text = " ".join(match.group(0).split())
+        return "" if re.search(r"not confirmed|fix is proposed", text, re.I) else match.group(0)
+    return _NOTE_PARAGRAPH.sub(drop, uac_text)
 _SOURCE_LINE = re.compile(r"^(\s*\*\*Source:\*\*\s*)(.+)$", re.M)
 _CODE_TOKEN = re.compile(
     r"\b(?=[0-9a-f]*[0-9])(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"  # a commit or clone revision
@@ -794,12 +824,17 @@ _CAMEL_ALLOWED = {"JavaScript", "PowerPoint", "SharePoint", "OneDrive", "GitHub"
                   "RoboHelp", "WordPress", "DocBook", "MathML", "PostgreSQL", "ExperienceLeague"}
 
 
+_SOURCE_URL = re.compile(r"\bhttps?://\S+", re.I)
+_DATE = re.compile(r"^\d{1,4}/\d{1,2}/\d{1,4}$")
+
+
 def _code_piece(piece: str, keep: set[str]) -> bool:
-    for match in _CODE_TOKEN.finditer(piece):
+    # A documentation or wiki URL is an openable source; scan only the rest of the piece for code names.
+    for match in _CODE_TOKEN.finditer(_SOURCE_URL.sub(" ", piece)):
         token = match.group(0)
-        if token in _CAMEL_ALLOWED or any(token in name for name in keep):
+        if token in _CAMEL_ALLOWED or any(token in name for name in keep) or _DATE.match(token):
             continue
-        if "/" in token and token.lower().startswith(("http", "experienceleague", "wiki.")):
+        if "/" in token and token.lower().startswith(("experienceleague", "wiki.")):
             continue
         return True
     return False
@@ -827,7 +862,7 @@ def clean_source_lines(uac_text: str, attachments: list[str] = ()) -> tuple[str,
 def normalize_note(uac_text: str, fix_status: str) -> str:
     """The Note line says what is known about the fix, decided from fix_basis, never left to wording."""
     check = common.import_skill_module("uac_completeness_check")
-    body = _NOTE_ROOT_CAUSE.sub("", uac_text).lstrip("\n")
+    body = _strip_fix_note(uac_text).lstrip("\n")
     note = {"UNCONFIRMED": check.UNCONFIRMED_NOTE, "PROPOSED": check.PROPOSED_NOTE}.get(fix_status, "")
     return f"{note}\n\n{body}" if note else body
 
@@ -855,6 +890,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         logger.info("%s: already %s, skipping", key, status["state"])
         return "SKIPPED"
     ticket_dir.mkdir(parents=True, exist_ok=True)
+    # An error from an earlier run belongs to that run; this run records its own result.
+    status.pop("last_error", None)
     common.archive_attempt(ticket_dir, int(config.get("keep_attempts", 5)))
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
