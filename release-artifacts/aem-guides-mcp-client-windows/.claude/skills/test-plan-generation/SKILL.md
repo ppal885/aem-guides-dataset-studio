@@ -656,6 +656,18 @@ dropped silently:
    the same expected outcome. Its Source line names the documentation page, code or similar ticket.
 2. **TBD on the AC it governs** - a product decision is still open. In the full record it is also an
    `OQ-##` entry. Create a standalone AC for a TBD only when no AC governs it.
+   An AC never states an outcome that its own TBD questions. When the TBD asks whether the AC's outcome, its
+   scope or its release is decided ("is map roll-up in this release?", "does the fix remove the overflow or
+   only sync the scrollbars?"), the AC keeps only the part the ticket or a decision settles, and the open part
+   stays a TBD; when nothing is settled, there is no AC, only the TBD. Blind comparisons found most wrong ACs
+   were an outcome stated as fact while its own TBD said it was undecided.
+   - A case, output type, state or surface the ticket does not name (another output preset, a closed task,
+     an older version) gets a stated outcome only when the ticket, a decision or the confirmed fix gives
+     it. Otherwise it is a TBD, or a "same result as" sub-point only when the change plainly reaches it
+     the same way.
+   - A problem the description only lists - a known gap, a follow-up, a documentation note, a "related
+     issue" - is an AC only when the ticket asks to change it in this ticket. Otherwise leave it out, or
+     put it in the Out of scope list when the ticket says it moves elsewhere.
 3. **Full test plan or set aside** - a research finding that does not matter enough for the UAC is checked
    in the full test plan (TEST_PLAN; test-plan.md names it) or set aside with a reason in the record.
 4. **Out of scope or not applicable** - with a concrete reason, in the full record.
