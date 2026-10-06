@@ -260,6 +260,15 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(common.read_status(self.out / "PROJ-1")["state"], "FIELD_KEPT")
         self.assertEqual(self._run(FakeJira()), "SKIPPED", "the next run does not write it again")
 
+
+    def test_text_the_runner_wrote_before_is_replaced_not_kept(self) -> None:
+        # A run wrote the field, then stopped before the comment and label; the next run finishes the post.
+        earlier = "*Acceptance Criteria 01:* An earlier draft.\n* Source: Ticket description."
+        (self.out / "PROJ-1").mkdir(exist_ok=True)
+        common.remember_posted_body(self.out / "PROJ-1", earlier)
+        jira = FakeJira(field_value=earlier.replace("\n", "\r\n"))
+        self.assertEqual(self._run(jira), "POSTED")
+        self.assertIn("set_field", [c[0] for c in jira.calls])
     def test_field_that_does_not_render_is_recorded_as_written_not_failed(self) -> None:
         jira = FakeJira(rendered_ok=False)
         self.assertEqual(self._run(jira), common.WRITTEN_UNRENDERED)
@@ -650,6 +659,46 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(any("needs a concrete reason" in p
                             for p in problems(SURFACES[:2] + [dict(SURFACES[2], reason="n/a")])))
 
+    def test_a_surface_named_in_a_sub_point_counts(self) -> None:
+        ticket = self.out / "PROJ-7"
+        ticket.mkdir()
+        uac = ("- Acceptance Criteria 01: Existing screens still work as before.\n  - Outline panel\n"
+               "  **Source:** Ticket description.\n")
+        (ticket / common.UAC_FILE).write_text(uac, encoding="utf-8")
+        entry = {"surface": "Outline panel", "evidence": ["https://experienceleague.adobe.com/o", "src/o.ts:1"],
+                 "authority": "TICKET", "disposition": "AC", "ac": 1}
+        (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps([entry]), encoding="utf-8")
+        self.assertFalse(any("does not name" in p for p in runner.surface_inventory_problems(ticket)))
+        named_only_in_source = uac.replace("  - Outline panel\n", "").replace("Ticket description", "Outline panel doc")
+        (ticket / common.UAC_FILE).write_text(named_only_in_source, encoding="utf-8")
+        self.assertTrue(any("does not name" in p for p in runner.surface_inventory_problems(ticket)),
+                        "a Source line is not where a criterion names its surface")
+
+    def test_source_lines_keep_documentation_urls_and_dates(self) -> None:
+        text, removed = runner.clean_source_lines(
+            "- Acceptance Criteria 01: X.\n  **Source:** GUIDES-1 description; "
+            "https://experienceleague.adobe.com/docs/guides/x.html; comment on 07/07/2026; "
+            "xmleditor/src/a/B.java; abc1234f\n")
+        self.assertIn("https://experienceleague.adobe.com/docs/guides/x.html", text)
+        self.assertIn("comment on 07/07/2026", text)
+        self.assertEqual(removed, ["xmleditor/src/a/B.java", "abc1234f"])
+
+    def test_a_wrapped_fix_note_is_removed_whole(self) -> None:
+        uac = ("Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer\n"
+               "reported and will be checked again when the fix is known.\n\n- Acceptance Criteria 01: X.\n")
+        out = runner.normalize_note(uac, "CONFIRMED")
+        self.assertTrue(out.startswith("- Acceptance Criteria 01: X."), out)
+        kept = runner.normalize_note("Note: Applies to Native PDF only.\n\n- Acceptance Criteria 01: X.\n", "CONFIRMED")
+        self.assertTrue(kept.startswith("Note: Applies to Native PDF only."), "other notes stay")
+
+    def test_malformed_doc_research_is_a_problem_not_a_crash(self) -> None:
+        ticket = self.out / "PROJ-8"
+        ticket.mkdir()
+        (ticket / common.DOC_RESEARCH_FILE).write_text(json.dumps({"status": "PARTIAL", "findings": ["doc says X"]}),
+                                                       encoding="utf-8")
+        problems = runner.doc_research_problems(ticket, "")
+        self.assertTrue(any("finding 1 is not an object" in p for p in problems), problems)
+
     def test_discovered_surface_may_only_get_a_regression_ac(self) -> None:
         ticket = self.out / "PROJ-6"
         ticket.mkdir()
@@ -803,14 +852,77 @@ class RunnerTests(unittest.TestCase):
                      {"id": "4", "author": {"name": "uac.bot"}, "created": "2026-01-12T12:00:00.000+0000",
                       "body": "GET /bin/guides/v1/status"}]}}}
         found = staleness.new_evidence_after(issue, "2026-01-10T10:00:00.000+0000", "uac.bot")
-        self.assertEqual([(f["id"], f["what"]) for f in found], [("1", "an API contract or design in a comment"),
-                                                                 ("3", "an API contract or design in a comment")])
+        self.assertEqual([(f["id"], f["what"]) for f in found], [("1", "an API contract or design in a comment")],
+                         "'the response body now has ...' is not a contract")
         jira = FakeJira()
         jira._json = mock.Mock(return_value=issue)
         lines = staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], {}, "uac.bot")
-        self.assertEqual(len(lines), 2, "comment 3 is alerted once, as a root cause, not again as a contract")
+        self.assertEqual(len(lines), 2)
         self.assertIn("PROJ-1: a root cause or fix was reported by dev", lines[0])
         self.assertIn("PROJ-1: dev added an API contract or design in a comment on 2026-01-12", lines[1])
+
+    def test_contract_signal_ignores_repro_steps_and_errors(self) -> None:
+        contract = ["POST https://author.example.com/bin/guides/v1/purge with {path}",
+                    "GET /bin/guides/v1/status?jobId=1", "Request body: {\"path\": \"/content/dam\"}",
+                    "Status codes: 200, 409", "See the API spec", "OpenAPI file attached in the wiki"]
+        not_contract = ["Delete /content/dam/guides/topic.dita and reopen the map",
+                        "I get /content/dam/x not found", "Saving fails with status code 500",
+                        "the response body is empty", "Is the API ready for testing?"]
+        for text in contract:
+            self.assertTrue(staleness.CONTRACT_SIGNAL.search(text), text)
+        for text in not_contract:
+            self.assertFalse(staleness.CONTRACT_SIGNAL.search(text), text)
+
+    def test_staleness_compares_real_times_and_skips_generator_accounts(self) -> None:
+        issue = {"changelog": {"histories": [{"created": "2026-10-25T01:30:00.000+0100",
+                                              "items": [{"field": "Acceptance Criteria"}]}]},
+                 "fields": {"comment": {"comments": [
+                     {"id": "1", "author": {"name": "dev"}, "created": "2026-10-25T01:10:00.000+0000",
+                      "body": "Root cause: the cache"},
+                     {"id": "2", "author": {"name": "qe.author"}, "created": "2026-10-26T01:10:00.000+0000",
+                      "body": "the fix is in PR #9"}]}}}
+        self.assertEqual(staleness.last_ac_change(issue, "customfield_1"), "2026-10-25T01:30:00.000+0100")
+        jira = FakeJira()
+        jira._json = mock.Mock(return_value=issue)
+        config = dict(self.config, learning_generator_users=["qe.author"])
+        lines = staleness.stale_lines(config, jira, self.log, ["PROJ-1"], {}, "uac.bot")
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("PROJ-1: a root cause or fix was reported by dev on 2026-10-25", lines[0],
+                      "01:10 UTC is after 01:30+01:00 (00:30 UTC)")
+
+    def test_staleness_keeps_other_alerts_when_one_ticket_cannot_be_read(self) -> None:
+        good = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
+                                             "items": [{"field": "Acceptance Criteria"}]}]},
+                "fields": {"comment": {"comments": [
+                    {"id": "9", "author": {"name": "dev"}, "created": "2026-01-12T09:00:00.000+0000",
+                     "body": "Root cause found"}]}}}
+        jira = FakeJira()
+        jira._json = mock.Mock(side_effect=[good, RuntimeError("HTTP 503")])
+        state: dict = {}
+        lines = staleness.stale_lines(self.config, jira, self.log, ["PROJ-1", "PROJ-2"], state, "uac.bot")
+        self.assertIn("PROJ-1: a root cause or fix was reported by dev", lines[0])
+        self.assertIn("PROJ-2: could not be checked", lines[1])
+        self.assertEqual(state, {"PROJ-1": ["9"]})
+
+    def test_staleness_state_is_saved_only_when_the_alert_was_delivered(self) -> None:
+        issue = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
+                                              "items": [{"field": "Acceptance Criteria"}]}]},
+                 "fields": {"comment": {"comments": [
+                     {"id": "9", "author": {"name": "dev"}, "created": "2026-01-12T09:00:00.000+0000",
+                      "body": "Root cause found"}]}}}
+        config_path = self.out / "config.json"
+        config_path.write_text(json.dumps(self.config), encoding="utf-8")
+        state_file = Path(self.config["output_dir"]) / staleness.STATE_FILE
+        for result, saved in (("FAILED", False), ("POSTED", True)):
+            jira = FakeJira()
+            jira._json = mock.Mock(side_effect=lambda *a, **k: issue)
+            jira.myself = mock.Mock(return_value={"name": "uac.bot"})
+            jira.search_keys = mock.Mock(return_value=["PROJ-1"])
+            with mock.patch.object(staleness.common.JiraClient, "from_env", return_value=jira), \
+                    mock.patch.object(staleness.common, "load_env_file"), \
+                    mock.patch.object(staleness.common, "send_alert", return_value=result):
+                staleness.main(["--config", str(config_path)])
+            self.assertEqual(state_file.is_file(), saved, result)
         self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
 
     def test_staleness_jql_uses_the_posted_label(self) -> None:
@@ -1352,8 +1464,8 @@ class DecisionRequestTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def post(self, decisions: str = DECISIONS, config: dict | None = None) -> FakeJira:
-        jira = FakeJira()
+    def post(self, decisions: str = DECISIONS, config: dict | None = None, jira: FakeJira | None = None) -> FakeJira:
+        jira = jira or FakeJira()
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True, decisions=decisions)), \
                 mock.patch.object(runner, "check_outputs", return_value=[]):
             self.assertEqual(runner.process_ticket("PROJ-1", config or self.config, jira, self.log, dry_run=False),
@@ -1376,6 +1488,21 @@ class DecisionRequestTests(unittest.TestCase):
         self.assertTrue(status["decision_comment_id"])
         self.assertEqual(runner.post_decision_request("PROJ-1", self.config, jira, self.log, ticket, status, "x"),
                          "ALREADY_POSTED")
+
+    def test_a_failed_decision_request_keeps_the_ticket_posted(self) -> None:
+        jira = FakeJira()
+        original = jira.add_comment
+
+        def add_comment(key, body):
+            if "product decisions are still open" in body:
+                raise RuntimeError("HTTP 500")
+            return original(key, body)
+        jira.add_comment = add_comment
+        self.post(jira=jira)
+        status = common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], "POSTED")
+        self.assertIn("HTTP 500", status["decision_request_error"])
+        self.assertNotIn("last_error", status)
 
     def test_tbd_without_decisions_file_warns_and_sends_nothing(self) -> None:
         jira = self.post(decisions="")
