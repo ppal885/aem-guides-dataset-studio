@@ -155,7 +155,7 @@ def _notes(notes: list[str] | None) -> str:
 
 
 def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accepted: int,
-           jira_url: str, generated: str) -> str:
+           jira_url: str, generated: str, shared_account: bool = False) -> str:
     posted_rows = [
         f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
         f"<td>{_e(r['where'])}{_notes(r.get('notes'))}</td><td class=\"num\">{_criteria_cell(r)}</td>"
@@ -184,6 +184,12 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
         f'<div class="card"><div class="value">{n}</div><div class="label">{_e(label)}</div></div>'
         for n, label in ((picked, "Tickets picked"), (len(posted), "UAC posted"),
                          (len(not_posted), "Not posted"), (len(edits), "Edited by a person")))
+    account_note = (
+        "The automation and QE share one Jira account, so any change to the field that is not a text the "
+        "runner posted counts here, including a rewrite by a Claude or Codex session with that account."
+        if shared_account else
+        "Edits made with the automation's own Jira account are not counted here, even when a person made "
+        "them; they still show as \"edited\" in the posted table.")
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -234,8 +240,7 @@ means the field was changed in Jira afterwards (read on the harvester's nightly 
 <div class="reasons">{_table(["Ticket", "Summary", "Reason", "Last run"], not_posted_rows, "Every picked ticket was posted.")}</div>
 
 <h2>Edited by a person</h2>
-<p class="hint">Posted UACs a person changed afterwards; the harvester learns from these edits. Edits made with the automation's own Jira account are not counted here, even when a person made them; they
-still show as "edited" in the posted table.
+<p class="hint">Posted UACs a person changed afterwards; the harvester learns from these edits. {account_note}
 Counts are per criterion. {accepted} more ticket(s) were accepted without edits.</p>
 {_table(["Ticket", "Summary", "Edited by", "When", "Kept", "Changed", "Removed", "Added"], edit_rows, "No human edits harvested yet.")}
 </main>
@@ -269,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
     posted, not_posted = collect_tickets(out) if out.is_dir() else ([], [])
     edits, accepted = collect_human_edits(out) if out.is_dir() else ([], 0)
     page = render(posted, not_posted, edits, accepted, os.environ.get("JIRA_BASE_URL", ""),
-                  time.strftime("%Y-%m-%d %H:%M %Z"))
+                  time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")))
     write_atomic(args.out, page)
     print(f"wrote {args.out}: {len(posted)} posted, {len(not_posted)} not posted, {len(edits)} edited")
     return 0
