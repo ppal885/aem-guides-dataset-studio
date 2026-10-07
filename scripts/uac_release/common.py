@@ -37,6 +37,8 @@ JIRA_SOURCE_FILE = "jira-source.json"
 HOTFIX_SCOPE_FILE = "HOTFIX_SCOPE.json"
 EVIDENCE_FILE = "UAC_EVIDENCE.json"
 RUNTIME_FALLBACK_FILE = "RUNTIME_FALLBACK.json"
+# The canonical runtime's own full result, saved by scripts/run_test_plan_pipeline.py on every run.
+RUNTIME_RESULT_FILE = "RUNTIME_RESULT.json"
 # The UAC is in the Acceptance Criteria field, but Jira did not render it as wiki markup:
 # no comment or done label was added, and the ticket is never generated again.
 WRITTEN_UNRENDERED = "WRITTEN_UNRENDERED"

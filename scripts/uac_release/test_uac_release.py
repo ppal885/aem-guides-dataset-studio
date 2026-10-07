@@ -353,6 +353,48 @@ class RunnerTests(unittest.TestCase):
         (ticket / common.RUNTIME_FALLBACK_FILE).write_text(json.dumps({"canonical_status": "blocked"}), encoding="utf-8")
         self.assertEqual(runner.runtime_fallback_gates(ticket), ["canonical runtime status: blocked"])
 
+    def test_runtime_result_is_saved_for_every_run_and_summarized(self) -> None:
+        env = runner.copilot_env(Path("/runs/PROJ-1"))
+        self.assertEqual(Path(env["TEST_PLAN_RESULT_PATH"]), Path("/runs/PROJ-1") / common.RUNTIME_RESULT_FILE)
+        ticket = self.out / "PROJ-8"
+        ticket.mkdir()
+        self.assertEqual(runner.runtime_result_summary(ticket), {"saved": False})
+        path = ticket / common.RUNTIME_RESULT_FILE
+        path.write_text("{not json", encoding="utf-8")
+        self.assertEqual(runner.runtime_result_summary(ticket)["error"], "the saved runtime result is not valid JSON")
+        path.write_text(json.dumps({"qe_review_package": {"canonical_result": {
+            "status": "blocked", "postable": False,
+            "uac_delivery": {"failures": ["no deliverable criteria"]},
+            "gate_decisions": [
+                {"gate": "AcceptancePromotionGate", "status": "PASSED", "failures": []},
+                {"gate": "FinalQEPlanRenderer", "status": "FAILED",
+                 "failures": ["P0 coverage d-1 has no human-facing acceptance projection."]},
+                {"gate": "BehavioralCompletenessGate", "status": "BLOCKED", "failures": []}]}}}),
+            encoding="utf-8")
+        self.assertEqual(runner.runtime_result_summary(ticket), {
+            "saved": True, "canonical_status": "blocked", "postable": False,
+            "gate_failures": ["FinalQEPlanRenderer: P0 coverage d-1 has no human-facing acceptance projection.",
+                              "BehavioralCompletenessGate: BLOCKED"],
+            "delivery_failures": ["no deliverable criteria"]})
+
+    def test_the_pipeline_cli_saves_its_result_only_when_asked(self) -> None:
+        import importlib.util
+        script = common.REPO_ROOT / "scripts" / "run_test_plan_pipeline.py"
+        spec = importlib.util.spec_from_file_location("run_test_plan_pipeline_for_test", script)
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "PROJ-1" / common.RUNTIME_RESULT_FILE
+            with mock.patch.dict(os.environ, {"TEST_PLAN_RESULT_PATH": str(target)}):
+                cli._save_result({"jira_key": "PROJ-1", "score": {"overall": 3}})
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["jira_key"], "PROJ-1")
+            self.assertFalse(target.with_name(target.name + ".tmp").exists())
+            other = Path(tmp) / "unset.json"
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("TEST_PLAN_RESULT_PATH", None)
+                cli._save_result({"jira_key": "PROJ-2"})
+            self.assertFalse(other.exists())
+
     def test_each_ticket_records_which_checks_fired(self) -> None:
         jira = FakeJira()
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \

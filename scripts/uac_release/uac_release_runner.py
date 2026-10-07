@@ -551,6 +551,7 @@ def copilot_env(ticket_dir: Path, python: str = "") -> dict[str, str]:
     env = dict(os.environ)
     env["AGENT_RESEARCH_MODE"] = "copilot_host"
     env["AGENT_RESEARCH_STORE"] = str(ticket_dir / RESEARCH_STORE_DIR)
+    env["TEST_PLAN_RESULT_PATH"] = str(ticket_dir / common.RUNTIME_RESULT_FILE)
     if python:
         env["PATH"] = str(Path(python).parent) + os.pathsep + env.get("PATH", "")
     return env
@@ -842,6 +843,31 @@ def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
     return lines
 
 
+def runtime_result_summary(ticket_dir: Path) -> dict:
+    """The canonical runtime's last saved result: its status and every gate failure in the runtime's own
+    words. Unlike the fallback record, nothing here is restated by Copilot."""
+    path = ticket_dir / common.RUNTIME_RESULT_FILE
+    if not path.is_file():
+        return {"saved": False}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError:
+        return {"saved": True, "error": "the saved runtime result is not valid JSON"}
+    package = data.get("qe_review_package") if isinstance(data, dict) else None
+    canonical = (package or {}).get("canonical_result") if isinstance(package, dict) else None
+    if not isinstance(canonical, dict):
+        return {"saved": True, "error": "the saved runtime result has no canonical result"}
+    failures = []
+    for gate in canonical.get("gate_decisions") or []:
+        if isinstance(gate, dict) and str(gate.get("status") or "").upper() != "PASSED":
+            for failure in gate.get("failures") or [str(gate.get("status") or "not passed")]:
+                failures.append(f"{gate.get('gate')}: {failure}")
+    delivery = canonical.get("uac_delivery") if isinstance(canonical.get("uac_delivery"), dict) else {}
+    return {"saved": True, "canonical_status": str(canonical.get("status") or ""),
+            "postable": bool(canonical.get("postable")), "gate_failures": failures,
+            "delivery_failures": [str(row) for row in delivery.get("failures") or []]}
+
+
 def written_comment(plan_name: str) -> str:
     """The posted comment holds only the full test plan link. Review notes and runtime gates that did not
     pass stay in status.json and on the release page, never in the ticket."""
@@ -1031,7 +1057,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
                  common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE, common.EVIDENCE_FILE,
-                 common.RUNTIME_FALLBACK_FILE, linked_docs.LINKED_DOCS_FILE):
+                 common.RUNTIME_FALLBACK_FILE, common.RUNTIME_RESULT_FILE, linked_docs.LINKED_DOCS_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     shutil.rmtree(ticket_dir / linked_docs.LINKED_DOCS_DIR, ignore_errors=True)
     shutil.rmtree(ticket_dir / RESEARCH_STORE_DIR, ignore_errors=True)  # each attempt answers its own requests
@@ -1105,6 +1131,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     comment_notes = unmapped_comment_notes(ticket_dir, source, own_name)
     research = research_store_summary(ticket_dir)
     status["runtime_research"] = research
+    status["runtime_result"] = runtime_result_summary(ticket_dir)
     review_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
                     + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research))
     status["review_notes"] = review_notes
