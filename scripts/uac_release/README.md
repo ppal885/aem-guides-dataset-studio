@@ -22,6 +22,12 @@ authoring rules, and records the gates that did not pass in `RUNTIME_FALLBACK.js
 checks still apply. The UAC is posted like any other; `status.json` keeps the gates as `runtime_fallback`
 and the release page marks the row. The ticket comment stays the test plan link only.
 
+**Runtime result.** The runner sets `TEST_PLAN_RESULT_PATH`, so every canonical runtime run in the session
+saves its full result to `RUNTIME_RESULT.json` in the ticket folder (the last pass wins).
+`status.json` keeps `runtime_result`: the canonical status, whether it was postable, and every gate and
+delivery failure in the runtime's own words, so a fallback can be analysed without trusting Copilot's
+summary.
+
 Copilot CLI only **generates**. It is denied every Jira write tool; all Jira writes are done
 by the runner, after the checks.
 

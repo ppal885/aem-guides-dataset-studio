@@ -122,6 +122,7 @@ def main() -> int:
         result = _run_http(args.base_url, payload)
     else:
         result = _run_inprocess(payload)
+    _save_result(result)
 
     if args.json:
         print(json.dumps(result, indent=2, default=str))
@@ -140,6 +141,28 @@ def main() -> int:
         file=sys.stderr,
     )
     return 0 if not human else 2
+
+
+def _save_result(result: dict) -> None:
+    """Keep the full runtime result where an unattended caller asked for it.
+
+    TEST_PLAN_RESULT_PATH is set by the UAC release runner so every run keeps
+    the canonical status and the exact gate failures, whatever the agent that
+    ran this command does next.  Saving never changes the exit status."""
+
+    target = os.environ.get("TEST_PLAN_RESULT_PATH", "").strip()
+    if not target:
+        return
+    path = Path(target)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_text(
+            json.dumps(result, indent=2, default=str), encoding="utf-8"
+        )
+        os.replace(temporary, path)
+    except OSError as exc:
+        print(f"Could not save the runtime result to {path}: {exc}", file=sys.stderr)
 
 
 def _select_plan_text(result: dict) -> str:
