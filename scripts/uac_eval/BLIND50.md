@@ -31,7 +31,8 @@ Every future change to a skill rule must be measured on it before it is merged.
    should not touch, into `skill_uac_<tag>.md`. The generator reads only `input.json`, the frozen skill, the
    product and automation clones and the documentation; never `human_uac.md`, labels, earlier drafts, live
    Jira, Jira-history or similar-UAC search.
-2. Label the new drafts with `BLIND50_LABELING.md` into `labels_<tag>.json`.
+2. Label the new drafts with `BLIND50_LABELING.md` into `labels_<tag>.json`, and in the same session label the
+   baseline drafts of the same tickets again into `labels_base2.json` with the same instructions.
 3. Score: `python scripts/uac_eval/blind50_score.py --compare <tag> --controls <keys>`. It compares with the
    average of the baseline runs (`labels.json`, plus `labels_r2.json` where it exists).
 4. Keep the change only when the verdict is KEEP: recall rises by more than 2 points, precision falls by no
@@ -49,6 +50,18 @@ precision beyond the noise or raise WRONG per ticket. A rule that does not pass 
 |---|---|---|---|---|---|
 | Generation routes are an AC only when the change depends on the route | 13 | 55.4 -> 50.0 | 84.6 -> 87.0 | 0.27 -> 0.23 | REVERT |
 | "What must not happen" negative-case rule | 20 (6 controls) | 54.5 -> 55.1 | 89.1 -> 86.9 | 0.17 -> 0.35 | REVERT |
+| Variant matrix per product area (vm1, set of 2026-10-05) | 20 (4 controls) | 33.8 -> 34.3 | 87.9 -> 84.3 | 0.15 -> 0.15 | REVERT |
+| An AC never states an outcome its own TBD questions (vm2) | 19 (1 more blocked) | 45.4 -> 43.4 | 90.2 -> 87.1 | 0.11 -> 0.05 | REVERT |
+
+vm1 and vm2 are scored against the baseline drafts re-labelled with the same instructions in the same
+session. Against the first-day baseline labels both looked better on precision (81 -> 84, 80 -> 87), but the
+re-labelled baseline rose just as much (88, 90): the gain was the labelling, not the rule. vm2 also left one
+ticket without a UAC (the canonical renderer blocked it). Two lessons:
+- Label the baseline drafts of the tickets you test again, in the same session and with the same
+  instructions as the new drafts (`labels_base2.json`), and compare against those, not against older labels.
+- Fix the KEEP rule before the run. A precision rule (one meant to remove wrong criteria) still needs no
+  loss beyond the noise on recall or precision; deciding which rule applies after seeing the result is not
+  allowed.
 
 Most misses are information decided after the ticket (UAC meetings, developer design), which no rule can
 recover; the harvester's QE-edit data (`scripts/uac_release/uac_learning_harvester.py`) is the other source

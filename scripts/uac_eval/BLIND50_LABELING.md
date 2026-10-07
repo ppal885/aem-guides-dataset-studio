@@ -27,6 +27,17 @@ except the one you write.
    - WRONG: a false or unsupported claim, or it contradicts the human UAC or the ticket.
 4. Give a one-line reason for every PARTIAL, MISSED, EXTRA_NOISE and WRONG.
 5. Be strict and consistent. Do not change a label to make the draft look better.
+6. Counting rules (every labeler applies them the same way; the scores are only comparable when they do):
+   - Indented "  - ..." lines under a draft criterion are its cases, not separate draft criteria. A human point
+     is FOUND when a draft criterion or one of its cases checks the same expected behaviour.
+   - "**Source:**", "**TBD:**", "Scope:" and "Out of scope" lines are not criteria.
+   - A TBD where the human states the answer makes that human point PARTIAL.
+   - Struck-through or "not applicable" human points, automation/performance-impact notes and process lines
+     are not criteria; lettered or nested human sub-cases that are separately checkable are.
+   - A draft criterion that only restates an open question is EXTRA_NOISE unless it matches a human point.
+   - A case that names a variant the human puts out of scope, or a contradicting outcome, makes the draft
+     criterion WRONG only when the criterion's main claim is wrong; otherwise say so in its reason.
+   - Never open another labels file or another draft of the same ticket.
 
 Write `labels.json` in the ticket folder:
 {"key": "...", "human_count": N, "draft_count": M,
