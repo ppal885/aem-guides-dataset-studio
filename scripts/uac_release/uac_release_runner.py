@@ -242,7 +242,8 @@ _STATUS_PING = re.compile(r"\b(?:eta|an update|any update|update on this|been pi
                           r"|please update|update here|prioriti[sz]e this|pending from)\b")
 _STATUS_PING_MAX_WORDS = 16
 _NOT_A_REQUIREMENT = re.compile(
-    r"\bcrm is watching this ticket\b|\bprogressing without uac\b|\bcredentials? shared\b"
+    r"\bcrm is watching this ticket\b|\bprogressing without uac\b|\bjira closed without automating\b"
+    r"|\bcredentials? shared\b"
     r"|\bshared (?:the )?credentials\b|\b(?:username|password)\s*[:=]|\buse this link\b|\baccess the link\b")
 # Support-template metadata lines (org ids, environments, Slack and investigation links, user/load-time log
 # lines) and release-scheduling questions never state product behaviour, so the UAC does not have to map them.
@@ -269,9 +270,12 @@ _ACCOUNT_WORDS = re.compile(r"\b(?:authenticat\w*|logged in|log in|login|signed 
 _URL = re.compile(r"\[?\b(?:https?://|www\.)\S+")
 _LEADING_CHATTER = re.compile(r"^(?:(?:hi|hey|hello|cc|fyi|thanks|thank you)\b[\s,:;!-]*)+")
 _INVISIBLE = re.compile("[​-‍⁠﻿]")
-# Attachments that cannot show a product screen do not need "surfaces".
+# Attachments that cannot show a product screen do not need "surfaces". Report and data documents (test
+# summaries, performance reports, permission spreadsheets) are read for facts; screens they do show may
+# still be listed, and those are checked against the surface inventory like any other.
 NON_VISUAL_ATTACHMENTS = (".txt", ".log", ".json", ".xml", ".dita", ".ditamap", ".har", ".csv", ".zip", ".gz",
-                          ".md", ".yaml", ".yml", ".properties", ".java", ".js", ".ts", ".py", ".sql")
+                          ".md", ".yaml", ".yml", ".properties", ".java", ".js", ".ts", ".py", ".sql",
+                          ".pdf", ".doc", ".docx", ".xls", ".xlsx")
 DOC_RESEARCHER = "uac-doc-researcher"
 RESEARCH_STORE_DIR = "agent-research"
 CODE_RESEARCHER = "uac-code-researcher"
@@ -295,14 +299,31 @@ def decision_problems(ticket_dir: Path) -> list[str]:
     return [f"DECISIONS.md is missing section(s): {', '.join(missing)}; no decision request will be sent"] if missing else []
 
 
-def copilot_command(config: dict, prompt: str, transcript: Path) -> list[str]:
+def interpreter_dir(python: str) -> str:
+    """The folder of the real interpreter behind a Python path. A virtual environment's bin/python is a
+    symlink to the system interpreter (/usr/bin/python3.11), and Copilot CLI checks the resolved path: outside
+    every --add-dir folder, running it needs an approval that a non-interactive session cannot give."""
+    if not python:
+        return ""
+    found = shutil.which(python) or python
+    try:
+        return str(Path(found).resolve().parent)
+    except OSError:
+        return ""
+
+
+def copilot_command(config: dict, prompt: str, transcript: Path, python: str = "") -> list[str]:
     cop = config.get("copilot", {})
     cmd = [cop.get("command", "copilot"), "-p", prompt, "-s", "--no-ask-user", f"--share={transcript}"]
     if cop.get("model"):
         cmd.append(f"--model={cop['model']}")
     if cop.get("agent"):
         cmd.append(f"--agent={cop['agent']}")
-    for directory in cop.get("add_dirs", []):
+    directories = list(cop.get("add_dirs", []))
+    real = interpreter_dir(python)
+    if real and not any(Path(real) == Path(d) or Path(d) in Path(real).parents for d in directories):
+        directories.append(real)
+    for directory in directories:
         cmd.append(f"--add-dir={directory}")
     if cop.get("allow_all_tools"):
         cmd.append("--allow-all-tools")
@@ -795,6 +816,40 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
     return problems
 
 
+_PLAN_SECTION_AFTER_REGRESSION = "**Automation Coverage & Gaps**"
+
+
+def add_test_plan_surfaces(ticket_dir: Path) -> list[str]:
+    """Name every research-found TEST_PLAN surface in the full test plan's Regression Areas.
+
+    TEST_PLAN means "the full test plan checks it still works", but sessions often set the disposition and
+    forget the plan line, which then blocked the UAC. Only DOCUMENTATION or CODE_REUSE surfaces are added; a
+    surface the ticket, an attachment or a decision asks for still needs an Acceptance Criterion or a TBD.
+    Returns the surfaces added."""
+    plan_file = ticket_dir / common.PLAN_FILE
+    entries = _load_list(ticket_dir / common.SURFACE_INVENTORY_FILE)
+    if not plan_file.is_file() or not entries:
+        return []
+    text = plan_file.read_text(encoding="utf-8")
+    plan, added = _normalize(text), []
+    for entry in entries:
+        surface = " ".join(str(entry.get("surface") or "").split())
+        if (entry.get("disposition") == "TEST_PLAN" and entry.get("authority") in DISCOVERED_AUTHORITIES
+                and surface and _normalize(surface) not in plan and surface not in added):
+            added.append(surface)
+    lines = text.splitlines()
+    if not added or _PLAN_SECTION_AFTER_REGRESSION not in lines:
+        return []
+    at = lines.index(_PLAN_SECTION_AFTER_REGRESSION)
+    while at > 0 and not lines[at - 1].strip():
+        at -= 1
+    bullets = [f"- Re-run {surface} and assert it still works as before, because research found it on the "
+               "path this change touches; it is checked here rather than in the UAC." for surface in added]
+    lines[at:at] = bullets
+    plan_file.write_text("\n".join(lines) + ("\n" if text.endswith("\n") else ""), encoding="utf-8")
+    return added
+
+
 def check_outputs(ticket_dir: Path) -> list[str]:
     """Return problems with the generated files; an empty list means ready to draft."""
     problems = []
@@ -1074,7 +1129,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            research_store=ticket_dir / RESEARCH_STORE_DIR,
                            runtime_python=runtime_python(config) or "python3",
                            max_discovered=MAX_DISCOVERED_SURFACES_PER_AC)
-    cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md")
+    cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md", runtime_python(config))
     timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
     started = time.time()
     logger.info("%s: running Copilot CLI", key)
@@ -1100,6 +1155,11 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         else:
             (ticket_dir / common.JIRA_SOURCE_FILE).write_text(
                 json.dumps(source, indent=2, ensure_ascii=False), encoding="utf-8")
+        plan_surfaces = add_test_plan_surfaces(ticket_dir)
+        if plan_surfaces:
+            status["test_plan_surfaces_added"] = plan_surfaces
+            logger.info("%s: named research-found TEST_PLAN surfaces in the test plan: %s",
+                        key, "; ".join(plan_surfaces))
         groups = ticket_problem_groups(ticket_dir, prompt, source, own_name)
         if fetch_problem:
             groups["jira_source"] = fetch_problem
