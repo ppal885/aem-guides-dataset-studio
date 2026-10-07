@@ -210,6 +210,19 @@ class RunnerTests(unittest.TestCase):
             self.assertIn(flag, cmd)
         self.assertIn(f"--share={self.out / 't.md'}", cmd)
 
+    def test_command_adds_the_real_interpreter_folder(self) -> None:
+        # backend/venv/bin/python links to the system interpreter; Copilot checks the resolved path, so
+        # without its folder the non-interactive session is denied the canonical runtime.
+        with mock.patch.object(runner, "interpreter_dir", return_value="/usr/bin"):
+            cmd = runner.copilot_command(self.config, "hello", self.out / "t.md", "/repo/backend/venv/bin/python")
+        self.assertIn("--add-dir=/usr/bin", cmd)
+        self.assertEqual(sum(1 for c in cmd if c == "--add-dir=/usr/bin"), 1)
+        with mock.patch.object(runner, "interpreter_dir", return_value=str(Path("/repos/a/venv/bin"))):
+            cmd = runner.copilot_command(self.config, "hello", self.out / "t.md", "/repos/a/venv/bin/python")
+        self.assertFalse(any("venv" in c for c in cmd if c.startswith("--add-dir=")), "already inside an add_dir")
+        self.assertEqual(runner.copilot_command(self.config, "hello", self.out / "t.md"),
+                         runner.copilot_command(self.config, "hello", self.out / "t.md", ""))
+
     def _run(self, jira: FakeJira) -> str:
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
                 mock.patch.object(runner, "check_outputs", return_value=[]):
@@ -662,6 +675,17 @@ class RunnerTests(unittest.TestCase):
         for name in ("shot.png", "recording.mp4", "screen.log.png"):
             self.assertFalse(runner.is_non_visual_attachment(name), name)
 
+    def test_bot_closure_notice_is_not_a_requirement(self) -> None:
+        source = {"description": "", "comments": [{"id": "1", "author": "xmladdon",
+                                                    "body": "Jira closed without automating. Moving to open"}]}
+        self.assertEqual(runner.source_clauses(source), [])
+
+    def test_report_documents_are_not_screens(self) -> None:
+        for name in ("translation_parallel_execution_test_summary.pdf", "Translation_Performance_Test_Report.docx",
+                     "AEM-Guides-permissions.xlsx", "notes.doc", "data.xls"):
+            self.assertTrue(runner.is_non_visual_attachment(name), name)
+        self.assertFalse(runner.is_non_visual_attachment("Screen Recording 2026-08-20 at 12.45.33 PM.mov"))
+
     def test_log_attachment_needs_no_surfaces(self) -> None:
         ticket = self.out / "PROJ-9"
         ticket.mkdir()
@@ -778,6 +802,29 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(problems(to_plan), [])
         asked = [dict(SURFACES[0], disposition="TEST_PLAN")] + SURFACES[1:]
         self.assertTrue(any("needs an Acceptance Criterion or a TBD, not TEST_PLAN" in p for p in problems(asked)))
+
+    def test_research_found_test_plan_surface_is_named_in_the_regression_areas(self) -> None:
+        ticket = self.out / "PROJ-12"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+        plan = ("**Regression Areas**\n- Re-run the existing report export and assert the file still downloads.\n\n"
+                "**Automation Coverage & Gaps**\n- Main feature coverage: Not covered - none.\n")
+        (ticket / common.PLAN_FILE).write_text(plan, encoding="utf-8")
+        to_plan = SURFACES[:3] + [{k: v for k, v in SURFACES[3].items() if k != "ac"} | {"disposition": "TEST_PLAN"}]
+        asked = dict(SURFACES[0], surface="Ticket screen", disposition="TEST_PLAN")
+        (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(to_plan + [asked]), encoding="utf-8")
+
+        self.assertEqual(runner.add_test_plan_surfaces(ticket), ["Map dashboard"])
+        text = (ticket / common.PLAN_FILE).read_text(encoding="utf-8")
+        lines = text.splitlines()
+        added = lines.index("- Re-run Map dashboard and assert it still works as before, because research found it "
+                            "on the path this change touches; it is checked here rather than in the UAC.")
+        self.assertEqual(lines[added + 1:added + 3], ["", "**Automation Coverage & Gaps**"], "kept in Regression Areas")
+        self.assertNotIn("Ticket screen", text, "a surface the ticket asks for is not moved to the test plan")
+        problems = runner.surface_inventory_problems(ticket)
+        self.assertFalse(any("Map dashboard" in p for p in problems), problems)
+        self.assertTrue(any("Ticket screen" in p and "not TEST_PLAN" in p for p in problems), problems)
+        self.assertEqual(runner.add_test_plan_surfaces(ticket), [], "a named surface is not added twice")
 
     def test_one_criterion_lists_few_discovered_surfaces(self) -> None:
         ticket = self.out / "PROJ-11"
