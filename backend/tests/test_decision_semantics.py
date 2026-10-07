@@ -151,8 +151,12 @@ def _facts() -> ContractFactSet:
                     "you are not getting the traffic lights in the new "
                     "editor outputs view."
                 ),
-                source_evidence_ids=["ev-1"],
-                source_reference="test:description",
+                # The ticket's own evidence id, distinct from the research
+                # finding refs ("ev-1"), as in production.
+                source_evidence_ids=["ev:CURRENT_JIRA:99222"],
+                # An openable ticket reference, as production facts carry: the
+                # renderer rejects a criterion whose source cannot be opened.
+                source_reference="jira:GUIDES-99222",
                 authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
                 authority_class=AuthorityClass.CUSTOMER_REQUEST,
                 authoritative=True,
@@ -169,6 +173,12 @@ def _render(facts, scope, questions, dispositions, resolution, promotions,
         entry_point=RuntimeEntryPoint.PYTHON_API,
         generation_profile=GenerationProfile.BACKEND_COMPATIBILITY,
     )
+    # The runtime renders the Writer's criteria (canonical_test_plan_runtime
+    # passes written_acceptance_criteria); rendering without them leaves every
+    # promoted P0 candidate without a human-facing projection.
+    written = CANONICAL_REASONING_SERVICE.write_acceptance_criteria(
+        resolution.candidates, promotions, facts, dispositions, None, questions
+    )
     return CANONICAL_REASONING_SERVICE.render_final_plan(
         request,
         facts,
@@ -184,6 +194,7 @@ def _render(facts, scope, questions, dispositions, resolution, promotions,
         acceptance_resolution=resolution,
         convergence=convergence,
         research_resolved_question_ids=set(research_resolved),
+        written_acceptance_criteria=written,
     )
 
 
@@ -533,14 +544,64 @@ def test_reviewer_rejects_meta_prose_in_promoted_ac() -> None:
     assert "failed review" in rendered
 
 
-def test_research_answered_question_produces_no_tbd() -> None:
-    """G2: a research-answered question with no acceptance-changing conflict
-    converges and never surfaces a TBD - in convergence or in the render."""
+def _render_research_case(question, worker):
+    """Run one research-answered question through the production stage order:
+    research-resolved ids feed both the contract resolver and the renderer."""
     facts = _facts()
     scope = ScopeResolution()
+    research = _research_record(question, worker=worker)
+    records = CONVERGENCE_SERVICE.evaluate([question], [research], [worker])
+    resolved = research_resolved_question_ids([question], [research], [worker])
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], scope, [question], [research],
+        worker_results=[worker],
+    )
+    resolution = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts, dispositions, [question], resolved_question_ids=resolved,
+        research_records=[research],
+    )
+    gate, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
+        resolution.candidates, facts, scope, dispositions
+    )
+    plan, rendered = _render(
+        facts, scope, [question], dispositions, resolution, promotions,
+        [gate], records, research_resolved=resolved,
+    )
+    return records, resolved, plan, rendered
+
+
+def test_research_answered_question_produces_no_tbd() -> None:
+    """G2: a question whose decision research answered (desired behavior
+    established) with no acceptance-changing conflict converges and never
+    surfaces a TBD - in convergence or in the render."""
+    question = _question(
+        "Which outputs list behavior does the customer expect?",
+        fact_ids=(_facts().facts[0].fact_id,),
+    )
+    worker = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(_finding(_DESIRED_CLAIM, "DESIRED_BEHAVIOR"),),
+    )
+    records, resolved, _plan, rendered = _render_research_case(question, worker)
+    row = records[0]
+    assert row.status == ConvergenceStatus.CONVERGED
+    assert not row.acceptance_changing
+    assert row.decision == ""
+    assert question.question_id in resolved
+    assert question.question not in rendered
+    assert "(TBD)" not in rendered
+    assert "None generated until the blocking decisions are resolved" not in rendered
+
+
+def test_documented_baseline_keeps_one_sourced_tbd_and_delivers() -> None:
+    """Documented existing behavior grounds a baseline but never resolves the
+    decision (C-root).  The Writer renders that bounded TBD with its source;
+    the renderer must not append the raw question as a second, unsourced
+    criterion - that failed delivery review and blocked the whole plan."""
     question = _question(
         "What does the product documentation establish for the outputs list?",
-        fact_ids=(facts.facts[0].fact_id,),
+        fact_ids=(_facts().facts[0].fact_id,),
     )
     worker = _result(
         question,
@@ -550,32 +611,21 @@ def test_research_answered_question_produces_no_tbd() -> None:
                 "Documentation establishes the outputs list with per-run "
                 "status colors.",
                 "EXISTING_BEHAVIOR",
+                refs=("doc:aem-guides/output-history",),
             ),
         ),
     )
-    research = _research_record(question, worker=worker)
-    records = CONVERGENCE_SERVICE.evaluate([question], [research], [worker])
-    row = records[0]
-    assert row.status == ConvergenceStatus.CONVERGED
-    assert not row.acceptance_changing
-    assert row.decision == ""
-
-    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
-        facts, [], [], [], scope, [question], [research],
-        worker_results=[worker],
-    )
-    resolution = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
-        facts, dispositions, [question], research_records=[research]
-    )
-    gate, promotions = CANONICAL_REASONING_SERVICE.acceptance_promotion_gate(
-        resolution.candidates, facts, scope, dispositions
-    )
-    _plan, rendered = _render(
-        facts, scope, [question], dispositions, resolution, promotions,
-        [gate], records,
-    )
-    assert question.question not in rendered
-    assert "(TBD)" not in rendered
+    _records, resolved, _plan, rendered = _render_research_case(question, worker)
+    assert question.question_id not in resolved
+    assert "no openable, criterion-specific source" not in rendered
+    assert "None generated until the blocking decisions are resolved" not in rendered
+    assert "The outputs list with per-run status colors." in rendered
+    # The documented baseline credits the documentation that established it.
+    assert "Product documentation: aem-guides/output-history" in rendered
+    # Exactly one bounded TBD for the question - never a duplicate criterion.
+    lines = [line for line in rendered.splitlines() if question.question in line]
+    assert len(lines) == 1, lines
+    assert "TBD" in lines[0]
 
 
 def test_non_material_unknown_after_an_answer_produces_no_tbd() -> None:
@@ -956,3 +1006,134 @@ def test_lanes_stay_consistent_on_documented_existing_behavior() -> None:
         for r in dispositions
         if r.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
     ]
+
+
+def test_raw_gap_question_never_ships_even_with_a_ticket_source() -> None:
+    """The planner's raw-gap research question embeds ticket prose.  Crediting
+    its Jira evidence must not let it through delivery review as a TBD."""
+    from app.services.canonical_test_plan_reasoning_service import (
+        _RAW_GAP_QUESTION_PREFIX,
+        _acceptance_presentation_failures,
+    )
+
+    statement = f"{_RAW_GAP_QUESTION_PREFIX} Properties panel is missing? (TBD)"
+    failures = _acceptance_presentation_failures(
+        [statement], {statement: "Jira GUIDES-99222."}
+    )
+    assert any("unanswered raw problem question" in row for row in failures)
+    attached = f"Authors see the panel.\n- TBD: {_RAW_GAP_QUESTION_PREFIX} x?"
+    assert _acceptance_presentation_failures(
+        [attached], {attached: "Jira GUIDES-99222."}
+    )
+
+
+def test_opaque_evidence_id_credits_only_the_fact_that_cites_it() -> None:
+    from app.services.canonical_test_plan_reasoning_service import (
+        _acceptance_source_line,
+    )
+
+    facts = _facts()
+    facts_by_id = {row.fact_id: row for row in facts.facts}
+    # Only an open TBD question may be credited through the citing fact.
+    assert _acceptance_source_line(
+        [], facts_by_id, ["ev:CURRENT_JIRA:99222"], credit_citing_facts=True
+    ) == "Jira GUIDES-99222."
+    asserted = _acceptance_source_line([], facts_by_id, ["ev:CURRENT_JIRA:99222"])
+    assert asserted.startswith("QE-derived coverage:")
+    unmatched = _acceptance_source_line(
+        [], facts_by_id, ["ev:JIRA_DESCRIPTION:x"], credit_citing_facts=True
+    )
+    assert unmatched.startswith("QE-derived coverage:")
+
+
+def test_superseded_only_when_rejected_solely_for_the_human_contract() -> None:
+    from types import SimpleNamespace
+
+    from app.services.canonical_test_plan_reasoning_service import (
+        _OUTSIDE_HUMAN_CONTRACT_REASON,
+        _superseded_by_human_contract,
+    )
+
+    human = _facts().model_copy(
+        update={"contract_mode": ContractMode.HUMAN_ACCEPTED_CONTRACT}
+    )
+    rows = [
+        SimpleNamespace(
+            disposition_id="d-proposed",
+            disposition=CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT,
+        )
+    ]
+    candidates = {
+        "c-human": SimpleNamespace(source_disposition_ids=["d-human"]),
+        "c-proposed": SimpleNamespace(source_disposition_ids=["d-proposed"]),
+    }
+
+    def decision(candidate_id, status, reasons=()):
+        return SimpleNamespace(
+            candidate_id=candidate_id, status=status, reasons=list(reasons)
+        )
+
+    promoted = decision("c-human", PromotionStatus.PROMOTED)
+    sole = decision(
+        "c-proposed", PromotionStatus.REJECTED, [_OUTSIDE_HUMAN_CONTRACT_REASON]
+    )
+    assert _superseded_by_human_contract(
+        human, [promoted, sole], candidates, rows
+    ) == {"d-proposed"}
+    # A second reason, a BLOCKED decision, no promoted human contract, or a
+    # runtime-proposed contract mode all keep the projection failure.
+    second = decision(
+        "c-proposed",
+        PromotionStatus.REJECTED,
+        [_OUTSIDE_HUMAN_CONTRACT_REASON, "The expected result is not observable."],
+    )
+    blocked = decision(
+        "c-proposed", PromotionStatus.BLOCKED, [_OUTSIDE_HUMAN_CONTRACT_REASON]
+    )
+    for promotions, facts in (
+        ([promoted, second], human),
+        ([promoted, blocked], human),
+        ([sole], human),
+        ([promoted, sole], _facts()),
+    ):
+        assert not _superseded_by_human_contract(facts, promotions, candidates, rows)
+
+
+def test_superseded_row_must_stay_visible_to_pass_projection() -> None:
+    from app.services.canonical_test_plan_reasoning_service import (
+        _writer_projection_completeness,
+    )
+
+    question = _question(
+        "What does the product documentation establish for the outputs list?",
+        fact_ids=(_facts().facts[0].fact_id,),
+    )
+    worker = _result(
+        question,
+        ResearchWorkerStatus.ANSWER_FOUND,
+        findings=(
+            _finding(
+                "Documentation establishes the outputs list with per-run "
+                "status colors.",
+                "EXISTING_BEHAVIOR",
+            ),
+        ),
+    )
+    research = _research_record(question, worker=worker)
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        _facts(), [], [], [], ScopeResolution(), [question], [research],
+        worker_results=[worker],
+    )
+    proposed = [
+        row
+        for row in dispositions
+        if row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+        and row.priority == "P0"
+    ]
+    assert proposed
+    ids = {row.disposition_id for row in proposed}
+    _records, hidden = _writer_projection_completeness(proposed, [], {}, ids)
+    assert hidden, "a superseded row with no visible section must still fail"
+    visible = {row.disposition_id: [object()] for row in proposed}
+    _records, shown = _writer_projection_completeness(proposed, [], visible, ids)
+    assert not shown

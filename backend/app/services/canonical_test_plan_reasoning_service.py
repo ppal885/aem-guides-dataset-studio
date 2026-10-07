@@ -1526,6 +1526,15 @@ def _as_manual_qe_check(text: str) -> str:
     return value
 
 
+_TBD_LABEL_RE = re.compile(r"^TBD(?:\s*\([^)]*\))?\s*:\s*", re.IGNORECASE)
+
+
+def _strip_tbd_label(text: str) -> str:
+    """'TBD (product owner decides): Q?' -> 'Q?' for duplicate detection."""
+
+    return _TBD_LABEL_RE.sub("", text.strip())
+
+
 def _render_written_criterion(criterion: "WrittenAcceptanceCriterion") -> str:
     """Flatten a written criterion into its human-facing QE check text.
 
@@ -1555,6 +1564,8 @@ def _acceptance_source_line(
     facts_by_id: Mapping[str, Any],
     evidence_refs: list[str] | None = None,
     clarification_source_lines: Mapping[str, str] | None = None,
+    *,
+    credit_citing_facts: bool = False,
 ) -> str:
     """Human-facing Source line for one acceptance criterion.
 
@@ -1606,6 +1617,17 @@ def _acceptance_source_line(
         label = (clarification_source_lines or {}).get(reference) or describe(
             reference
         )
+        if not label and credit_citing_facts:
+            # Only for an open TBD question: a runtime evidence id
+            # (``ev:JIRA_DESCRIPTION:...``) proves where the question was
+            # raised, so credit the source of the extracted fact citing that
+            # same evidence.  An asserted outcome never takes this route - the
+            # ticket raising a topic is not the ticket stating the outcome.
+            for fact in facts_by_id.values():
+                if reference in (getattr(fact, "source_evidence_ids", None) or []):
+                    label = describe(str(getattr(fact, "source_reference", "") or ""))
+                    if label:
+                        break
         if label:
             add(label)
     if not labels:
@@ -4717,6 +4739,20 @@ _UNOBSERVABLE_QE_OUTCOME_RE = re.compile(
     r"(?:retained|preserved|correct|successful)\b",
     re.IGNORECASE,
 )
+# The planner's research question for a generic problem statement.  It embeds
+# raw ticket prose, so it may drive research but is never a deliverable
+# acceptance criterion or TBD: an unanswered one blocks delivery.
+_RAW_GAP_QUESTION_PREFIX = (
+    "Which established product behavior or product decision addresses this gap:"
+)
+_OUTSIDE_HUMAN_CONTRACT_REASON = (
+    "Human Accepted AC exists; this candidate is not part of that accepted contract."
+)
+_SUPERSEDED_BY_HUMAN_CONTRACT = (
+    "Superseded by the human-accepted contract; listed under evidence gaps."
+)
+
+
 _GENERIC_SOURCE_LINE_RE = re.compile(
     r"^(?:jira|experience league|product documentation|implementation evidence|"
     r"qe-derived coverage)\.?$",
@@ -4730,12 +4766,53 @@ def _normalize_projection_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
 
 
+def _superseded_by_human_contract(
+    facts: ContractFactSet,
+    promotions: list[AcceptancePromotionDecision],
+    candidate_by_id: Mapping[str, Any],
+    dispositions: list[CoverageDispositionRecord],
+) -> set[str]:
+    """Runtime-proposed rows rejected ONLY because a human-accepted contract
+    exists - superseded, not lost - provided that human contract promoted."""
+
+    if facts.contract_mode != ContractMode.HUMAN_ACCEPTED_CONTRACT or not any(
+        decision.status == PromotionStatus.PROMOTED for decision in promotions
+    ):
+        return set()
+    decisions_by_disposition: dict[str, list[AcceptancePromotionDecision]] = (
+        defaultdict(list)
+    )
+    for decision in promotions:
+        candidate = candidate_by_id.get(decision.candidate_id)
+        for disposition_id in getattr(candidate, "source_disposition_ids", None) or []:
+            decisions_by_disposition[disposition_id].append(decision)
+    superseded: set[str] = set()
+    for row in dispositions:
+        linked = decisions_by_disposition.get(row.disposition_id)
+        if (
+            row.disposition == CoverageDisposition.PROPOSED_ACCEPTANCE_CONTRACT
+            and linked
+            and all(
+                decision.status == PromotionStatus.REJECTED
+                and list(decision.reasons) == [_OUTSIDE_HUMAN_CONTRACT_REASON]
+                for decision in linked
+            )
+        ):
+            superseded.add(row.disposition_id)
+    return superseded
+
+
 def _writer_projection_completeness(
     dispositions: list[CoverageDispositionRecord],
     written: list[WrittenAcceptanceCriterion],
     sections_by_source_id: Mapping[str, list[PlanSection]],
+    superseded_disposition_ids: set[str] | frozenset[str] = frozenset(),
 ) -> tuple[list[WriterProjectionRecord], list[str]]:
-    """Prove that every applicable P0/P1 behavior has a human-facing UAC path."""
+    """Prove that every applicable P0/P1 behavior has a human-facing UAC path.
+
+    ``superseded_disposition_ids`` are runtime-proposed rows that promotion
+    rejected only because a human-accepted contract exists: the human
+    contract is the acceptance authority, so they are excluded, not lost."""
 
     records: list[WriterProjectionRecord] = []
     failures: list[str] = []
@@ -4815,12 +4892,21 @@ def _writer_projection_completeness(
                 for section in sections_by_source_id[row.disposition_id]
                 for item in section.items
             ]
-        elif row.disposition_id in sections_by_source_id:
+        elif (
+            row.disposition_id in sections_by_source_id
+            and row.disposition_id not in superseded_disposition_ids
+        ):
             status = WriterProjectionStatus.RETAINED_QE_REGRESSION
             reason = (
                 "Retained only in a non-acceptance coverage section; it is not "
                 "visible in the human-facing UAC."
             )
+        elif (
+            row.disposition_id in superseded_disposition_ids
+            and row.disposition_id in sections_by_source_id
+        ):
+            status = WriterProjectionStatus.EXPLICITLY_EXCLUDED
+            reason = _SUPERSEDED_BY_HUMAN_CONTRACT
         else:
             status = WriterProjectionStatus.EXPLICITLY_EXCLUDED
             reason = "No human-facing projection was produced."
@@ -4848,6 +4934,7 @@ def _writer_projection_completeness(
         } or (
             status == WriterProjectionStatus.EXPLICITLY_EXCLUDED
             and not reason.startswith("Internal scope or closure metadata")
+            and reason != _SUPERSEDED_BY_HUMAN_CONTRACT
         ):
             failures.append(
                 f"{row.priority} coverage {row.disposition_id} has no "
@@ -4893,6 +4980,11 @@ def _acceptance_presentation_failures(
         if _UNOBSERVABLE_QE_OUTCOME_RE.search(outcome):
             failures.append(
                 f"Acceptance criterion has no observable outcome: {outcome[:120]}"
+            )
+        if _RAW_GAP_QUESTION_PREFIX.casefold() in statement.casefold():
+            failures.append(
+                "Acceptance criterion carries an unanswered raw problem "
+                f"question, not a decision-quality TBD: {outcome[:120]}"
             )
         if (
             not source_line
@@ -7027,10 +7119,7 @@ class CanonicalTestPlanReasoningService:
                     anchor = anchor[:160].rsplit(" ", 1)[0].rstrip()
                 questions.append(
                     MissingQuestion(
-                        question=(
-                            "Which established product behavior or product "
-                            f"decision addresses this gap: {anchor}?"
-                        ),
+                        question=f"{_RAW_GAP_QUESTION_PREFIX} {anchor}?",
                         authority_subject=AuthoritySubject.PRODUCT_CONTRACT,
                         target_source_types=_target_sources(
                             AuthoritySubject.PRODUCT_CONTRACT
@@ -9499,9 +9588,7 @@ class CanonicalTestPlanReasoningService:
             if not authority_supported:
                 reasons.append("Intended behavior lacks product-contract authority.")
             if not belongs_to_human_contract:
-                reasons.append(
-                    "Human Accepted AC exists; this candidate is not part of that accepted contract."
-                )
+                reasons.append(_OUTSIDE_HUMAN_CONTRACT_REASON)
             if not scope_established:
                 reasons.append(
                     "The candidate lacks current-ticket applicability or conflicts "
@@ -9965,6 +10052,13 @@ class CanonicalTestPlanReasoningService:
         # naming who decides when known.  Nothing beyond the gate-admitted
         # statement and the recorded question text is written.
         questions_by_id = {row.question_id: row for row in questions or []}
+        tbd_dispositions_by_question: dict[str, list[str]] = defaultdict(list)
+        for row in dispositions or []:
+            if row.disposition == CoverageDisposition.ACCEPTANCE_TBD:
+                for question_id in row.source_question_ids:
+                    tbd_dispositions_by_question[question_id].append(
+                        row.disposition_id
+                    )
         for decision in promotions:
             if not _is_tbd_promotion(decision):
                 continue
@@ -9996,6 +10090,11 @@ class CanonicalTestPlanReasoningService:
                         text=f"{label}: {text}?",
                         kind=AcceptanceSubPointKind.TBD_QUESTION,
                         source_fact_ids=list(question.source_fact_ids),
+                        # Binds the bounded TBD row to this sub-point so the
+                        # D1-c pass below never writes the same question again.
+                        source_disposition_ids=list(
+                            tbd_dispositions_by_question.get(question_id, [])
+                        ),
                     )
                 )
             if (
@@ -10041,7 +10140,9 @@ class CanonicalTestPlanReasoningService:
             if any(
                 question.casefold() == existing.outcome.casefold()
                 or any(
-                    question.casefold() == sub.text.casefold()
+                    row.disposition_id in sub.source_disposition_ids
+                    or question.casefold()
+                    in {sub.text.casefold(), _strip_tbd_label(sub.text).casefold()}
                     for sub in existing.sub_points
                 )
                 for existing in written
@@ -10065,6 +10166,7 @@ class CanonicalTestPlanReasoningService:
                             facts_by_id,
                             list(row.evidence_ids),
                             clarification_source_lines,
+                            credit_citing_facts=True,
                         ),
                         source_fact_ids=list(row.source_fact_ids),
                         source_disposition_ids=[row.disposition_id],
@@ -10178,6 +10280,10 @@ class CanonicalTestPlanReasoningService:
                 facts_by_id,
                 list(criterion.evidence_ids),
                 clarification_source_lines,
+                # A standalone open TBD question asserts no outcome.
+                credit_citing_facts=(
+                    criterion.unresolved and not criterion.source_candidate_ids
+                ),
             )
             if not recomputed or recomputed == criterion.source_line:
                 continue
@@ -10531,6 +10637,18 @@ class CanonicalTestPlanReasoningService:
                         question_id, disposition.disposition_id
                     )
         represented_tbd_disposition_ids: set[str] = set()
+        writer_tbd_disposition_ids = {
+            disposition_id
+            for criterion in written_acceptance_criteria or []
+            if criterion.unresolved and not criterion.source_candidate_ids
+            for disposition_id in criterion.source_disposition_ids
+        } | {
+            disposition_id
+            for criterion in written_acceptance_criteria or []
+            for sub_point in criterion.sub_points
+            if sub_point.kind == AcceptanceSubPointKind.TBD_QUESTION
+            for disposition_id in sub_point.source_disposition_ids
+        }
         for conv in convergence or []:
             if not conv.decision:
                 continue
@@ -10656,6 +10774,15 @@ class CanonicalTestPlanReasoningService:
                 # Represented by the decision-quality line built from the
                 # convergence record - the raw question prose is never the
                 # human-facing product decision.
+                continue
+            if (
+                disposition.disposition == CoverageDisposition.ACCEPTANCE_TBD
+                and disposition.disposition_id in writer_tbd_disposition_ids
+            ):
+                # The Writer already rendered this bounded TBD (with its
+                # source) inside the acceptance contract.  Appending the raw
+                # question again would add an unsourced criterion that fails
+                # delivery review and blocks the whole plan.
                 continue
             key = disposition_sections.get(disposition.disposition)
             if key is None:
@@ -10855,10 +10982,14 @@ class CanonicalTestPlanReasoningService:
         for section in sections:
             for source_id in section.source_record_ids:
                 sections_by_source_id[source_id].append(section)
+        superseded_disposition_ids = _superseded_by_human_contract(
+            facts, promotions, candidate_by_id, dispositions
+        )
         writer_projection_records, projection_failures = _writer_projection_completeness(
             dispositions,
             written_acceptance_criteria or [],
             sections_by_source_id,
+            superseded_disposition_ids,
         )
         reviewer_failures.extend(projection_failures)
         gates.append(
