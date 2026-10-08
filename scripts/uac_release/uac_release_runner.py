@@ -66,6 +66,40 @@ When finished, write these files:
    a QE can check, in at most two clauses, using only names shown on screen. Exact technical values - API
    paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
    (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
+   Use the everyday AEM Guides words QE use: topic reference, map reference, direct reference, indirect
+   reference, DITA map, bookmap, topic, DITA files, non-DITA files, images, asset update, Map console, Map
+   dashboard, publishing, review, postprocessing, DAM Update Asset workflow, Cloud (AEMaaCS), doc state,
+   Global Profile, XML Editor Configuration, ui config, Repository View, Layout View, Preview, Side By Side
+   View, Content Fragment, Download, Download Map, forward reference, backward reference, output presets,
+   PDF preset (say Native PDF or DITA-OT), Workfront, conref, conkeyref, keyref, fmditaTitle, dc:title,
+   asset state, Tags View and non-tag view, new baseline (V2) and old baseline (V1) - say which baseline,
+   new AEM Sites (the same as Native AEM Sites) and old AEM Site (DITA-OT based) - say which AEM Sites output,
+   output, the output preset tabs (General, Metadata, Layout, Security, Print, Advanced) - name the tab -,
+   Using DITAVAL and Using condition preset (Conditional filtering), Author view, Source view, Side-by-side,
+   Preview, left panel, right panel (File properties), breadcrumb, editor search bar - name the Editor area -,
+   Outline Panel, Glossary panel, Templates panel, Snippets Panel, Subject Scheme Panel, Find and Replace, Map
+   Panel, Collections, PDF templates, variables, language variables, Workspace Settings, Publish profile,
+   Assets View, element, tag, attribute, friendly names (use the friendly name the Editor shows), toggle on
+   and toggle off for a switch on screen ("with Enable DITA-OT preprocessing toggled off"). For a Workspace
+   settings option name the tab, section and toggle as shown (General tab, Condition, "Highlight conditional
+   text in the Author view"); a panel shown or hidden from the Panels tab keeps its name there (Reusable
+   content, Output templates, Data sources, Citations). Name a metadata property by its Label (Title, Document
+   State, Tags); its Metadata Path (metadata/cq:tags) goes in a sub-point. Validation tab: "Run validation check
+   before saving the file", "Allow all users to add schematron files in validation panel", Schematron Files.
+   Translation tab: Language groups, "Propagate source version labels to the target version", "Translation
+   project cleanup after completion" (None, Disable, Delete). Context menu, Copy UUID, Copy path, Locate in,
+   schematron file(s), Single Topic Publishing (STP). In the References section use "Used in" (backward
+   references) and "Outgoing links" (forward references). Top toolbar (Menu, Insert image, Multimedia), ellipses
+   menu (Cross-reference, Reusable content, Symbol, Snippets, Keyword), Save as new version dialog (Last
+   Version, Comments for new version, Version labels), Menu dropdown (Cut, Copy, Delete, Version label, Merge),
+   check out, check in, Repository Search, the Explorer folder options menu and file options menu (Upload assets,
+   Find files in folder, Reprocess asset(s), View in Assets UI, Edit in Oxygen, Unlock, Duplicate, Move to,
+   Rename, Generate) - name the menu and the option. Right panel Content properties (Type, Attributes); options
+   menu at the top right (Assets, Editor settings, Workspace settings). Element context menu in Author view
+   (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate
+   IDs); Map Panel selection bar (Save as new version and unlock); Collections panel (Lightbox).
+   A DITA element name (topicref, mapref, reltable), a file extension or an
+   XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
    different); shorten by moving detail to sub-points. Before rewriting a criterion, re-read the ticket's
    description, comments and attachments: a comment that names the screen decides which screen it is about.

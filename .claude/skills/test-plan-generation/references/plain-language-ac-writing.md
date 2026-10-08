@@ -85,6 +85,107 @@ Before accepting an AC, ask:
 - Avoid: "Verify that output generation is blocked while a deactivation of the destination path is in process." (code/log words: output generation, deactivation, destination path)
 - Keep code and log names (deactivate, replication, class names, line numbers) on the Source line only.
 
+## Use the everyday AEM Guides words
+
+QE talk about content in the words they use every day in AEM Guides. Use those words in the AC statement and
+keep DITA element names, file extensions and code words for sub-points or the Source line.
+
+| Write (everyday word) | Instead of |
+|---|---|
+| topic reference | topicref, `<topicref>` element, href to a topic |
+| map reference | mapref, submap reference, `<mapref>` element |
+| direct reference / indirect reference | reltable link (an indirect reference is a link through a relationship table) |
+| forward reference / backward reference | incoming links, where-used, referencing files, dependents |
+| conref, conkeyref, keyref | content reuse attribute, key-based reuse, key resolution |
+| DITA map, bookmap | ditamap file, map XML, bookmap XML |
+| topic | DITA topic file, topic XML, .dita file |
+| DITA files / non-DITA files | XML assets, binary assets, non-XML assets |
+| images | graphic assets, image binaries, image renditions |
+| asset update | asset modification, asset mutation, asset overwrite |
+| Map console / Map dashboard | Advanced Map Editor, map management page |
+| publishing / output generation | transformation run, publish job, generation request |
+| review | review workflow, review task process |
+| postprocessing | asset processing job, post-upload processing step |
+| DAM Update Asset workflow | asset update workflow model, dam-update-asset |
+| Cloud (AEMaaCS) | AEM as a Cloud Service, cloud deployment, cloud environment |
+| doc state (Document State) | document status property, docstate metadata |
+| Global Profile / Folder Profile | global configuration node, profile settings node |
+| XML Editor Configuration | editor configuration files, editor config JSON |
+| ui config | ui_config.json (keep the file name for a sub-point) |
+| Repository View | asset tree, file browser, repository panel |
+| Layout View / Preview / Side By Side View | layout mode, render preview, diff view, compare view |
+| Content Fragment | CF, content fragment node |
+| Download / Download Map | export, map export, download as ZIP |
+| output presets, PDF preset (Native PDF or DITA-OT) | publish configuration, transformation profile, PDF generation settings |
+| Workfront | project management integration, work item system |
+| fmditaTitle, dc:title | title metadata property, jcr title field |
+| asset state, doc state | asset status, lifecycle status |
+| Tags View / non-tag view | tag display mode, markup view, plain view |
+| new baseline (V2 baseline) / old baseline (V1 baseline) | baseline v2 API, legacy baseline, baseline node |
+| new AEM Sites (Native AEM Sites) / old AEM Site (DITA-OT based) | sites publishing, site output engine, sites v2 |
+| output | generated artifact, rendition, publish result |
+| General / Metadata / Layout / Security / Print / Advanced tab (of an output preset) | preset section, settings group |
+| Conditional filtering: None / Using DITAVAL / Using condition preset | ditaval filtering, condition filter, profiling |
+| Author view / Source view / Side-by-side / Preview (Editor modes) | WYSIWYG mode, XML mode, raw view, diff mode |
+| left panel (Collections panel with Lightbox and user collections, Explorer, Map Panel, Outline Panel, Glossary panel, Templates panel, Snippets Panel, Subject Scheme Panel, Find and Replace) | navigation sidebar, repository tree, file tree |
+| PDF templates | Native PDF template definitions, template folder |
+| variables, language variables | placeholder values, i18n strings, localized labels |
+| element, tag, attribute, friendly names | XML node, DOM node, node property, element label mapping |
+| Workspace Settings, Publish profile, Assets View | user settings JSON, publish configuration, DAM asset browser |
+| context menu (Save as new version, Copy > Copy UUID / Copy path, Locate in, Add to, Properties, Close) | right-click options, overflow actions |
+| top toolbar (Menu, Insert element, Insert image, Multimedia, Version, Lock) | editor header bar, action bar |
+| ellipses menu (Cross-reference, Reusable content, Symbol, Snippets, Keyword) | more-options overflow, kebab menu |
+| Save as new version dialog (Last Version, Comments for new version, Version labels) | version commit dialog, version tag field |
+| Menu dropdown (Cut, Copy, Delete, Version label, Merge) | file actions list, editor main menu |
+| check out / check in | acquire lock, release lock, lock owner change |
+| Repository Search | DAM query, asset search API, repository lookup |
+| Explorer folder options menu (New, Upload assets, Refresh, Collapse, Find files in folder, Add to collections, Reprocess asset(s), View in Assets UI) | folder actions, tree node menu |
+| Explorer file options menu (Edit, Edit in Oxygen, Unlock, Preview, Duplicate, Move to, Rename, Delete, Generate, Add to, Copy, Reprocess asset, View in Assets UI, Properties) | file actions, asset node menu |
+| Explorer + menu (Topic, Map, Folder) | create-new dropdown |
+| element context menu in Author view (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate IDs, Locate in explorer, View in assets UI) | node operations, wrap/unwrap XML, auto-ID generation |
+| Map Panel selection bar (N selected; Save as new version and unlock, Properties) | bulk selection toolbar, multi-select actions |
+| Single Topic Publishing (STP) | topic-level publish, per-topic generation |
+| schematron file(s) | .sch rules file, validation rule set |
+| toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |
+| Workspace settings tabs: General, Panels, Elements list, Attributes list, Colors, Font list, Publish profiles, Validation, Display attributes, Translation, Metadata | user preference keys, editor settings JSON |
+| right panel (File properties: General, References, Outputs, Translations; Content properties: Type, Attributes) | properties sidebar, inspector, metadata pane, element inspector |
+| options menu at the top right (Assets, Editor settings, Workspace settings) | app menu, settings overflow |
+| breadcrumb | element path, node path, XPath bar |
+| editor search bar | find widget, search overlay, quick search component |
+
+- Write: "A topic reference added to the DITA map shows in the Map View."
+- Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."
+- When one technical value must be checked (an element name, a file extension, a property), put it in a sub-point:
+  "  - the reference is a <topicref> with format=dita".
+- conref, conkeyref, keyref, fmditaTitle and dc:title are everyday QE words: they may stay in the statement.
+- "element", "tag" and "attribute" are everyday words. When the Editor shows a friendly name for an element,
+  use the friendly name in the statement and the element name in a sub-point.
+- Say which baseline: "new baseline (V2)" or "old baseline (V1)", or both when both are in scope.
+- Say which AEM Sites output: "new AEM Sites" (Native AEM Sites, the same output) or "old AEM Site" (the
+  DITA-OT based one), or both when both are in scope. Never list new AEM Sites and Native AEM Sites as two outputs.
+- Name the output preset tab where the setting lives, as it is shown on screen: "the Layout tab of the Native PDF
+  preset", "Using DITAVAL in Conditional filtering on the General tab".
+- Name the Editor area where the check happens: left panel, right panel, breadcrumb, editor search bar, or the
+  mode (Author, Source, Side-by-side, Preview).
+- For a Workspace settings option, name the tab, the section and the toggle as shown: "with Highlight conditional
+  text in the Author view toggled on (Workspace settings, General tab, Condition)". A panel shown or hidden from
+  the Panels tab is named as listed there (Map, Outline, and in More section: Reusable content, Glossary,
+  Conditions, Subject scheme, Snippets, Templates, Citations, Language variables, Variables, Output templates,
+  Find and replace, Data sources, Review).
+- A metadata property is named by its Label from the Metadata tab of Workspace settings (Title, Document State,
+  Tags); its Metadata Path goes in a sub-point ("  - metadata/cq:tags").
+- Name the menu and the option as shown: "Duplicate from the file options menu in Explorer", "Reprocess asset(s)
+  from the folder options menu".
+- In the References section of the right panel, use the screen labels: "Used in" (backward references) and
+  "Outgoing links" (forward references); an empty list shows "No used references found".
+- Validation tab options are named as shown: "Run validation check before saving the file", "Allow all users to
+  add schematron files in validation panel", and the Schematron Files list.
+- Translation tab labels are named as shown: Language groups (Name, Languages, Add), Additional settings,
+  "Propagate source version labels to the target version", and "Translation project cleanup after completion"
+  with None, Disable or Delete.
+- Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
+- Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
+
 ## Group outcomes without hiding coverage
 
 Before rewriting, list each existing outcome and its named cases. Group by the required behavior and result, not by repeated words or a common product area. Keep an internal old-to-new mapping so a merged sentence cannot silently remove scope.
