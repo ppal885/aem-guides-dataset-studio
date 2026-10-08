@@ -589,7 +589,18 @@
     "Save as new version and unlock",
     "selection bar",
     "Collections panel",
-    "Lightbox"
+    "Lightbox",
+    "app switcher",
+    "Home",
+    "Reports",
+    "Translation",
+    "Knowledge Base",
+    "HTML5",
+    "JSON",
+    "Custom",
+    "SCORM",
+    "PDF",
+    "You have no output preset selected"
   ],
   "canonical_term_sources": [
     {

@@ -144,6 +144,9 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Explorer + menu (Topic, Map, Folder) | create-new dropdown |
 | element context menu in Author view (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate IDs, Locate in explorer, View in assets UI) | node operations, wrap/unwrap XML, auto-ID generation |
 | Map Panel selection bar (N selected; Save as new version and unlock, Properties) | bulk selection toolbar, multi-select actions |
+| app switcher (Home, Editor, Map console) | mode dropdown, app menu, workspace switch |
+| Map console left panel (Output presets, Reports, Baseline, Condition presets, Translation) | map dashboard sidebar, publishing tabs |
+| New output preset dialog, Type: AEM Sites, PDF, Knowledge Base, HTML5, JSON, Custom, SCORM | preset type enum, output format option |
 | Single Topic Publishing (STP) | topic-level publish, per-topic generation |
 | schematron file(s) | .sch rules file, validation rule set |
 | toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |
@@ -183,6 +186,9 @@ keep DITA element names, file extensions and code words for sub-points or the So
 - Translation tab labels are named as shown: Language groups (Name, Languages, Add), Additional settings,
   "Propagate source version labels to the target version", and "Translation project cleanup after completion"
   with None, Disable or Delete.
+- In the New output preset dialog the Type is named as listed (AEM Sites, PDF, Knowledge Base, HTML5, JSON,
+  Custom, SCORM). A preset of Type PDF is a Native PDF or DITA-OT PDF preset depending on its Generate PDF Using
+  setting; say which.
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 
