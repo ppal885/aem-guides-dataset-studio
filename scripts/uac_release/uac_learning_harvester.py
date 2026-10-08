@@ -625,7 +625,9 @@ def kind_report_lines(records: list[dict]) -> list[str]:
 
 
 def relabel(config: dict, jira, logger) -> int:
-    """Label already-harvested CHANGED records that a Claude session wrote. Returns how many changed."""
+    """Label already-harvested CHANGED records that a Claude session wrote. Returns how many labels changed.
+
+    A QE_EDIT record is checked again too: the rewrite can be marked after the record was labelled."""
     path = Path(config["output_dir"]) / LEARNING_DIR / RECORDS_FILE
     if not path.is_file():
         return 0
@@ -637,13 +639,15 @@ def relabel(config: dict, jira, logger) -> int:
         except ValueError:
             out.append(line)
             continue
-        if record.get("outcome") == "CHANGED" and not record.get("edit_origin"):
+        if record.get("outcome") == "CHANGED" and record.get("edit_origin") != "CLAUDE_REWRITE":
             key = record.get("key") or ""
             if key not in hashes:
                 hashes[key] = rewrite_hashes(jira, key)
+            before = record.get("edit_origin")
             record.update(edit_origin(record, hashes[key]))
-            changed += 1
-            logger.info("%s: %s", key, record["edit_origin"])
+            if record["edit_origin"] != before:
+                changed += 1
+                logger.info("%s: %s", key, record["edit_origin"])
         out.append(json.dumps(record, ensure_ascii=False))
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
     return changed
