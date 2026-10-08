@@ -133,6 +133,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | element, tag, attribute, friendly names | XML node, DOM node, node property, element label mapping |
 | Workspace Settings, Publish profile, Assets View | user settings JSON, publish configuration, DAM asset browser |
 | toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |
+| Workspace settings tabs: General, Panels, Elements list, Attributes list, Colors, Font list, Publish profiles, Validation, Display attributes, Translation, Metadata | user preference keys, editor settings JSON |
 | right panel (File properties: General, References, Outputs, Translations) | properties sidebar, inspector, metadata pane |
 | breadcrumb | element path, node path, XPath bar |
 | editor search bar | find widget, search overlay, quick search component |
@@ -151,6 +152,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
   preset", "Using DITAVAL in Conditional filtering on the General tab".
 - Name the Editor area where the check happens: left panel, right panel, breadcrumb, editor search bar, or the
   mode (Author, Source, Side-by-side, Preview).
+- For a Workspace settings option, name the tab, the section and the toggle as shown: "with Highlight conditional
+  text in the Author view toggled on (Workspace settings, General tab, Condition)".
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

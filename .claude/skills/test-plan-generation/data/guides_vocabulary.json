@@ -477,7 +477,26 @@
     "friendly names",
     "attribute",
     "toggle on",
-    "toggle off"
+    "toggle off",
+    "Panels",
+    "Elements list",
+    "Attributes list",
+    "Colors",
+    "Font list",
+    "Publish profiles",
+    "Validation",
+    "Display attributes",
+    "Authoring",
+    "Citations",
+    "Condition",
+    "HTML editor",
+    "Enable Replace All",
+    "Highlight conditional text in the Author view",
+    "Validate with condition attributes",
+    "Show key with title in the Subject scheme panel",
+    "Show subject scheme in the Conditions panel",
+    "Hide inline styling",
+    "Hide source view for authors"
   ],
   "canonical_term_sources": [
     {
