@@ -470,7 +470,12 @@
     "Templates panel",
     "variables",
     "language variables",
-    "Snippets Panel"
+    "Snippets Panel",
+    "Publish profile",
+    "element",
+    "tag",
+    "friendly names",
+    "attribute"
   ],
   "canonical_term_sources": [
     {

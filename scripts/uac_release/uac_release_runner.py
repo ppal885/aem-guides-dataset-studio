@@ -78,7 +78,8 @@ When finished, write these files:
    Using DITAVAL and Using condition preset (Conditional filtering), Author view, Source view, Side-by-side,
    Preview, left panel, right panel (File properties), breadcrumb, editor search bar - name the Editor area -,
    Outline Panel, Glossary panel, Templates panel, Snippets Panel, Subject Scheme Panel, Find and Replace, Map
-   Panel, Collections, PDF templates, variables, language variables.
+   Panel, Collections, PDF templates, variables, language variables, Workspace Settings, Publish profile,
+   Assets View, element, tag, attribute, friendly names (use the friendly name the Editor shows).
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

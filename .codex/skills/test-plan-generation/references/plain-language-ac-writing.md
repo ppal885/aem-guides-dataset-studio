@@ -130,6 +130,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | left panel (Collections, Explorer, Map Panel, Outline Panel, Glossary panel, Templates panel, Snippets Panel, Subject Scheme Panel, Find and Replace) | navigation sidebar, repository tree, file tree |
 | PDF templates | Native PDF template definitions, template folder |
 | variables, language variables | placeholder values, i18n strings, localized labels |
+| element, tag, attribute, friendly names | XML node, DOM node, node property, element label mapping |
+| Workspace Settings, Publish profile, Assets View | user settings JSON, publish configuration, DAM asset browser |
 | right panel (File properties: General, References, Outputs, Translations) | properties sidebar, inspector, metadata pane |
 | breadcrumb | element path, node path, XPath bar |
 | editor search bar | find widget, search overlay, quick search component |
@@ -139,6 +141,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 - When one technical value must be checked (an element name, a file extension, a property), put it in a sub-point:
   "  - the reference is a <topicref> with format=dita".
 - conref, conkeyref, keyref, fmditaTitle and dc:title are everyday QE words: they may stay in the statement.
+- "element", "tag" and "attribute" are everyday words. When the Editor shows a friendly name for an element,
+  use the friendly name in the statement and the element name in a sub-point.
 - Say which baseline: "new baseline (V2)" or "old baseline (V1)", or both when both are in scope.
 - Say which AEM Sites output: "new AEM Sites" (Native AEM Sites, the same output) or "old AEM Site" (the
   DITA-OT based one), or both when both are in scope. Never list new AEM Sites and Native AEM Sites as two outputs.
