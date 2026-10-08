@@ -114,6 +114,38 @@ def _reason(text: str) -> str:
     return " ".join(text.replace("(", " ").replace(")", " ").split()).strip(" .;:-")
 
 
+# A posted criterion whose Source line is a Jira comment was asked for by a person on the ticket (often a
+# reviewer). When QE removes it later, people on the ticket disagreed; the skill did not make it up.
+_COMMENT_SOURCE = re.compile(r"\bcomments?\b", re.IGNORECASE)
+
+
+def closing_notes(field_text: str) -> list[str]:
+    """Free-standing lines below the criteria, after a blank line, such as "Automation UI or API is
+    required". They are not criteria, so parse_criteria skips them; the report lists the ones QE added."""
+    notes: list[str] = []
+    seen_criterion = after_blank = in_questions = False
+    for raw in (field_text or "").replace("\r\n", "\n").split("\n"):
+        line = raw.strip()
+        if not line:
+            after_blank = True
+            continue
+        was_blank, after_blank = after_blank, False
+        plain = _unstrike(line)
+        if _LABEL.match(plain):
+            seen_criterion, in_questions = True, False
+            continue
+        if _QUESTION.match(plain):
+            in_questions = True
+            continue
+        if in_questions or _META.match(plain) or _NESTED.match(plain) or _BULLET.match(plain):
+            seen_criterion = seen_criterion or bool(_BULLET.match(plain))
+            continue
+        kept = _clean(_kept(line))
+        if seen_criterion and was_blank and kept:
+            notes.append(kept)
+    return notes
+
+
 def parse_criteria(field_text: str) -> list[dict]:
     """Split an Acceptance Criteria field into criteria.
 
@@ -226,17 +258,21 @@ def compare(posted: list[dict], current: list[dict]) -> list[dict]:
         """The posted criterion's own number, or its position when the field has no numbers."""
         return posted[i].get("number") or i + 1
 
+    def asked(i: int) -> dict:
+        return {"requested_in_comment": True} if _COMMENT_SOURCE.search(posted[i].get("source") or "") else {}
+
     for j in struck:
         best = max(left, key=lambda i: similarity(posted[i]["text"], current[j]["full"]), default=None)
         if best is not None and similarity(posted[best]["text"], current[j]["full"]) >= MATCH_THRESHOLD:
             left.remove(best)
             entries.append({"kind": "removed", "old": posted[best]["text"], "new": "", "similarity": 0.0,
-                            "struck": True, "reason": current[j].get("reason", ""), "number": number(best)})
+                            "struck": True, "reason": current[j].get("reason", ""), "number": number(best),
+                            **asked(best)})
     for i in list(left):
         for j in list(right):
             if _norm(posted[i]["text"]) == _norm(current[j]["text"]):
                 entries.append({"kind": "accepted", "old": posted[i]["text"], "new": current[j]["text"],
-                                "similarity": 1.0, "number": number(i)})
+                                "similarity": 1.0, "number": number(i), **asked(i)})
                 left.remove(i)
                 right.remove(j)
                 break
@@ -246,15 +282,15 @@ def compare(posted: list[dict], current: list[dict]) -> list[dict]:
         if score < MATCH_THRESHOLD or i not in left or j not in right:
             continue
         entry = {"kind": "changed", "old": posted[i]["text"], "new": current[j]["text"],
-                 "similarity": round(score, 2), "number": number(i)}
+                 "similarity": round(score, 2), "number": number(i), **asked(i)}
         if current[j].get("struck_parts"):
             entry["struck_parts"] = current[j]["struck_parts"]
             entry["reason"] = current[j].get("reason", "")
         entries.append(entry)
         left.remove(i)
         right.remove(j)
-    entries += [{"kind": "removed", "old": posted[i]["text"], "new": "", "similarity": 0.0, "number": number(i)}
-                for i in left]
+    entries += [{"kind": "removed", "old": posted[i]["text"], "new": "", "similarity": 0.0, "number": number(i),
+                 **asked(i)} for i in left]
     entries += [{"kind": "added", "old": "", "new": current[j]["text"], "similarity": 0.0} for j in right]
     return entries
 
@@ -371,6 +407,8 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
         "posted_count": len(posted_criteria),
         "kept_count": sum(1 for c in current_criteria if not c.get("struck")),
         "criteria": entries,
+        "qe_notes": [n for n in closing_notes(current_text)
+                     if _norm(n) not in {_norm(x) for x in closing_notes(posted_text)}],
     }
     record.update(extra or {})
     return record
@@ -669,7 +707,8 @@ def monthly_report(config: dict, month: str) -> Path:
     rewrites = [r for r in records if r.get("edit_origin") == "CLAUDE_REWRITE"]
     records = [r for r in records if r.get("edit_origin") != "CLAUDE_REWRITE"]
     by_component: dict[str, dict] = defaultdict(lambda: {"tickets": set(), "accepted": 0, "changed": 0,
-                                                          "removed": [], "added": [], "promoted": [], "screens": []})
+                                                          "removed": [], "added": [], "promoted": [], "screens": [],
+                                                          "requested": [], "notes": []})
     for record in records:
         for component in record.get("components") or ["(none)"]:
             bucket = by_component[component]
@@ -682,10 +721,13 @@ def monthly_report(config: dict, month: str) -> Path:
                     if entry.get("reason"):
                         text += f" (QE: {entry['reason']})"
                     bucket[entry["kind"]].append((record["key"], text))
+                    if entry["kind"] == "removed" and entry.get("requested_in_comment"):
+                        bucket["requested"].append((record["key"], text))
                     if entry["kind"] == "added":
                         for screen in missed_screens(entry["new"], record.get("posted_text") or ""):
                             if not any(k == record["key"] and s == screen for k, s, _ in bucket["screens"]):
                                 bucket["screens"].append((record["key"], screen, entry["new"]))
+            bucket["notes"] += [(record["key"], note) for note in record.get("qe_notes") or []]
     lines = [f"# UAC learning report {month}", "",
              f"{len(records)} ticket version(s) harvested. Accepted = kept unchanged; changed = wording or "
              "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it); promoted = QE moved one "
@@ -697,7 +739,7 @@ def monthly_report(config: dict, month: str) -> Path:
         lines += [f"Claude or Codex rewrites (not counted below, not QE feedback): {len(rewrites)}"]
         lines += [f"- {r['key']}: {r.get('rewrite_reason') or 'no reason given'}" for r in rewrites]
         lines += [""]
-    totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "promoted", "missed_screens")}
+    totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "promoted", "missed_screens", "requested")}
     for component in sorted(by_component):
         b = by_component[component]
         screens = b["screens"]
@@ -707,12 +749,21 @@ def monthly_report(config: dict, month: str) -> Path:
         totals["added"] += len(b["added"])
         totals["promoted"] += len(b["promoted"])
         totals["missed_screens"] += len(screens)
+        totals["requested"] += len(b["requested"])
+        asked = f" ({len(b['requested'])} asked for in a Jira comment)" if b["requested"] else ""
         lines += [f"## {component}", "",
                   f"- Tickets: {len(b['tickets'])}",
-                  f"- Criteria accepted {b['accepted']}, changed {b['changed']}, removed {len(b['removed'])}, "
+                  f"- Criteria accepted {b['accepted']}, changed {b['changed']}, removed {len(b['removed'])}{asked}, "
                   f"added {len(b['added'])}, promoted {len(b['promoted'])}, missed screens {len(screens)}", ""]
-        if b["removed"]:
-            lines += ["What we wrote that QE removed:", ""] + [f"- {k}: {t}" for k, t in b["removed"]] + [""]
+        ours = [item for item in b["removed"] if item not in b["requested"]]
+        if ours:
+            lines += ["What we wrote that QE removed:", ""] + [f"- {k}: {t}" for k, t in ours] + [""]
+        if b["requested"]:
+            lines += ["Asked for in a Jira comment, then removed by QE (people on the ticket disagreed; "
+                      "not something the skill made up):", ""] + [f"- {k}: {t}" for k, t in b["requested"]] + [""]
+        if b["notes"]:
+            lines += ["Notes QE added below the criteria (not criteria):", ""] + \
+                [f"- {k}: {t}" for k, t in b["notes"]] + [""]
         if b["added"]:
             lines += ["What QE added that we missed:", ""] + [f"- {k}: {t}" for k, t in b["added"]] + [""]
         if b["promoted"]:
@@ -723,7 +774,9 @@ def monthly_report(config: dict, month: str) -> Path:
     if records:
         posted = totals["accepted"] + totals["changed"] + totals["removed"]
         lines[3:3] = [f"Overall: {posted} posted criteria - accepted {totals['accepted']}, changed {totals['changed']}, "
-                      f"removed {totals['removed']}; QE added {totals['added']}"
+                      f"removed {totals['removed']}"
+                      + (f" ({totals['requested']} asked for in a Jira comment)" if totals["requested"] else "")
+                      + f"; QE added {totals['added']}"
                       + (f", promoted {totals['promoted']} suggested" if totals["promoted"] else "")
                       + f" (missed screens "
                       f"{totals['missed_screens']}).", ""]

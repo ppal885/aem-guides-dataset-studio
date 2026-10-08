@@ -330,7 +330,10 @@ it and when.
 
 `uac_learning_harvester.py --report last` (cron 06:00 on the 1st) writes
 `<output_dir>/learning/report-YYYY-MM.md`: an overall line, then per component the counts, what QE
-removed (we wrote too much), what QE added (we missed), and the **missed screens**: screens (panel,
+removed (we wrote too much) with QE's reason, what QE added (we missed), criteria **asked for in a Jira
+comment and then removed** (their Source line is a comment: people on the ticket disagreed, so they are listed
+apart from what the skill made up), **notes QE added** below the criteria (for example "Automation UI or API
+is required"), and the **missed screens**: screens (panel,
 console, dashboard, app, view, ...) that a QE-added criterion names and our posted UAC never mentioned,
 counted once per ticket. A screen miss that recurs in these counts is the signal to change the surface
 rules; one ticket is not. A **Removed by kind** table says why each posted criterion was written - reporter
