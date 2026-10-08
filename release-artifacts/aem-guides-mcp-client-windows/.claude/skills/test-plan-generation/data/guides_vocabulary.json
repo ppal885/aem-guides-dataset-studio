@@ -510,7 +510,11 @@
     "Label",
     "Title",
     "Tags",
-    "cq:tags"
+    "cq:tags",
+    "Options",
+    "Run validation check before saving the file",
+    "Allow all users to add schematron files in validation panel",
+    "Schematron Files"
   ],
   "canonical_term_sources": [
     {

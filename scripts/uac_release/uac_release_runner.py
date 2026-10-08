@@ -84,7 +84,8 @@ When finished, write these files:
    settings option name the tab, section and toggle as shown (General tab, Condition, "Highlight conditional
    text in the Author view"); a panel shown or hidden from the Panels tab keeps its name there (Reusable
    content, Output templates, Data sources, Citations). Name a metadata property by its Label (Title, Document
-   State, Tags); its Metadata Path (metadata/cq:tags) goes in a sub-point.
+   State, Tags); its Metadata Path (metadata/cq:tags) goes in a sub-point. Validation tab: "Run validation check
+   before saving the file", "Allow all users to add schematron files in validation panel", Schematron Files.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
