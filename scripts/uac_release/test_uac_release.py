@@ -2112,6 +2112,12 @@ class DeliveryCleanupTests(unittest.TestCase):
             ids = " ".join(runner.vocabulary_notes(ticket))
             self.assertIn("fragment-jargon", ids)
             self.assertIn("intended-vague", ids)
+            (ticket / common.UAC_FILE).write_text(
+                "- Acceptance Criteria 01: Each new topic shows the reused content.\n"
+                "  - References to copied topic templates still resolve to their new topics.\n", encoding="utf-8")
+            ids = " ".join(runner.vocabulary_notes(ticket))
+            self.assertIn("resolve-jargon", ids)
+            self.assertIn("copied-topic-templates", ids)
             blocked, _ = runner._vocabulary_hits((ticket / common.UAC_FILE).read_text(encoding="utf-8"))
             self.assertEqual(blocked, [], "a nudge never blocks the UAC")
         with tempfile.TemporaryDirectory() as tmp:

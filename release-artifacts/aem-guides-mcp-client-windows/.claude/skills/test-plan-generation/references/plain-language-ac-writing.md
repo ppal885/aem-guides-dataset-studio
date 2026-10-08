@@ -102,6 +102,8 @@ act on without opening the ticket, not as a list of nouns.
   read directly: "a conref with href="file.dita#topicID/elementID" and href="file.dita#elementID" both work". Never "long fragment", "short fragment",
   "the intended content" or topicId/elementId as words. Say a topic is made from a topic template; the map
   template only refers to it.
+- Write what QE checks instead of "resolve": the link opens the topic, the conref shows the content, the
+  reference points to the new topic. Write "the new topic made from a topic template", not "copied topic template".
 
 ## Use the everyday AEM Guides words
 
