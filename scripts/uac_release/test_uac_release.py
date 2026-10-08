@@ -2336,6 +2336,24 @@ class ClaudeRewriteTests(unittest.TestCase):
             out = [json.loads(line) for line in (learning / harvester.RECORDS_FILE).read_text(encoding="utf-8").splitlines()]
         self.assertEqual([r.get("edit_origin") for r in out], ["CLAUDE_REWRITE", "QE_EDIT", None])
 
+    def test_relabel_rechecks_qe_edits_marked_later(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = make_config(Path(tmp))
+            learning = Path(tmp) / harvester.LEARNING_DIR
+            learning.mkdir()
+            row = {"key": "PROJ-1", "outcome": "CHANGED", "current_sha256": harvester._sha("late text"),
+                   "edit_origin": "QE_EDIT"}
+            (learning / harvester.RECORDS_FILE).write_text(json.dumps(row) + "\n", encoding="utf-8")
+            jira = PropertyJira()
+            logger = logging.getLogger("test")
+            self.assertEqual(harvester.relabel(config, jira, logger), 0, "no mark yet: label unchanged")
+            record_manual_rewrite.mark(jira, "PROJ-1", ["late text"], "marked after the relabel")
+            self.assertEqual(harvester.relabel(config, jira, logger), 1)
+            self.assertEqual(harvester.relabel(config, jira, logger), 0)
+            out = json.loads((learning / harvester.RECORDS_FILE).read_text(encoding="utf-8"))
+        self.assertEqual(out["edit_origin"], "CLAUDE_REWRITE")
+        self.assertEqual(out["rewrite_reason"], "marked after the relabel")
+
 
 if __name__ == "__main__":
     unittest.main()
