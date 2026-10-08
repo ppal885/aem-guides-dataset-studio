@@ -633,7 +633,16 @@
     "File path",
     "Pin",
     "Created on",
-    "Owner"
+    "Owner",
+    "Description",
+    "Public",
+    "Create",
+    "Appearance",
+    "Base path",
+    "Maximum number of recent files",
+    "Opening preferences for Maps",
+    "Edit and open in map view",
+    "User preferences saved successfully"
   ],
   "canonical_term_sources": [
     {
