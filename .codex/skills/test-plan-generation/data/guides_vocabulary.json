@@ -541,7 +541,14 @@
     "Save as new version dialog",
     "Last Version",
     "Comments for new version",
-    "Version labels"
+    "Version labels",
+    "Cut",
+    "Copy",
+    "Delete",
+    "Merge",
+    "check out",
+    "check in",
+    "Repository Search"
   ],
   "canonical_term_sources": [
     {

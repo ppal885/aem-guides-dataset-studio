@@ -91,7 +91,8 @@ When finished, write these files:
    schematron file(s), Single Topic Publishing (STP). In the References section use "Used in" (backward
    references) and "Outgoing links" (forward references). Top toolbar (Menu, Insert image, Multimedia), ellipses
    menu (Cross-reference, Reusable content, Symbol, Snippets, Keyword), Save as new version dialog (Last
-   Version, Comments for new version, Version labels).
+   Version, Comments for new version, Version labels), Menu dropdown (Cut, Copy, Delete, Version label, Merge),
+   check out, check in, Repository Search.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
