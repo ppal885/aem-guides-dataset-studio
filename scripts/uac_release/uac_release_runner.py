@@ -66,6 +66,10 @@ When finished, write these files:
    a QE can check, in at most two clauses, using only names shown on screen. Exact technical values - API
    paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
    (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
+   Shortening never merges, drops or renames a named product item (a map template and a topic template are
+   different); shorten by moving detail to sub-points. Before rewriting a criterion, re-read the ticket's
+   description, comments and attachments: a comment that names the screen decides which screen it is about.
+   A documentation answer marked not verified, or one citing unrelated pages, can only be a TBD.
    Every criterion is a product check a QE can run on a test instance. Engineering, support and operations
    deliverables are not criteria: an incident record or root-cause write-up, a post-mortem, a timing or
    performance report, a rollback or mitigation of a customer environment, a folder or access an Adobe team

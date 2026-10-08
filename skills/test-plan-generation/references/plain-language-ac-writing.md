@@ -27,6 +27,16 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 - Exact technical values - API paths and fields, configuration keys and setting values, enum values, status
   codes, file names - go in a sub-point of that criterion (or the full test plan), not in the statement.
   Statement: "An invalid request is rejected as a whole and returns no results." Sub-point: "returns 400".
+- Shortening never changes meaning: never merge, drop or replace a named product item to save words. Keep
+  each one by its own name - a map template and a topic template are different things, so "a topic created
+  from a map template" is wrong; write "each new topic made from a topic template the map template refers
+  to". Shorten by moving cases and detail to sub-points, not by renaming.
+- A rewrite is not only wording: before rewriting a criterion, re-read the ticket's description, every
+  comment and every attachment, and check that the rewritten statement is about the same screen, item and
+  behaviour its sources say. A developer or product comment that names the screen (for example "this
+  dropdown is AEM's own task reassignment") decides which screen the criterion is about.
+- A documentation answer marked not verified, or one that cites unrelated pages, can only become a TBD,
+  never a criterion or a sub-point.
 - Avoid semicolons, double negatives, parenthetical explanations, and long comma-separated lists.
 - Move setup steps, matrices, implementation details, and background explanations to Test Scenarios or Open Questions.
 - A code change can reveal an extra behavior, such as a new fallback or error response, but it does not prove that product scope approved that behavior. Keep it Proposed and ask the scope question unless Jira, accepted UAC, or an explicit product decision approves it.
