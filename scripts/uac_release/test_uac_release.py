@@ -2052,6 +2052,28 @@ class DeliveryCleanupTests(unittest.TestCase):
         self.assertEqual([p.split(" is ")[0] for p in problems],
                          ["Acceptance Criteria 02", "Acceptance Criteria 03", "Acceptance Criteria 04"])
 
+    def test_process_criteria_move_to_the_test_plan_and_the_uac_is_still_delivered(self) -> None:
+        text = ("Note: n\n\n- Acceptance Criteria 01: HTML5 output generates after the publishing ZIP becomes available.\n"
+                "  **Source:** ticket.\n"
+                "- Acceptance Criteria 02: The incident record identifies the missing-ZIP cause.\n"
+                "  **Source:** comment.\n"
+                "- Acceptance Criteria 03: Retried generation finishes without an error.\n"
+                "Out of scope:\n- Customer network.\n")
+        delivered, moved = runner.move_process_acs(text)
+        self.assertIn("- Acceptance Criteria 01: HTML5 output generates", delivered)
+        self.assertIn("- Acceptance Criteria 02: Retried generation finishes", delivered, "the rest is renumbered")
+        self.assertNotIn("incident record", delivered)
+        self.assertIn("Out of scope:", delivered)
+        self.assertEqual(len(moved), 1)
+        self.assertTrue(moved[0].startswith("Acceptance Criteria 02: The incident record"))
+        only = "- Acceptance Criteria 01: The incident record identifies the cause.\n"
+        self.assertEqual(runner.move_process_acs(only), (only, []), "the UAC is never emptied")
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp)
+            (ticket / common.PLAN_FILE).write_text("plan", encoding="utf-8")
+            runner.record_moved_acs(ticket, moved)
+            self.assertIn("Moved from the UAC", (ticket / common.PLAN_FILE).read_text(encoding="utf-8"))
+
     def test_source_lines_lose_revisions_paths_and_code_names_but_keep_attachments(self) -> None:
         text = ("- Acceptance Criteria 01: x.\n"
                 "  **Source:** GUIDES-1 comment 58244293; inspected starling commit 16a8982; Starling PublishListener.\n"

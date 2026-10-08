@@ -27,7 +27,7 @@
     "command": "copilot",
     "model": "",
     "agent": "",
-    "timeout_minutes": 45,
+    "timeout_minutes": 100,
     "add_dirs": [
       "/opt/repos/aem-guides-dataset-studio",
       "/opt/repos/starling",
