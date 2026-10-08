@@ -61,10 +61,10 @@
     },
     {
       "id": "panel-not-dashboard",
-      "pattern": "(baseline|map|translation|conditions?|subject\\s+scheme)\\s+dashboard(?!\\s+outputs\\s+tab)",
+      "pattern": "(baseline|translation|conditions?|subject\\s+scheme)\\s+dashboard",
       "wrong": "<X> dashboard for an authoring panel",
       "correct": "Baseline Panel / Map Panel / Translation Panel / Conditions panel / Subject Scheme Panel",
-      "message": "The Baseline, Map, Translation, Conditions, and Subject Scheme surfaces are PANELS, not dashboards. Use 'Baseline Panel', 'Map Panel', 'Translation Panel', etc. 'dashboard' is only for publish/output surfaces (e.g. the Bulk Publish dashboard, the Map Dashboard Outputs tab).",
+      "message": "The Baseline, Translation, Conditions, and Subject Scheme surfaces are PANELS, not dashboards. Use 'Baseline Panel', 'Translation Panel', etc. The Map dashboard is a real screen (as is the Map Panel in the Editor); 'dashboard' is otherwise only for publish surfaces such as the Bulk Publish dashboard.",
       "source": "human-correction",
       "governance": "HUMAN_APPROVED"
     },
@@ -192,6 +192,36 @@
       "message": "Say 'images'.",
       "source": "human-correction",
       "source_context": "User request 2026-10-08: use everyday AEM Guides words in ACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "topic-from-map-template",
+      "pattern": "\\btopics?\\s+(?:that\\s+(?:is|are|was|were)\\s+)?(?:created|made|generated|built)\\s+(?:from|with|by)\\s+(?:a|the|its)\\s+map\\s+template",
+      "wrong": "a topic created from a map template",
+      "correct": "a topic made from a topic template that the map template refers to",
+      "message": "A map template creates the map; the topics come from the topic templates the map template refers to. Write 'a topic made from a topic template that the map template refers to' (or 'each new topic made from a referenced topic template'), never 'a topic created from a map template'.",
+      "source": "human-correction",
+      "source_context": "Human terminology correction in a map-template UAC review, repeated by a later dry run",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "external-conref",
+      "pattern": "\\bexternal\\s+conrefs?\\b",
+      "wrong": "external conref",
+      "correct": "conref",
+      "message": "Say 'conref'. 'External conref' is not a product term and readers take it for a different feature; if the reused content is in another topic or folder, say that in plain words.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-09: conref is sufficient",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "camelcase-id-names",
+      "pattern": "\\b(?:topicId|elementId|topicid|elementid)\\b",
+      "wrong": "topicId / elementId",
+      "correct": "the topic ID and the element ID",
+      "message": "Write 'the topic ID and the element ID' in plain words (for example 'a conref that names the topic ID and the element ID', 'a conref that names only the element ID'), not the code-style topicId/elementId.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-09: code-style names confuse readers",
       "governance": "HUMAN_APPROVED"
     }
   ],
