@@ -647,7 +647,10 @@
     "custom doc state",
     "Application theme",
     "Source view theme",
-    "Editor files display configuration"
+    "Editor files display configuration",
+    "Explorer toolbar",
+    "Sort",
+    "No file selected for editing"
   ],
   "canonical_term_sources": [
     {

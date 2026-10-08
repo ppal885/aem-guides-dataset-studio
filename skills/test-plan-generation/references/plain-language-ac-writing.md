@@ -163,6 +163,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | User preferences (General tab: Folder profile, Base path, Root map, Maximum number of recent files, Opening preferences for Maps; Appearance; Editor settings) | user settings, profile config |
 | Global Profile / custom Folder Profile; custom doc state (a Document State an admin added) | profile node, custom workflow state |
 | User preferences Appearance tab (Application theme, Source view theme, Editor files display configuration: Title or File name) | UI theme setting, label mode |
+| Explorer toolbar (Search, Refresh, + for new file, Sort); empty Editor: No file selected for editing | tree actions, blank editor state |
 | app switcher (Home, Editor, Map console) | mode dropdown, app menu, workspace switch |
 | Map console left panel (Output presets, Reports, Baseline, Condition presets, Translation) | map dashboard sidebar, publishing tabs |
 | Map console map dropdown (Open in editor, Select another map) | map picker, switch context |
