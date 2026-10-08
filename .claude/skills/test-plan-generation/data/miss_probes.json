@@ -985,6 +985,40 @@
       "counterexamples_checked": true,
       "equivalence_key": "multi-language-output-template-variables",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-027",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "map template",
+          "topic template",
+          "bookmap template",
+          "create topic",
+          "create map",
+          "new topic",
+          "new map"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CONFIG_BRANCH",
+        "candidate_template": "when the action creates new files (from a template, duplicate, copy, new topic or map), check the file naming setting Use UUID based system filenames toggled on and off, and source or target files with GUID file names; links to the new files must use the new file name and topic ID"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261009-UUID-FILENAMES-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Creating files names them by a setting the ticket never mentions (Use UUID based system filenames), and a new topic's topic ID is its file name, so every link to a new file depends on that setting. Counterexample checked: an action that only edits an existing file does not create a name.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "new-file-naming-setting",
+      "status": "ACTIVE"
     }
   ]
 }

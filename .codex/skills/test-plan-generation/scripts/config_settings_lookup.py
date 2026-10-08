@@ -4,7 +4,8 @@ WHAT IT DOES
 ------------
 Reads the current ticket's own text (summary, description, comments) and matches it against the
 product areas in data/guides_config_settings.json (the Publish Configuration Manager settings, PID
-com.adobe.fmdita.config.ConfigManager). For every matched area it lists the settings with their
+com.adobe.fmdita.config.ConfigManager, plus settings of other configurations that name their own "pid", such as
+the XML Editor Configuration). For every matched area it lists the settings with their
 Cloud Service and on-premise defaults, the Experience League page when one exists, and any known
 difference between the documentation and the product source.
 
@@ -99,8 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{result['status']}: {result.get('notice') or result.get('reason', '')}")
     for s in result["settings"]:
         defaults = ", ".join(f"{k}={v}" for k, v in s["defaults"].items())
-        print(f"- {s['key']} ({s['label']}); default {defaults}; matched {'; '.join(s['matched_because'])}")
-        print(f"  doc: {s['doc_urls'][0] if s['doc_urls'] else 'not documented on Experience League'}")
+        where = f"; configured in {s['pid']}" if s.get("pid") and s.get("pid") != result.get("pid") else ""
+        print(f"- {s['key']} ({s['label']}); default {defaults}{where}; matched {'; '.join(s['matched_because'])}")
+        doc = s["doc_urls"][0] if s["doc_urls"] else (
+            "on Experience League, no page link recorded" if s.get("documented") else "not documented on Experience League")
+        print(f"  doc: {doc}")
         if s.get("doc_code_conflict"):
             print(f"  note: {s['doc_code_conflict']}")
     return 0

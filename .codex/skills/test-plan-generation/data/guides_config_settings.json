@@ -60,7 +60,8 @@
    "keys": [
     "valid.characters",
     "topic.extension",
-    "topic.templates"
+    "topic.templates",
+    "xmleditor.uniquefilenames"
    ]
   },
   "OUTPUT_GENERATION": {
@@ -366,6 +367,27 @@
    ],
    "keys": [
     "output.notification"
+   ]
+  },
+  "NEW_FILE_CREATION": {
+   "triggers": [
+    "map template*",
+    "topic template*",
+    "bookmap template*",
+    "create topic*",
+    "create map*",
+    "new topic*",
+    "new map*",
+    "duplicate*",
+    "file name*",
+    "filename*",
+    "guid file*",
+    "uuid file*"
+   ],
+   "keys": [
+    "xmleditor.uniquefilenames",
+    "topic.templates",
+    "valid.characters"
    ]
   }
  },
@@ -1909,6 +1931,27 @@
    "doc_urls": [],
    "doc_behavior": "",
    "doc_code_conflict": ""
+  },
+  {
+   "key": "xmleditor.uniquefilenames",
+   "label": "Use UUID based system filenames",
+   "pid": "com.adobe.fmdita.xmleditor.config.XmlEditorConfig",
+   "areas": [
+    "FILE_NAMES_AND_TOPICS",
+    "NEW_FILE_CREATION"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [
+    "true",
+    "false"
+   ],
+   "source_description": "Autofill filenames when creating new files",
+   "documented": true,
+   "doc_urls": [],
+   "doc_behavior": "Experience League (Create topics, Create a map): when automatic file names based on UUID are configured, the Name field is not shown and a UUID-based file name is assigned; otherwise the Name field is shown with a name suggested from the Title. A new topic's topic ID is its file name. Map creation from a map template reads this setting for the new map and the new topics.",
+   "doc_code_conflict": "Experience League says an administrator configures 'automatic file name based on UUID' in the Global or Folder Profile; the product reads 'Use UUID based system filenames' from the XML Editor Configuration (PID com.adobe.fmdita.xmleditor.config.XmlEditorConfig)."
   }
  ]
 }
