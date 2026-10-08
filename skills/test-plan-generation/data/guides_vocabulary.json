@@ -496,7 +496,16 @@
     "Show key with title in the Subject scheme panel",
     "Show subject scheme in the Conditions panel",
     "Hide inline styling",
-    "Hide source view for authors"
+    "Hide source view for authors",
+    "More section",
+    "Reusable content",
+    "Glossary",
+    "Conditions",
+    "Subject scheme",
+    "Snippets",
+    "Templates",
+    "Output templates",
+    "Data sources"
   ],
   "canonical_term_sources": [
     {

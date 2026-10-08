@@ -82,7 +82,8 @@ When finished, write these files:
    Assets View, element, tag, attribute, friendly names (use the friendly name the Editor shows), toggle on
    and toggle off for a switch on screen ("with Enable DITA-OT preprocessing toggled off"). For a Workspace
    settings option name the tab, section and toggle as shown (General tab, Condition, "Highlight conditional
-   text in the Author view").
+   text in the Author view"); a panel shown or hidden from the Panels tab keeps its name there (Reusable
+   content, Output templates, Data sources, Citations).
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

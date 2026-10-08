@@ -153,7 +153,10 @@ keep DITA element names, file extensions and code words for sub-points or the So
 - Name the Editor area where the check happens: left panel, right panel, breadcrumb, editor search bar, or the
   mode (Author, Source, Side-by-side, Preview).
 - For a Workspace settings option, name the tab, the section and the toggle as shown: "with Highlight conditional
-  text in the Author view toggled on (Workspace settings, General tab, Condition)".
+  text in the Author view toggled on (Workspace settings, General tab, Condition)". A panel shown or hidden from
+  the Panels tab is named as listed there (Map, Outline, and in More section: Reusable content, Glossary,
+  Conditions, Subject scheme, Snippets, Templates, Citations, Language variables, Variables, Output templates,
+  Find and replace, Data sources, Review).
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 
