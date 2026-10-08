@@ -127,7 +127,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | General / Metadata / Layout / Security / Print / Advanced tab (of an output preset) | preset section, settings group |
 | Conditional filtering: None / Using DITAVAL / Using condition preset | ditaval filtering, condition filter, profiling |
 | Author view / Source view / Side-by-side / Preview (Editor modes) | WYSIWYG mode, XML mode, raw view, diff mode |
-| left panel (Collections, Explorer, Map, Outline) | navigation sidebar, repository tree, file tree |
+| left panel (Collections, Explorer, Map Panel, Outline Panel, Glossary panel) | navigation sidebar, repository tree, file tree |
+| PDF templates | Native PDF template definitions, template folder |
 | right panel (File properties: General, References, Outputs, Translations) | properties sidebar, inspector, metadata pane |
 | breadcrumb | element path, node path, XPath bar |
 | editor search bar | find widget, search overlay, quick search component |
