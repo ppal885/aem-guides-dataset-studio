@@ -122,6 +122,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | asset state, doc state | asset status, lifecycle status |
 | Tags View / non-tag view | tag display mode, markup view, plain view |
 | new baseline (V2 baseline) / old baseline (V1 baseline) | baseline v2 API, legacy baseline, baseline node |
+| new AEM Sites (Native AEM Sites) / old AEM Site (DITA-OT based) | sites publishing, site output engine, sites v2 |
 
 - Write: "A topic reference added to the DITA map shows in the Map View."
 - Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."
@@ -129,6 +130,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
   "  - the reference is a <topicref> with format=dita".
 - conref, conkeyref, keyref, fmditaTitle and dc:title are everyday QE words: they may stay in the statement.
 - Say which baseline: "new baseline (V2)" or "old baseline (V1)", or both when both are in scope.
+- Say which AEM Sites output: "new AEM Sites" (Native AEM Sites, the same output) or "old AEM Site" (the
+  DITA-OT based one), or both when both are in scope. Never list new AEM Sites and Native AEM Sites as two outputs.
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

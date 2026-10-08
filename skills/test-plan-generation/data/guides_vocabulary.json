@@ -430,7 +430,10 @@
     "non-tag view",
     "V2 Baseline",
     "Old Baseline",
-    "V1 Baseline"
+    "V1 Baseline",
+    "new AEM Sites",
+    "Native AEM Sites",
+    "old AEM Site"
   ],
   "canonical_term_sources": [
     {
@@ -644,6 +647,21 @@
         "Old Baseline"
       ],
       "note": "V1 Baseline and Old Baseline are the same thing; it is a different baseline from the New (V2) Baseline."
+    },
+    {
+      "terms": [
+        "new AEM Sites",
+        "Native AEM Sites"
+      ],
+      "note": "new AEM Sites and Native AEM Sites are the same output - never list them as two outputs."
+    },
+    {
+      "terms": [
+        "old AEM Site",
+        "legacy AEM Site",
+        "DITA-OT based AEM Sites"
+      ],
+      "note": "The old (legacy) AEM Site output is the DITA-OT based one; it is a different output from new AEM Sites."
     }
   ]
 }
