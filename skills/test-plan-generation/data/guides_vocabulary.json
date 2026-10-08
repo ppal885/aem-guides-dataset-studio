@@ -467,7 +467,10 @@
     "Outline Panel",
     "Glossary panel",
     "PDF templates",
-    "Templates panel"
+    "Templates panel",
+    "variables",
+    "language variables",
+    "Snippets Panel"
   ],
   "canonical_term_sources": [
     {
