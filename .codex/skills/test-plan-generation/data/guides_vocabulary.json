@@ -628,7 +628,12 @@
     "All collections",
     "New file",
     "New collection",
-    "Accessed on"
+    "Accessed on",
+    "File type",
+    "File path",
+    "Pin",
+    "Created on",
+    "Owner"
   ],
   "canonical_term_sources": [
     {
