@@ -77,7 +77,7 @@ When finished, write these files:
    output, the output preset tabs (General, Metadata, Layout, Security, Print, Advanced) - name the tab -,
    Using DITAVAL and Using condition preset (Conditional filtering), Author view, Source view, Side-by-side,
    Preview, left panel, right panel (File properties), breadcrumb, editor search bar - name the Editor area -,
-   Outline Panel, Glossary panel, Map Panel, Collections, PDF templates.
+   Outline Panel, Glossary panel, Templates panel, Map Panel, Collections, PDF templates.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
