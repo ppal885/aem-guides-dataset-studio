@@ -20,7 +20,13 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
 - Split when the required behavior or expected outcome differs, not merely because two test cases can fail independently. Different languages, entry points, or surfaces may share one AC when they have the same contract; a different fallback, failure outcome, timing, ordering, or permission rule must stay distinguishable.
 - Do not remove accepted meaning to meet a length or count target. Use short sub-points for equivalent cases, split genuinely different contracts, and preserve every source-clause mapping. The AC count follows the outcomes, not a desired list length.
 - Prefer short words: use, before, after, if, and for.
-- Keep exact product names, UI labels, API paths, configuration keys, enum values, and error codes when they matter.
+- **Plain statement:** the criterion statement says one thing a QE can check, in at most two clauses: what the
+  user does (only when it matters) and what they see. It uses only names shown on screen (screens, buttons,
+  settings as labelled). No colon or semicolon lists, and no internal terms such as rendition, propagation,
+  transitive, payload, async, regression or variant in the statement - say what the user sees instead.
+- Exact technical values - API paths and fields, configuration keys and setting values, enum values, status
+  codes, file names - go in a sub-point of that criterion (or the full test plan), not in the statement.
+  Statement: "An invalid request is rejected as a whole and returns no results." Sub-point: "returns 400".
 - Avoid semicolons, double negatives, parenthetical explanations, and long comma-separated lists.
 - Move setup steps, matrices, implementation details, and background explanations to Test Scenarios or Open Questions.
 - A code change can reveal an extra behavior, such as a new fallback or error response, but it does not prove that product scope approved that behavior. Keep it Proposed and ask the scope question unless Jira, accepted UAC, or an explicit product decision approves it.
