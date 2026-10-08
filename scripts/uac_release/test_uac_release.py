@@ -2177,6 +2177,7 @@ class DeliveryCleanupTests(unittest.TestCase):
     def test_prompt_asks_for_plain_statements_with_technical_values_in_sub_points(self) -> None:
         self.assertIn("in at most two clauses, using only names shown on screen", runner.PROMPT)
         self.assertIn("status codes, file names - go in a sub-point, never in the statement", runner.PROMPT)
+        self.assertIn("Shortening never merges, drops or renames a named product item", runner.PROMPT)
 
     def test_prompt_asks_for_attachment_facts_and_an_observable_result(self) -> None:
         self.assertIn('"facts"', runner.PROMPT)
