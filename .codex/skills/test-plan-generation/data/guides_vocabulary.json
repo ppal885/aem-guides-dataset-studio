@@ -548,7 +548,27 @@
     "Merge",
     "check out",
     "check in",
-    "Repository Search"
+    "Repository Search",
+    "folder options menu",
+    "file options menu",
+    "New",
+    "Upload assets",
+    "Refresh",
+    "Collapse",
+    "Find files in folder",
+    "Add to collections",
+    "Reprocess asset(s)",
+    "Reprocess asset",
+    "View in Assets UI",
+    "Edit",
+    "Edit in Oxygen",
+    "Unlock",
+    "Duplicate",
+    "Move to",
+    "Rename",
+    "Generate",
+    "Map",
+    "Folder"
   ],
   "canonical_term_sources": [
     {

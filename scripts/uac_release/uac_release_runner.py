@@ -92,7 +92,9 @@ When finished, write these files:
    references) and "Outgoing links" (forward references). Top toolbar (Menu, Insert image, Multimedia), ellipses
    menu (Cross-reference, Reusable content, Symbol, Snippets, Keyword), Save as new version dialog (Last
    Version, Comments for new version, Version labels), Menu dropdown (Cut, Copy, Delete, Version label, Merge),
-   check out, check in, Repository Search.
+   check out, check in, Repository Search, the Explorer folder options menu and file options menu (Upload assets,
+   Find files in folder, Reprocess asset(s), View in Assets UI, Edit in Oxygen, Unlock, Duplicate, Move to,
+   Rename, Generate) - name the menu and the option.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

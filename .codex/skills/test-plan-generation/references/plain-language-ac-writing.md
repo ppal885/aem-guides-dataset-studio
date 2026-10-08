@@ -139,6 +139,9 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Menu dropdown (Cut, Copy, Delete, Version label, Merge) | file actions list, editor main menu |
 | check out / check in | acquire lock, release lock, lock owner change |
 | Repository Search | DAM query, asset search API, repository lookup |
+| Explorer folder options menu (New, Upload assets, Refresh, Collapse, Find files in folder, Add to collections, Reprocess asset(s), View in Assets UI) | folder actions, tree node menu |
+| Explorer file options menu (Edit, Edit in Oxygen, Unlock, Preview, Duplicate, Move to, Rename, Delete, Generate, Add to, Copy, Reprocess asset, View in Assets UI, Properties) | file actions, asset node menu |
+| Explorer + menu (Topic, Map, Folder) | create-new dropdown |
 | Single Topic Publishing (STP) | topic-level publish, per-topic generation |
 | schematron file(s) | .sch rules file, validation rule set |
 | toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |
@@ -168,6 +171,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
   Find and replace, Data sources, Review).
 - A metadata property is named by its Label from the Metadata tab of Workspace settings (Title, Document State,
   Tags); its Metadata Path goes in a sub-point ("  - metadata/cq:tags").
+- Name the menu and the option as shown: "Duplicate from the file options menu in Explorer", "Reprocess asset(s)
+  from the folder options menu".
 - In the References section of the right panel, use the screen labels: "Used in" (backward references) and
   "Outgoing links" (forward references); an empty list shows "No used references found".
 - Validation tab options are named as shown: "Run validation check before saving the file", "Allow all users to
