@@ -617,7 +617,18 @@
     "File (Asset) properties",
     "Save changes dialog",
     "Don't Save",
-    "UUID Migration"
+    "UUID Migration",
+    "Home page",
+    "Overview",
+    "Repository",
+    "Map collections",
+    "Bulk publish",
+    "Publish queue",
+    "Recent files",
+    "All collections",
+    "New file",
+    "New collection",
+    "Accessed on"
   ],
   "canonical_term_sources": [
     {

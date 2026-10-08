@@ -119,7 +119,9 @@ When finished, write these files:
    criterion only when the ticket itself asks for documentation.
    Under a criterion, list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
-   or fewer); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
+   or fewer), written as a short sentence that says what to set up or try ("A bookmap that has the same PDF
+   two times: once as a chapter and once in the backmatter"), never a list of nouns ("PDF chapter and
+   backmatter topic reference"); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
    the test plan's "Test data to prepare", never in a case line. A fact the ticket or a developer comment already decided (a feature
    flag, a preset argument, a default, a parity target such as "same as AEM Sites") is written as a
    criterion, not a TBD. When the ticket or a product decision sets the scope, add a "Scope: ..." line

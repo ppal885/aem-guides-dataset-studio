@@ -85,6 +85,18 @@ Before accepting an AC, ask:
 - Avoid: "Verify that output generation is blocked while a deactivation of the destination path is in process." (code/log words: output generation, deactivation, destination path)
 - Keep code and log names (deactivate, replication, class names, line numbers) on the Source line only.
 
+## Write each case as a short sentence
+
+A case (a sub-point under a criterion) tells QE what to set up or try. Write it as a short sentence a QE can
+act on without opening the ticket, not as a list of nouns.
+
+- Write: "A bookmap that has the same PDF two times: once as a chapter and once in the backmatter."
+- Avoid: "PDF chapter and backmatter topic reference."
+- Write: "Try it with Enable DITA-OT preprocessing toggled on, and again toggled off (General tab)."
+- Avoid: "DITA-OT preprocessing enabled / disabled."
+- Write: "A PDF added without format=pdf, and a PDF added with format=pdf."
+- Avoid: "Missing format attribute or explicit format=pdf."
+
 ## Use the everyday AEM Guides words
 
 QE talk about content in the words they use every day in AEM Guides. Use those words in the AC statement and
@@ -144,6 +156,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Explorer + menu (Topic, Map, Folder) | create-new dropdown |
 | element context menu in Author view (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate IDs, Locate in explorer, View in assets UI) | node operations, wrap/unwrap XML, auto-ID generation |
 | Map Panel selection bar (N selected; Save as new version and unlock, Properties) | bulk selection toolbar, multi-select actions |
+| Home page (Overview, Repository, Map collections, Bulk publish, Publish queue, User preferences; Recent files, All collections, New file, New collection, Global Profile selector) | landing dashboard, start page |
 | app switcher (Home, Editor, Map console) | mode dropdown, app menu, workspace switch |
 | Map console left panel (Output presets, Reports, Baseline, Condition presets, Translation) | map dashboard sidebar, publishing tabs |
 | Map console map dropdown (Open in editor, Select another map) | map picker, switch context |
