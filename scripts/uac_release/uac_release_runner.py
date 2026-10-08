@@ -97,7 +97,7 @@ When finished, write these files:
    Rename, Generate) - name the menu and the option. Right panel Content properties (Type, Attributes); options
    menu at the top right (Assets, Editor settings, Workspace settings). Element context menu in Author view
    (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate
-   IDs); Map Panel selection bar (Save as new version and unlock).
+   IDs); Map Panel selection bar (Save as new version and unlock); Collections panel (Lightbox).
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

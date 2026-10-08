@@ -127,7 +127,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | General / Metadata / Layout / Security / Print / Advanced tab (of an output preset) | preset section, settings group |
 | Conditional filtering: None / Using DITAVAL / Using condition preset | ditaval filtering, condition filter, profiling |
 | Author view / Source view / Side-by-side / Preview (Editor modes) | WYSIWYG mode, XML mode, raw view, diff mode |
-| left panel (Collections, Explorer, Map Panel, Outline Panel, Glossary panel, Templates panel, Snippets Panel, Subject Scheme Panel, Find and Replace) | navigation sidebar, repository tree, file tree |
+| left panel (Collections panel with Lightbox and user collections, Explorer, Map Panel, Outline Panel, Glossary panel, Templates panel, Snippets Panel, Subject Scheme Panel, Find and Replace) | navigation sidebar, repository tree, file tree |
 | PDF templates | Native PDF template definitions, template folder |
 | variables, language variables | placeholder values, i18n strings, localized labels |
 | element, tag, attribute, friendly names | XML node, DOM node, node property, element label mapping |
