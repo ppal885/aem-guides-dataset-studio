@@ -118,12 +118,15 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Download / Download Map | export, map export, download as ZIP |
 | output presets, PDF preset (Native PDF or DITA-OT) | publish configuration, transformation profile, PDF generation settings |
 | Workfront | project management integration, work item system |
+| fmditaTitle, dc:title | title metadata property, jcr title field |
+| asset state, doc state | asset status, lifecycle status |
+| Tags View / non-tag view | tag display mode, markup view, plain view |
 
 - Write: "A topic reference added to the DITA map shows in the Map View."
 - Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."
 - When one technical value must be checked (an element name, a file extension, a property), put it in a sub-point:
   "  - the reference is a <topicref> with format=dita".
-- conref, conkeyref and keyref are everyday QE words: they may stay in the statement.
+- conref, conkeyref, keyref, fmditaTitle and dc:title are everyday QE words: they may stay in the statement.
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

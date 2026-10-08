@@ -423,7 +423,11 @@
     "DITA-OT PDF preset",
     "Workfront",
     "conref",
-    "keyref"
+    "keyref",
+    "fmditaTitle",
+    "dc:title",
+    "asset state",
+    "non-tag view"
   ],
   "canonical_term_sources": [
     {
@@ -623,6 +627,13 @@
         "Document State"
       ],
       "note": "QE say 'doc state' for the Document State of a topic or map; same thing."
+    },
+    {
+      "terms": [
+        "Tags View",
+        "Tag View"
+      ],
+      "note": "QE say Tag View for the Tags View of the Editor; the other mode is the non-tag view."
     }
   ]
 }

@@ -71,7 +71,8 @@ When finished, write these files:
    dashboard, publishing, review, postprocessing, DAM Update Asset workflow, Cloud (AEMaaCS), doc state,
    Global Profile, XML Editor Configuration, ui config, Repository View, Layout View, Preview, Side By Side
    View, Content Fragment, Download, Download Map, forward reference, backward reference, output presets,
-   PDF preset (say Native PDF or DITA-OT), Workfront, conref, conkeyref, keyref.
+   PDF preset (say Native PDF or DITA-OT), Workfront, conref, conkeyref, keyref, fmditaTitle, dc:title,
+   asset state, Tags View and non-tag view.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

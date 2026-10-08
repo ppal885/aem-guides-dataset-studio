@@ -609,6 +609,7 @@ _CODE_FILELINE_RE = re.compile(r"\b[\w./-]+:\d+\b")
 _CODE_ALLOWLIST = {
     "aemaacs", "javascript", "typescript", "github", "gitlab", "powershell",
     "nodejs", "jira", "devops", "ios", "macos", "openapi", "mathml", "svg",
+    "fmditatitle",  # the AEM Guides title metadata property QE name every day
 }
 
 
