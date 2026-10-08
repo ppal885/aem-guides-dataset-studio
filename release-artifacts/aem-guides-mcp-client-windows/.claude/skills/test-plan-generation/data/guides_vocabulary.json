@@ -616,7 +616,8 @@
     "Include track changes",
     "File (Asset) properties",
     "Save changes dialog",
-    "Don't Save"
+    "Don't Save",
+    "UUID Migration"
   ],
   "canonical_term_sources": [
     {

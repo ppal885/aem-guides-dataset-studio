@@ -200,6 +200,9 @@ keep DITA element names, file extensions and code words for sub-points or the So
   (pixels per inch), Show Watermark, Enable MathML equations, Create interactive PDF form, Include track changes,
   Retain temporary files; then PDF conformance and File (Asset) properties (not the right panel's File properties).
 - Leaving a preset with unsaved edits shows the Save changes dialog (Don't Save, Cancel, Save).
+- Repositories are UUID now. Non-UUID appears only in UUID Migration (non-UUID to UUID): name it that way when the
+  ticket is about the migration, and do not add "UUID and non-UUID repositories" as a case otherwise (unless the
+  customer's environment is stated as non-UUID).
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

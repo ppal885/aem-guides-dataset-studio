@@ -103,6 +103,8 @@ When finished, write these files:
    that preset type (Custom: "DITA-OT command line arguments"; Native PDF: "Additional DITA-OT command line
    arguments"). Native PDF Advanced tab toggles and File (Asset) properties are named as shown; the Save
    changes dialog has Don't Save, Cancel, Save.
+   Repositories are UUID; say non-UUID only for UUID Migration (non-UUID to UUID) or a customer environment
+   stated as non-UUID.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
