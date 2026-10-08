@@ -67,7 +67,9 @@ When finished, write these files:
    paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
    (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
-   different); shorten by moving detail to sub-points.
+   different); shorten by moving detail to sub-points. Before rewriting a criterion, re-read the ticket's
+   description, comments and attachments: a comment that names the screen decides which screen it is about.
+   A documentation answer marked not verified, or one citing unrelated pages, can only be a TBD.
    Under a criterion, list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
    or fewer); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
