@@ -75,7 +75,8 @@ When finished, write these files:
    asset state, Tags View and non-tag view, new baseline (V2) and old baseline (V1) - say which baseline,
    new AEM Sites (the same as Native AEM Sites) and old AEM Site (DITA-OT based) - say which AEM Sites output,
    output, the output preset tabs (General, Metadata, Layout, Security, Print, Advanced) - name the tab -,
-   Using DITAVAL and Using condition preset (Conditional filtering).
+   Using DITAVAL and Using condition preset (Conditional filtering), Author view, Source view, Side-by-side,
+   Preview, left panel, right panel (File properties), breadcrumb, editor search bar - name the Editor area.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

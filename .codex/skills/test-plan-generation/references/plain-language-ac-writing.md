@@ -126,6 +126,11 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | output | generated artifact, rendition, publish result |
 | General / Metadata / Layout / Security / Print / Advanced tab (of an output preset) | preset section, settings group |
 | Conditional filtering: None / Using DITAVAL / Using condition preset | ditaval filtering, condition filter, profiling |
+| Author view / Source view / Side-by-side / Preview (Editor modes) | WYSIWYG mode, XML mode, raw view, diff mode |
+| left panel (Collections, Explorer, Map, Outline) | navigation sidebar, repository tree, file tree |
+| right panel (File properties: General, References, Outputs, Translations) | properties sidebar, inspector, metadata pane |
+| breadcrumb | element path, node path, XPath bar |
+| editor search bar | find widget, search overlay, quick search component |
 
 - Write: "A topic reference added to the DITA map shows in the Map View."
 - Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."
@@ -137,6 +142,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
   DITA-OT based one), or both when both are in scope. Never list new AEM Sites and Native AEM Sites as two outputs.
 - Name the output preset tab where the setting lives, as it is shown on screen: "the Layout tab of the Native PDF
   preset", "Using DITAVAL in Conditional filtering on the General tab".
+- Name the Editor area where the check happens: left panel, right panel, breadcrumb, editor search bar, or the
+  mode (Author, Source, Side-by-side, Preview).
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 
