@@ -505,7 +505,12 @@
     "Snippets",
     "Templates",
     "Output templates",
-    "Data sources"
+    "Data sources",
+    "Metadata Path",
+    "Label",
+    "Title",
+    "Tags",
+    "cq:tags"
   ],
   "canonical_term_sources": [
     {

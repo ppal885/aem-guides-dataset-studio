@@ -157,6 +157,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
   the Panels tab is named as listed there (Map, Outline, and in More section: Reusable content, Glossary,
   Conditions, Subject scheme, Snippets, Templates, Citations, Language variables, Variables, Output templates,
   Find and replace, Data sources, Review).
+- A metadata property is named by its Label from the Metadata tab of Workspace settings (Title, Document State,
+  Tags); its Metadata Path goes in a sub-point ("  - metadata/cq:tags").
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 
