@@ -763,7 +763,9 @@
     "machine translation",
     "In sync",
     "Out of sync",
-    "Missing copy"
+    "Missing copy",
+    "language copies",
+    "language copy"
   ],
   "canonical_term_sources": [
     {
