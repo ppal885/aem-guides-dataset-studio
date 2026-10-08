@@ -66,6 +66,10 @@ When finished, write these files:
    a QE can check, in at most two clauses, using only names shown on screen. Exact technical values - API
    paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
    (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
+   Use the everyday AEM Guides words QE use: topic reference, map reference, direct reference, indirect
+   reference, DITA map, bookmap, topic, DITA files, non-DITA files, images, asset update, Map console, Map
+   dashboard, publishing, review. A DITA element name (topicref, mapref, reltable), a file extension or an
+   XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
    different); shorten by moving detail to sub-points. Before rewriting a criterion, re-read the ticket's
    description, comments and attachments: a comment that names the screen decides which screen it is about.

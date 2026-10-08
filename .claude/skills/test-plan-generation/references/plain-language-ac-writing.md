@@ -85,6 +85,31 @@ Before accepting an AC, ask:
 - Avoid: "Verify that output generation is blocked while a deactivation of the destination path is in process." (code/log words: output generation, deactivation, destination path)
 - Keep code and log names (deactivate, replication, class names, line numbers) on the Source line only.
 
+## Use the everyday AEM Guides words
+
+QE talk about content in the words they use every day in AEM Guides. Use those words in the AC statement and
+keep DITA element names, file extensions and code words for sub-points or the Source line.
+
+| Write (everyday word) | Instead of |
+|---|---|
+| topic reference | topicref, `<topicref>` element, href to a topic |
+| map reference | mapref, submap reference, `<mapref>` element |
+| direct reference / indirect reference | outgoing link, reltable link (an indirect reference is a link through a relationship table) |
+| DITA map, bookmap | ditamap file, map XML, bookmap XML |
+| topic | DITA topic file, topic XML, .dita file |
+| DITA files / non-DITA files | XML assets, binary assets, non-XML assets |
+| images | graphic assets, image binaries, image renditions |
+| asset update | asset modification, asset mutation, asset overwrite |
+| Map console / Map dashboard | Advanced Map Editor, map management page |
+| publishing / output generation | transformation run, publish job, generation request |
+| review | review workflow, review task process |
+
+- Write: "A topic reference added to the DITA map shows in the Map View."
+- Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."
+- When one technical value must be checked (an element name, a file extension, a property), put it in a sub-point:
+  "  - the reference is a <topicref> with format=dita".
+- Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
+
 ## Group outcomes without hiding coverage
 
 Before rewriting, list each existing outcome and its named cases. Group by the required behavior and result, not by repeated words or a common product area. Keep an internal old-to-new mapping so a merged sentence cannot silently remove scope.

@@ -133,6 +133,66 @@
       "source": "human-correction",
       "source_context": "Human terminology correction in an AEM Sites publishing UAC review: live site is not AEM Guides vocabulary",
       "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "everyday-topic-reference",
+      "pattern": "<\\s*topicref\\b|\\btopicrefs?\\b",
+      "wrong": "topicref",
+      "correct": "topic reference",
+      "message": "Say 'topic reference' in the AC statement; keep the <topicref> element name for a sub-point.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-08: use everyday AEM Guides words in ACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "everyday-map-reference",
+      "pattern": "<\\s*mapref\\b|\\bmaprefs?\\b",
+      "wrong": "mapref",
+      "correct": "map reference",
+      "message": "Say 'map reference' in the AC statement; keep the <mapref> element name for a sub-point.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-08: use everyday AEM Guides words in ACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "everyday-indirect-reference",
+      "pattern": "\\breltable\\s+(link|reference)s?\\b",
+      "wrong": "reltable link",
+      "correct": "indirect reference",
+      "message": "A link through a relationship table is an 'indirect reference' in AEM Guides (Baseline Panel, reports).",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-08: use everyday AEM Guides words in ACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "everyday-non-dita-files",
+      "pattern": "\\b(binary|non[-\\s]?xml)\\s+(assets?|files?)\\b",
+      "wrong": "binary / non-XML asset",
+      "correct": "non-DITA files",
+      "message": "Say 'non-DITA files' (or 'images' when they are images).",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-08: use everyday AEM Guides words in ACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "everyday-asset-update",
+      "pattern": "\\basset\\s+(modification|mutation)s?\\b",
+      "wrong": "asset modification",
+      "correct": "asset update",
+      "message": "Say 'asset update'.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-08: use everyday AEM Guides words in ACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "everyday-images",
+      "pattern": "\\b(graphic\\s+assets?|image\\s+binar(y|ies))\\b",
+      "wrong": "graphic asset / image binary",
+      "correct": "images",
+      "message": "Say 'images'.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-08: use everyday AEM Guides words in ACs",
+      "governance": "HUMAN_APPROVED"
     }
   ],
   "canonical_terms": [
@@ -331,7 +391,20 @@
     "Quick Publish",
     "Manage Publication",
     "Unpublish",
-    "publish environment"
+    "publish environment",
+    "topic reference",
+    "map reference",
+    "direct reference",
+    "indirect reference",
+    "DITA map",
+    "bookmap",
+    "topic",
+    "DITA files",
+    "non-DITA files",
+    "images",
+    "asset update",
+    "publishing",
+    "review"
   ],
   "canonical_term_sources": [
     {
