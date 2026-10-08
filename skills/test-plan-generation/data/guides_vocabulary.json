@@ -568,7 +568,26 @@
     "Rename",
     "Generate",
     "Map",
-    "Folder"
+    "Folder",
+    "Content properties",
+    "Type",
+    "Attributes",
+    "No attribute added",
+    "Editor settings",
+    "Assets",
+    "options menu",
+    "element context menu",
+    "Rename element",
+    "Surround with element",
+    "Unwrap element",
+    "Insert before",
+    "Insert after",
+    "Create snippet",
+    "Generate IDs",
+    "Locate in explorer",
+    "No map available",
+    "Save as new version and unlock",
+    "selection bar"
   ],
   "canonical_term_sources": [
     {

@@ -142,11 +142,14 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Explorer folder options menu (New, Upload assets, Refresh, Collapse, Find files in folder, Add to collections, Reprocess asset(s), View in Assets UI) | folder actions, tree node menu |
 | Explorer file options menu (Edit, Edit in Oxygen, Unlock, Preview, Duplicate, Move to, Rename, Delete, Generate, Add to, Copy, Reprocess asset, View in Assets UI, Properties) | file actions, asset node menu |
 | Explorer + menu (Topic, Map, Folder) | create-new dropdown |
+| element context menu in Author view (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate IDs, Locate in explorer, View in assets UI) | node operations, wrap/unwrap XML, auto-ID generation |
+| Map Panel selection bar (N selected; Save as new version and unlock, Properties) | bulk selection toolbar, multi-select actions |
 | Single Topic Publishing (STP) | topic-level publish, per-topic generation |
 | schematron file(s) | .sch rules file, validation rule set |
 | toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |
 | Workspace settings tabs: General, Panels, Elements list, Attributes list, Colors, Font list, Publish profiles, Validation, Display attributes, Translation, Metadata | user preference keys, editor settings JSON |
-| right panel (File properties: General, References, Outputs, Translations) | properties sidebar, inspector, metadata pane |
+| right panel (File properties: General, References, Outputs, Translations; Content properties: Type, Attributes) | properties sidebar, inspector, metadata pane, element inspector |
+| options menu at the top right (Assets, Editor settings, Workspace settings) | app menu, settings overflow |
 | breadcrumb | element path, node path, XPath bar |
 | editor search bar | find widget, search overlay, quick search component |
 
