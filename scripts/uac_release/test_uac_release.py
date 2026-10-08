@@ -2174,6 +2174,10 @@ class DeliveryCleanupTests(unittest.TestCase):
             (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(COVERAGE), encoding="utf-8")
             self.assertEqual(runner.attachment_fact_notes(ticket, SOURCE, "uac.bot"), [])
 
+    def test_prompt_asks_for_plain_statements_with_technical_values_in_sub_points(self) -> None:
+        self.assertIn("in at most two clauses, using only names shown on screen", runner.PROMPT)
+        self.assertIn("status codes, file names - go in a sub-point, never in the statement", runner.PROMPT)
+
     def test_prompt_asks_for_attachment_facts_and_an_observable_result(self) -> None:
         self.assertIn('"facts"', runner.PROMPT)
         self.assertIn("every two seconds", runner.PROMPT)

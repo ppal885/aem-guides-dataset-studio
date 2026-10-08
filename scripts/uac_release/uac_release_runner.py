@@ -62,8 +62,11 @@ When finished, write these files:
    30 words: name the ticket, comment, attachment, design document or documentation page title, or the fix
    pull request. Never a clone revision or commit hash, a file path, or a class, method or test name: those
    go in the test plan (the runner removes them from Source lines).
-   State each criterion as the expected outcome in plain words (no "Verify that" prefix is needed), and
-   under a criterion list up to five short cases of the same outcome as indented "  - ..." lines when it
+   State each criterion as the expected outcome in plain words (no "Verify that" prefix is needed): one thing
+   a QE can check, in at most two clauses, using only names shown on screen. Exact technical values - API
+   paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
+   (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
+   Under a criterion, list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
    or fewer); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
    the test plan's "Test data to prepare", never in a case line. A fact the ticket or a developer comment already decided (a feature
