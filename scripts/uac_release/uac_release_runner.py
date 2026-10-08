@@ -99,7 +99,7 @@ When finished, write these files:
    (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate
    IDs); Map Panel selection bar (Save as new version and unlock); Collections panel (Lightbox); app switcher
    (Home, Editor, Map console); Map console left panel (Output presets, Reports, Baseline, Condition presets,
-   Translation); New output preset Type (AEM Sites, PDF, Knowledge Base, HTML5, JSON, Custom, SCORM).
+   Translation); Map console map dropdown (Open in editor, Select another map); New output preset Type (AEM Sites, PDF, Knowledge Base, HTML5, JSON, Custom, SCORM).
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

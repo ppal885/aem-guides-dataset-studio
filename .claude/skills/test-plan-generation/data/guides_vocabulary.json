@@ -600,7 +600,9 @@
     "Custom",
     "SCORM",
     "PDF",
-    "You have no output preset selected"
+    "You have no output preset selected",
+    "Open in editor",
+    "Select another map"
   ],
   "canonical_term_sources": [
     {

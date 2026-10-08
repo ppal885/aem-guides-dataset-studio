@@ -146,6 +146,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Map Panel selection bar (N selected; Save as new version and unlock, Properties) | bulk selection toolbar, multi-select actions |
 | app switcher (Home, Editor, Map console) | mode dropdown, app menu, workspace switch |
 | Map console left panel (Output presets, Reports, Baseline, Condition presets, Translation) | map dashboard sidebar, publishing tabs |
+| Map console map dropdown (Open in editor, Select another map) | map picker, switch context |
 | New output preset dialog, Type: AEM Sites, PDF, Knowledge Base, HTML5, JSON, Custom, SCORM | preset type enum, output format option |
 | Single Topic Publishing (STP) | topic-level publish, per-topic generation |
 | schematron file(s) | .sch rules file, validation rule set |
