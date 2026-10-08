@@ -190,6 +190,10 @@ keep DITA element names, file extensions and code words for sub-points or the So
 - In the New output preset dialog the Type is named as listed (AEM Sites, PDF, Knowledge Base, HTML5, JSON,
   Custom, SCORM). A preset of Type PDF is a Native PDF or DITA-OT PDF preset depending on its Generate PDF Using
   setting; say which.
+- The same setting can have a different label per preset type: "DITA-OT command line arguments" in a Custom
+  preset, "Additional DITA-OT command line arguments" in a Native PDF preset. Use the label of that preset type.
+  A Custom preset has the General and Advanced tabs (Transformation name, File name, Output path). The Post
+  generation workflow dropdown lists AEM workflow models by title; name the model as shown.
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 
