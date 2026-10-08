@@ -55,6 +55,12 @@ RESEARCH_REPOSITORY_ENV_VARS = (
     "XML_EDITOR_REPO_PATH",
     "GUIDES_UI_TESTS_REPO_PATH",
     "AEM_STUDIO_REPO",
+    # Publishing and integration-test code: Native PDF, AEM Sites and other
+    # output tickets need their own engine code, which lives outside Starling.
+    "DXML_IT_TESTS_REPO_PATH",
+    "PUBLISH_CORE_REPO_PATH",
+    "GENERATOR_REPO_PATH",
+    "GUIDES_PUBLISHER_REPO_PATH",
 )
 
 _ROLE_CONTRACT_FILES = {
