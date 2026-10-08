@@ -90,7 +90,8 @@ When finished, write these files:
    project cleanup after completion" (None, Disable, Delete). Context menu, Copy UUID, Copy path, Locate in,
    schematron file(s), Single Topic Publishing (STP). In the References section use "Used in" (backward
    references) and "Outgoing links" (forward references). Top toolbar (Menu, Insert image, Multimedia), ellipses
-   menu (Cross-reference, Reusable content, Symbol, Snippets, Keyword).
+   menu (Cross-reference, Reusable content, Symbol, Snippets, Keyword), Save as new version dialog (Last
+   Version, Comments for new version, Version labels).
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

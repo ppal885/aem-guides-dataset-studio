@@ -135,6 +135,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | context menu (Save as new version, Copy > Copy UUID / Copy path, Locate in, Add to, Properties, Close) | right-click options, overflow actions |
 | top toolbar (Menu, Insert element, Insert image, Multimedia, Version, Lock) | editor header bar, action bar |
 | ellipses menu (Cross-reference, Reusable content, Symbol, Snippets, Keyword) | more-options overflow, kebab menu |
+| Save as new version dialog (Last Version, Comments for new version, Version labels) | checkin dialog, version commit, version tag field |
 | Single Topic Publishing (STP) | topic-level publish, per-topic generation |
 | schematron file(s) | .sch rules file, validation rule set |
 | toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |

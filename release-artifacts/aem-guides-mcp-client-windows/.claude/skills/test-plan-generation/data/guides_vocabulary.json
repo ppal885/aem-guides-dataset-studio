@@ -537,7 +537,11 @@
     "Insert image",
     "Cross-reference",
     "Symbol",
-    "Keyword"
+    "Keyword",
+    "Save as new version dialog",
+    "Last Version",
+    "Comments for new version",
+    "Version labels"
   ],
   "canonical_term_sources": [
     {
