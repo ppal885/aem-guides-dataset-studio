@@ -827,7 +827,10 @@ Out of scope:                                          (optional, when a decisio
   way 15% of human UACs nest them. A different outcome is a different criterion; at most five sub-points.
   Each sub-point is a short case a QE understands without opening anything: the condition that varies, in
   plain words and about twelve words or fewer ("One selected topic, and several", "A map that also has a
-  baseline"). Test data is not a case: the customer's topic and file names, preset and DITAVAL names, and
+  baseline"). Write a case as a short sentence that says what to set up or try ("A bookmap that has the
+  same PDF two times: once as a chapter and once in the backmatter", "Try it with Enable DITA-OT
+  preprocessing toggled off"), never a list of nouns ("PDF chapter and backmatter topic reference").
+  Test data is not a case: the customer's topic and file names, preset and DITAVAL names, and
   local sample titles go in the test plan's "Test data to prepare", never in a sub-point. A setup that holds
   for every case belongs in the criterion sentence. Never leave an empty sub-point.
 - Scope and Out of scope: add the `Scope:` line and the `Out of scope:` list only when the ticket or a

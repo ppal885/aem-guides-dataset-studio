@@ -58,6 +58,8 @@ When finished, write these files:
    criterion with the same outcome - and its Source line names the documentation page, code or ticket.
    Research checks that do not matter enough go to the full test plan (file 2), not to the UAC. There is no
    "Suggested checks" section. Keep at most ten criteria; an open product decision stays a TBD.
+   When the ticket's scenario is a bookmap, add a "still works as before" check for a DITA map with
+   the same content, and the reverse.
    Keep the criteria (with sub-points, Scope and Out of scope) within 350 words and each Source line within
    30 words: name the ticket, comment, attachment, design document or documentation page title, or the fix
    pull request. Never a clone revision or commit hash, a file path, or a class, method or test name: those
@@ -119,7 +121,9 @@ When finished, write these files:
    criterion only when the ticket itself asks for documentation.
    Under a criterion, list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
-   or fewer); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
+   or fewer), written as a short sentence that says what to set up or try ("A bookmap that has the same PDF
+   two times: once as a chapter and once in the backmatter"), never a list of nouns ("PDF chapter and
+   backmatter topic reference"); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
    the test plan's "Test data to prepare", never in a case line. A fact the ticket or a developer comment already decided (a feature
    flag, a preset argument, a default, a parity target such as "same as AEM Sites") is written as a
    criterion, not a TBD. When the ticket or a product decision sets the scope, add a "Scope: ..." line
