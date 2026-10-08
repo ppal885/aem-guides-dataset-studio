@@ -96,6 +96,8 @@ act on without opening the ticket, not as a list of nouns.
 - Avoid: "DITA-OT preprocessing enabled / disabled."
 - Write: "A PDF added without format=pdf, and a PDF added with format=pdf."
 - Avoid: "Missing format attribute or explicit format=pdf."
+- No filler words: write "a DITA map", not "an ordinary DITA map (not a bookmap)". The product name already says
+  what it is, and a case already covered elsewhere needs no "(not a ...)" reminder.
 
 ## Use the everyday AEM Guides words
 
