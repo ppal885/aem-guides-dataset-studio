@@ -161,6 +161,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Home page (Overview, Repository, Map collections, Bulk publish, Publish queue, User preferences; Recent files with columns Title, File name, File type, File path, Accessed on and row actions Edit, Pin, more options; All collections, New file, New collection, Global Profile selector) | landing dashboard, start page, recents grid |
 | New file menu (Topic, Map); New collection dialog (Title, Description, Public, Create) | create dropdown, collection form |
 | User preferences (General tab: Folder profile, Base path, Root map, Maximum number of recent files, Opening preferences for Maps; Appearance; Editor settings) | user settings, profile config |
+| Global Profile / custom Folder Profile; custom doc state (a Document State an admin added) | profile node, custom workflow state |
+| User preferences Appearance tab (Application theme, Source view theme, Editor files display configuration: Title or File name) | UI theme setting, label mode |
 | app switcher (Home, Editor, Map console) | mode dropdown, app menu, workspace switch |
 | Map console left panel (Output presets, Reports, Baseline, Condition presets, Translation) | map dashboard sidebar, publishing tabs |
 | Map console map dropdown (Open in editor, Select another map) | map picker, switch context |
