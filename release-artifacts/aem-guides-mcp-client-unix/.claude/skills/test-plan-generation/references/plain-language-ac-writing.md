@@ -144,6 +144,10 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Explorer + menu (Topic, Map, Folder) | create-new dropdown |
 | element context menu in Author view (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate IDs, Locate in explorer, View in assets UI) | node operations, wrap/unwrap XML, auto-ID generation |
 | Map Panel selection bar (N selected; Save as new version and unlock, Properties) | bulk selection toolbar, multi-select actions |
+| app switcher (Home, Editor, Map console) | mode dropdown, app menu, workspace switch |
+| Map console left panel (Output presets, Reports, Baseline, Condition presets, Translation) | map dashboard sidebar, publishing tabs |
+| Map console map dropdown (Open in editor, Select another map) | map picker, switch context |
+| New output preset dialog, Type: AEM Sites, PDF, Knowledge Base, HTML5, JSON, Custom, SCORM | preset type enum, output format option |
 | Single Topic Publishing (STP) | topic-level publish, per-topic generation |
 | schematron file(s) | .sch rules file, validation rule set |
 | toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |
@@ -183,6 +187,22 @@ keep DITA element names, file extensions and code words for sub-points or the So
 - Translation tab labels are named as shown: Language groups (Name, Languages, Add), Additional settings,
   "Propagate source version labels to the target version", and "Translation project cleanup after completion"
   with None, Disable or Delete.
+- In the New output preset dialog the Type is named as listed (AEM Sites, PDF, Knowledge Base, HTML5, JSON,
+  Custom, SCORM). A preset of Type PDF is a Native PDF or DITA-OT PDF preset depending on its Generate PDF Using
+  setting; say which.
+- The same setting can have a different label per preset type: "DITA-OT command line arguments" in a Custom
+  preset, "Additional DITA-OT command line arguments" in a Native PDF preset. Use the label of that preset type.
+  A Custom preset has the General and Advanced tabs (Transformation name, File name, Output path). The Post
+  generation workflow dropdown lists AEM workflow models by title; name the model as shown.
+- Native PDF preset Advanced tab toggles, named as shown: Create accessible (tagged) PDF, Merge PDFs included in
+  the TOC, Embed used fonts, Use automatic hyphenation, Enable JavaScript, Embed multimedia files, Use full
+  compression to optimize the PDF size, Use image compression to optimize the PDF size, Use custom resolution
+  (pixels per inch), Show Watermark, Enable MathML equations, Create interactive PDF form, Include track changes,
+  Retain temporary files; then PDF conformance and File (Asset) properties (not the right panel's File properties).
+- Leaving a preset with unsaved edits shows the Save changes dialog (Don't Save, Cancel, Save).
+- Repositories are UUID now. Non-UUID appears only in UUID Migration (non-UUID to UUID): name it that way when the
+  ticket is about the migration, and do not add "UUID and non-UUID repositories" as a case otherwise (unless the
+  customer's environment is stated as non-UUID).
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

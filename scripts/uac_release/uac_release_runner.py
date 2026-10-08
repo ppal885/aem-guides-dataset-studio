@@ -97,7 +97,14 @@ When finished, write these files:
    Rename, Generate) - name the menu and the option. Right panel Content properties (Type, Attributes); options
    menu at the top right (Assets, Editor settings, Workspace settings). Element context menu in Author view
    (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate
-   IDs); Map Panel selection bar (Save as new version and unlock); Collections panel (Lightbox).
+   IDs); Map Panel selection bar (Save as new version and unlock); Collections panel (Lightbox); app switcher
+   (Home, Editor, Map console); Map console left panel (Output presets, Reports, Baseline, Condition presets,
+   Translation); Map console map dropdown (Open in editor, Select another map); New output preset Type (AEM Sites, PDF, Knowledge Base, HTML5, JSON, Custom, SCORM). Use the setting label of
+   that preset type (Custom: "DITA-OT command line arguments"; Native PDF: "Additional DITA-OT command line
+   arguments"). Native PDF Advanced tab toggles and File (Asset) properties are named as shown; the Save
+   changes dialog has Don't Save, Cancel, Save.
+   Repositories are UUID; say non-UUID only for UUID Migration (non-UUID to UUID) or a customer environment
+   stated as non-UUID.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
