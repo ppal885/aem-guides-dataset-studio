@@ -243,6 +243,26 @@
       "source": "human-correction",
       "source_context": "User request 2026-10-09: vague words confuse reviewers",
       "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "resolve-jargon",
+      "pattern": "\\bresolv(?:e|es|ed|ing)\\b",
+      "wrong": "resolves / resolved",
+      "correct": "points to / opens / shows",
+      "message": "'Resolve' is a developer word. Write what QE checks: the link opens the topic, the conref shows the content, the reference points to the new topic.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-09: resolve is not how QE describe the check",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "copied-topic-templates",
+      "pattern": "\\bcopied\\s+topic\\s+templates?\\b",
+      "wrong": "copied topic templates",
+      "correct": "new topics made from topic templates",
+      "message": "The product does not call them copies. Write 'the new topic made from a topic template'.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-09: map template / topic template wording",
+      "governance": "HUMAN_APPROVED"
     }
   ],
   "canonical_terms": [

@@ -110,7 +110,8 @@ When finished, write these files:
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    For the ways a conref or xref points, write the href forms: a conref with href="file.dita#topicID/elementID" and href="file.dita#elementID" both
-   work - never "external conref", "long/short fragment" or "the intended content".
+   work - never "external conref", "long/short fragment" or "the intended content". Instead of "resolves"
+   write what QE sees (opens the topic, shows the content, points to the new topic).
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
    different); shorten by moving detail to sub-points. Before rewriting a criterion, re-read the ticket's
    description, comments and attachments: a comment that names the screen decides which screen it is about.
