@@ -317,8 +317,13 @@ after a human edit, the record keeps the last human version and leaves that late
 When the automation and QE use the same Jira account, set `"learning_shared_account": true`: a write by
 that account then counts as generated only when its text is one the runner posted (every posted text is
 remembered in `<ticket>/posted-bodies.txt`, besides `field-body.txt`), and any other write by it is learned
-as a QE edit. A Claude or Codex session that rewrites the field with that account is then also counted as
-a QE edit, so a dedicated automation account is still better. An untouched field counts as accepted only once the ticket status is in
+as a QE edit. A Claude or Codex session that rewrites the field with that account would then also count as
+a QE edit, so after writing the field the session runs `record_manual_rewrite.py --ticket KEY --reason "..."`
+(or `--from-history` for earlier rewrites). It stores the text's SHA-256 in the ticket's hidden issue property
+`uac-manual-rewrite`; the harvester labels a matching edit `edit_origin: CLAUDE_REWRITE` (others `QE_EDIT`),
+the monthly report lists those rewrites separately and leaves them out of the per-component learning, and the
+release page marks them "(Claude rewrite)". `uac_learning_harvester.py --relabel` labels records harvested
+before the mark. A dedicated automation account is still better. An untouched field counts as accepted only once the ticket status is in
 `learning_accepted_statuses` (default `UAT`, `Closed`, `Resolved`, `Done`). Each new ticket version is
 appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
 it and when.
