@@ -642,7 +642,15 @@
     "Maximum number of recent files",
     "Opening preferences for Maps",
     "Edit and open in map view",
-    "User preferences saved successfully"
+    "User preferences saved successfully",
+    "custom Folder Profile",
+    "custom doc state",
+    "Application theme",
+    "Source view theme",
+    "Editor files display configuration",
+    "Explorer toolbar",
+    "Sort",
+    "No file selected for editing"
   ],
   "canonical_term_sources": [
     {
