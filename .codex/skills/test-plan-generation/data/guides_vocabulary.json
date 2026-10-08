@@ -415,7 +415,15 @@
     "Download",
     "Repository View",
     "Side By Side View",
-    "Download Map"
+    "Download Map",
+    "forward reference",
+    "backward reference",
+    "PDF preset",
+    "Native PDF preset",
+    "DITA-OT PDF preset",
+    "Workfront",
+    "conref",
+    "keyref"
   ],
   "canonical_term_sources": [
     {

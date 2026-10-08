@@ -95,6 +95,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | topic reference | topicref, `<topicref>` element, href to a topic |
 | map reference | mapref, submap reference, `<mapref>` element |
 | direct reference / indirect reference | outgoing link, reltable link (an indirect reference is a link through a relationship table) |
+| forward reference / backward reference | outgoing links / incoming links, where-used, referencing files |
+| conref, conkeyref, keyref | content reuse attribute, key-based reuse, key resolution |
 | DITA map, bookmap | ditamap file, map XML, bookmap XML |
 | topic | DITA topic file, topic XML, .dita file |
 | DITA files / non-DITA files | XML assets, binary assets, non-XML assets |
@@ -114,11 +116,15 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Layout View / Preview / Side By Side View | layout mode, render preview, diff view, compare view |
 | Content Fragment | CF, content fragment node |
 | Download / Download Map | export, map export, download as ZIP |
+| output presets, PDF preset (Native PDF or DITA-OT) | publish configuration, transformation profile, PDF generation settings |
+| Workfront | project management integration, work item system |
 
 - Write: "A topic reference added to the DITA map shows in the Map View."
 - Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."
 - When one technical value must be checked (an element name, a file extension, a property), put it in a sub-point:
   "  - the reference is a <topicref> with format=dita".
+- conref, conkeyref and keyref are everyday QE words: they may stay in the statement.
+- Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 
 ## Group outcomes without hiding coverage
