@@ -66,6 +66,12 @@ When finished, write these files:
    a QE can check, in at most two clauses, using only names shown on screen. Exact technical values - API
    paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
    (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
+   Every criterion is a product check a QE can run on a test instance. Engineering, support and operations
+   deliverables are not criteria: an incident record or root-cause write-up, a post-mortem, a timing or
+   performance report, a rollback or mitigation of a customer environment, a folder or access an Adobe team
+   sets up for the customer, monitoring. Put them in the test plan; when the ticket asks for one, its
+   product outcome (the output generates, the move completes) is the criterion instead. Documentation is a
+   criterion only when the ticket itself asks for documentation.
    Under a criterion, list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
    or fewer); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
@@ -181,7 +187,8 @@ When finished, write these files:
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or merged pull request>"}}, {{"status": "PROPOSED", "signal": "<the ticket text, copied, that
    links a fix pull request nobody has reviewed or merged>"}}, {{"status": "NOT_A_DEFECT", "reason": "<the new
-   capability the ticket asks for, e.g. a new API or template field>"}} or {{"status": "UNCONFIRMED",
+   capability or change the ticket asks for, e.g. a new API or template field, an access or permission change,
+   an enhancement or documentation>"}} or {{"status": "UNCONFIRMED",
    "reason": "<why, when the ticket has a root-cause or fix comment that is not the fix>"}}. Every pull
    request listed in {linked_docs_path} (kind "pull_request") is a fix someone proposed: fetch it in the
    matching clone (git fetch origin pull/<number>/head, or the branch named in the comment) and read the
@@ -877,7 +884,25 @@ def check_outputs(ticket_dir: Path) -> list[str]:
         re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", text, re.MULTILINE), 1))
     blocked, _ = vocabulary.check(lines)
     problems.extend(f"vocabulary: {b}" for b in blocked)
+    problems.extend(process_ac_problems(text))
     return problems
+
+
+# Engineering, support and operations deliverables a QE cannot check on a test instance (seen in posted UACs:
+# "The incident record identifies the missing-ZIP cause", "Creation and upload have separate timings",
+# "The approved urgent rollback to AEM release 2608 ..."). They belong in the test plan.
+_PROCESS_AC = re.compile(
+    r"\bincident record\b|\broot[- ]cause (?:analysis|write-?up|report)\b|\bpost-?mortem\b"
+    r"|\broll ?back (?:to|of) (?:the )?(?:aem )?release\b|\b(?:timing|performance) (?:report|breakdown)\b"
+    r"|\bseparate timings\b", re.IGNORECASE)
+
+
+def process_ac_problems(uac_text: str) -> list[str]:
+    """Criteria whose statement is a process deliverable, not a product check."""
+    return [f"Acceptance Criteria {number} is a process deliverable, not a product check a QE can run "
+            f"(move it to the test plan): \"{statement.strip()[:100]}\""
+            for number, statement in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac_text, re.MULTILINE)
+            if _PROCESS_AC.search(statement)]
 
 
 def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
@@ -1086,6 +1111,14 @@ def normalize_note(uac_text: str, fix_status: str) -> str:
     return f"{note}\n\n{body}" if note else body
 
 
+# Jira labels that mark a ticket as a feature request: it has no defect, so no root-cause Note line.
+FEATURE_REQUEST_LABELS = {"customer-features"}
+
+
+def is_feature_request(source: dict | None) -> bool:
+    return any(str(label).lower() in FEATURE_REQUEST_LABELS for label in (source or {}).get("labels") or [])
+
+
 def deliverable_uac(ticket_dir: Path, source: dict | None) -> tuple[str, list[str]]:
     """UAC.md as it goes to the field: the Note line set from fix_basis and clean Source lines."""
     text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
@@ -1095,6 +1128,8 @@ def deliverable_uac(ticket_dir: Path, source: dict | None) -> tuple[str, list[st
     except ValueError:
         evidence = {}
     status = str(((evidence or {}).get("fix_basis") or {}).get("status") or "")
+    if status == "UNCONFIRMED" and is_feature_request(source):
+        status = "NOT_A_DEFECT"
     if status:
         text = normalize_note(text, status)
     names = [str(a.get("filename") or "") for a in (source or {}).get("attachments") or []]
