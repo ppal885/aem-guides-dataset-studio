@@ -888,7 +888,6 @@ def check_outputs(ticket_dir: Path) -> list[str]:
         re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", text, re.MULTILINE), 1))
     blocked, _ = vocabulary.check(lines)
     problems.extend(f"vocabulary: {b}" for b in blocked)
-    problems.extend(process_ac_problems(text))
     return problems
 
 
@@ -907,6 +906,44 @@ def process_ac_problems(uac_text: str) -> list[str]:
             f"(move it to the test plan): \"{statement.strip()[:100]}\""
             for number, statement in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac_text, re.MULTILINE)
             if _PROCESS_AC.search(statement)]
+
+
+_AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Out of scope\b|\Z)",
+                       re.MULTILINE | re.DOTALL)
+
+
+def move_process_acs(uac_text: str) -> tuple[str, list[str]]:
+    """Take process-deliverable criteria out of the delivered UAC and renumber the rest.
+
+    Returns (UAC text to deliver, moved criteria as written). The UAC is still delivered: a criterion that is
+    an engineering, support or operations deliverable goes to the full test plan instead of blocking the
+    UAC. When every criterion would move, nothing moves (the UAC is never emptied)."""
+    blocks = list(_AC_BLOCK.finditer(uac_text))
+    moving = [m for m in blocks if _PROCESS_AC.search(m.group(2).splitlines()[0] if m.group(2) else "")]
+    if not moving or len(moving) == len(blocks):
+        return uac_text, []
+    width = len(blocks[0].group(1))
+    kept, number, out, last = [], 0, [], 0
+    for m in blocks:
+        out.append(uac_text[last:m.start()])
+        last = m.end()
+        if m in moving:
+            continue
+        number += 1
+        out.append(f"- Acceptance Criteria {number:0{width}d}:{m.group(2)}")
+    out.append(uac_text[last:])
+    moved = [f"Acceptance Criteria {m.group(1)}:{m.group(2).rstrip()}" for m in moving]
+    return "".join(out), moved
+
+
+def record_moved_acs(ticket_dir: Path, moved: list[str]) -> None:
+    """Append moved process criteria to the full test plan so they are kept, not lost."""
+    plan = ticket_dir / common.PLAN_FILE
+    if not moved or not plan.is_file():
+        return
+    section = ("\n\n**Moved from the UAC (engineering, support or operations work, not a product check)**\n"
+               + "\n".join(f"- {text.splitlines()[0].strip()}" for text in moved) + "\n")
+    plan.write_text(plan.read_text(encoding="utf-8").rstrip() + section, encoding="utf-8")
 
 
 def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
@@ -1172,7 +1209,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            runtime_python=runtime_python(config) or "python3",
                            max_discovered=MAX_DISCOVERED_SURFACES_PER_AC)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md", runtime_python(config))
-    timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
+    timeout = int(config.get("copilot", {}).get("timeout_minutes", 100)) * 60
     started = time.time()
     logger.info("%s: running Copilot CLI", key)
     try:
@@ -1215,6 +1252,11 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         return "FAILED"
     jira_text = common.import_skill_module("jira_safe_text")
     uac_text, removed_sources = deliverable_uac(ticket_dir, source)
+    uac_text, moved_acs = move_process_acs(uac_text)
+    if moved_acs:
+        record_moved_acs(ticket_dir, moved_acs)
+        status["moved_process_acs"] = moved_acs
+        logger.info("%s: moved %d process criteria to the test plan", key, len(moved_acs))
     if removed_sources:
         status["source_code_refs_removed"] = removed_sources
         logger.info("%s: removed code references from Source lines: %s", key, "; ".join(removed_sources))
@@ -1235,7 +1277,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     status["runtime_research"] = research
     status["runtime_result"] = runtime_result_summary(ticket_dir)
     review_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
-                    + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research))
+                    + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research)
+                    + [f"moved to the test plan, not a product check: {text.splitlines()[0][:110]}" for text in moved_acs])
     status["review_notes"] = review_notes
     fallback = runtime_fallback_gates(ticket_dir)
     if fallback is not None:
