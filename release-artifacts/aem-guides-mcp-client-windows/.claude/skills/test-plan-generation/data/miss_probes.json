@@ -951,6 +951,40 @@
       "counterexamples_checked": true,
       "equivalence_key": "log-stated-starting-state",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-026",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "multi-language",
+          "multilanguage",
+          "multi-lingual",
+          "multilingual",
+          "language maps",
+          "mixed-language",
+          "several languages"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "LOCALIZATION",
+        "candidate_template": "when content in several languages goes into one output, check the text the output template adds: language variables (cross-reference text such as on page, labels), application variables (chapter number label, author label), user variables from the preset's Variable set, and header and footer text that shows topic metadata; ask in a TBD whether each language section uses its own language or the output language"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261009-MULTILANG-TEMPLATE-VARIABLES-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A ticket about one mechanism in a multi-language output (for example where a link goes) also puts the template's translated text in play: the template picks one language for its variables, so labels and headers can show the wrong language in the other sections, and any lookup by topic can pick the wrong language copy. Counterexample checked: a single-language output in a translated language is not this case; its labels follow that one language.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "multi-language-output-template-variables",
+      "status": "ACTIVE"
     }
   ]
 }
