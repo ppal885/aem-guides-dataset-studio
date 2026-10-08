@@ -107,6 +107,13 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | DAM Update Asset workflow | asset update workflow model, dam-update-asset |
 | Cloud (AEMaaCS) | AEM as a Cloud Service, cloud deployment, cloud environment |
 | doc state (Document State) | document status property, docstate metadata |
+| Global Profile / Folder Profile | global configuration node, profile settings node |
+| XML Editor Configuration | editor configuration files, editor config JSON |
+| ui config | ui_config.json (keep the file name for a sub-point) |
+| Repository View | asset tree, file browser, repository panel |
+| Layout View / Preview / Side By Side View | layout mode, render preview, diff view, compare view |
+| Content Fragment | CF, content fragment node |
+| Download / Download Map | export, map export, download as ZIP |
 
 - Write: "A topic reference added to the DITA map shows in the Map View."
 - Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."

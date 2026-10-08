@@ -409,7 +409,13 @@
     "DAM Update Asset workflow",
     "AEMaaCS",
     "Cloud",
-    "doc state"
+    "doc state",
+    "XML Editor Configuration",
+    "ui config",
+    "Download",
+    "Repository View",
+    "Side By Side View",
+    "Download Map"
   ],
   "canonical_term_sources": [
     {
