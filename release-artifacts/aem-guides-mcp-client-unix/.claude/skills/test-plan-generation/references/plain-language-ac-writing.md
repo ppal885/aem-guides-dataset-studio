@@ -161,6 +161,9 @@ keep DITA element names, file extensions and code words for sub-points or the So
   Tags); its Metadata Path goes in a sub-point ("  - metadata/cq:tags").
 - Validation tab options are named as shown: "Run validation check before saving the file", "Allow all users to
   add schematron files in validation panel", and the Schematron Files list.
+- Translation tab labels are named as shown: Language groups (Name, Languages, Add), Additional settings,
+  "Propagate source version labels to the target version", and "Translation project cleanup after completion"
+  with None, Disable or Delete.
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

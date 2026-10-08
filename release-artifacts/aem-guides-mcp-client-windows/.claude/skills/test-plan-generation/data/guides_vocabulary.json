@@ -514,7 +514,12 @@
     "Options",
     "Run validation check before saving the file",
     "Allow all users to add schematron files in validation panel",
-    "Schematron Files"
+    "Schematron Files",
+    "Language groups",
+    "Languages",
+    "Additional settings",
+    "Propagate source version labels to the target version",
+    "Translation project cleanup after completion"
   ],
   "canonical_term_sources": [
     {
