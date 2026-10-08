@@ -758,7 +758,12 @@
     "Update",
     "Select asset folder",
     "Choose Files",
-    "Upload"
+    "Upload",
+    "human translation",
+    "machine translation",
+    "In sync",
+    "Out of sync",
+    "Missing copy"
   ],
   "canonical_term_sources": [
     {

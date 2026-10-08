@@ -177,6 +177,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Customize repository view (column toggles, including UUID and Created on) | column config, grid settings |
 | Filters: Last modified (Modified after, Modified before, Time frame: In last week, In last month, In last year, Reset), Tags, DITA elements; Advanced filter (DITA element, Attribute, Value, Add element, Update) | date range facet, tag facet, element query |
 | Upload assets dialog (Select asset folder, Choose Files, Upload) | file upload modal |
+| human translation / machine translation; translation status In sync, Out of sync, Missing copy | translation job type, localization state, target state |
 | static baseline / dynamic baseline | fixed-version baseline, label-driven baseline |
 | app switcher (Home, Editor, Map console) | mode dropdown, app menu, workspace switch |
 | Map console left panel (Output presets, Reports, Baseline, Condition presets, Translation) | map dashboard sidebar, publishing tabs |
