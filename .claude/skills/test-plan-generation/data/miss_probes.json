@@ -970,7 +970,7 @@
       },
       "implied_dimension": {
         "axis": "LOCALIZATION",
-        "candidate_template": "when content in several languages goes into one output, check the text the output template adds: language variables (cross-reference text such as on page, labels), application variables (chapter number label, author label), user variables from the preset's Variable set, and header and footer text that shows topic metadata; ask in a TBD whether each language section uses its own language or the output language"
+        "candidate_template": "when content in several languages goes into one output, check the text the output template adds: language variables (cross-reference text such as on page, labels such as the chapter number and author label), values from the preset's Variable set, and header and footer text that shows topic metadata; ask in a TBD whether each language section uses its own language or the output language"
       },
       "provenance": {
         "source": "HUMAN",
