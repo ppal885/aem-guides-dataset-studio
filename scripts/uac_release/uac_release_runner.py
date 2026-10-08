@@ -68,7 +68,8 @@ When finished, write these files:
    (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
    Use the everyday AEM Guides words QE use: topic reference, map reference, direct reference, indirect
    reference, DITA map, bookmap, topic, DITA files, non-DITA files, images, asset update, Map console, Map
-   dashboard, publishing, review. A DITA element name (topicref, mapref, reltable), a file extension or an
+   dashboard, publishing, review, postprocessing, DAM Update Asset workflow, Cloud (AEMaaCS), doc state.
+   A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
    different); shorten by moving detail to sub-points. Before rewriting a criterion, re-read the ticket's

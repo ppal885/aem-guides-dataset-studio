@@ -103,6 +103,10 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Map console / Map dashboard | Advanced Map Editor, map management page |
 | publishing / output generation | transformation run, publish job, generation request |
 | review | review workflow, review task process |
+| postprocessing | asset processing job, post-upload processing step |
+| DAM Update Asset workflow | asset update workflow model, dam-update-asset |
+| Cloud (AEMaaCS) | AEM as a Cloud Service, cloud deployment, cloud environment |
+| doc state (Document State) | document status property, docstate metadata |
 
 - Write: "A topic reference added to the DITA map shows in the Map View."
 - Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."

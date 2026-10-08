@@ -404,7 +404,12 @@
     "images",
     "asset update",
     "publishing",
-    "review"
+    "review",
+    "postprocessing",
+    "DAM Update Asset workflow",
+    "AEMaaCS",
+    "Cloud",
+    "doc state"
   ],
   "canonical_term_sources": [
     {
@@ -589,6 +594,21 @@
     {
       "terms": ["Advanced Map Editor", "Map console"],
       "note": "Advanced Map Editor is the same as the Map console."
+    },
+    {
+      "terms": [
+        "AEMaaCS",
+        "Cloud",
+        "AEM as a Cloud Service"
+      ],
+      "note": "QE call AEM as a Cloud Service 'Cloud' or 'AEMaaCS'; they are the same deployment."
+    },
+    {
+      "terms": [
+        "doc state",
+        "Document State"
+      ],
+      "note": "QE say 'doc state' for the Document State of a topic or map; same thing."
     }
   ]
 }
