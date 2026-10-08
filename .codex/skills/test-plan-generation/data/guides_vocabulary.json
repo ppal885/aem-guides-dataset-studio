@@ -216,12 +216,32 @@
     },
     {
       "id": "camelcase-id-names",
-      "pattern": "\\b(?:topicId|elementId|topicid|elementid)\\b",
+      "pattern": "(?<![#/\\w])(?:topicId|elementId)\\b",
       "wrong": "topicId / elementId",
-      "correct": "the topic ID and the element ID",
-      "message": "Write 'the topic ID and the element ID' in plain words (for example 'a conref that names the topic ID and the element ID', 'a conref that names only the element ID'), not the code-style topicId/elementId.",
+      "correct": "the href form, for example a conref with href=\"file.dita#topicID/elementID\" and href=\"file.dita#elementID\"",
+      "message": "Write the href form QE read directly, for example: a conref with href=\"file.dita#topicID/elementID\" and href=\"file.dita#elementID\" both work. Do not write topicId/elementId as words; inside an href they are fine.",
       "source": "human-correction",
       "source_context": "User request 2026-10-09: code-style names confuse readers",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "fragment-jargon",
+      "pattern": "\\b(?:long|short|full|partial)\\s+fragments?\\b",
+      "wrong": "long fragment / short fragment",
+      "correct": "the href form, for example href=\"file.dita#topicID/elementID\" and href=\"file.dita#elementID\"",
+      "message": "'Long fragment' and 'short fragment' are developer shorthand. Write the href form: a conref with href=\"file.dita#topicID/elementID\" and href=\"file.dita#elementID\".",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-09: write the href forms simply",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "intended-vague",
+      "pattern": "\\bthe\\s+intended\\s+(?:external\\s+)?(?:content|target|topic|element|value|output)\\b|\\bsupported\\s+(?:long|short)\\b",
+      "wrong": "the intended content / the supported ...",
+      "correct": "name the exact content, topic or element",
+      "message": "'Intended' and 'supported' do not say what QE should see. Name it: the content of that element, the topic the href points to.",
+      "source": "human-correction",
+      "source_context": "User request 2026-10-09: vague words confuse reviewers",
       "governance": "HUMAN_APPROVED"
     }
   ],

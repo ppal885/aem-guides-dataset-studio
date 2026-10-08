@@ -2101,6 +2101,17 @@ class DeliveryCleanupTests(unittest.TestCase):
             ids = " ".join(runner.vocabulary_notes(ticket))
             self.assertIn("external-conref", ids, "case sub-points are checked too")
             self.assertIn("camelcase-id-names", ids)
+            (ticket / common.UAC_FILE).write_text(
+                "- Acceptance Criteria 01: Each new topic shows the reused content.\n"
+                '  - A conref with href="file.dita#topicID/elementID" and href="file.dita#elementID" both work.\n',
+                encoding="utf-8")
+            self.assertEqual(runner.vocabulary_notes(ticket), [], "the href form is the wording we want")
+            (ticket / common.UAC_FILE).write_text(
+                "- Acceptance Criteria 01: Each new topic shows the reused content.\n"
+                "  - The supported long fragment displays the intended external content.\n", encoding="utf-8")
+            ids = " ".join(runner.vocabulary_notes(ticket))
+            self.assertIn("fragment-jargon", ids)
+            self.assertIn("intended-vague", ids)
             blocked, _ = runner._vocabulary_hits((ticket / common.UAC_FILE).read_text(encoding="utf-8"))
             self.assertEqual(blocked, [], "a nudge never blocks the UAC")
         with tempfile.TemporaryDirectory() as tmp:
