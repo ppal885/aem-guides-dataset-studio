@@ -194,6 +194,12 @@ keep DITA element names, file extensions and code words for sub-points or the So
   preset, "Additional DITA-OT command line arguments" in a Native PDF preset. Use the label of that preset type.
   A Custom preset has the General and Advanced tabs (Transformation name, File name, Output path). The Post
   generation workflow dropdown lists AEM workflow models by title; name the model as shown.
+- Native PDF preset Advanced tab toggles, named as shown: Create accessible (tagged) PDF, Merge PDFs included in
+  the TOC, Embed used fonts, Use automatic hyphenation, Enable JavaScript, Embed multimedia files, Use full
+  compression to optimize the PDF size, Use image compression to optimize the PDF size, Use custom resolution
+  (pixels per inch), Show Watermark, Enable MathML equations, Create interactive PDF form, Include track changes,
+  Retain temporary files; then PDF conformance and File (Asset) properties (not the right panel's File properties).
+- Leaving a preset with unsaved edits shows the Save changes dialog (Don't Save, Cancel, Save).
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

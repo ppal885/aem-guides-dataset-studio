@@ -603,7 +603,20 @@
     "You have no output preset selected",
     "Open in editor",
     "Select another map",
-    "File name"
+    "File name",
+    "Use automatic hyphenation",
+    "Enable JavaScript",
+    "Embed multimedia files",
+    "Use full compression to optimize the PDF size",
+    "Use image compression to optimize the PDF size",
+    "Use custom resolution (pixels per inch)",
+    "Show Watermark",
+    "Enable MathML equations",
+    "Create interactive PDF form",
+    "Include track changes",
+    "File (Asset) properties",
+    "Save changes dialog",
+    "Don't Save"
   ],
   "canonical_term_sources": [
     {
@@ -860,6 +873,13 @@
         "Outgoing links"
       ],
       "note": "The References section of the right panel labels forward references 'Outgoing links'."
+    },
+    {
+      "terms": [
+        "File (Asset) properties",
+        "File properties"
+      ],
+      "note": "Different things: File (Asset) properties is a Native PDF preset Advanced setting (properties to propagate to the PDF); File properties is the Editor right panel view."
     }
   ]
 }
