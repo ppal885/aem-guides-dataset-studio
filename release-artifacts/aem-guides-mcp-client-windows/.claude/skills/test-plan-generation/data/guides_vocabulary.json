@@ -475,7 +475,9 @@
     "element",
     "tag",
     "friendly names",
-    "attribute"
+    "attribute",
+    "toggle on",
+    "toggle off"
   ],
   "canonical_term_sources": [
     {

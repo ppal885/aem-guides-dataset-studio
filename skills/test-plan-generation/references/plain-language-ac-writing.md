@@ -132,6 +132,7 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | variables, language variables | placeholder values, i18n strings, localized labels |
 | element, tag, attribute, friendly names | XML node, DOM node, node property, element label mapping |
 | Workspace Settings, Publish profile, Assets View | user settings JSON, publish configuration, DAM asset browser |
+| toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |
 | right panel (File properties: General, References, Outputs, Translations) | properties sidebar, inspector, metadata pane |
 | breadcrumb | element path, node path, XPath bar |
 | editor search bar | find widget, search overlay, quick search component |
