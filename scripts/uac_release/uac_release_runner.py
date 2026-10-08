@@ -66,6 +66,8 @@ When finished, write these files:
    a QE can check, in at most two clauses, using only names shown on screen. Exact technical values - API
    paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
    (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
+   Shortening never merges, drops or renames a named product item (a map template and a topic template are
+   different); shorten by moving detail to sub-points.
    Under a criterion, list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
    or fewer); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in

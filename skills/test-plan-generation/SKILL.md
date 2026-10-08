@@ -806,7 +806,8 @@ Out of scope:                                          (optional, when a decisio
 - Plain statement: each criterion says one thing a QE can check, in at most two clauses, with only on-screen
   names; exact technical values (API paths and fields, setting values, status codes, file names) go in its
   sub-points or the test plan. Reviewers found the delivered UACs too technical to understand
-  (`references/plain-language-ac-writing.md`).
+  (`references/plain-language-ac-writing.md`). Shortening never merges, drops or renames a named product item
+  (a map template and a topic template stay distinct); shorten by moving detail to sub-points.
 - The label is spelled out as `Acceptance Criteria 01`, never `AC-01`, because Jira auto-links and strikes
   through issue-key shapes. `AC-##` stays internal in the record, mappings and extracted JSON.
 - No `[Proposed]`/`[Confirmed]` tags, spheres, Given/When/Then, pipes, or Starting point/Action/Expected
