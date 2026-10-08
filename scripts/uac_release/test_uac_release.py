@@ -1361,6 +1361,38 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertIn("| evidence.scenario | 1 | 50% | 2 |", report)
         self.assertIn("| outputs | 0 | 0% | 0 |", report)
 
+    def test_comment_requested_criteria_and_qe_notes_are_reported_apart(self) -> None:
+        posted = ("- Acceptance Criteria 01: A folder profile Admin User can add another Admin User.\n"
+                  "  Source: the fix pull request.\n\n"
+                  "- Acceptance Criteria 02: An added Admin User has the license to open the content.\n"
+                  "  Source: Jira comment by a reviewer, 26 Aug.\n\n"
+                  "- Acceptance Criteria 03: Admin Users are kept after an upgrade.\n"
+                  "  Source: the fix version.")
+        current = ("- Acceptance Criteria 01: A folder profile Admin User can add another Admin User.\n"
+                   "Source: the fix pull request.\n\n"
+                   " - -Acceptance Criteria 02: An added Admin User has the license to open the content.-\n"
+                   "{-}Source: Jira comment by a reviewer, 26 Aug.{-} (not needed, as discussed with the dev)\n\n"
+                   " - Acceptance Criteria 03: -Admin Users are kept after an upgrade.-\n"
+                   "{-}Source: the fix version.{-}(upgrade is not impacted)\n\n"
+                   "Automation UI or API is required")
+        self.assertEqual(harvester.closing_notes(current), ["Automation UI or API is required"])
+        self.assertEqual(harvester.closing_notes(posted), [])
+        entries = harvester.compare(harvester.parse_criteria(posted), harvester.parse_criteria(current))
+        removed = {e["number"]: e for e in entries if e["kind"] == "removed"}
+        self.assertTrue(removed[2].get("requested_in_comment"))
+        self.assertFalse(removed[3].get("requested_in_comment"))
+        jira = self.jira_with(_issue(current, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        (self.out / "PROJ-1" / "field-body.txt").write_text(posted, encoding="utf-8")
+        [record] = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        self.assertEqual(record["qe_notes"], ["Automation UI or API is required"])
+        report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
+        self.assertIn("removed 2 (1 asked for in a Jira comment)", report)
+        self.assertIn("Asked for in a Jira comment, then removed by QE", report)
+        self.assertIn("PROJ-1: An added Admin User has the license", report.split("Asked for in a Jira comment")[1])
+        self.assertIn("PROJ-1: Admin Users are kept after an upgrade", report.split("What we wrote that QE removed:")[1])
+        self.assertIn("Notes QE added below the criteria (not criteria):", report)
+        self.assertIn("- PROJ-1: Automation UI or API is required", report)
+
     def test_out_of_scope_items_are_not_criteria(self) -> None:
         text = ("1. Related links from the reltable appear in Native PDF.\n"
                 "2. Default behaviour stays without related links.\n\n"
