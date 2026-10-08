@@ -58,6 +58,9 @@ When finished, write these files:
    criterion with the same outcome - and its Source line names the documentation page, code or ticket.
    Research checks that do not matter enough go to the full test plan (file 2), not to the UAC. There is no
    "Suggested checks" section. Keep at most ten criteria; an open product decision stays a TBD.
+   List every setting the code of the ticket's action reads (configuration key, profile setting, feature
+   flag) and answer each one: an AC case with the setting toggled on and off, a TBD, or not relevant with a
+   reason. When the action creates new files, Use UUID based system filenames is one of them.
    When the ticket's scenario is a bookmap, add a "still works as before" check for a DITA map with
    the same content, and the reverse.
    Keep the criteria (with sub-points, Scope and Out of scope) within 350 words and each Source line within
