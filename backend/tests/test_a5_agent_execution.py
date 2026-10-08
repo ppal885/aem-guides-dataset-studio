@@ -1725,9 +1725,11 @@ def test_copilot_host_pending_falls_back_to_env_repository_roots(
     from app.services.agent_execution_provider import HostMediatedResearchProvider
 
     monkeypatch.setenv("STARLING_REPO_PATH", str(tmp_path / "starling"))
-    monkeypatch.delenv("XML_EDITOR_REPO_PATH", raising=False)
-    monkeypatch.delenv("GUIDES_UI_TESTS_REPO_PATH", raising=False)
-    monkeypatch.delenv("AEM_STUDIO_REPO", raising=False)
+    from app.services.agent_execution_provider import RESEARCH_REPOSITORY_ENV_VARS
+
+    for name in RESEARCH_REPOSITORY_ENV_VARS:
+        if name != "STARLING_REPO_PATH":
+            monkeypatch.delenv(name, raising=False)
 
     record = _record("authorized", "excerpt", EvidenceSourceType.CURRENT_CODE)
     bundle = _bundle(record)
@@ -1768,9 +1770,11 @@ def test_copilot_host_pending_keeps_caller_supplied_roots_verbatim(
     from app.services.agent_execution_provider import HostMediatedResearchProvider
 
     monkeypatch.setenv("STARLING_REPO_PATH", str(tmp_path / "vm-starling"))
-    monkeypatch.delenv("XML_EDITOR_REPO_PATH", raising=False)
-    monkeypatch.delenv("GUIDES_UI_TESTS_REPO_PATH", raising=False)
-    monkeypatch.delenv("AEM_STUDIO_REPO", raising=False)
+    from app.services.agent_execution_provider import RESEARCH_REPOSITORY_ENV_VARS
+
+    for name in RESEARCH_REPOSITORY_ENV_VARS:
+        if name != "STARLING_REPO_PATH":
+            monkeypatch.delenv(name, raising=False)
 
     record = _record("authorized", "excerpt", EvidenceSourceType.CURRENT_CODE)
     bundle = _bundle(record)

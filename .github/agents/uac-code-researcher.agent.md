@@ -63,6 +63,13 @@ reasoning never rests on inference when implementation materially affects it.
   name, import, route or endpoint) and return one finding per consumer screen
   with its path and line. A shared widget changes every screen that embeds it;
   never stop at the first screen that matches.
+- When the question is about an action (create, copy, move, publish, translate),
+  read every configuration value the action's code reads - an OSGi or XML
+  Editor configuration key, a profile setting, a feature flag - and return one
+  finding per setting that changes what the action does, naming the setting by
+  its on-screen label, for example: `Creating a map from a map template gives
+  new files UUID-based names when Use UUID based system filenames is on.` A
+  setting the ticket never mentions is exactly the one that gets missed.
 
 ## Boundaries (the Researcher must NOT)
 

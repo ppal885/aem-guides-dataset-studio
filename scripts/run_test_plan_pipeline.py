@@ -93,6 +93,10 @@ def main() -> int:
                     "XML_EDITOR_REPO_PATH",
                     "GUIDES_UI_TESTS_REPO_PATH",
                     "AEM_STUDIO_REPO",
+                    "DXML_IT_TESTS_REPO_PATH",
+                    "PUBLISH_CORE_REPO_PATH",
+                    "GENERATOR_REPO_PATH",
+                    "GUIDES_PUBLISHER_REPO_PATH",
                 )
             )
             if value

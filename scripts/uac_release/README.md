@@ -150,8 +150,19 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    JIRA_PAT=<Jira personal access token>
    COPILOT_GITHUB_TOKEN=<GitHub token with Copilot access>
    WIKI_PAT=<wiki.corp.adobe.com personal access token, read-only use>
+   STARLING_REPO_PATH=/opt/uac/repos/starling
+   XML_EDITOR_REPO_PATH=/opt/uac/repos/xmleditor
+   GUIDES_UI_TESTS_REPO_PATH=/opt/uac/repos/guides-ui-tests
+   DXML_IT_TESTS_REPO_PATH=/opt/uac/repos/dxml-it-tests
+   PUBLISH_CORE_REPO_PATH=/opt/uac/repos/publish-core
+   GENERATOR_REPO_PATH=/opt/uac/repos/generator
+   GUIDES_PUBLISHER_REPO_PATH=/opt/uac/repos/guides-publisher
+   AEM_STUDIO_REPO=/root/aem-guides-dataset-studio
    ```
    Use a Jira account that can only comment, attach and edit fields on these tickets.
+   The `*_REPO_PATH` lines are the clones the canonical runtime's code researcher may read. Without them every
+   implementation research request comes back "no repository authorized", so settings and behaviour that only
+   the code shows are missed. Use the same clones as `copilot.add_dirs`.
    `WIKI_PAT` lets the runner read the design documents and specifications a ticket links to (in its
    description or a comment). The Copilot session cannot log in to the wiki itself, so the runner downloads
    each linked page into `<KEY>/linked-docs/`, lists them in `LINKED_DOCS.json`, and the skill uses them as
