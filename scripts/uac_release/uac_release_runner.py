@@ -87,7 +87,9 @@ When finished, write these files:
    State, Tags); its Metadata Path (metadata/cq:tags) goes in a sub-point. Validation tab: "Run validation check
    before saving the file", "Allow all users to add schematron files in validation panel", Schematron Files.
    Translation tab: Language groups, "Propagate source version labels to the target version", "Translation
-   project cleanup after completion" (None, Disable, Delete).
+   project cleanup after completion" (None, Disable, Delete). Context menu, Copy UUID, Copy path, Locate in,
+   schematron file(s), Single Topic Publishing (STP). In the References section use "Used in" (backward
+   references) and "Outgoing links" (forward references).
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

@@ -519,7 +519,19 @@
     "Languages",
     "Additional settings",
     "Propagate source version labels to the target version",
-    "Translation project cleanup after completion"
+    "Translation project cleanup after completion",
+    "context menu",
+    "Copy UUID",
+    "Copy path",
+    "Locate in",
+    "Add to",
+    "Properties",
+    "Close",
+    "Used in",
+    "Outgoing links",
+    "No used references found",
+    "Single Topic Publishing",
+    "STP"
   ],
   "canonical_term_sources": [
     {
@@ -755,6 +767,27 @@
         "Side-by-side"
       ],
       "note": "The Editor mode is labelled Side-by-side on screen; QE also say Side By Side View."
+    },
+    {
+      "terms": [
+        "STP",
+        "Single Topic Publishing"
+      ],
+      "note": "QE say STP for Single Topic Publishing; same feature."
+    },
+    {
+      "terms": [
+        "backward references",
+        "Used in"
+      ],
+      "note": "The References section of the right panel labels backward references 'Used in'."
+    },
+    {
+      "terms": [
+        "forward references",
+        "Outgoing links"
+      ],
+      "note": "The References section of the right panel labels forward references 'Outgoing links'."
     }
   ]
 }

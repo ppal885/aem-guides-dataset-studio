@@ -94,8 +94,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 |---|---|
 | topic reference | topicref, `<topicref>` element, href to a topic |
 | map reference | mapref, submap reference, `<mapref>` element |
-| direct reference / indirect reference | outgoing link, reltable link (an indirect reference is a link through a relationship table) |
-| forward reference / backward reference | outgoing links / incoming links, where-used, referencing files |
+| direct reference / indirect reference | reltable link (an indirect reference is a link through a relationship table) |
+| forward reference / backward reference | incoming links, where-used, referencing files, dependents |
 | conref, conkeyref, keyref | content reuse attribute, key-based reuse, key resolution |
 | DITA map, bookmap | ditamap file, map XML, bookmap XML |
 | topic | DITA topic file, topic XML, .dita file |
@@ -132,6 +132,9 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | variables, language variables | placeholder values, i18n strings, localized labels |
 | element, tag, attribute, friendly names | XML node, DOM node, node property, element label mapping |
 | Workspace Settings, Publish profile, Assets View | user settings JSON, publish configuration, DAM asset browser |
+| context menu (Save as new version, Copy > Copy UUID / Copy path, Locate in, Add to, Properties, Close) | right-click options, overflow actions |
+| Single Topic Publishing (STP) | topic-level publish, per-topic generation |
+| schematron file(s) | .sch rules file, validation rule set |
 | toggle on / toggle off | enable or disable the flag, set the property to true or false, checked or unchecked switch |
 | Workspace settings tabs: General, Panels, Elements list, Attributes list, Colors, Font list, Publish profiles, Validation, Display attributes, Translation, Metadata | user preference keys, editor settings JSON |
 | right panel (File properties: General, References, Outputs, Translations) | properties sidebar, inspector, metadata pane |
@@ -159,6 +162,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
   Find and replace, Data sources, Review).
 - A metadata property is named by its Label from the Metadata tab of Workspace settings (Title, Document State,
   Tags); its Metadata Path goes in a sub-point ("  - metadata/cq:tags").
+- In the References section of the right panel, use the screen labels: "Used in" (backward references) and
+  "Outgoing links" (forward references); an empty list shows "No used references found".
 - Validation tab options are named as shown: "Run validation check before saving the file", "Allow all users to
   add schematron files in validation panel", and the Schematron Files list.
 - Translation tab labels are named as shown: Language groups (Name, Languages, Add), Additional settings,
