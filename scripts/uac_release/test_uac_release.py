@@ -19,6 +19,7 @@ import uac_staleness_watch as staleness  # noqa: E402
 import uac_release_runner as runner  # noqa: E402
 import release_dashboard as dashboard  # noqa: E402
 import linked_docs  # noqa: E402
+import record_manual_rewrite  # noqa: E402
 
 UAC = (
     "Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer reported and "
@@ -2257,6 +2258,83 @@ class DeliveryCleanupTests(unittest.TestCase):
         self.assertFalse(fires("Server author-p38855-e340376-cmstg, build 2026.9.0.413 reproduces it."),
                          "a digit run such as e340376 is not a 403")
         self.assertFalse(fires("Closing this ticket as it is not reproducible with the given steps."))
+
+
+class PropertyJira:
+    """Fake Jira with issue properties and an AC-field changelog."""
+
+    def __init__(self, changes=None):
+        self.props: dict = {}
+        self.changes = changes or []
+
+    def get_issue_property(self, key, name):
+        return self.props.get((key, name))
+
+    def set_issue_property(self, key, name, value):
+        self.props[(key, name)] = value
+
+    def get_field(self, key, field, rendered=False):
+        return "current text"
+
+    def _json(self, method, path, payload=None):
+        return {"changelog": {"histories": [
+            {"author": {"name": by}, "created": at, "items": [{"fieldId": "customfield_1", "field": "Acceptance Criteria",
+                                                              "fromString": "", "toString": text}]}
+            for by, at, text in self.changes]}, "fields": {}}
+
+
+class ClaudeRewriteTests(unittest.TestCase):
+    def test_marked_text_is_a_claude_rewrite_and_anything_else_a_qe_edit(self) -> None:
+        jira = PropertyJira()
+        record_manual_rewrite.mark(jira, "PROJ-1", ["new text"], "readability rewrite")
+        hashes = harvester.rewrite_hashes(jira, "PROJ-1")
+        rewrite = {"outcome": "CHANGED", "current_sha256": harvester._sha("new text")}
+        self.assertEqual(harvester.edit_origin(rewrite, hashes),
+                         {"edit_origin": "CLAUDE_REWRITE", "rewrite_reason": "readability rewrite"})
+        qe = {"outcome": "CHANGED", "current_sha256": harvester._sha("a QE's text")}
+        self.assertEqual(harvester.edit_origin(qe, hashes), {"edit_origin": "QE_EDIT"})
+        self.assertEqual(harvester.edit_origin({"outcome": "ACCEPTED_AS_IS"}, hashes), {})
+        self.assertEqual(record_manual_rewrite.mark(jira, "PROJ-1", ["new text"], "again"), [], "marked once")
+        self.assertEqual(harvester.rewrite_hashes(object(), "PROJ-1"), {}, "a client without properties")
+
+    def test_history_marks_every_own_write_after_the_runner_post(self) -> None:
+        jira = PropertyJira([("uac.bot", "2026-10-01", "runner post"), ("qa.person", "2026-10-02", "qe text"),
+                             ("uac.bot", "2026-10-03", "claude rewrite 1"), ("uac.bot", "2026-10-04", "claude rewrite 2")])
+        texts = record_manual_rewrite.history_texts(jira, "PROJ-1", "customfield_1", "uac.bot")
+        self.assertEqual(texts, ["claude rewrite 1", "claude rewrite 2"])
+
+    def test_report_keeps_claude_rewrites_out_of_the_learning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = make_config(Path(tmp))
+            learning = Path(tmp) / harvester.LEARNING_DIR
+            learning.mkdir()
+            base = {"harvested_at": "2026-10-08T03:00:00+0000", "outcome": "CHANGED", "components": ["Review"],
+                    "posted_text": "", "criteria": [{"kind": "added", "old": "", "new": "A QE-added check", "reason": ""}],
+                    "counts": {}}
+            rows = [dict(base, key="PROJ-1", edit_origin="QE_EDIT"),
+                    dict(base, key="PROJ-2", edit_origin="CLAUDE_REWRITE", rewrite_reason="readability rewrite",
+                         criteria=[{"kind": "added", "old": "", "new": "A Claude-added line", "reason": ""}])]
+            (learning / harvester.RECORDS_FILE).write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+            report = harvester.monthly_report(config, "2026-10").read_text(encoding="utf-8")
+        self.assertIn("Claude or Codex rewrites (not counted below, not QE feedback): 1", report)
+        self.assertIn("PROJ-2: readability rewrite", report)
+        self.assertIn("A QE-added check", report)
+        self.assertNotIn("A Claude-added line", report)
+
+    def test_relabel_labels_already_harvested_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = make_config(Path(tmp))
+            learning = Path(tmp) / harvester.LEARNING_DIR
+            learning.mkdir()
+            rows = [{"key": "PROJ-1", "outcome": "CHANGED", "current_sha256": harvester._sha("claude text")},
+                    {"key": "PROJ-1", "outcome": "CHANGED", "current_sha256": harvester._sha("qe text")},
+                    {"key": "PROJ-2", "outcome": "ACCEPTED_AS_IS", "current_sha256": "x"}]
+            (learning / harvester.RECORDS_FILE).write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+            jira = PropertyJira()
+            record_manual_rewrite.mark(jira, "PROJ-1", ["claude text"], "user-directed correction")
+            self.assertEqual(harvester.relabel(config, jira, logging.getLogger("test")), 2)
+            out = [json.loads(line) for line in (learning / harvester.RECORDS_FILE).read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([r.get("edit_origin") for r in out], ["CLAUDE_REWRITE", "QE_EDIT", None])
 
 
 if __name__ == "__main__":

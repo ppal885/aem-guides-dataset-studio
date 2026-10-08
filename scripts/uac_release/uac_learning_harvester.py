@@ -493,6 +493,32 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, sta
                    suggested=status.get("suggested") or [], kinds=criterion_kinds(evidence))
 
 
+REWRITE_PROPERTY = "uac-manual-rewrite"
+
+
+def rewrite_hashes(jira, key: str) -> dict[str, str]:
+    """SHA-256 -> reason of the texts a Claude or Codex session wrote (record_manual_rewrite.py)."""
+    getter = getattr(jira, "get_issue_property", None)
+    if getter is None:
+        return {}
+    try:
+        value = getter(key, REWRITE_PROPERTY) or {}
+    except Exception:  # noqa: BLE001 - a missing property never stops the harvest
+        return {}
+    return {str(r.get("sha256")): str(r.get("reason") or "") for r in value.get("rewrites") or []
+            if isinstance(r, dict) and r.get("sha256")}
+
+
+def edit_origin(record: dict, hashes: dict[str, str]) -> dict:
+    """CLAUDE_REWRITE when the edited text is one a Claude session marked, QE_EDIT otherwise."""
+    if record.get("outcome") != "CHANGED":
+        return {}
+    sha = record.get("current_sha256") or ""
+    if sha in hashes:
+        return {"edit_origin": "CLAUDE_REWRITE", "rewrite_reason": hashes[sha]}
+    return {"edit_origin": "QE_EDIT"}
+
+
 def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
     out = Path(config["output_dir"])
     learning = out / LEARNING_DIR
@@ -511,8 +537,9 @@ def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
             logger.exception("%s: could not harvest", key)
             continue
         if record:
+            record.update(edit_origin(record, rewrite_hashes(jira, key)))
             records.append(record)
-            logger.info("%s: %s %s", key, record["outcome"], record["counts"])
+            logger.info("%s: %s %s %s", key, record["outcome"], record.get("edit_origin", ""), record["counts"])
     with (learning / RECORDS_FILE).open("a", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -597,6 +624,31 @@ def kind_report_lines(records: list[dict]) -> list[str]:
     return lines + [""]
 
 
+def relabel(config: dict, jira, logger) -> int:
+    """Label already-harvested CHANGED records that a Claude session wrote. Returns how many changed."""
+    path = Path(config["output_dir"]) / LEARNING_DIR / RECORDS_FILE
+    if not path.is_file():
+        return 0
+    lines, hashes, changed = path.read_text(encoding="utf-8").splitlines(), {}, 0
+    out = []
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except ValueError:
+            out.append(line)
+            continue
+        if record.get("outcome") == "CHANGED" and not record.get("edit_origin"):
+            key = record.get("key") or ""
+            if key not in hashes:
+                hashes[key] = rewrite_hashes(jira, key)
+            record.update(edit_origin(record, hashes[key]))
+            changed += 1
+            logger.info("%s: %s", key, record["edit_origin"])
+        out.append(json.dumps(record, ensure_ascii=False))
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return changed
+
+
 def monthly_report(config: dict, month: str) -> Path:
     """Write learning/report-<month>.md from the records harvested in that month (YYYY-MM)."""
     learning = Path(config["output_dir"]) / LEARNING_DIR
@@ -610,6 +662,8 @@ def monthly_report(config: dict, month: str) -> Path:
                 continue
             if str(record.get("harvested_at") or "").startswith(month):
                 records.append(record)
+    rewrites = [r for r in records if r.get("edit_origin") == "CLAUDE_REWRITE"]
+    records = [r for r in records if r.get("edit_origin") != "CLAUDE_REWRITE"]
     by_component: dict[str, dict] = defaultdict(lambda: {"tickets": set(), "accepted": 0, "changed": 0,
                                                           "removed": [], "added": [], "promoted": [], "screens": []})
     for record in records:
@@ -635,6 +689,10 @@ def monthly_report(config: dict, month: str) -> Path:
              "Missed screens = screens (panel, console, dashboard, app, ...) that a QE-added criterion names and our "
              "posted UAC never mentioned, counted so a recurring screen miss shows up in the data before any rule changes.",
              ""]
+    if rewrites:
+        lines += [f"Claude or Codex rewrites (not counted below, not QE feedback): {len(rewrites)}"]
+        lines += [f"- {r['key']}: {r.get('rewrite_reason') or 'no reason given'}" for r in rewrites]
+        lines += [""]
     totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "promoted", "missed_screens")}
     for component in sorted(by_component):
         b = by_component[component]
@@ -690,6 +748,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--generator-user", action="append", default=[],
                         help="with --backfill: a Jira user whose field writes are the generated UAC (repeatable)")
     parser.add_argument("--dry-run", action="store_true", help="with --backfill: print the records, write nothing")
+    parser.add_argument("--relabel", action="store_true",
+                        help="label already-harvested edits that a Claude session wrote (record_manual_rewrite.py)")
     args = parser.parse_args(argv)
     common.load_env_file(args.env_file)
     config = common.load_config(args.config)
@@ -705,6 +765,9 @@ def main(argv: list[str] | None = None) -> int:
     logger = common.setup_logging(out / "logs", "uac-learning")
     jira = common.JiraClient.from_env()
     own_name = str((jira.myself() or {}).get("name") or "")
+    if args.relabel:
+        print(f"labelled {relabel(config, jira, logger)} record(s)")
+        return 0
     if args.backfill:
         generators = generator_users(config, own_name, args.generator_user)
         records = backfill(config, jira, logger, generators, args.backfill, dry_run=args.dry_run)

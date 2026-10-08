@@ -176,7 +176,7 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
         counts = r.get("counts") or {}
         edit_rows.append(
             f"<tr><td>{_ticket(str(r.get('key')), jira_url)}</td><td>{_e(r.get('summary') or '-')}</td>"
-            f"<td>{_e(r.get('editor') or '-')}</td><td>{_when(str(r.get('edited_at') or ''))}</td>"
+            f"<td>{_e(r.get('editor') or '-')}{' (Claude rewrite)' if r.get('edit_origin') == 'CLAUDE_REWRITE' else ''}</td><td>{_when(str(r.get('edited_at') or ''))}</td>"
             f"<td class=\"num\">{_e(counts.get('accepted', 0))}</td><td class=\"num\">{_e(counts.get('changed', 0))}</td>"
             f"<td class=\"num\">{_e(counts.get('removed', 0))}</td><td class=\"num\">{_e(counts.get('added', 0))}</td></tr>")
     picked = len(posted) + len(not_posted)

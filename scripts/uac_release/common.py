@@ -364,6 +364,18 @@ class JiraClient:
                 "comments": comments, "attachments": attachments,
                 "labels": [str(label) for label in fields.get("labels") or []]}
 
+    def get_issue_property(self, key: str, name: str) -> Any:
+        """A hidden issue property's value, or None when the ticket has none."""
+        try:
+            return (self._json("GET", f"/rest/api/2/issue/{key}/properties/{name}") or {}).get("value")
+        except RuntimeError as exc:
+            if "HTTP 404" in str(exc):
+                return None
+            raise
+
+    def set_issue_property(self, key: str, name: str, value: Any) -> None:
+        self._json("PUT", f"/rest/api/2/issue/{key}/properties/{name}", value)
+
     def set_field(self, key: str, field: str, value: str) -> None:
         self._json("PUT", f"/rest/api/2/issue/{key}", {"fields": {field: value}})
 
