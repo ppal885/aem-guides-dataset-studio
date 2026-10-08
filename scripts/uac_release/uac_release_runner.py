@@ -73,7 +73,9 @@ When finished, write these files:
    View, Content Fragment, Download, Download Map, forward reference, backward reference, output presets,
    PDF preset (say Native PDF or DITA-OT), Workfront, conref, conkeyref, keyref, fmditaTitle, dc:title,
    asset state, Tags View and non-tag view, new baseline (V2) and old baseline (V1) - say which baseline,
-   new AEM Sites (the same as Native AEM Sites) and old AEM Site (DITA-OT based) - say which AEM Sites output.
+   new AEM Sites (the same as Native AEM Sites) and old AEM Site (DITA-OT based) - say which AEM Sites output,
+   output, the output preset tabs (General, Metadata, Layout, Security, Print, Advanced) - name the tab -,
+   Using DITAVAL and Using condition preset (Conditional filtering).
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are

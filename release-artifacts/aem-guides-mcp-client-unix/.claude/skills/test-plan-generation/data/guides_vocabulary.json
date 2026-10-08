@@ -433,7 +433,22 @@
     "V1 Baseline",
     "new AEM Sites",
     "Native AEM Sites",
-    "old AEM Site"
+    "old AEM Site",
+    "output",
+    "General tab",
+    "Metadata tab",
+    "Layout tab",
+    "Security tab",
+    "Print tab",
+    "Advanced tab",
+    "Using DITAVAL",
+    "Using condition preset",
+    "Create separate PDF files",
+    "PDF file",
+    "Citation style",
+    "Variable set",
+    "Additional DITA-OT command line arguments",
+    "Generate output"
   ],
   "canonical_term_sources": [
     {

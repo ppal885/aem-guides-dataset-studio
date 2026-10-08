@@ -123,6 +123,9 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Tags View / non-tag view | tag display mode, markup view, plain view |
 | new baseline (V2 baseline) / old baseline (V1 baseline) | baseline v2 API, legacy baseline, baseline node |
 | new AEM Sites (Native AEM Sites) / old AEM Site (DITA-OT based) | sites publishing, site output engine, sites v2 |
+| output | generated artifact, rendition, publish result |
+| General / Metadata / Layout / Security / Print / Advanced tab (of an output preset) | preset section, settings group |
+| Conditional filtering: None / Using DITAVAL / Using condition preset | ditaval filtering, condition filter, profiling |
 
 - Write: "A topic reference added to the DITA map shows in the Map View."
 - Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."
@@ -132,6 +135,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 - Say which baseline: "new baseline (V2)" or "old baseline (V1)", or both when both are in scope.
 - Say which AEM Sites output: "new AEM Sites" (Native AEM Sites, the same output) or "old AEM Site" (the
   DITA-OT based one), or both when both are in scope. Never list new AEM Sites and Native AEM Sites as two outputs.
+- Name the output preset tab where the setting lives, as it is shown on screen: "the Layout tab of the Native PDF
+  preset", "Using DITAVAL in Conditional filtering on the General tab".
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 
