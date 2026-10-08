@@ -170,6 +170,15 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | Global Profile / custom Folder Profile; custom doc state (a Document State an admin added) | profile node, custom workflow state |
 | User preferences Appearance tab (Application theme, Source view theme, Editor files display configuration: Title or File name) | UI theme setting, label mode |
 | Explorer toolbar (Search, Refresh, + for new file, Sort); empty Editor: No file selected for editing | tree actions, blank editor state |
+| Repository page on Home (Refresh, Upload assets, New, Search, Filters, Customize; columns Name, Title, File type, Path, Document state, Locked by, Last modified) | asset listing, DAM browser grid |
+| repository filters (Search in; File type: Topic, Map, DITAVAL, Image, Multimedia, Document, Others; Document state: Draft, Edit, In-Review, Approved, Reviewed, Done; Locked by; Clear filters, Apply) | facets, query predicates |
+| custom filters defined in ui config | configurable filter JSON, extra facets |
+| Repository search: Search on File title, File name or Content | full-text query, index search |
+| Customize repository view (column toggles, including UUID and Created on) | column config, grid settings |
+| Filters: Last modified (Modified after, Modified before, Time frame: In last week, In last month, In last year, Reset), Tags, DITA elements; Advanced filter (DITA element, Attribute, Value, Add element, Update) | date range facet, tag facet, element query |
+| Upload assets dialog (Select asset folder, Choose Files, Upload) | file upload modal |
+| human translation / machine translation; language copies; language groups; translation status In sync, Out of sync, Missing copy | translation job type, localization state, target state |
+| static baseline / dynamic baseline | fixed-version baseline, label-driven baseline |
 | app switcher (Home, Editor, Map console) | mode dropdown, app menu, workspace switch |
 | Map console left panel (Output presets, Reports, Baseline, Condition presets, Translation) | map dashboard sidebar, publishing tabs |
 | Map console map dropdown (Open in editor, Select another map) | map picker, switch context |
@@ -229,6 +238,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 - Repositories are UUID now. Non-UUID appears only in UUID Migration (non-UUID to UUID): name it that way when the
   ticket is about the migration, and do not add "UUID and non-UUID repositories" as a case otherwise (unless the
   customer's environment is stated as non-UUID).
+- A filter list that comes from ui config is configuration-driven: check a custom filter added in ui config
+  as well as the default filters, and name the filter as it shows on screen.
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

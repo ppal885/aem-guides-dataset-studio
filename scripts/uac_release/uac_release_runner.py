@@ -104,7 +104,11 @@ When finished, write these files:
    (Rename element, Surround with element, Unwrap element, Insert before, Insert after, Create snippet, Generate
    IDs); Map Panel selection bar (Save as new version and unlock); Collections panel (Lightbox); app switcher
    (Home, Editor, Map console); Map console left panel (Output presets, Reports, Baseline, Condition presets,
-   Translation); Map console map dropdown (Open in editor, Select another map); New output preset Type (AEM Sites, PDF, Knowledge Base, HTML5, JSON, Custom, SCORM). Use the setting label of
+   Translation); Repository page and repository filters (File type, Document state, Locked by; custom filters
+   defined in ui config - check a custom one too; Last modified, Tags, DITA elements, Advanced filter; Search on
+   File title, File name or Content; Customize repository view); static and dynamic baselines; human and machine
+   translation, language copies, language groups, translation status In sync, Out of sync and Missing copy; Map console map dropdown (Open in
+   editor, Select another map); New output preset Type (AEM Sites, PDF, Knowledge Base, HTML5, JSON, Custom, SCORM). Use the setting label of
    that preset type (Custom: "DITA-OT command line arguments"; Native PDF: "Additional DITA-OT command line
    arguments"). Native PDF Advanced tab toggles and File (Asset) properties are named as shown; the Save
    changes dialog has Don't Save, Cancel, Save.
