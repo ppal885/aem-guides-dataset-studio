@@ -70,6 +70,12 @@ When finished, write these files:
    different); shorten by moving detail to sub-points. Before rewriting a criterion, re-read the ticket's
    description, comments and attachments: a comment that names the screen decides which screen it is about.
    A documentation answer marked not verified, or one citing unrelated pages, can only be a TBD.
+   Every criterion is a product check a QE can run on a test instance. Engineering, support and operations
+   deliverables are not criteria: an incident record or root-cause write-up, a post-mortem, a timing or
+   performance report, a rollback or mitigation of a customer environment, a folder or access an Adobe team
+   sets up for the customer, monitoring. Put them in the test plan; when the ticket asks for one, its
+   product outcome (the output generates, the move completes) is the criterion instead. Documentation is a
+   criterion only when the ticket itself asks for documentation.
    Under a criterion, list up to five short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
    or fewer); test data - customer topic and file names, preset and DITAVAL names, sample titles - goes in
@@ -185,7 +191,8 @@ When finished, write these files:
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or merged pull request>"}}, {{"status": "PROPOSED", "signal": "<the ticket text, copied, that
    links a fix pull request nobody has reviewed or merged>"}}, {{"status": "NOT_A_DEFECT", "reason": "<the new
-   capability the ticket asks for, e.g. a new API or template field>"}} or {{"status": "UNCONFIRMED",
+   capability or change the ticket asks for, e.g. a new API or template field, an access or permission change,
+   an enhancement or documentation>"}} or {{"status": "UNCONFIRMED",
    "reason": "<why, when the ticket has a root-cause or fix comment that is not the fix>"}}. Every pull
    request listed in {linked_docs_path} (kind "pull_request") is a fix someone proposed: fetch it in the
    matching clone (git fetch origin pull/<number>/head, or the branch named in the comment) and read the
@@ -884,6 +891,61 @@ def check_outputs(ticket_dir: Path) -> list[str]:
     return problems
 
 
+# Engineering, support and operations deliverables a QE cannot check on a test instance (seen in posted UACs:
+# "The incident record identifies the missing-ZIP cause", "Creation and upload have separate timings",
+# "The approved urgent rollback to AEM release 2608 ..."). They belong in the test plan.
+_PROCESS_AC = re.compile(
+    r"\bincident record\b|\broot[- ]cause (?:analysis|write-?up|report)\b|\bpost-?mortem\b"
+    r"|\broll ?back (?:to|of) (?:the )?(?:aem )?release\b|\b(?:timing|performance) (?:report|breakdown)\b"
+    r"|\bseparate timings\b", re.IGNORECASE)
+
+
+def process_ac_problems(uac_text: str) -> list[str]:
+    """Criteria whose statement is a process deliverable, not a product check."""
+    return [f"Acceptance Criteria {number} is a process deliverable, not a product check a QE can run "
+            f"(move it to the test plan): \"{statement.strip()[:100]}\""
+            for number, statement in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac_text, re.MULTILINE)
+            if _PROCESS_AC.search(statement)]
+
+
+_AC_BLOCK = re.compile(r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Out of scope\b|\Z)",
+                       re.MULTILINE | re.DOTALL)
+
+
+def move_process_acs(uac_text: str) -> tuple[str, list[str]]:
+    """Take process-deliverable criteria out of the delivered UAC and renumber the rest.
+
+    Returns (UAC text to deliver, moved criteria as written). The UAC is still delivered: a criterion that is
+    an engineering, support or operations deliverable goes to the full test plan instead of blocking the
+    UAC. When every criterion would move, nothing moves (the UAC is never emptied)."""
+    blocks = list(_AC_BLOCK.finditer(uac_text))
+    moving = [m for m in blocks if _PROCESS_AC.search(m.group(2).splitlines()[0] if m.group(2) else "")]
+    if not moving or len(moving) == len(blocks):
+        return uac_text, []
+    width = len(blocks[0].group(1))
+    kept, number, out, last = [], 0, [], 0
+    for m in blocks:
+        out.append(uac_text[last:m.start()])
+        last = m.end()
+        if m in moving:
+            continue
+        number += 1
+        out.append(f"- Acceptance Criteria {number:0{width}d}:{m.group(2)}")
+    out.append(uac_text[last:])
+    moved = [f"Acceptance Criteria {m.group(1)}:{m.group(2).rstrip()}" for m in moving]
+    return "".join(out), moved
+
+
+def record_moved_acs(ticket_dir: Path, moved: list[str]) -> None:
+    """Append moved process criteria to the full test plan so they are kept, not lost."""
+    plan = ticket_dir / common.PLAN_FILE
+    if not moved or not plan.is_file():
+        return
+    section = ("\n\n**Moved from the UAC (engineering, support or operations work, not a product check)**\n"
+               + "\n".join(f"- {text.splitlines()[0].strip()}" for text in moved) + "\n")
+    plan.write_text(plan.read_text(encoding="utf-8").rstrip() + section, encoding="utf-8")
+
+
 def runtime_fallback_gates(ticket_dir: Path) -> list[str] | None:
     """The runtime gates that did not pass when Copilot wrote the UAC through the runtime
     fallback, as "gate: reason" lines; None when the canonical runtime delivered the UAC."""
@@ -1090,6 +1152,14 @@ def normalize_note(uac_text: str, fix_status: str) -> str:
     return f"{note}\n\n{body}" if note else body
 
 
+# Jira labels that mark a ticket as a feature request: it has no defect, so no root-cause Note line.
+FEATURE_REQUEST_LABELS = {"customer-features"}
+
+
+def is_feature_request(source: dict | None) -> bool:
+    return any(str(label).lower() in FEATURE_REQUEST_LABELS for label in (source or {}).get("labels") or [])
+
+
 def deliverable_uac(ticket_dir: Path, source: dict | None) -> tuple[str, list[str]]:
     """UAC.md as it goes to the field: the Note line set from fix_basis and clean Source lines."""
     text = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8")
@@ -1099,6 +1169,8 @@ def deliverable_uac(ticket_dir: Path, source: dict | None) -> tuple[str, list[st
     except ValueError:
         evidence = {}
     status = str(((evidence or {}).get("fix_basis") or {}).get("status") or "")
+    if status == "UNCONFIRMED" and is_feature_request(source):
+        status = "NOT_A_DEFECT"
     if status:
         text = normalize_note(text, status)
     names = [str(a.get("filename") or "") for a in (source or {}).get("attachments") or []]
@@ -1137,7 +1209,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            runtime_python=runtime_python(config) or "python3",
                            max_discovered=MAX_DISCOVERED_SURFACES_PER_AC)
     cmd = copilot_command(config, prompt, ticket_dir / "copilot-transcript.md", runtime_python(config))
-    timeout = int(config.get("copilot", {}).get("timeout_minutes", 45)) * 60
+    timeout = int(config.get("copilot", {}).get("timeout_minutes", 100)) * 60
     started = time.time()
     logger.info("%s: running Copilot CLI", key)
     try:
@@ -1180,6 +1252,11 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         return "FAILED"
     jira_text = common.import_skill_module("jira_safe_text")
     uac_text, removed_sources = deliverable_uac(ticket_dir, source)
+    uac_text, moved_acs = move_process_acs(uac_text)
+    if moved_acs:
+        record_moved_acs(ticket_dir, moved_acs)
+        status["moved_process_acs"] = moved_acs
+        logger.info("%s: moved %d process criteria to the test plan", key, len(moved_acs))
     if removed_sources:
         status["source_code_refs_removed"] = removed_sources
         logger.info("%s: removed code references from Source lines: %s", key, "; ".join(removed_sources))
@@ -1200,7 +1277,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     status["runtime_research"] = research
     status["runtime_result"] = runtime_result_summary(ticket_dir)
     review_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
-                    + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research))
+                    + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research)
+                    + [f"moved to the test plan, not a product check: {text.splitlines()[0][:110]}" for text in moved_acs])
     status["review_notes"] = review_notes
     fallback = runtime_fallback_gates(ticket_dir)
     if fallback is not None:

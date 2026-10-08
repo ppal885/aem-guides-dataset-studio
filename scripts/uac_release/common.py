@@ -348,8 +348,8 @@ class JiraClient:
         return {role: str((fields.get(role) or {}).get("name") or "") for role in ("assignee", "reporter")}
 
     def get_source(self, key: str) -> dict[str, Any]:
-        """The ticket text a UAC must cover: summary, description, comments and attachment names."""
-        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=summary,description,comment,attachment")
+        """The ticket text a UAC must cover: summary, description, comments and attachment names, plus labels."""
+        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=summary,description,comment,attachment,labels")
         fields = data.get("fields") or {}
         comments = [
             {"id": str(c.get("id") or ""), "author": str((c.get("author") or {}).get("name") or ""),
@@ -361,7 +361,8 @@ class JiraClient:
             for a in fields.get("attachment") or []
         ]
         return {"summary": fields.get("summary") or "", "description": fields.get("description") or "",
-                "comments": comments, "attachments": attachments}
+                "comments": comments, "attachments": attachments,
+                "labels": [str(label) for label in fields.get("labels") or []]}
 
     def set_field(self, key: str, field: str, value: str) -> None:
         self._json("PUT", f"/rest/api/2/issue/{key}", {"fields": {field: value}})
