@@ -121,12 +121,14 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | fmditaTitle, dc:title | title metadata property, jcr title field |
 | asset state, doc state | asset status, lifecycle status |
 | Tags View / non-tag view | tag display mode, markup view, plain view |
+| new baseline (V2 baseline) / old baseline (V1 baseline) | baseline v2 API, legacy baseline, baseline node |
 
 - Write: "A topic reference added to the DITA map shows in the Map View."
 - Avoid: "A topicref element appended to the ditamap XML is rendered in the map tree."
 - When one technical value must be checked (an element name, a file extension, a property), put it in a sub-point:
   "  - the reference is a <topicref> with format=dita".
 - conref, conkeyref, keyref, fmditaTitle and dc:title are everyday QE words: they may stay in the statement.
+- Say which baseline: "new baseline (V2)" or "old baseline (V1)", or both when both are in scope.
 - Say which PDF preset: "Native PDF preset" or "DITA-OT PDF preset", or both when both are in scope.
 - Use the precise kind when the ticket is about it: "bookmap" when only bookmaps are affected, "map" when every DITA map is.
 

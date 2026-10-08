@@ -427,7 +427,10 @@
     "fmditaTitle",
     "dc:title",
     "asset state",
-    "non-tag view"
+    "non-tag view",
+    "V2 Baseline",
+    "Old Baseline",
+    "V1 Baseline"
   ],
   "canonical_term_sources": [
     {
@@ -634,6 +637,13 @@
         "Tag View"
       ],
       "note": "QE say Tag View for the Tags View of the Editor; the other mode is the non-tag view."
+    },
+    {
+      "terms": [
+        "V1 Baseline",
+        "Old Baseline"
+      ],
+      "note": "V1 Baseline and Old Baseline are the same thing; it is a different baseline from the New (V2) Baseline."
     }
   ]
 }

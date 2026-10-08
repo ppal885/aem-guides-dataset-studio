@@ -72,7 +72,7 @@ When finished, write these files:
    Global Profile, XML Editor Configuration, ui config, Repository View, Layout View, Preview, Side By Side
    View, Content Fragment, Download, Download Map, forward reference, backward reference, output presets,
    PDF preset (say Native PDF or DITA-OT), Workfront, conref, conkeyref, keyref, fmditaTitle, dc:title,
-   asset state, Tags View and non-tag view.
+   asset state, Tags View and non-tag view, new baseline (V2) and old baseline (V1) - say which baseline.
    A DITA element name (topicref, mapref, reltable), a file extension or an
    XML word goes in a sub-point, never in the statement.
    Shortening never merges, drops or renames a named product item (a map template and a topic template are
