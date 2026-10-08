@@ -98,6 +98,8 @@ act on without opening the ticket, not as a list of nouns.
 - Avoid: "Missing format attribute or explicit format=pdf."
 - No filler words: write "a DITA map", not "an ordinary DITA map (not a bookmap)". The product name already says
   what it is, and a case already covered elsewhere needs no "(not a ...)" reminder.
+- Write "conref", not "external conref"; write "a conref that names the topic ID and the element ID", not
+  "topicId/elementId". Say a topic is made from a topic template; the map template only refers to it.
 
 ## Use the everyday AEM Guides words
 

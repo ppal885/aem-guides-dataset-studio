@@ -928,12 +928,32 @@ def check_outputs(ticket_dir: Path) -> list[str]:
     count = len(re.findall(r"^- Acceptance Criteria \d+:", text, re.MULTILINE))
     if not 1 <= count <= 10:
         problems.append(f"UAC.md has {count} Acceptance Criteria (expected 1-10)")
-    vocabulary = common.import_skill_module("guides_vocabulary")
-    lines = "\n".join(f"- AC-{i:02d}: {m}" for i, m in enumerate(
-        re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", text, re.MULTILINE), 1))
-    blocked, _ = vocabulary.check(lines)
+    blocked, _ = _vocabulary_hits(text)
     problems.extend(f"vocabulary: {b}" for b in blocked)
     return problems
+
+
+def _vocabulary_hits(uac_text: str) -> tuple[list[str], list[str]]:
+    """(blocked, advisory) vocabulary hits for the criterion statements of a UAC."""
+    vocabulary = common.import_skill_module("guides_vocabulary")
+    lines = "\n".join(f"- AC-{i:02d}: {m}" for i, m in enumerate(
+        re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", uac_text, re.MULTILINE), 1))
+    return vocabulary.check(lines)
+
+
+def vocabulary_notes(ticket_dir: Path) -> list[str]:
+    """Advisory wording nudges (for example a topic said to come from a map template) as review notes.
+
+    Never a failure: the UAC is still delivered, and the note tells the reviewer which wording to fix."""
+    uac = ticket_dir / common.UAC_FILE
+    if not uac.is_file():
+        return []
+    text = uac.read_text(encoding="utf-8")
+    # Statements and their case sub-points: a confusing word in a case line misleads QE just as much.
+    lines = re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$|^\s+- (.+)$", text, re.MULTILINE)
+    checked = "\n".join(f"- AC-{i:02d}: {a or b}" for i, (a, b) in enumerate(lines, 1))
+    _, advisories = common.import_skill_module("guides_vocabulary").check(checked)
+    return [f"wording: {a}" for a in advisories]
 
 
 # Engineering, support and operations deliverables a QE cannot check on a test instance (seen in posted UACs:
@@ -1323,6 +1343,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     status["runtime_result"] = runtime_result_summary(ticket_dir)
     review_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
                     + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research)
+                    + vocabulary_notes(ticket_dir)
                     + [f"moved to the test plan, not a product check: {text.splitlines()[0][:110]}" for text in moved_acs])
     status["review_notes"] = review_notes
     fallback = runtime_fallback_gates(ticket_dir)

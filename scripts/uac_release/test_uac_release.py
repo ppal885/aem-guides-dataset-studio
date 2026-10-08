@@ -2085,6 +2085,27 @@ class DeliveryCleanupTests(unittest.TestCase):
         self.assertEqual([p.split(" is ")[0] for p in problems],
                          ["Acceptance Criteria 02", "Acceptance Criteria 03", "Acceptance Criteria 04"])
 
+    def test_wording_nudges_are_review_notes_not_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp)
+            (ticket / common.UAC_FILE).write_text(
+                "- Acceptance Criteria 01: A topic created from a map template shows the same reused content.\n"
+                "- Acceptance Criteria 02: Each new topic made from a referenced topic template shows it too.\n",
+                encoding="utf-8")
+            notes = runner.vocabulary_notes(ticket)
+            self.assertEqual(len(notes), 1)
+            self.assertIn("topic-from-map-template", notes[0])
+            (ticket / common.UAC_FILE).write_text(
+                "- Acceptance Criteria 01: Each new topic shows the reused content.\n"
+                "  - External conref with topicId/elementId.\n", encoding="utf-8")
+            ids = " ".join(runner.vocabulary_notes(ticket))
+            self.assertIn("external-conref", ids, "case sub-points are checked too")
+            self.assertIn("camelcase-id-names", ids)
+            blocked, _ = runner._vocabulary_hits((ticket / common.UAC_FILE).read_text(encoding="utf-8"))
+            self.assertEqual(blocked, [], "a nudge never blocks the UAC")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(runner.vocabulary_notes(Path(tmp)), [])
+
     def test_process_criteria_move_to_the_test_plan_and_the_uac_is_still_delivered(self) -> None:
         text = ("Note: n\n\n- Acceptance Criteria 01: HTML5 output generates after the publishing ZIP becomes available.\n"
                 "  **Source:** ticket.\n"
