@@ -66,7 +66,9 @@ When finished, write these files:
    a criterion or case line.
    When the ticket's scenario is a bookmap, add a "still works as before" check for a DITA map with
    the same content, and the reverse.
-   Keep the criteria (with sub-points, Scope and Out of scope) within 350 words and each Source line within
+   There is no word limit on the whole UAC: never drop a valid case or squeeze a sub-point into shorthand
+   to save words. Keep each sentence short instead - a statement within 35 words, a case sub-point within
+   30 words (what to do, where, and what QE should see), no filler words - and each Source line within
    30 words: name the ticket, comment, attachment, design document or documentation page title, or the fix
    pull request. Never a clone revision or commit hash, a file path, or a class, method or test name: those
    go in the test plan (the runner removes them from Source lines).
