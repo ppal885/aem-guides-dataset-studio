@@ -7982,6 +7982,9 @@ def test_fix_basis_and_no_suggested_checks() -> None:
     api = ("- Acceptance Criteria 01: The API returns the baseline as on the date sent.\n"
            "  - Send asOnDate with a past date, and read jobId from the response.\n")
     check("API field names on an API ticket pass", uc.internal_setting_problems(api) == [])
+    web = ("- Acceptance Criteria 01: Validate accepts an https Site URL on a Salesforce domain.\n"
+           "  - A my.salesforce.com URL, a sandbox My Domain URL and a force.com URL.\n")
+    check("web addresses are not internal settings", uc.internal_setting_problems(web) == [])
 
     suggested = body + (
         "\nSuggested checks (QE decide):\n"

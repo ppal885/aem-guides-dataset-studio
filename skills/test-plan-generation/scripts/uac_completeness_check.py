@@ -658,6 +658,8 @@ _SWITCHED = re.compile(r"\btoggl\w*|\bturn(?:ed|s)? (?:on|off)\b|\b(?:on|off),? 
 _INTERNAL_ALLOWED = {"fmditaTitle", "topicID", "elementID", "topicId", "elementId", "conkeyref", "keyref", "iPhone",
                      "iPad", "eBook"}
 _QUOTED = re.compile(r'"[^"]*"|`[^`]*`')
+# A web address (my.salesforce.com, experienceleague.adobe.com) is something QE type, not a setting.
+_WEB_ADDRESS = re.compile(r"\.(?:com|net|org|io|edu|gov|co|uk|in|de|fr|jp|cn|site|cloud)$", re.I)
 
 
 def internal_setting_problems(uac_text: str) -> list[str]:
@@ -674,7 +676,8 @@ def internal_setting_problems(uac_text: str) -> list[str]:
         found = list(_INTERNAL_NAME.finditer(text))
         if _SWITCHED.search(text):
             found += list(_KEY_NAME.finditer(text))
-        names = [m.group(0) for m in found if m.group(0) not in _INTERNAL_ALLOWED]
+        names = [m.group(0) for m in found
+                 if m.group(0) not in _INTERNAL_ALLOWED and not _WEB_ADDRESS.search(m.group(0))]
         if names:
             problems.append(f"Acceptance Criteria {ac:02d} names internal settings or code ({', '.join(names[:4])}): "
                             "use the setting's on-screen label (for example Enable DITA-OT preprocessing on the "
