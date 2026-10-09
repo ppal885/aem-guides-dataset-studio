@@ -104,6 +104,8 @@ act on without opening the ticket, not as a list of nouns.
   template only refers to it.
 - Write what QE checks instead of "resolve": the link opens the topic, the conref shows the content, the
   reference points to the new topic. Write "the new topic made from a topic template", not "copied topic template".
+- Cloud storage is a flavour, not a toggle: write "Try it on Cloud with the DB flavour, and again with the JCR
+  flavour". Never write "Use Database for AEM Guides toggled on and off" or a database code flag.
 
 ## Use the everyday AEM Guides words
 
