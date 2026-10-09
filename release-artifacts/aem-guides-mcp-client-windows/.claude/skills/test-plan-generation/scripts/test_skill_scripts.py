@@ -7956,6 +7956,32 @@ def test_fix_basis_and_no_suggested_checks() -> None:
                                                     "reason": "that comment names a different ticket's fix"}}
     check("unconfirmed with a reason for the ticket's fix comment passes",
           uc.fix_basis_problems(reasoned, note + body, fixed) == [])
+    explained = dict(source, comments=[{"id": "3", "author": "sc", "body": "Root cause: the copy keeps the source ID."}])
+    known = {"scenario": scenario, "fix_basis": {"status": "CAUSE_KNOWN",
+                                                 "signal": "Root cause: the copy keeps the source ID."}}
+    check("a known cause with the cause-known note passes",
+          uc.fix_basis_problems(known, uc.CAUSE_KNOWN_NOTE + "\n\n" + body, explained) == [])
+    check("a known cause with the not-confirmed note fails",
+          any("fix is not decided" in p or "must start with" in p
+              for p in uc.fix_basis_problems(known, note + body, explained)))
+    handled = dict(source, comments=[{"id": "4", "author": "dev", "body": "This is already handled at update."}])
+    check("a developer's 'already handled' comment is a fix signal", uc.fix_signals(handled) != [])
+    flags = ("- Acceptance Criteria 01: Links still open the same topics.\n"
+             "  - Try enablePublishApiMigration toggled on, then toggled off.\n"
+             "  - Toggle dxml.use.split on, then off.\n"
+             "  - Try guides_publish_config/PDF_ENGINE v1, then v2.\n"
+             "  **Source:** Native PDF publishing code.\n")
+    found = " ".join(uc.internal_setting_problems(flags))
+    check("internal flags and configuration keys in sub-points are refused",
+          all(name in found for name in ("enablePublishApiMigration", "dxml.use.split", "PDF_ENGINE")))
+    labels = ("- Acceptance Criteria 01: A conref shows its content.\n"
+              '  - A conref with href="file.dita#topicID/elementID" and href="file.dita#elementID" both work.\n'
+              "  - Try Enable DITA-OT preprocessing toggled on, then off (General tab).\n"
+              "  - The fmditaTitle shows in the Editor, verified on 2026.11.0.2451.\n")
+    check("on-screen labels, href forms and fmditaTitle pass", uc.internal_setting_problems(labels) == [])
+    api = ("- Acceptance Criteria 01: The API returns the baseline as on the date sent.\n"
+           "  - Send asOnDate with a past date, and read jobId from the response.\n")
+    check("API field names on an API ticket pass", uc.internal_setting_problems(api) == [])
 
     suggested = body + (
         "\nSuggested checks (QE decide):\n"

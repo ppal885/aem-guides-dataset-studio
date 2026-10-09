@@ -794,6 +794,7 @@ scope list.
 ```
 Note: The root cause and the fix are not confirmed yet. ...   (only when fix_basis is UNCONFIRMED)
 Note: A fix is proposed in a linked pull request but is not reviewed yet. ...   (only when PROPOSED)
+Note: The root cause is explained in the ticket, but the fix is not decided yet. ...   (only when CAUSE_KNOWN)
 Scope: <what this ticket covers, when the ticket or a decision sets it, e.g. Native PDF publishing only>
 - Acceptance Criteria 01: <named item> <observable result>.
   - <short case of the same outcome>                 (optional, at most five)
