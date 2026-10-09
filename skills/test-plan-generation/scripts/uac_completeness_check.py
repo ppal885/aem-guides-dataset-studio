@@ -45,7 +45,10 @@ WHAT IT CHECKS in a UAC folder
    hotfix_scope_check.py.
 10. "fix_basis": whether the root cause or fix is known. CONFIRMED needs the ticket text that says it.
    PROPOSED: a fix pull request is linked but not reviewed or merged; it needs the ticket text that links
-   it, and UAC.md starts with the proposed-fix "Note:" line. NOT_A_DEFECT: the ticket asks for a new
+   it, and UAC.md starts with the proposed-fix "Note:" line. CONFIRMED also covers a developer comment that
+   says the problem is fixed or already handled, and a QE comment that verified it on a build. CAUSE_KNOWN:
+   a comment or the investigation explains the root cause but no fix is decided; it needs that ticket text,
+   and UAC.md starts with the cause-known "Note:" line. NOT_A_DEFECT: the ticket asks for a new
    capability (an API, an option, a template field), so there is no root cause and no Note line; it needs
    a reason. UNCONFIRMED is fine - many tickets never get a root-cause comment or a linked pull request -
    but then UAC.md starts with a "Note:" line saying the root cause is not confirmed yet. Unless the fix is
@@ -405,6 +408,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "output_setting": output_setting_problems(evidence, uac, source),
         "shared_consumers": shared_consumer_problems(evidence, uac, source, plan),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
+        "internal_settings": internal_setting_problems(uac),
     }
 
 
@@ -637,12 +641,56 @@ def suggested_problems(uac_text: str) -> list[str]:
     return []
 
 
+# --- internal settings ------------------------------------------------------------------------------
+# Setting names QE cannot find on a screen: dotted configuration keys (dxml.use.split), ALL_CAPS flags
+# (PDF_ENGINE), camelCase keys (enablePublishApiMigration), snake_case keys (guides_publish_config) and
+# configuration files (all_lngvar.json).
+_INTERNAL_NAME = re.compile(
+    r"\b[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}\b"
+    r"|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b"
+    r"|\b[\w-]+\.(?:json|properties|cfg|config|yaml|yml)\b")
+# A camelCase or snake_case name is an API field QE send on an API ticket (asOnDate, jobId); it is an
+# internal setting only when the line switches it.
+_KEY_NAME = re.compile(r"\b[a-z]+[A-Z][A-Za-z0-9]*\b|\b[a-z][a-z0-9]*_[a-z0-9_]+\b")
+_SWITCHED = re.compile(r"\btoggl\w*|\bturn(?:ed|s)? (?:on|off)\b|\b(?:on|off),? (?:then|and)\b|\benabled?\b"
+                       r"|\bdisabled?\b|\bfeature flag\b|\bsetting\b|\bv1\b.*\bv2\b", re.I)
+# Names QE do use: DITA attribute and metadata names and the conref href forms.
+_INTERNAL_ALLOWED = {"fmditaTitle", "topicID", "elementID", "topicId", "elementId", "conkeyref", "keyref", "iPhone",
+                     "iPad", "eBook"}
+_QUOTED = re.compile(r'"[^"]*"|`[^`]*`')
+
+
+def internal_setting_problems(uac_text: str) -> list[str]:
+    """Criteria and case sub-points name settings by their on-screen label; internal names go to the test plan."""
+    problems = []
+    ac = 0
+    for line in (uac_text or "").splitlines():
+        head = re.match(r"^- Acceptance Criteria (\d+):", line)
+        if head:
+            ac = int(head.group(1))
+        elif not re.match(r"^\s+- ", line):
+            continue
+        text = _QUOTED.sub(" ", line)
+        found = list(_INTERNAL_NAME.finditer(text))
+        if _SWITCHED.search(text):
+            found += list(_KEY_NAME.finditer(text))
+        names = [m.group(0) for m in found if m.group(0) not in _INTERNAL_ALLOWED]
+        if names:
+            problems.append(f"Acceptance Criteria {ac:02d} names internal settings or code ({', '.join(names[:4])}): "
+                            "use the setting's on-screen label (for example Enable DITA-OT preprocessing on the "
+                            f"General tab), or move the internal flag or configuration key to the test plan ({PLAN_FILE})")
+    return problems
+
+
 # --- root cause or fix known ---------------------------------------------------------------------------
 # Ticket text that reports a root cause, a fix or a pull request. The VM staleness watcher uses it too.
 FIX_SIGNAL = re.compile(
     r"\broot[\s-]*cause\b|\bRCA\b|\bcaused by\b|\bfix(?:ed)? in\b|\bthe fix\b|/pull/\d+|\bpull request\b"
-    r"|\bPR\s*#?\d+|\bmerged\b|\bcherry[\s-]*pick", re.IGNORECASE)
-FIX_STATES = ("CONFIRMED", "PROPOSED", "UNCONFIRMED", "NOT_A_DEFECT")
+    r"|\bPR\s*#?\d+|\bmerged\b|\bcherry[\s-]*pick"
+    r"|\balready (?:handled|fixed|taken care of)\b|\bverified (?:on|in) (?:build )?\d", re.IGNORECASE)
+FIX_STATES = ("CONFIRMED", "PROPOSED", "CAUSE_KNOWN", "UNCONFIRMED", "NOT_A_DEFECT")
+CAUSE_KNOWN_NOTE = ("Note: The root cause is explained in the ticket, but the fix is not decided yet. These criteria "
+                    "cover what the customer reported and will be checked again when the fix is known.")
 UNCONFIRMED_NOTE = ("Note: The root cause and the fix are not confirmed yet. These criteria cover what the customer "
                     "reported and will be checked again when the fix is known.")
 PROPOSED_NOTE = ("Note: A fix is proposed in a linked pull request but is not reviewed yet. These criteria cover what "
@@ -689,7 +737,7 @@ def fix_basis_problems(evidence: dict, uac_text: str, source: dict | None) -> li
     text = uac_text or ""
     first_ac = re.search(r"^- Acceptance Criteria \d+:", text, re.M)
     head = text[:first_ac.start()] if first_ac else text
-    if status in ("CONFIRMED", "PROPOSED"):
+    if status in ("CONFIRMED", "PROPOSED", "CAUSE_KNOWN"):
         signal = _normalize(block.get("signal"))
         if not signal:
             problems.append(f"fix_basis is {status} without the ticket text that reports the root cause or fix")
@@ -698,6 +746,11 @@ def fix_basis_problems(evidence: dict, uac_text: str, source: dict | None) -> li
                             "cause or fix")
         if status == "PROPOSED" and not re.search(r"^Note:.*fix is proposed", head, re.M | re.I):
             problems.append(f"a fix is proposed but not reviewed, so UAC.md must start with: {PROPOSED_NOTE}")
+        if status == "CAUSE_KNOWN":
+            if not re.search(r"^Note:.*fix is not decided", head, re.M | re.I):
+                problems.append(f"the root cause is known but the fix is not, so UAC.md must start with: "
+                                f"{CAUSE_KNOWN_NOTE}")
+            return problems + _code_only_problems(evidence, text)
         return problems
     if status == "NOT_A_DEFECT":
         if not _reason_ok(block.get("reason")):

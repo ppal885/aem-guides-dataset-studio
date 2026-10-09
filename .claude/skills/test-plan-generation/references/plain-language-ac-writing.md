@@ -104,6 +104,9 @@ act on without opening the ticket, not as a list of nouns.
   template only refers to it.
 - Write what QE checks instead of "resolve": the link opens the topic, the conref shows the content, the
   reference points to the new topic. Write "the new topic made from a topic template", not "copied topic template".
+- Name a setting by its on-screen label ("Enable DITA-OT preprocessing" on the General tab). An internal
+  feature flag, code constant or configuration key (a dotted key, an ALL_CAPS name, a camelCase key, a .json
+  file) has no screen QE can open: it goes to the test plan, never into a criterion or case line.
 - Cloud storage is a flavour, not a toggle: write "Try it on Cloud with the DB flavour, and again with the JCR
   flavour". Never write "Use Database for AEM Guides toggled on and off" or a database code flag.
 

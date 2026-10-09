@@ -2063,6 +2063,10 @@ class DeliveryCleanupTests(unittest.TestCase):
         self.assertTrue(proposed.startswith(check.PROPOSED_NOTE))
         self.assertNotIn("not confirmed", proposed)
         self.assertEqual(runner.normalize_note(proposed, "UNCONFIRMED").count("Note:"), 1)
+        known = runner.normalize_note(runner.normalize_note(UAC, "UNCONFIRMED"), "CAUSE_KNOWN")
+        self.assertTrue(known.startswith(check.CAUSE_KNOWN_NOTE), "the cause-known note replaces the other note")
+        self.assertNotIn("not confirmed", known)
+        self.assertEqual(known.count("Note:"), 1)
 
     def test_a_feature_request_label_drops_the_root_cause_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

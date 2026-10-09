@@ -60,7 +60,10 @@ When finished, write these files:
    "Suggested checks" section. Keep at most ten criteria; an open product decision stays a TBD.
    List every setting the code of the ticket's action reads (configuration key, profile setting, feature
    flag) and answer each one: an AC case with the setting toggled on and off, a TBD, or not relevant with a
-   reason. When the action creates new files, Use UUID based system filenames is one of them.
+   reason. When the action creates new files, Use UUID based system filenames is one of them. Name each
+   setting by its on-screen label (for example Enable DITA-OT preprocessing on the General tab); an internal
+   feature flag, code constant or configuration key with no on-screen label goes to the test plan, never into
+   a criterion or case line.
    When the ticket's scenario is a bookmap, add a "still works as before" check for a DITA map with
    the same content, and the reverse.
    Keep the criteria (with sub-points, Scope and Out of scope) within 350 words and each Source line within
@@ -143,7 +146,9 @@ When finished, write these files:
    reported and will be checked again when the fix is known."
    When it is PROPOSED, the first line is exactly: "Note: A fix is proposed in a linked pull request but is
    not reviewed yet. These criteria cover what the customer reported and the proposed fix, and will be
-   checked again when the fix is final." CONFIRMED and NOT_A_DEFECT have no Note line.
+   checked again when the fix is final." When it is CAUSE_KNOWN, the first line is exactly: "Note: The root
+   cause is explained in the ticket, but the fix is not decided yet. These criteria cover what the customer
+   reported and will be checked again when the fix is known." CONFIRMED and NOT_A_DEFECT have no Note line.
 2. {plan_path}: the full eleven-section test plan record that passes scripts/validate_test_plan.py.
 3. {decisions_path}: ONLY when the UAC has at least one TBD - a short decision request for the
    developer or product owner, in Markdown with exactly these three sections:
@@ -244,7 +249,9 @@ When finished, write these files:
    <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - list the AC consumers as sub-points of one
    "still works as before" criterion.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
-   cause, fix or merged pull request>"}}, {{"status": "PROPOSED", "signal": "<the ticket text, copied, that
+   cause, fix or merged pull request, or a developer comment that it is fixed or already handled, or a QE
+   comment that verified it on a build>"}}, {{"status": "CAUSE_KNOWN", "signal": "<the ticket text, copied, that
+   explains the root cause (a comment or the investigation) when no fix is decided>"}}, {{"status": "PROPOSED", "signal": "<the ticket text, copied, that
    links a fix pull request nobody has reviewed or merged>"}}, {{"status": "NOT_A_DEFECT", "reason": "<the new
    capability or change the ticket asks for, e.g. a new API or template field, an access or permission change,
    an enhancement or documentation>"}} or {{"status": "UNCONFIRMED",
@@ -1171,7 +1178,7 @@ _NOTE_PARAGRAPH = re.compile(r"^Note:[^\n]*(?:\n(?!- |Scope:|\s*$)[^\n]*)*\n*", 
 def _strip_fix_note(uac_text: str) -> str:
     def drop(match: re.Match) -> str:
         text = " ".join(match.group(0).split())
-        return "" if re.search(r"not confirmed|fix is proposed", text, re.I) else match.group(0)
+        return "" if re.search(r"not confirmed|fix is proposed|fix is not decided", text, re.I) else match.group(0)
     return _NOTE_PARAGRAPH.sub(drop, uac_text)
 _SOURCE_LINE = re.compile(r"^(\s*\*\*Source:\*\*\s*)(.+)$", re.M)
 _CODE_TOKEN = re.compile(
@@ -1223,7 +1230,8 @@ def normalize_note(uac_text: str, fix_status: str) -> str:
     """The Note line says what is known about the fix, decided from fix_basis, never left to wording."""
     check = common.import_skill_module("uac_completeness_check")
     body = _strip_fix_note(uac_text).lstrip("\n")
-    note = {"UNCONFIRMED": check.UNCONFIRMED_NOTE, "PROPOSED": check.PROPOSED_NOTE}.get(fix_status, "")
+    note = {"UNCONFIRMED": check.UNCONFIRMED_NOTE, "PROPOSED": check.PROPOSED_NOTE,
+            "CAUSE_KNOWN": check.CAUSE_KNOWN_NOTE}.get(fix_status, "")
     return f"{note}\n\n{body}" if note else body
 
 

@@ -69,7 +69,10 @@ reasoning never rests on inference when implementation materially affects it.
   finding per setting that changes what the action does, naming the setting by
   its on-screen label, for example: `Creating a map from a map template gives
   new files UUID-based names when Use UUID based system filenames is on.` A
-  setting the ticket never mentions is exactly the one that gets missed.
+  setting the ticket never mentions is exactly the one that gets missed. A
+  setting with no on-screen label (an internal feature flag, a code constant,
+  a configuration file key) is reported as internal: the test plan covers it,
+  and it never becomes an Acceptance Criterion case.
 
 ## Boundaries (the Researcher must NOT)
 
