@@ -66,6 +66,13 @@ When finished, write these files:
    a criterion or case line.
    When the ticket's scenario is a bookmap, add a "still works as before" check for a DITA map with
    the same content, and the reverse.
+   When the ticket is about a value users see or change (Document State, Tags, title or other metadata),
+   list every screen that shows or changes that value - from the code (every screen that calls the same
+   server API) and the documentation, for example the Editor right panel (File properties), the Asset
+   Properties page and Reports > Metadata in the Map console and Map dashboard - and give each screen an
+   AC case or a reason. When the ticket says it works on another platform or editor (on-prem, the Old
+   Editor, an older release), read that code to set the expected values (lists, defaults, who sees what)
+   instead of asking a TBD.
    There is no word limit on the whole UAC: never drop a valid case or squeeze a sub-point into shorthand
    to save words. Keep each sentence short instead - a statement within 35 words, a case sub-point within
    30 words (what to do, where, and what QE should see), no filler words - and each Source line within
@@ -953,10 +960,10 @@ def check_outputs(ticket_dir: Path) -> list[str]:
 
 
 def _vocabulary_hits(uac_text: str) -> tuple[list[str], list[str]]:
-    """(blocked, advisory) vocabulary hits for the criterion statements of a UAC."""
+    """(blocked, advisory) vocabulary hits for the criterion statements and case sub-points of a UAC."""
     vocabulary = common.import_skill_module("guides_vocabulary")
-    lines = "\n".join(f"- AC-{i:02d}: {m}" for i, m in enumerate(
-        re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$", uac_text, re.MULTILINE), 1))
+    found = re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$|^\s+- (.+)$", uac_text, re.MULTILINE)
+    lines = "\n".join(f"- AC-{i:02d}: {a or b}" for i, (a, b) in enumerate(found, 1))
     return vocabulary.check(lines)
 
 

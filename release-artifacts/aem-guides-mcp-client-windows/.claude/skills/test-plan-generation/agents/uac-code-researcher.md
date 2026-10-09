@@ -61,6 +61,12 @@ reasoning never rests on inference when implementation materially affects it.
   setting with no on-screen label (an internal feature flag, a code constant,
   a configuration file key) is reported as internal: the test plan covers it,
   and it never becomes an Acceptance Criterion case.
+- When the question is about a value users see or change (a document state,
+  tags, a title or other metadata), find every screen that reads or writes it -
+  every caller of the same server API - and return one finding per screen with
+  its path and line. When the ticket says the behaviour works on another
+  platform or editor (on-prem, the Old Editor, an older release), read that
+  branch's code and return its expected values (lists, defaults, who sees what).
 
 ## Boundaries (the Researcher must NOT)
 

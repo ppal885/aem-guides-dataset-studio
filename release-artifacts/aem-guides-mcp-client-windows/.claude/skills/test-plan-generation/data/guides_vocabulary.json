@@ -4,6 +4,16 @@
   "governance": "HUMAN_APPROVED",
   "block": [
     {
+      "id": "db-jcr-flavour",
+      "pattern": "\\buse\\s+database\\s+for\\s+aem\\s+guides\\b|\\bENABLE_(?:DB_USAGE|VAULT_USE)\\b|\\bdatabase\\s+(?:usage|toggle)\\b",
+      "wrong": "Use Database for AEM Guides toggled on and off",
+      "correct": "Cloud with the DB flavour, and again with the JCR flavour",
+      "message": "QE do not flip a database toggle. Cloud has two flavours, DB and JCR: write 'Try it on Cloud with the DB flavour, and again with the JCR flavour.' Blocking: the UAC is not delivered until the line is rewritten.",
+      "source": "human-correction",
+      "source_context": "User correction 2026-10-09: there is no database toggle, Cloud has DB and JCR flavours",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
       "id": "stale-preset",
       "pattern": "stale[-\\s]*(output\\s*)?preset|preset\\s+is\\s+stale|confirmed\\s+stale",
       "wrong": "stale preset",
@@ -252,16 +262,6 @@
       "message": "'Resolve' is a developer word. Write what QE checks: the link opens the topic, the conref shows the content, the reference points to the new topic.",
       "source": "human-correction",
       "source_context": "User request 2026-10-09: resolve is not how QE describe the check",
-      "governance": "HUMAN_APPROVED"
-    },
-    {
-      "id": "db-jcr-flavour",
-      "pattern": "\\buse\\s+database\\s+for\\s+aem\\s+guides\\b|\\bENABLE_(?:DB_USAGE|VAULT_USE)\\b|\\bdatabase\\s+(?:usage|toggle)\\b",
-      "wrong": "Use Database for AEM Guides toggled on and off",
-      "correct": "Cloud with the DB flavour, and again with the JCR flavour",
-      "message": "QE do not flip a database toggle. Cloud has two flavours, DB and JCR: write 'Try it on Cloud with the DB flavour, and again with the JCR flavour.'",
-      "source": "human-correction",
-      "source_context": "User correction 2026-10-09: there is no database toggle, Cloud has DB and JCR flavours",
       "governance": "HUMAN_APPROVED"
     },
     {

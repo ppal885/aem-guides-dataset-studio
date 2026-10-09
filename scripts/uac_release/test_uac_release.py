@@ -2125,7 +2125,8 @@ class DeliveryCleanupTests(unittest.TestCase):
             (ticket / common.UAC_FILE).write_text(
                 "- Acceptance Criteria 01: A locked file keeps its Tags.\n"
                 "  - Try it with Use Database for AEM Guides toggled on, and again toggled off.\n", encoding="utf-8")
-            self.assertIn("db-jcr-flavour", " ".join(runner.vocabulary_notes(ticket)))
+            blocked, _ = runner._vocabulary_hits((ticket / common.UAC_FILE).read_text(encoding="utf-8"))
+            self.assertIn("db-jcr-flavour", " ".join(blocked), "the database toggle wording blocks, even in a sub-point")
             (ticket / common.UAC_FILE).write_text(
                 "- Acceptance Criteria 01: A locked file keeps its Tags.\n"
                 "  - Try it on Cloud with the DB flavour, and again with the JCR flavour.\n", encoding="utf-8")
