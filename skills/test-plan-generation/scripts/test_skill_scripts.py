@@ -8089,12 +8089,18 @@ def test_uac_size_and_pre_existing_items() -> None:
     problems = uc.size_problems(long_source)
     check("a long Source line fails and names its criterion",
           any("Source line of Acceptance Criteria 01" in p for p in problems))
-    long_body = short.replace("Saving a topic stores its word count.", "Saving a topic stores its word count " + "and more " * 200 + ".")
-    check("delivered criteria over the word budget fail", any("words; keep them within" in p for p in uc.size_problems(long_body)))
-    suggestions = short + "\nSuggested checks (QE decide):\n" + "".join(
-        f"- Suggested check {n:02d}: " + "word " * 100 + "\n  **Source:** doc.\n" for n in range(1, 5))
-    check("a legacy suggested section counts toward the word budget", any(
-        "words; keep them within" in p for p in uc.size_problems(suggestions)))
+    many = short + "".join(
+        f"- Acceptance Criteria {n:02d}: Saving topic {n} stores its word count.\n"
+        + "".join(f"  - Copy topic {n} into folder {k} and save it again.\n" for k in range(5))
+        + "  **Source:** GUIDES-1 description.\n" for n in range(3, 11))
+    check("a long UAC made of short sentences passes: there is no limit on the whole UAC", uc.size_problems(many) == [])
+    long_statement = short.replace("Saving a topic stores its word count.",
+                                   "Saving a topic stores its word count " + "and more " * 20 + ".")
+    check("a needlessly long statement fails", any("the statement of Acceptance Criteria 01 has" in p
+                                                   for p in uc.size_problems(long_statement)))
+    long_case = short.replace("  - a new topic\n", "  - a new topic " + "that has more words " * 8 + "\n")
+    check("a needlessly long case sub-point fails", any("a case sub-point of Acceptance Criteria 01 has" in p
+                                                        for p in uc.size_problems(long_case)))
 
     check("a missing pre-existing answer fails", any("pre_existing_items is missing" in p for p in uc.pre_existing_problems({}, short)))
     check("an AC answer that names a real criterion passes",

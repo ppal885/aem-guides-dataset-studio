@@ -59,11 +59,10 @@ WHAT IT CHECKS in a UAC folder
    usually a "still works as before" check, or a sub-point of the criterion with the same outcome - and
    one that does not matter enough goes to the full test plan or is set aside with a reason. A UAC.md
    with a "Suggested checks" heading or "- Suggested check NN:" line is refused.
-12. Size: the delivered criteria (with their sub-points, the Scope line and the Out of scope list, but not
-   the Source, TBD or Note lines) stay within MAX_BODY_WORDS, and each Source line within MAX_SOURCE_WORDS.
-   In the 386 human UACs of the corpus the median is 122 words and 90% are under 337; blind comparisons
-   showed ours 4 to 15 times longer, mostly from long Source lines and extra sub-points. File paths and line
-   numbers belong in the full test plan record.
+12. Size: there is no limit on the whole UAC - a valid case is never dropped or squeezed into shorthand to
+   save words. Each sentence stays short instead: a criterion statement within MAX_STATEMENT_WORDS, a case
+   sub-point within MAX_CASE_WORDS, and a Source line within MAX_SOURCE_WORDS. File paths and line numbers
+   belong in the full test plan record.
 13. "pre_existing_items": what happens to items made before the change - content, maps, presets,
    output, settings or projects created or generated earlier - an AC, a TBD or NOT_APPLICABLE with a reason.
    15% of human UACs cover it ("older files need re-processing", "old preset and newly created preset"),
@@ -137,7 +136,8 @@ _SUGGESTED_HEADER = re.compile(r"^Suggested checks\b.*$", re.M)
 _SUGGESTED_LINE = re.compile(r"^- Suggested check \d+:", re.M)
 _SUGGESTED_GONE = ("SUGGESTED is no longer an answer: a research check that matters is an Acceptance Criterion "
                    "(usually a \"still works as before\" check or a sub-point); otherwise TEST_PLAN or set it aside")
-MAX_BODY_WORDS = 350
+MAX_STATEMENT_WORDS = 35
+MAX_CASE_WORDS = 30
 MAX_SOURCE_WORDS = 30
 PRE_EXISTING_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
 # What an AC says about items made before the change. Human UACs usually say they stay as they are ("existing
@@ -787,10 +787,13 @@ _LABEL_LINE = re.compile(r"^\s*(?:\*\*)?(?:Source|TBD):", re.I)
 
 
 def size_problems(uac_text: str) -> list[str]:
-    """Keep the delivered UAC near the size of a human UAC, and every Source line short."""
+    """No limit on the whole UAC; each statement, case sub-point and Source line stays one short sentence.
+
+    A word budget for the whole UAC made writers drop valid cases and squeeze sub-points into shorthand QE could
+    not follow, so only needlessly long single lines are refused."""
     text = uac_text or ""
     problems = []
-    words, current = 0, "a criterion"
+    current = "a criterion"
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.lower().startswith("note:"):
@@ -808,11 +811,16 @@ def size_problems(uac_text: str) -> list[str]:
             continue
         if _LABEL_LINE.match(stripped):
             continue
-        words += len(stripped.split())
-    if words > MAX_BODY_WORDS:
-        problems.append(f"the delivered criteria have {words} words; keep them within {MAX_BODY_WORDS} (human UACs: "
-                        "median 122, 90% under 337) by merging cases, cutting sub-points and moving detail to the "
-                        "full test plan")
+        if label:
+            count = len(stripped[label.end():].split())
+            if count > MAX_STATEMENT_WORDS:
+                problems.append(f"the statement of {current} has {count} words; say the one checkable outcome in at "
+                                f"most {MAX_STATEMENT_WORDS} words and move the conditions to case sub-points")
+        elif re.match(r"^\s+- ", line):
+            count = len(stripped[2:].split())
+            if count > MAX_CASE_WORDS:
+                problems.append(f"a case sub-point of {current} has {count} words; keep it to one plain sentence of at "
+                                f"most {MAX_CASE_WORDS} words: what to do, where, and what QE should see")
     return problems
 
 

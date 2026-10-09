@@ -687,10 +687,11 @@ in the full test plan record. Two ACs with content-word overlap of 0.6 or more a
 (`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
 distinct product contract; no recap AC.
 
-**Length.** Keep the delivered criteria - with their sub-points, the Scope line and the Out of scope list -
-within 350 words (the median human UAC is 122 words and 90% are under 337; blind comparisons against human
-UACs showed ours 4 to 15 times longer). Keep each Source line within 30 words: name the ticket, comment,
-documentation page or commit, and keep file paths and line numbers in the full test plan record
+**Length.** There is no word limit on the whole UAC: never drop a valid case or squeeze a sub-point into
+shorthand that QE cannot follow ("A p pasted into a dd") to save words. Keep each sentence short instead: a
+statement within 35 words, a case sub-point within 30 words that says what to do, where, and what QE should
+see, and no filler words. Keep each Source line within 30 words: name the ticket, comment, documentation page
+or commit, and keep file paths and line numbers in the full test plan record
 (`uac_completeness_check.size_problems`).
 
 **Items made before the change.** Always say what happens to content, maps, presets, output, settings or
