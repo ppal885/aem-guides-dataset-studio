@@ -2118,6 +2118,14 @@ class DeliveryCleanupTests(unittest.TestCase):
             ids = " ".join(runner.vocabulary_notes(ticket))
             self.assertIn("resolve-jargon", ids)
             self.assertIn("copied-topic-templates", ids)
+            (ticket / common.UAC_FILE).write_text(
+                "- Acceptance Criteria 01: A locked file keeps its Tags.\n"
+                "  - Try it with Use Database for AEM Guides toggled on, and again toggled off.\n", encoding="utf-8")
+            self.assertIn("db-jcr-flavour", " ".join(runner.vocabulary_notes(ticket)))
+            (ticket / common.UAC_FILE).write_text(
+                "- Acceptance Criteria 01: A locked file keeps its Tags.\n"
+                "  - Try it on Cloud with the DB flavour, and again with the JCR flavour.\n", encoding="utf-8")
+            self.assertEqual(runner.vocabulary_notes(ticket), [], "the flavour wording is what we want")
             blocked, _ = runner._vocabulary_hits((ticket / common.UAC_FILE).read_text(encoding="utf-8"))
             self.assertEqual(blocked, [], "a nudge never blocks the UAC")
         with tempfile.TemporaryDirectory() as tmp:
