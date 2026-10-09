@@ -1019,6 +1019,40 @@
       "counterexamples_checked": true,
       "equivalence_key": "new-file-naming-setting",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-028",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "document state",
+          "doc state",
+          "docstate",
+          "properties page",
+          "file properties",
+          "bulk metadata",
+          "reports > metadata"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "SHARED_SERVICE_ENTRY_POINTS",
+        "candidate_template": "a value users see or change appears on several screens: check every one - the Editor right panel (File properties), the Asset Properties page (Basic tab), Reports > Metadata in the Map console and the Map dashboard - and check as a user who is not an administrator and as an administrator"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261009-DOCSTATE-SURFACES-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A Document State or metadata list is built by the server and shown on several screens, each with its own caller; a fix on one screen leaves the others wrong, and administrators get a different list from other users. Counterexample checked: a value shown on only one screen (for example an output preset field) has no other screen to check.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "value-shown-on-several-screens",
+      "status": "ACTIVE"
     }
   ]
 }
