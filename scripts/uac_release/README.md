@@ -38,18 +38,18 @@ by the runner, after the checks.
 | `QEVision_UAC_DONE` | The UAC was written by the skill into the Acceptance Criteria field | runner |
 | `UAC_Not_Required` | The ticket needs no UAC; the runner never writes one (`labels.not_required`) | a person |
 
-## Tickets that need no UAC, or are being closed, are held
+## Tickets that need no UAC, or are being closed, are skipped
 
-Before running Copilot, the runner reads the ticket. A ticket with the `UAC_Not_Required` label
-(case does not matter; the name comes from `labels.not_required`) gets no UAC: it is recorded as
-`NOT_REQUIRED`, shown under "UAC not posted" with that reason, and raises no alert. Removing the
-label releases it on the next run.
+Before running Copilot, the runner reads the ticket. A skipped ticket gets nothing in Jira (no field,
+comment, label or alert comment); the reason is shown only under "UAC not posted" on the release page.
+
+A ticket with the `UAC_Not_Required` label (case does not matter; the name comes from
+`labels.not_required`) is recorded as `NOT_REQUIRED`. Removing the label releases it on the next run.
 
 The runner also reads the comments. When the last human comment closes
 the ticket, asks to close it, or asks whether it is still an issue ("Please confirm else we should
-close?", "This should be closed with GUIDES-7207. Please verify and close."), no UAC is written.
-The ticket is marked `FAILED` with the quoted comment as its reason, so it shows under "UAC not
-posted" on the release page. Comments by the automation's own account and bot notices (Dynamics
+close?", "This should be closed with GUIDES-7207. Please verify and close."), the ticket is recorded
+as `CLOSURE_ASKED` and the release page quotes that comment. Comments by the automation's own account and bot notices (Dynamics
 CRM watchers, Vision) are not counted. Any later human comment, such as a reply or a note that
 work is still open, releases the ticket on the next run.
 
