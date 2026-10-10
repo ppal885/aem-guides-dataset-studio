@@ -1311,10 +1311,11 @@ def not_required_label(config: dict) -> str:
 
 
 def hold_before_generation(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict) -> str:
-    """Stop before running Copilot, else "". A ticket labelled UAC_Not_Required is "SKIPPED" (state
-    NOT_REQUIRED, no alert); one whose last human comment is about closing it is "FAILED" with the quoted
-    comment. Neither is final, so removing the label or replying in Jira releases the ticket on the next run.
-    A ticket that cannot be read here is left to the normal source check after generation."""
+    """"SKIPPED" without running Copilot, else "". A ticket labelled UAC_Not_Required gets state NOT_REQUIRED;
+    one whose last human comment is about closing it gets CLOSURE_ASKED with the quoted comment. Nothing is
+    written to Jira and no alert is sent: the reason is shown only on the release page. Neither state is
+    final, so removing the label or replying in Jira releases the ticket on the next run. A ticket that cannot
+    be read here is left to the normal source check after generation."""
     try:
         source = jira.get_source(key)
         own_name = str((jira.myself() or {}).get("name") or "")
@@ -1332,12 +1333,11 @@ def hold_before_generation(key: str, config: dict, jira, logger, ticket_dir: Pat
         common.write_status(ticket_dir, status)
         logger.info("%s: label %s is on the ticket, no UAC written", key, label)
         return "SKIPPED"
-    problem =(f"the last human comment is about closing the ticket ({request['author'] or 'unknown'}, comment "
-               f"{request['id']}): \"{request['quote']}\"; answer it in Jira first, the next run retries")
-    status.update(key=key, state="FAILED", problems=[problem])
+    status.update(key=key, state=common.CLOSURE_ASKED, problems=[], closure_comment=request)
     common.write_status(ticket_dir, status)
-    logger.warning("%s: UAC not written - %s", key, problem)
-    return "FAILED"
+    logger.info("%s: last human comment is about closing the ticket (comment %s), no UAC written",
+                key, request["id"])
+    return "SKIPPED"
 
 
 def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:

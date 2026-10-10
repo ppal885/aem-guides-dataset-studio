@@ -1206,13 +1206,15 @@ class ClosureHoldTests(unittest.TestCase):
                                                         "should close?")))
         with mock.patch.object(runner.subprocess, "run") as run:
             result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
-        self.assertEqual(result, "FAILED")
+        self.assertEqual(result, "SKIPPED", "a skip raises no alert, so no comment goes to the alert ticket")
         run.assert_not_called()
         self.assertEqual(jira.calls, [], "nothing is written to Jira")
         status = runner.common.read_status(self.out / "PROJ-1")
-        self.assertEqual(status["state"], "FAILED")
-        self.assertIn('the last human comment is about closing the ticket (vinod, comment 1): "is this an issue anymore?"',
-                      status["problems"][0])
+        self.assertEqual(status["state"], runner.common.CLOSURE_ASKED)
+        self.assertNotIn(status["state"], runner.common.FINAL_STATES, "a later comment releases the ticket")
+        reason, _ = dashboard.not_posted_reason(status)
+        self.assertEqual(reason, 'Skipped: the last comment (vinod, comment 1) is about closing the ticket: '
+                                 '"is this an issue anymore?". A later comment in Jira releases it.')
 
     def test_not_required_label_skips_the_ticket_without_an_alert(self) -> None:
         jira = FakeJira(source={**SOURCE, "labels": ["Triaged", "uac_not_required"]})

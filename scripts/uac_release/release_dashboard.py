@@ -55,6 +55,11 @@ def not_posted_reason(status: dict) -> tuple[str, list[str]]:
     if state == common.NOT_REQUIRED:
         label = status.get("not_required_label") or "UAC_Not_Required"
         return f"Label {label} is on the ticket, so no UAC is written.", []
+    if state == common.CLOSURE_ASKED:
+        comment = status.get("closure_comment") or {}
+        return (f"Skipped: the last comment ({comment.get('author') or 'unknown'}, comment {comment.get('id') or '?'}) "
+                f"is about closing the ticket: \"{comment.get('quote') or ''}\". "
+                "A later comment in Jira releases it.", [])
     if state == "READY":
         return "Dry run only: the UAC passed the checks, but nothing was posted.", []
     if state == "FAILED" and problems:

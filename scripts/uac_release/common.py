@@ -45,6 +45,8 @@ WRITTEN_UNRENDERED = "WRITTEN_UNRENDERED"
 FINAL_STATES = {"POSTED", "FIELD_KEPT", WRITTEN_UNRENDERED}
 # The ticket has the "no UAC needed" label (labels.not_required); not final, so removing the label releases it.
 NOT_REQUIRED = "NOT_REQUIRED"
+# The last human comment is about closing the ticket; not final, so a later human comment releases it.
+CLOSURE_ASKED = "CLOSURE_ASKED"
 
 
 def load_env_file(path: Path) -> None:
