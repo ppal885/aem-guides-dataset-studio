@@ -49,7 +49,8 @@ A ticket with the `UAC_Not_Required` label (case does not matter; the name comes
 The runner also reads the comments. When the last human comment closes
 the ticket, asks to close it, or asks whether it is still an issue ("Please confirm else we should
 close?", "This should be closed with GUIDES-7207. Please verify and close."), the ticket is recorded
-as `CLOSURE_ASKED` and the release page quotes that comment. Comments by the automation's own account and bot notices (Dynamics
+as `CLOSURE_ASKED` and the release page quotes that comment. A label or sprint change by a person after
+that comment means the ticket is still being planned, so it is not skipped. Comments by the automation's own account and bot notices (Dynamics
 CRM watchers, Vision) are not counted. Any later human comment, such as a reply or a note that
 work is still open, releases the ticket on the next run.
 

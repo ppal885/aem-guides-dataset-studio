@@ -352,13 +352,23 @@ class JiraClient:
         return {role: str((fields.get(role) or {}).get("name") or "") for role in ("assignee", "reporter")}
 
     def get_source(self, key: str) -> dict[str, Any]:
-        """The ticket text a UAC must cover: summary, description, comments and attachment names, plus labels."""
-        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=summary,description,comment,attachment,labels")
+        """The ticket text a UAC must cover: summary, description, comments and attachment names, plus labels,
+        and the label and sprint changes from the history (who and when), which show the ticket is still
+        being planned."""
+        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=summary,description,comment,attachment,labels"
+                                 "&expand=changelog")
         fields = data.get("fields") or {}
         comments = [
             {"id": str(c.get("id") or ""), "author": str((c.get("author") or {}).get("name") or ""),
-             "body": c.get("body") or ""}
+             "created": str(c.get("created") or ""), "body": c.get("body") or ""}
             for c in (fields.get("comment") or {}).get("comments") or []
+        ]
+        planning_changes = [
+            {"created": str(h.get("created") or ""), "author": str((h.get("author") or {}).get("name") or ""),
+             "field": str(item.get("field") or "")}
+            for h in (data.get("changelog") or {}).get("histories") or []
+            for item in h.get("items") or []
+            if str(item.get("field") or "").lower() in ("labels", "sprint")
         ]
         attachments = [
             {"filename": str(a.get("filename") or ""), "author": str((a.get("author") or {}).get("name") or "")}
@@ -366,7 +376,8 @@ class JiraClient:
         ]
         return {"summary": fields.get("summary") or "", "description": fields.get("description") or "",
                 "comments": comments, "attachments": attachments,
-                "labels": [str(label) for label in fields.get("labels") or []]}
+                "labels": [str(label) for label in fields.get("labels") or []],
+                "planning_changes": planning_changes}
 
     def get_issue_property(self, key: str, name: str) -> Any:
         """A hidden issue property's value, or None when the ticket has none."""
