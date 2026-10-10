@@ -368,6 +368,41 @@ ATTACHMENT_RESEARCHER = "uac-attachment-researcher"
 GATE_LOG_FILE = "gate-firing.jsonl"
 DOC_RESEARCH_STATUSES = ("ANSWER_FOUND", "PARTIAL", "NOT_FOUND", "SOURCE_UNAVAILABLE", "CONFLICTED")
 DECISION_SECTIONS = ("### What we found", "### Decision needed", "### Impact on the Acceptance Criteria")
+# The last human comment closes the ticket, asks to close it, or asks whether it is still an issue ("closing
+# this as MCP is enabled", "please verify and close", "is this an issue anymore? Please confirm else we should
+# close"). Until
+# someone answers in Jira the ticket may be dropped, so no UAC is written. Only the object "this ticket / it" is
+# matched: "after the review task is closed" describes product behaviour, not the ticket.
+_CLOSURE_REQUEST = re.compile(
+    r"\b(?:close|closing) (?:this|it)\b(?! (?:dialog|panel|popup|pop-up|window|tab|task|review|topic|map|file))"
+    r"|\b(?:close|closing) (?:the|this) (?:ticket|jira|issue|bug)\b"
+    r"|\b(?:this|it|ticket|jira|issue) (?:should|can|could) be closed\b"
+    r"|\bshould (?:this|it) be closed\b"
+    r"|\bclosable\b|\bok to close\b"
+    r"|\b(?:verify|check|confirm) and close\b"
+    r"|\b(?:we should|should we|can we|could we|shall we)(?: please)? close\b"
+    r"|\b(?:is|was) (?:this|it) (?:still )?an issue (?:any ?more|still)\b")
+_BOT_COMMENT = re.compile(r"^(?:h\d )?vision\b")  # Vision investigation notices, matched on _words() text
+
+
+def closure_request(source: dict | None, own_name: str = "") -> dict | None:
+    """The last human comment when it asks to close the ticket, else None. Comments by this automation and bot
+    notices are not human; any later human comment (a reply, or work going on) clears the request."""
+    human = [c for c in (source or {}).get("comments") or []
+             if not (own_name and c.get("author") == own_name)
+             and not _NOT_A_REQUIREMENT.search(_words(c.get("body") or ""))
+             and not _BOT_COMMENT.match(_words(c.get("body") or ""))]
+    if not human:
+        return None
+    last = human[-1]
+    text = _normalize(_URL.sub(" ", _strip_markup(last.get("body") or "")))
+    match = _CLOSURE_REQUEST.search(text)
+    if not match:
+        return None
+    start = max(text.rfind(end, 0, match.start()) for end in ".?!") + 1
+    stops = [i for i in (text.find(end, match.end()) for end in ".?!") if i != -1]
+    quote = text[start:min(stops) + 1 if stops else len(text)].strip(" :;,")[:160]
+    return {"id": str(last.get("id") or ""), "author": str(last.get("author") or ""), "quote": quote}
 
 
 def decision_problems(ticket_dir: Path) -> list[str]:
@@ -1269,6 +1304,28 @@ def deliverable_uac(ticket_dir: Path, source: dict | None) -> tuple[str, list[st
     return clean_source_lines(text, names)
 
 
+def closure_hold(key: str, jira, logger, ticket_dir: Path, status: dict) -> str:
+    """"FAILED" without running Copilot when the last human comment asks to close the ticket, else "". The
+    ticket stays unposted and is retried on the next run, so a reply in Jira releases it. A ticket that cannot
+    be read here is left to the normal source check after generation."""
+    try:
+        source = jira.get_source(key)
+        own_name = str((jira.myself() or {}).get("name") or "")
+    except Exception:  # noqa: BLE001 - the post-generation source check reports a read failure
+        return ""
+    request = closure_request(source, own_name)
+    if not request:
+        return ""
+    (ticket_dir / common.JIRA_SOURCE_FILE).write_text(json.dumps(source, indent=2, ensure_ascii=False),
+                                                      encoding="utf-8")
+    problem = (f"the last human comment is about closing the ticket ({request['author'] or 'unknown'}, comment "
+               f"{request['id']}): \"{request['quote']}\"; answer it in Jira first, the next run retries")
+    status.update(key=key, state="FAILED", problems=[problem])
+    common.write_status(ticket_dir, status)
+    logger.warning("%s: UAC not written - %s", key, problem)
+    return "FAILED"
+
+
 def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     out_root = Path(config["output_dir"])
     ticket_dir = out_root / key
@@ -1287,6 +1344,9 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         (ticket_dir / name).unlink(missing_ok=True)
     shutil.rmtree(ticket_dir / linked_docs.LINKED_DOCS_DIR, ignore_errors=True)
     shutil.rmtree(ticket_dir / RESEARCH_STORE_DIR, ignore_errors=True)  # each attempt answers its own requests
+    held = closure_hold(key, jira, logger, ticket_dir, status)
+    if held:
+        return held
     links = fetch_linked_docs(key, config, jira, logger, ticket_dir)
     prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,

@@ -37,6 +37,16 @@ by the runner, after the checks.
 |---|---|---|
 | `QEVision_UAC_DONE` | The UAC was written by the skill into the Acceptance Criteria field | runner |
 
+## Tickets being closed are held
+
+Before running Copilot, the runner reads the ticket's comments. When the last human comment closes
+the ticket, asks to close it, or asks whether it is still an issue ("Please confirm else we should
+close?", "This should be closed with GUIDES-7207. Please verify and close."), no UAC is written.
+The ticket is marked `FAILED` with the quoted comment as its reason, so it shows under "UAC not
+posted" on the release page. Comments by the automation's own account and bot notices (Dynamics
+CRM watchers, Vision) are not counted. Any later human comment, such as a reply or a note that
+work is still open, releases the ticket on the next run.
+
 ## Every place the feature appears is covered
 
 Copilot also writes `SURFACE_INVENTORY.json`: every place in the product where the feature
