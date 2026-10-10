@@ -43,6 +43,8 @@ RUNTIME_RESULT_FILE = "RUNTIME_RESULT.json"
 # no comment or done label was added, and the ticket is never generated again.
 WRITTEN_UNRENDERED = "WRITTEN_UNRENDERED"
 FINAL_STATES = {"POSTED", "FIELD_KEPT", WRITTEN_UNRENDERED}
+# The ticket has the "no UAC needed" label (labels.not_required); not final, so removing the label releases it.
+NOT_REQUIRED = "NOT_REQUIRED"
 
 
 def load_env_file(path: Path) -> None:

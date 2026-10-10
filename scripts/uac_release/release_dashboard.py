@@ -52,6 +52,9 @@ def not_posted_reason(status: dict) -> tuple[str, list[str]]:
     if state == common.WRITTEN_UNRENDERED:
         return ("Written into the Acceptance Criteria field, but Jira did not render it as expected; "
                 "no comment or done label was added. Check the field in Jira.", problems)
+    if state == common.NOT_REQUIRED:
+        label = status.get("not_required_label") or "UAC_Not_Required"
+        return f"Label {label} is on the ticket, so no UAC is written.", []
     if state == "READY":
         return "Dry run only: the UAC passed the checks, but nothing was posted.", []
     if state == "FAILED" and problems:

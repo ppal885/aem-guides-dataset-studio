@@ -21,7 +21,8 @@
     "cc": []
   },
   "labels": {
-    "posted": "QEVision_UAC_DONE"
+    "posted": "QEVision_UAC_DONE",
+    "not_required": "UAC_Not_Required"
   },
   "copilot": {
     "command": "copilot",

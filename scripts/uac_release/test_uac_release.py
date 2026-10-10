@@ -1151,6 +1151,103 @@ HUMAN_FIELD = (
 )
 
 
+def _with_comments(*comments: tuple[str, str]) -> dict:
+    return {**SOURCE, "comments": [{"id": str(n), "author": author, "body": body}
+                                   for n, (author, body) in enumerate(comments, start=1)]}
+
+
+class ClosureHoldTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self.tmp.name)
+        self.config = make_config(self.out)
+        self.log = logging.getLogger("test")
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_closure_questions_in_the_last_human_comment_are_found(self) -> None:
+        for body in ("[~amitosin] [~divrsing] is this an issue anymore? We have improved the pipelines. "
+                     "Please confirm else we should close?",
+                     "Can we please close this ticket as Workday would have moved to micro-service publishing.",
+                     "[~prashantp] This should be closed with GUIDES-7207. Please verify and close.",
+                     "Could you check and confirm if this is closable",
+                     "Closing this as MCP is enabled in the mentioned org.",
+                     "Sonova is no more our customer, shouldn't we close this ticket",
+                     "Please let us know if you have any further information or should this be closed"):
+            request = runner.closure_request(_with_comments(("support.eng", body)), "uac.bot")
+            self.assertIsNotNone(request, body)
+            self.assertEqual(request["id"], "1")
+        request = runner.closure_request(_with_comments(("support.eng", SOURCE["comments"][0]["body"]),
+                                                        ("vinod", "Is this an issue anymore? Please confirm.")))
+        self.assertEqual(request["quote"], "is this an issue anymore?")
+
+    def test_a_later_human_comment_or_product_wording_is_not_a_closure_request(self) -> None:
+        later = _with_comments(("shishirs", "This should be closed with GUIDES-7207. Please verify and close."),
+                               ("kanhaiyal", "The UUID migration part is still open, could you look into it?"))
+        self.assertIsNone(runner.closure_request(later, "uac.bot"))
+        for body in ("The reviewer should still open the dashboard after the review task is closed.",
+                     "Close this dialog and reopen the map; the panel should be empty.",
+                     "Please bring this to closure since you are leading the API charter now.",
+                     "Can we please fast-track this, the customer is waiting."):
+            self.assertIsNone(runner.closure_request(_with_comments(("support.eng", body)), "uac.bot"), body)
+
+    def test_automation_and_bot_comments_do_not_hide_or_raise_a_closure_request(self) -> None:
+        source = _with_comments(("vinod", "Please confirm else we should close?"),
+                                ("uac.bot", "*Full test plan:* [^PROJ-1-test-plan.md]"),
+                                ("jiradydx", "Dynamics CRM is Watching this ticket E-001345236"),
+                                ("svc", "h3. [Vision] investigation failed - cli error"))
+        self.assertEqual(runner.closure_request(source, "uac.bot")["author"], "vinod")
+        self.assertIsNone(runner.closure_request(
+            _with_comments(("uac.bot", "Can we close this ticket?")), "uac.bot"))
+
+    def test_held_ticket_is_not_generated_and_shows_the_quoted_reason(self) -> None:
+        jira = FakeJira(source=_with_comments(("vinod", "Is this an issue anymore? Please confirm else we "
+                                                        "should close?")))
+        with mock.patch.object(runner.subprocess, "run") as run:
+            result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
+        self.assertEqual(result, "FAILED")
+        run.assert_not_called()
+        self.assertEqual(jira.calls, [], "nothing is written to Jira")
+        status = runner.common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], "FAILED")
+        self.assertIn('the last human comment is about closing the ticket (vinod, comment 1): "is this an issue anymore?"',
+                      status["problems"][0])
+
+    def test_not_required_label_skips_the_ticket_without_an_alert(self) -> None:
+        jira = FakeJira(source={**SOURCE, "labels": ["Triaged", "uac_not_required"]})
+        with mock.patch.object(runner.subprocess, "run") as run:
+            result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
+        self.assertEqual(result, "SKIPPED")
+        run.assert_not_called()
+        self.assertEqual(jira.calls, [], "nothing is written to Jira")
+        status = runner.common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], runner.common.NOT_REQUIRED)
+        self.assertNotIn(status["state"], runner.common.FINAL_STATES, "removing the label releases the ticket")
+        reason, _ = dashboard.not_posted_reason(status)
+        self.assertEqual(reason, "Label UAC_Not_Required is on the ticket, so no UAC is written.")
+
+    def test_not_required_label_name_comes_from_the_config(self) -> None:
+        config = {**self.config, "labels": {**self.config["labels"], "not_required": "No_UAC"}}
+        jira = FakeJira(source={**SOURCE, "labels": ["UAC_Not_Required"]})
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", config, jira, self.log, dry_run=False), "POSTED")
+        jira = FakeJira(source={**SOURCE, "labels": ["No_UAC"]})
+        with mock.patch.object(runner.subprocess, "run") as run:
+            self.assertEqual(runner.process_ticket("PROJ-2", config, jira, self.log, dry_run=False), "SKIPPED")
+        run.assert_not_called()
+
+    def test_unreadable_ticket_still_runs_the_normal_flow(self) -> None:
+        jira = FakeJira(source=RuntimeError("HTTP 500"))
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
+        self.assertEqual(result, "FAILED")
+        problems = runner.common.read_status(self.out / "PROJ-1")["problems"]
+        self.assertTrue(any("could not read the Jira ticket" in p for p in problems), problems)
+
+
 def _issue(field_text: str, status: str, changes: list[tuple[str, str]]) -> dict:
     return {
         "fields": {"customfield_1": field_text, "status": {"name": status}, "summary": "Report",
