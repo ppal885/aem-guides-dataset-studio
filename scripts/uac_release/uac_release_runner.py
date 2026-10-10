@@ -382,6 +382,8 @@ _CLOSURE_REQUEST = re.compile(
     r"|\b(?:verify|check|confirm) and close\b"
     r"|\b(?:we should|should we|can we|could we|shall we)(?: please)? close\b"
     r"|\b(?:is|was) (?:this|it) (?:still )?an issue (?:any ?more|still)\b")
+# A person puts this label on a ticket that needs no UAC; the runner then never writes one.
+DEFAULT_NOT_REQUIRED_LABEL = "UAC_Not_Required"
 _BOT_COMMENT = re.compile(r"^(?:h\d )?vision\b")  # Vision investigation notices, matched on _words() text
 
 
@@ -1304,21 +1306,33 @@ def deliverable_uac(ticket_dir: Path, source: dict | None) -> tuple[str, list[st
     return clean_source_lines(text, names)
 
 
-def closure_hold(key: str, jira, logger, ticket_dir: Path, status: dict) -> str:
-    """"FAILED" without running Copilot when the last human comment asks to close the ticket, else "". The
-    ticket stays unposted and is retried on the next run, so a reply in Jira releases it. A ticket that cannot
-    be read here is left to the normal source check after generation."""
+def not_required_label(config: dict) -> str:
+    return str((config.get("labels") or {}).get("not_required") or DEFAULT_NOT_REQUIRED_LABEL)
+
+
+def hold_before_generation(key: str, config: dict, jira, logger, ticket_dir: Path, status: dict) -> str:
+    """Stop before running Copilot, else "". A ticket labelled UAC_Not_Required is "SKIPPED" (state
+    NOT_REQUIRED, no alert); one whose last human comment is about closing it is "FAILED" with the quoted
+    comment. Neither is final, so removing the label or replying in Jira releases the ticket on the next run.
+    A ticket that cannot be read here is left to the normal source check after generation."""
     try:
         source = jira.get_source(key)
         own_name = str((jira.myself() or {}).get("name") or "")
     except Exception:  # noqa: BLE001 - the post-generation source check reports a read failure
         return ""
-    request = closure_request(source, own_name)
-    if not request:
+    label = not_required_label(config)
+    not_required = any(str(name).lower() == label.lower() for name in source.get("labels") or [])
+    request = None if not_required else closure_request(source, own_name)
+    if not (not_required or request):
         return ""
     (ticket_dir / common.JIRA_SOURCE_FILE).write_text(json.dumps(source, indent=2, ensure_ascii=False),
                                                       encoding="utf-8")
-    problem = (f"the last human comment is about closing the ticket ({request['author'] or 'unknown'}, comment "
+    if not_required:
+        status.update(key=key, state=common.NOT_REQUIRED, problems=[], not_required_label=label)
+        common.write_status(ticket_dir, status)
+        logger.info("%s: label %s is on the ticket, no UAC written", key, label)
+        return "SKIPPED"
+    problem =(f"the last human comment is about closing the ticket ({request['author'] or 'unknown'}, comment "
                f"{request['id']}): \"{request['quote']}\"; answer it in Jira first, the next run retries")
     status.update(key=key, state="FAILED", problems=[problem])
     common.write_status(ticket_dir, status)
@@ -1344,7 +1358,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
         (ticket_dir / name).unlink(missing_ok=True)
     shutil.rmtree(ticket_dir / linked_docs.LINKED_DOCS_DIR, ignore_errors=True)
     shutil.rmtree(ticket_dir / RESEARCH_STORE_DIR, ignore_errors=True)  # each attempt answers its own requests
-    held = closure_hold(key, jira, logger, ticket_dir, status)
+    held = hold_before_generation(key, config, jira, logger, ticket_dir, status)
     if held:
         return held
     links = fetch_linked_docs(key, config, jira, logger, ticket_dir)

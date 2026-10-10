@@ -1214,6 +1214,30 @@ class ClosureHoldTests(unittest.TestCase):
         self.assertIn('the last human comment is about closing the ticket (vinod, comment 1): "is this an issue anymore?"',
                       status["problems"][0])
 
+    def test_not_required_label_skips_the_ticket_without_an_alert(self) -> None:
+        jira = FakeJira(source={**SOURCE, "labels": ["Triaged", "uac_not_required"]})
+        with mock.patch.object(runner.subprocess, "run") as run:
+            result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
+        self.assertEqual(result, "SKIPPED")
+        run.assert_not_called()
+        self.assertEqual(jira.calls, [], "nothing is written to Jira")
+        status = runner.common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], runner.common.NOT_REQUIRED)
+        self.assertNotIn(status["state"], runner.common.FINAL_STATES, "removing the label releases the ticket")
+        reason, _ = dashboard.not_posted_reason(status)
+        self.assertEqual(reason, "Label UAC_Not_Required is on the ticket, so no UAC is written.")
+
+    def test_not_required_label_name_comes_from_the_config(self) -> None:
+        config = {**self.config, "labels": {**self.config["labels"], "not_required": "No_UAC"}}
+        jira = FakeJira(source={**SOURCE, "labels": ["UAC_Not_Required"]})
+        with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
+                mock.patch.object(runner, "check_outputs", return_value=[]):
+            self.assertEqual(runner.process_ticket("PROJ-1", config, jira, self.log, dry_run=False), "POSTED")
+        jira = FakeJira(source={**SOURCE, "labels": ["No_UAC"]})
+        with mock.patch.object(runner.subprocess, "run") as run:
+            self.assertEqual(runner.process_ticket("PROJ-2", config, jira, self.log, dry_run=False), "SKIPPED")
+        run.assert_not_called()
+
     def test_unreadable_ticket_still_runs_the_normal_flow(self) -> None:
         jira = FakeJira(source=RuntimeError("HTTP 500"))
         with mock.patch.object(runner.subprocess, "run", fake_copilot(True)), \
