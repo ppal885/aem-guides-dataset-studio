@@ -1192,6 +1192,22 @@ class ClosureHoldTests(unittest.TestCase):
                      "Can we please fast-track this, the customer is waiting."):
             self.assertIsNone(runner.closure_request(_with_comments(("support.eng", body)), "uac.bot"), body)
 
+    def test_a_label_or_sprint_change_by_a_person_after_the_comment_clears_it(self) -> None:
+        def source(*changes):
+            base = _with_comments(("mbhalla", "SONOVA is no more our customer, shouldn't we close this ticket?"))
+            base["comments"][0]["created"] = "2026-05-01T05:53:00.636+0000"
+            return {**base, "planning_changes": [{"created": at, "author": by, "field": field}
+                                                 for at, by, field in changes]}
+        self.assertIsNotNone(runner.closure_request(source(), "uac.bot"))
+        self.assertIsNone(runner.closure_request(
+            source(("2026-09-03T17:57:40.813+0000", "kumsingh", "labels")), "uac.bot"), "planned later")
+        self.assertIsNone(runner.closure_request(
+            source(("2026-09-18T12:44:22.000+0000", "amitosin", "Sprint")), "uac.bot"))
+        self.assertIsNotNone(runner.closure_request(
+            source(("2026-04-01T10:00:00.000+0000", "kumsingh", "labels")), "uac.bot"), "before the comment")
+        self.assertIsNotNone(runner.closure_request(
+            source(("2026-10-09T08:05:19.700+0000", "uac.bot", "labels")), "uac.bot"), "own label write")
+
     def test_automation_and_bot_comments_do_not_hide_or_raise_a_closure_request(self) -> None:
         source = _with_comments(("vinod", "Please confirm else we should close?"),
                                 ("uac.bot", "*Full test plan:* [^PROJ-1-test-plan.md]"),

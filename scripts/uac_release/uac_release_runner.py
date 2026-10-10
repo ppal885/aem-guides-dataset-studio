@@ -24,6 +24,7 @@ all Jira writes happen here, after the checks.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -387,9 +388,36 @@ DEFAULT_NOT_REQUIRED_LABEL = "UAC_Not_Required"
 _BOT_COMMENT = re.compile(r"^(?:h\d )?vision\b")  # Vision investigation notices, matched on _words() text
 
 
+def _jira_time(value) -> datetime.datetime | None:
+    """A Jira timestamp ("2026-05-01T05:53:00.636+0000"), or None when it is missing or unreadable."""
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.datetime.strptime(str(value or ""), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def planned_after(source: dict, comment_created, own_name: str = "") -> bool:
+    """True when a person changed the ticket's labels or sprint after the comment: the ticket is still being
+    planned (GUIDES-15177 got Plan_2610 after "shouldn't we close this ticket?"). The automation's own label
+    writes do not count."""
+    since = _jira_time(comment_created)
+    if since is None:
+        return False
+    for change in source.get("planning_changes") or []:
+        if own_name and change.get("author") == own_name:
+            continue
+        when = _jira_time(change.get("created"))
+        if when is not None and when > since:
+            return True
+    return False
+
+
 def closure_request(source: dict | None, own_name: str = "") -> dict | None:
     """The last human comment when it asks to close the ticket, else None. Comments by this automation and bot
-    notices are not human; any later human comment (a reply, or work going on) clears the request."""
+    notices are not human; any later human comment (a reply, or work going on), or a label or sprint change
+    by a person after it, clears the request."""
     human = [c for c in (source or {}).get("comments") or []
              if not (own_name and c.get("author") == own_name)
              and not _NOT_A_REQUIREMENT.search(_words(c.get("body") or ""))
@@ -399,7 +427,7 @@ def closure_request(source: dict | None, own_name: str = "") -> dict | None:
     last = human[-1]
     text = _normalize(_URL.sub(" ", _strip_markup(last.get("body") or "")))
     match = _CLOSURE_REQUEST.search(text)
-    if not match:
+    if not match or planned_after(source, last.get("created"), own_name):
         return None
     start = max(text.rfind(end, 0, match.start()) for end in ".?!") + 1
     stops = [i for i in (text.find(end, match.end()) for end in ".?!") if i != -1]
