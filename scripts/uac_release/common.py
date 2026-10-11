@@ -61,6 +61,11 @@ CORRECTION_PATTERNS = {
     "wrong-mechanism": "Wrong idea of how the feature works or where it is built",
     "closable-ticket": "UAC written on a ticket that was being closed or needed none",
     "stale-after-rca": "UAC written before the root cause or fix and not refreshed when they arrived",
+    "hard-to-read": "Right check, hard to read: code flags, technical terms or long lists in the statement",
+    "vague-expected-result": "Generic expected result (works as before, only permitted) instead of the values QE checks",
+    "guessed-decision": "Asserted a product decision nobody made (a count, precedence or handling); needs a TBD",
+    "missing-other-side": "Missed the other side of a new check: what must still pass, or still be blocked",
+    "missing-setting": "Missed a setting the changed action actually reads (e.g. Use UUID based system filenames)",
 }
 CORRECTIONS_FILE = "corrections.json"  # learning/corrections.json, written by the harvester every night
 
