@@ -2705,11 +2705,11 @@ class ClaudeRewriteTests(unittest.TestCase):
                  "b": {"fix": "commit 5401d3376 y", "deployed_at": "2026-10-06T19:42:31+00:00"},
                  "c": {"fix": "PR #187 z", "deployed_at": "2026-10-11T07:01:49+00:00"},
                  "d": {"fix": "PR #188 z", "deployed_at": "2026-10-11T07:20:36+00:00"}}
-        svg = dashboard._trend_chart(trend, fixes, datetime.date(2026, 10, 11))
-        for label in (">#153<", ">5401d3376<", ">#187 #188<"):
-            self.assertIn(label, svg)
-        self.assertIn("n=1/2", svg)
-        self.assertIn("checks kept 75%, kept as written or edited 50% of 4 criteria", svg)
+        html = dashboard._trend_chart(trend, fixes, datetime.date(2026, 10, 11))
+        self.assertIn("Week of 05 Oct (1 of 2 judged)", html)
+        self.assertIn(">75% kept<", html)
+        self.assertIn("QE kept 75% of 4 checks (as is, edited or reworded); 50% were kept as written or edited.", html)
+        self.assertIn("06 Oct: 5401d3376 · 08 Oct: #153 · 11 Oct: #187 #188", html)
         self.assertIn("No posted UAC has been judged yet.", dashboard._trend_chart(dashboard.collect_trend(posted, {}), {}))
 
     def test_nightly_harvest_refreshes_the_month_to_date_report(self) -> None:

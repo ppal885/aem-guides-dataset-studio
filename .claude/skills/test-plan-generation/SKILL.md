@@ -773,7 +773,11 @@ scenario VARIANT:
   DOCUMENTATION or CODE) is an AC case only when the changed action's own code reads it: give `reads_at`
   (`<file>:<line>`) and the switch's on-screen label. A setting read elsewhere in the product, or an internal
   flag or configuration key with no on-screen label, is TEST_PLAN or NOT_APPLICABLE, never an on/off sweep
-  in a criterion. Unrelated toggle sweeps were a repeated QE correction (setting-toggle-noise).
+  in a criterion. Unrelated toggle sweeps were a repeated QE correction (setting-toggle-noise). The Cloud DB
+  flavour and JCR flavour are deployment variants, not a toggle QE flips: when the changed action reads or
+  writes data AEM Guides keeps in its database on Cloud (Document State, metadata, references, versions,
+  review data), add the switch "DB flavour and JCR flavour" with the case "Try it on Cloud with the DB
+  flavour, and again with the JCR flavour"; it needs no `reads_at`.
 - **mechanism** - when the ticket asks for general behaviour ("users can move content while others refer to
   it", "same as Baseline and Conditional Presets"), the other item or reference types, and the named feature
   it must match, are ACs; the reporter's own item is one case of it. When the ask is only the reporter's

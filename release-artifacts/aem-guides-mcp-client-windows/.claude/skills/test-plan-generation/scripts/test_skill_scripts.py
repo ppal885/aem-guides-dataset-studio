@@ -8558,6 +8558,11 @@ def test_action_variants() -> None:
     check("a dotted configuration key fails as a switch name", any("internal flag or configuration key" in p
                                                                    for p in variant(config_switches__1__name="uuid.duplicate.check")))
     check("a switch the ticket names needs no reads_at", not any("reads_at" in p for p in variant()))
+    check("the Cloud DB and JCR flavours need no reads_at", not any(("reads_at" in p or "database toggle" in p) for p in variant(
+        config_switches__1__name="DB flavour and JCR flavour", config_switches__1__reads_at=[])))
+    check("a database toggle is refused with the flavour wording", any("DB flavour and JCR flavour" in p for p in
+                                                                    variant(config_switches__1__name="Use Database for AEM Guides",
+                                                                            config_switches__1__reads_at=[])))
     check("SUGGESTED is refused for a ticket-based route too", any("no longer an answer" in p for p in variant(
         entry_points__0__disposition="SUGGESTED")))
 
