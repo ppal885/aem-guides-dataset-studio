@@ -61,6 +61,13 @@ FIELD_NOW_FILE = "field-now.json"
 AC_FIELD_NAME = "Acceptance Criteria"
 DEFAULT_ACCEPTED_STATUSES = ("UAT", "Closed", "Resolved", "Done")
 MATCH_THRESHOLD = 0.5
+# A removed criterion whose content words mostly reappear in an added one was reworded or merged, not dropped:
+# 49 of 58 "removed" criteria on the release page were such rewrites (word order changed, so the sequence
+# match above missed them). Several removed criteria may map to one added criterion (a merge).
+REWRITE_THRESHOLD = 0.35
+_STOPWORDS = set("a an the and or of to in on for with from by is are be it its as at that this these those when "
+                 "then than not no still before after each every same can cannot does do only one two both new "
+                 "existing ticket user users shows show stays stay works work".split())
 
 _LABEL = re.compile(r"^(?:[-*#]\s+)?\*?\s*(?:Acceptance Criteri(?:a|on)|AC)[\s-]*(\d+)\s*:?\s*\*?\s*:?\s*(.*)$",
                     re.IGNORECASE)
@@ -230,6 +237,34 @@ def similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, _norm(a).split(), _norm(b).split()).ratio()
 
 
+def _content_words(text: str) -> set[str]:
+    return {w.rstrip("s") for w in re.findall(r"[a-z0-9]+", (text or "").lower())
+            if len(w) > 2 and w.rstrip("s") not in _STOPWORDS}
+
+
+def pair_rewrites(entries: list[dict]) -> list[dict]:
+    """Turn a removed criterion into "rewritten" when an added criterion of the same ticket keeps at least
+    REWRITE_THRESHOLD of its content words; that added criterion is then "rewritten_into", not new. Entries QE
+    struck through stay removed: QE said why."""
+    added = [e for e in entries if e.get("kind") == "added"]
+    used: set[int] = set()
+    out = []
+    for entry in entries:
+        if entry.get("kind") != "removed" or entry.get("struck") or not added:
+            out.append(entry)
+            continue
+        old = _content_words(entry.get("old", ""))
+        score, best = max(((len(old & _content_words(a.get("new", ""))) / max(1, len(old)), i)
+                           for i, a in enumerate(added)), default=(0.0, -1))
+        if score >= REWRITE_THRESHOLD:
+            used.add(best)
+            out.append({**entry, "kind": "rewritten", "new": added[best].get("new", ""), "similarity": round(score, 2)})
+        else:
+            out.append(entry)
+    return [({**e, "kind": "rewritten_into"} if e.get("kind") == "added" and added.index(e) in used else e)
+            for e in out]
+
+
 def mark_promoted(entries: list[dict], suggested: list[str]) -> list[dict]:
     """An added criterion that matches one of our suggested checks was promoted by QE, not missed by us.
 
@@ -392,7 +427,7 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
         return None
     state[key] = version
     posted_criteria, current_criteria = parse_criteria(posted_text), parse_criteria(current_text)
-    entries = mark_promoted(compare(posted_criteria, current_criteria), suggested or [])
+    entries = pair_rewrites(mark_promoted(compare(posted_criteria, current_criteria), suggested or []))
     for entry in entries:
         if kinds and entry.get("number") in kinds:
             entry["kinds"] = kinds[entry["number"]]
@@ -403,7 +438,7 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
         "posted_sha256": posted_sha, "current_sha256": current_sha,
         "posted_text": posted_text, "current_text": current_text,
         "counts": {k: sum(1 for e in entries if e["kind"] == k)
-                   for k in ("accepted", "changed", "removed", "added", "promoted")},
+                   for k in ("accepted", "changed", "rewritten", "removed", "added", "promoted")},
         "posted_count": len(posted_criteria),
         "kept_count": sum(1 for c in current_criteria if not c.get("struck")),
         "criteria": entries,
@@ -710,7 +745,7 @@ def kind_report_lines(records: list[dict]) -> list[str]:
     removed: dict[str, int] = defaultdict(int)
     for record in records:
         for entry in record.get("criteria") or []:
-            if entry.get("kind") not in ("accepted", "changed", "removed"):
+            if entry.get("kind") not in ("accepted", "changed", "rewritten", "removed"):
                 continue
             for kind in entry.get("kinds") or ["(no evidence record)"]:
                 posted[kind] += 1
@@ -805,8 +840,10 @@ def monthly_report(config: dict, month: str) -> Path:
             bucket = by_component[component]
             bucket["tickets"].add(record["key"])
             for entry in record.get("criteria") or []:
-                if entry["kind"] in ("accepted", "changed"):
-                    bucket[entry["kind"]] += 1
+                if entry["kind"] == "rewritten_into":
+                    continue  # the added side of a reworded criterion, counted once as changed
+                if entry["kind"] in ("accepted", "changed", "rewritten"):
+                    bucket["changed" if entry["kind"] == "rewritten" else entry["kind"]] += 1
                 else:
                     text = entry["old"] or entry["new"]
                     if entry.get("reason"):
