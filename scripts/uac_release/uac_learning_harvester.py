@@ -544,7 +544,7 @@ def rewrite_hashes(jira, key: str) -> dict[str, str]:
     except Exception:  # noqa: BLE001 - a missing property never stops the harvest
         return {}
     return {str(r.get("sha256")): str(r.get("reason") or "") for r in value.get("rewrites") or []
-            if isinstance(r, dict) and r.get("sha256")}
+            if isinstance(r, dict) and r.get("sha256") and not r.get("qe_edit")}
 
 
 def ticket_corrections(jira, key: str) -> list[dict]:
@@ -558,7 +558,7 @@ def ticket_corrections(jira, key: str) -> list[dict]:
         return []
     return [{"key": key, "at": str(r.get("at") or ""), "reason": str(r.get("reason") or ""),
              "patterns": [str(p) for p in r.get("patterns") or []],
-             "lessons": [str(t) for t in r.get("lessons") or []]}
+             "lessons": [str(t) for t in r.get("lessons") or []], "qe_edit": bool(r.get("qe_edit"))}
             for r in value.get("rewrites") or [] if isinstance(r, dict) and (r.get("patterns") or r.get("lessons"))]
 
 
@@ -579,6 +579,21 @@ def pattern_summary(corrections: list[dict]) -> list[dict]:
         row["repeated"] = len(row["tickets"]) >= 2
         row["description"] = common.CORRECTION_PATTERNS.get(row["pattern"], "")
     return sorted(rows.values(), key=lambda r: (-len(r["tickets"]), r["pattern"]))
+
+
+def correction_keys(config: dict, learning: Path, ticket_dirs: list[Path]) -> list[str]:
+    """Tickets to read corrections from: every picked ticket, every ticket already harvested (hand-posted
+    backfills), and config "learning_correction_tickets" (a hand-posted UAC a QE corrected, e.g. GUIDES-55884)."""
+    keys = [p.name for p in ticket_dirs]
+    path = learning / RECORDS_FILE
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                keys.append(str(json.loads(line).get("key") or ""))
+            except ValueError:
+                continue
+    keys += [str(k) for k in config.get("learning_correction_tickets") or []]
+    return sorted({k for k in keys if k})
 
 
 def write_corrections(learning: Path, jira, keys: list[str]) -> list[dict]:
@@ -612,7 +627,7 @@ def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
     records = []
     ticket_dirs = sorted(p for p in out.iterdir() if p.is_dir() and (p / common.STATUS_FILE).is_file())
     try:
-        corrections = write_corrections(learning, jira, [p.name for p in ticket_dirs])
+        corrections = write_corrections(learning, jira, correction_keys(config, learning, ticket_dirs))
         logger.info("recorded %d QE correction(s)", len(corrections))
     except Exception:  # noqa: BLE001 - the corrections list never stops the harvest
         logger.exception("could not write the QE corrections list")

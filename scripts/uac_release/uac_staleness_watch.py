@@ -14,8 +14,8 @@ For each ticket in scope that carries the posted label:
      status codes, an API spec), and attachments (an API contract, a design, a screenshot);
   3. alert once per such comment or attachment (remembered in <output_dir>/staleness-state.json).
 
-Scope JQL: config "staleness_jql", else the approved scope JQL plus the posted label, limited to tickets
-updated in the last "staleness_days" days (default 7).
+Scope JQL: config "staleness_jql", else every ticket with the posted label, limited to tickets updated in
+the last "staleness_days" days (default 7).
 """
 from __future__ import annotations
 
@@ -47,11 +47,13 @@ AC_FIELD_NAME = "Acceptance Criteria"
 
 
 def staleness_jql(config: dict) -> str:
+    """Every ticket that carries the posted label and changed recently. The release scope is not used: a
+    posted ticket without an unreleased fix version (GUIDES-51870) got its root cause and fix PR hours after
+    the UAC, and was never checked."""
     if config.get("staleness_jql"):
         return config["staleness_jql"]
-    scope = config.get("approved_scope_jql") or config["jql"]
     days = int(config.get("staleness_days", 7))
-    return f'({scope}) AND labels = "{config["labels"]["posted"]}" AND updated >= -{days}d'
+    return f'labels = "{config["labels"]["posted"]}" AND updated >= -{days}d'
 
 
 def _when(value: str) -> datetime.datetime | None:

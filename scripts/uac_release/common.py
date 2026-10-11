@@ -60,6 +60,7 @@ CORRECTION_PATTERNS = {
     "missing-after-state": "Missed what a user can still do after a task is completed or closed",
     "wrong-mechanism": "Wrong idea of how the feature works or where it is built",
     "closable-ticket": "UAC written on a ticket that was being closed or needed none",
+    "stale-after-rca": "UAC written before the root cause or fix and not refreshed when they arrived",
 }
 CORRECTIONS_FILE = "corrections.json"  # learning/corrections.json, written by the harvester every night
 
