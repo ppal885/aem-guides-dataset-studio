@@ -1,6 +1,7 @@
 """Offline tests for the UAC release automation (fake Jira, stubbed Copilot CLI)."""
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
@@ -2667,6 +2668,37 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertIn("Repeated after the fix: 2 ticket(s)",
                       dashboard.render([], [], [], 0, "", "now", patterns=[again]))
         self.assertIn("hard-to-read", dashboard.load_pattern_fixes(), "the checked-in fix list loads")
+
+    def test_posted_table_shows_each_verdict_and_the_waiting_list_oldest_first(self) -> None:
+        now = datetime.datetime(2026, 10, 11, 12, 0, tzinfo=datetime.timezone.utc)
+        posted = [{"key": "PROJ-1", "summary": "a", "where": "AC field", "criteria": 4, "updated": "2026-10-09T08:00:00+0000"},
+                  {"key": "PROJ-2", "summary": "b", "where": "AC field", "criteria": 5, "updated": "2026-10-02T08:00:00+0000"},
+                  {"key": "PROJ-3", "summary": "c", "where": "AC field", "criteria": 6, "updated": "2026-10-05T08:00:00+0000"},
+                  {"key": "PROJ-4", "summary": "d", "where": "AC field", "criteria": 2, "updated": "2026-10-04T08:00:00+0000"}]
+        verdicts = {"PROJ-3": {"outcome": "CHANGED", "edit_origin": "QE_EDIT",
+                               "counts": {"accepted": 2, "changed": 1, "rewritten": 2, "removed": 1, "added": 0}},
+                    "PROJ-4": {"outcome": "ACCEPTED_AS_IS", "edit_origin": "",
+                               "counts": {"accepted": 2, "changed": 0, "rewritten": 0, "removed": 0, "added": 0}}}
+        page = dashboard.render(posted, [], [], 0, "", "now", verdicts=verdicts, now=now)
+        self.assertIn('<td class="verdict edited">Edited by qe: 2 kept, 1 edited, 2 reworded, 1 removed</td>', page)
+        self.assertIn('<td class="verdict accepted">Accepted untouched (2 kept)</td>', page)
+        self.assertIn('<td class="verdict waiting">Waiting for QE - 2 day(s)</td>', page)
+        self.assertIn('data-group="waiting">Waiting for QE <span>2</span>', page)
+        waiting = page.split('<h2 id="waiting">')[1].split("<h2")[0]
+        self.assertLess(waiting.index("PROJ-2"), waiting.index("PROJ-1"), "oldest first")
+        self.assertNotIn("PROJ-3", waiting)
+        self.assertIn('<td class="num">9</td>', waiting, "PROJ-2 waited nine days")
+
+    def test_nightly_harvest_refreshes_the_month_to_date_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(harvester, "harvest", return_value=[]), \
+                mock.patch.object(harvester.common, "setup_logging", return_value=logging.getLogger("test")), \
+                mock.patch.object(harvester, "monthly_report", return_value=Path(tmp) / "r.md") as report, \
+                mock.patch.object(harvester.common, "load_config", return_value=make_config(Path(tmp))), \
+                mock.patch.object(harvester.common.JiraClient, "from_env", return_value=FakeJira()):
+            self.assertEqual(harvester.main(["--config", "c.json", "--env-file", str(Path(tmp) / "none.env")]), 0)
+        report.assert_called_once()
+        self.assertRegex(report.call_args.args[1], r"^\d{4}-\d{2}$")
 
     def test_page_splits_qe_edits_from_corrections_made_through_claude(self) -> None:
         edits = [{"key": "PROJ-1", "outcome": "CHANGED", "editor": "asherawat", "edit_origin": "QE_EDIT", "counts": {}},
