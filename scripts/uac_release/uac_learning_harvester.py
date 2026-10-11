@@ -839,7 +839,7 @@ def monthly_report(config: dict, month: str) -> Path:
         for component in record.get("components") or ["(none)"]:
             bucket = by_component[component]
             bucket["tickets"].add(record["key"])
-            for entry in record.get("criteria") or []:
+            for entry in pair_rewrites(record.get("criteria") or []):
                 if entry["kind"] == "rewritten_into":
                     continue  # the added side of a reworded criterion, counted once as changed
                 if entry["kind"] in ("accepted", "changed", "rewritten"):
@@ -963,6 +963,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     records = harvest(config, jira, logger, own_name)
     logger.info("harvested %d record(s)", len(records))
+    # The release page shows the newest report; refresh this month's every night so it is never weeks old.
+    report = monthly_report(config, time.strftime("%Y-%m", time.gmtime()))
+    logger.info("month-to-date report: %s", report)
     return 0
 
 

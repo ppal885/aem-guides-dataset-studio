@@ -259,6 +259,43 @@ def _criterion_counts(record: dict) -> dict[str, int]:
     return {k: int(counts.get(k) or 0) for k in ("accepted", "changed", "rewritten", "removed", "added")}
 
 
+def collect_verdicts(out: Path) -> dict[str, dict]:
+    """key -> the newest harvested verdict: outcome CHANGED (a person edited it) or ACCEPTED_AS_IS, with counts."""
+    verdicts: dict[str, dict] = {}
+    path = out / "learning" / "records.jsonl"
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if record.get("key") and record.get("outcome") in ("CHANGED", "ACCEPTED_AS_IS"):
+                verdicts[str(record["key"])] = {"outcome": record["outcome"], "counts": _criterion_counts(record),
+                                                "edit_origin": record.get("edit_origin") or ""}
+    return verdicts
+
+
+def _days_since(value: str, now: datetime.datetime) -> int | None:
+    when = _parse_time(value)
+    return max(0, (now - when).days) if when else None
+
+
+def _verdict(row: dict, verdicts: dict[str, dict], now: datetime.datetime) -> tuple[str, str]:
+    """(filter group, cell text) for one posted ticket."""
+    v = verdicts.get(row["key"])
+    if not v:
+        days = _days_since(str(row.get("updated") or ""), now)
+        return "waiting", f"Waiting for QE{f' - {days} day(s)' if days is not None else ''}"
+    c = v["counts"]
+    if v["outcome"] == "ACCEPTED_AS_IS":
+        return "accepted", f"Accepted untouched ({c['accepted']} kept)"
+    parts = [f"{c[k]} {label}" for k, label in (("accepted", "kept"), ("changed", "edited"),
+                                                 ("rewritten", "reworded"), ("removed", "removed"),
+                                                 ("added", "added")) if c[k]]
+    who = "corrected via Claude" if v["edit_origin"] == "CLAUDE_REWRITE" else "edited by QE"
+    return "edited", f"{who.capitalize()}: {', '.join(parts) or 'no criteria matched'}"
+
+
 def _median(values: list[int]) -> float:
     if not values:
         return 0.0
@@ -533,11 +570,28 @@ def _pattern_rows(patterns: list[dict], jira_url: str) -> list[str]:
 
 def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accepted: int,
            jira_url: str, generated: str, shared_account: bool = False, patterns: list[dict] | None = None,
-           report: tuple[str, str] = ("", ""), impact: dict | None = None) -> str:
+           report: tuple[str, str] = ("", ""), impact: dict | None = None,
+           verdicts: dict[str, dict] | None = None, now: datetime.datetime | None = None) -> str:
     patterns = patterns or []
-    posted_rows = [
+    verdicts = verdicts or {}
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    verdict_of = {r["key"]: _verdict(r, verdicts, now) for r in posted}
+    groups = {g: sum(1 for k in verdict_of if verdict_of[k][0] == g) for g in ("waiting", "edited", "accepted")}
+    chips = "".join(f'<button type="button" class="chip-btn{" on" if g == "all" else ""}" data-group="{g}">{label} '
+                    f'<span>{n}</span></button>'
+                    for g, label, n in (("all", "All", len(posted)), ("waiting", "Waiting for QE", groups["waiting"]),
+                                        ("edited", "Edited", groups["edited"]), ("accepted", "Accepted", groups["accepted"])))
+    waiting = sorted((r for r in posted if verdict_of[r["key"]][0] == "waiting"),
+                     key=lambda r: str(r.get("updated") or ""))
+    waiting_rows = [
         f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
+        f"<td class=\"num\">{_e(_days_since(str(r.get('updated') or ''), now) if _days_since(str(r.get('updated') or ''), now) is not None else '-')}</td>"
+        f"<td class=\"num\">{_e(r['criteria'] or '-')}</td><td>{_when(r['updated'])}</td></tr>"
+        for r in waiting]
+    posted_rows = [
+        f"<tr data-group=\"{verdict_of[r['key']][0]}\"><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
         f"<td>{_e(r['where'])}{_notes(r.get('notes'))}</td><td class=\"num\">{_criteria_cell(r)}</td>"
+        f"<td class=\"verdict {verdict_of[r['key']][0]}\">{_e(verdict_of[r['key']][1])}</td>"
         f"<td>{_when(r['updated'])}</td></tr>"
         for r in posted
     ]
@@ -653,6 +707,13 @@ ul.legend {{ list-style:none; padding:0; margin:14px 0 4px; display:flex; flex-w
 .hb-fill.muted {{ background:var(--gray); }}
 .hb-val {{ text-align:right; font-weight:600; font-size:13.5px; font-variant-numeric:tabular-nums; }}
 .filter {{ display:flex; gap:8px; align-items:center; margin:0 0 10px; }}
+.chips {{ display:flex; flex-wrap:wrap; gap:6px; }}
+.chip-btn {{ font:inherit; font-size:13px; border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:999px; padding:5px 12px; cursor:pointer; }}
+.chip-btn span {{ color:var(--muted); margin-left:4px; }}
+.chip-btn.on {{ background:var(--text); color:var(--bg); border-color:var(--text); }}
+.chip-btn.on span {{ color:var(--bg); opacity:.75; }}
+td.verdict.waiting {{ color:var(--muted); }} td.verdict.accepted {{ color:var(--good); }}
+.filter {{ flex-wrap:wrap; }}
 .filter input {{ width:min(360px,100%); padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); font:inherit; font-size:14px; }}
 ul.lessons {{ margin:0; padding-left:18px; }}
 pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; font-size:13px; }}
@@ -663,7 +724,7 @@ pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid va
 </head>
 <body>
 <nav class="top" aria-label="Sections"><div><b>UAC release</b>
-<a href="#impact">Impact</a><a href="#posted">Posted</a><a href="#not-posted">Not posted</a>
+<a href="#impact">Impact</a><a href="#posted">Posted</a><a href="#waiting">Waiting for QE</a><a href="#not-posted">Not posted</a>
 <a href="#patterns">Patterns</a><a href="#edits">QE edits</a><a href="#corrections">Corrections</a><a href="#report">Report</a></div></nav>
 <main>
 <h1>UAC release automation</h1>
@@ -674,8 +735,14 @@ pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid va
 <h2 id="posted">UAC posted</h2>
 <p class="hint">Tickets where the UAC passed every check and was posted. Criteria is the number posted; "9 &rarr; 7 (edited)"
 means the field was changed in Jira afterwards (read on the harvester's nightly run; hover for who and when).</p>
-<div class="filter"><input type="search" placeholder="Filter by ticket or summary" data-filter="posted-table" aria-label="Filter posted tickets"></div>
-<div id="posted-table">{_table(["Ticket", "Summary", "Posted to", "Criteria", "When"], posted_rows, "No UAC posted yet.")}</div>
+<div class="filter"><input type="search" placeholder="Filter by ticket or summary" data-filter="posted-table" aria-label="Filter posted tickets">
+<div class="chips" role="group" aria-label="Filter by QE verdict">{chips}</div></div>
+<div id="posted-table">{_table(["Ticket", "Summary", "Posted to", "Criteria", "QE verdict", "When"], posted_rows, "No UAC posted yet.")}</div>
+
+<h2 id="waiting">Waiting for QE</h2>
+<p class="hint">Posted UACs nobody has edited and whose ticket has not reached an accepted status, oldest first. These
+hold the time still to be saved; ask QE to review the oldest.</p>
+{_table(["Ticket", "Summary", "Days waiting", "Criteria", "Posted"], waiting_rows, "Every posted UAC has a QE verdict.")}
 
 <h2 id="not-posted">UAC not posted</h2>
 <p class="hint">Tickets the automation picked but did not post, with the reason. Click a reason to see every problem.</p>
@@ -720,13 +787,21 @@ These are QE feedback too; their patterns are counted in the table above.</p>
     if (el) {{ const r = el.getBoundingClientRect(); show(el, r.left, r.top); }}
   }});
   document.addEventListener("focusout", hide);
-  document.querySelectorAll("input[data-filter]").forEach(input => {{
-    const rows = document.querySelectorAll("#" + input.dataset.filter + " tbody tr");
-    input.addEventListener("input", () => {{
-      const q = input.value.trim().toLowerCase();
-      rows.forEach(r => {{ r.hidden = q && !r.textContent.toLowerCase().includes(q); }});
+  const rows = document.querySelectorAll("#posted-table tbody tr");
+  const search = document.querySelector("input[data-filter]");
+  let group = "all";
+  const apply = () => {{
+    const q = search ? search.value.trim().toLowerCase() : "";
+    rows.forEach(r => {{
+      r.hidden = (q && !r.textContent.toLowerCase().includes(q)) || (group !== "all" && r.dataset.group !== group);
     }});
-  }});
+  }};
+  if (search) search.addEventListener("input", apply);
+  document.querySelectorAll(".chip-btn").forEach(b => b.addEventListener("click", () => {{
+    group = b.dataset.group;
+    document.querySelectorAll(".chip-btn").forEach(x => x.classList.toggle("on", x === b));
+    apply();
+  }}));
 }})();
 </script>
 </body>
@@ -763,9 +838,10 @@ def main(argv: list[str] | None = None) -> int:
     report = latest_report(out) if out.is_dir() else ("", "")
     minutes = float(config.get("impact_minutes_per_criterion") or DEFAULT_MINUTES_PER_CRITERION)
     impact = collect_impact(out, posted, minutes) if out.is_dir() else None
+    verdicts = collect_verdicts(out) if out.is_dir() else {}
     page = render(posted, not_posted, edits, accepted, os.environ.get("JIRA_BASE_URL", ""),
                   time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")),
-                  patterns, report, impact)
+                  patterns, report, impact, verdicts)
     write_atomic(args.out, page)
     print(f"wrote {args.out}: {len(posted)} posted, {len(not_posted)} not posted, {len(edits)} edited")
     return 0

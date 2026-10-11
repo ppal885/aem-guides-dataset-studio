@@ -323,7 +323,10 @@ run files (`<output_dir>/<KEY>/status.json`, `jira-source.json`, `field-body.txt
 `<output_dir>/learning/records.jsonl`); it never calls Jira. `JIRA_BASE_URL` from the env file is used
 only for ticket links. The page shows:
 - **UAC posted:** tickets whose UAC passed every check and was written into the Acceptance Criteria
-  field, with the number of criteria.
+  field, with the number of criteria. A QE verdict column says whether QE has judged it (waiting N days, accepted untouched,
+  or edited / corrected via Claude with kept, edited, reworded, removed and added counts); chips filter the table
+  by verdict.
+- **Waiting for QE:** posted UACs with no verdict yet, oldest first, with the days waited.
 - **UAC not posted:** every other picked ticket with its reason - the first failed check (all of them
   behind a click), a field that already had text, a dry run, or an unexpected error.
 - **Impact** (top of the page):
@@ -398,6 +401,7 @@ seen once is not. A dedicated automation account is still better. An untouched f
 appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
 it and when.
 
+The nightly harvest also rewrites this month's report, so the release page never shows a weeks-old report.
 `uac_learning_harvester.py --report last` (cron 06:00 on the 1st) writes
 `<output_dir>/learning/report-YYYY-MM.md`: an overall line, then per component the counts, what QE
 removed (we wrote too much) with QE's reason, what QE added (we missed), criteria **asked for in a Jira
