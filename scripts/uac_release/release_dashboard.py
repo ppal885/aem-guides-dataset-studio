@@ -448,72 +448,35 @@ def collect_trend(posted: list[dict], verdicts: dict[str, dict]) -> list[dict]:
 
 
 def _trend_chart(trend: list[dict], fixes: dict[str, dict], today: datetime.date | None = None) -> str:
-    """Two lines on one 0-100% axis by week posted, on a day scale from the first week to today so every fix
-    marker sits on its deploy day; a per-week hit area whose tooltip lists both values and the judged count."""
-    points = [w for w in trend if w["checks_rate"] is not None]
-    if not points:
+    """One plain bar per week a UAC was posted: the share of judged checks QE kept, with how many UACs were
+    judged; then the dates the fixes reached the VM, so a reader can compare weeks before and after a fix."""
+    if not any(w["checks_rate"] is not None for w in trend):
         return '<p class="empty">No posted UAC has been judged yet.</p>'
-    first = datetime.date.fromisoformat(trend[0]["week"])
-    last_week = datetime.date.fromisoformat(trend[-1]["week"])
-    end = max(last_week + datetime.timedelta(days=6), today or last_week)
-    span = max(7, (end - first).days)
-    width, left, right, top, plot_h, bottom = 640.0, 44.0, 16.0, 12.0, 160.0, 74.0
-    plot_w = width - left - right
-    height = top + plot_h + bottom
-
-    def x(day: datetime.date) -> float:
-        return left + plot_w * (day - first).days / span
-
-    def y(rate: float) -> float:
-        return top + plot_h * (1 - rate)
-
-    grid = "".join(f'<line x1="{left}" x2="{width - right:.0f}" y1="{y(t / 100):.1f}" y2="{y(t / 100):.1f}" '
-                   f'class="{"axis" if t == 0 else "grid"}"/><text x="{left - 6}" y="{y(t / 100) + 4:.1f}" '
-                   f'class="tick" text-anchor="end">{t}%</text>' for t in (0, 25, 50, 75, 100))
+    rows = []
+    for w in trend:
+        day = datetime.date.fromisoformat(w["week"]).strftime("%d %b")
+        if w["checks_rate"] is None:
+            rows.append({"label": f"Week of {day} ({w['judged']} of {w['posted']} judged)", "value": 0,
+                         "display": "not judged yet", "muted": True,
+                         "tip": f"Week of {day}: {w['posted']} UAC(s) posted, none judged by QE yet"})
+            continue
+        rows.append({"label": f"Week of {day} ({w['judged']} of {w['posted']} judged)", "value": w["checks_rate"],
+                     "display": f"{round(100 * w['checks_rate'])}% kept",
+                     "muted": w["judged"] < 3,
+                     "tip": (f"Week of {day}: QE kept {round(100 * w['checks_rate'])}% of {w['criteria']} checks "
+                             f"(as is, edited or reworded); {round(100 * w['saved_rate'])}% were kept as written or "
+                             f"edited. {w['judged']} of {w['posted']} UACs judged.")})
+    bars = _hbars(rows, "Checks QE kept by week posted", "No posted UAC has been judged yet.")
     by_day: dict[datetime.date, list[str]] = {}
     for fix in fixes.values():
         when = _parse_time(fix.get("deployed_at"))
-        if when and first <= when.date() <= end:
+        if when:
             ref = re.search(r"#\d+|\b[0-9a-f]{7,9}\b", str(fix.get("fix") or ""))
             by_day.setdefault(when.date(), []).append(ref.group(0) if ref else "fix")
-    markers = []
-    for n, (day, refs) in enumerate(sorted(by_day.items())):
-        fx = x(day)
-        flip = fx > left + plot_w * 0.75  # a label near the right edge sits left of its marker
-        markers.append(f'<line x1="{fx:.1f}" x2="{fx:.1f}" y1="{top}" y2="{top + plot_h + 44 + 12 * (n % 2):.1f}" '
-                       f'class="fixline"/><text x="{fx + (-3 if flip else 3):.1f}" y="{top + plot_h + 52 + 12 * (n % 2):.1f}" '
-                       f'class="fixlabel" text-anchor="{"end" if flip else "start"}">{_e(" ".join(sorted(refs)))}</text>')
-    lines, dots = [], []
-    for key, slot in (("checks_rate", "s1"), ("saved_rate", "s2")):
-        pts = [(x(datetime.date.fromisoformat(w["week"])), y(w[key])) for w in points]
-        if len(pts) > 1:
-            lines.append(f'<polyline points="{" ".join(f"{px:.1f},{py:.1f}" for px, py in pts)}" class="line {slot}"/>')
-        dots += [f'<circle cx="{px:.1f}" cy="{py:.1f}" r="4" class="dot {slot}"/>' for px, py in pts]
-    hits, ticks = [], []
-    for w in trend:
-        start_day = datetime.date.fromisoformat(w["week"])
-        wx = x(start_day)
-        label = start_day.strftime("%d %b")
-        tip = (f"Week of {label}: {w['posted']} posted, {w['judged']} judged" +
-               (f"; checks kept {round(100 * w['checks_rate'])}%, kept as written or edited "
-                f"{round(100 * w['saved_rate'])}% of {w['criteria']} criteria" if w["checks_rate"] is not None else ""))
-        hits.append(f'<rect x="{wx:.1f}" y="{top}" width="{plot_w * 7 / span:.1f}" height="{plot_h}" class="hit" '
-                    f'tabindex="0" data-tip="{_e(tip)}"/>')
-        ticks.append(f'<text x="{wx:.1f}" y="{top + plot_h + 16:.1f}" class="tick" text-anchor="middle">{_e(label)}</text>'
-                     f'<text x="{wx:.1f}" y="{top + plot_h + 30:.1f}" class="tick" text-anchor="middle">'
-                     f'n={w["judged"]}/{w["posted"]}</text>')
-    legend = ('<ul class="legend"><li><span class="key line s1"></span>Checks QE kept (as is, edited or reworded)</li>'
-              '<li><span class="key line s2"></span>Kept as written or edited (counted as time saved)</li>'
-              '<li><span class="key fixkey"></span>Fix reached the VM (PR or commit)</li></ul>')
-    rows = "".join(f'<tr><td>{_e(w["week"])}</td><td class="num">{w["posted"]}</td><td class="num">{w["judged"]}</td>'
-                   f'<td class="num">{"-" if w["checks_rate"] is None else str(round(100 * w["checks_rate"])) + "%"}</td>'
-                   f'<td class="num">{"-" if w["saved_rate"] is None else str(round(100 * w["saved_rate"])) + "%"}</td></tr>'
-                   for w in trend)
-    return (f'<svg class="trend" viewBox="0 0 {width:.0f} {height:.0f}" role="img" aria-label="Share of criteria QE kept '
-            f'by week posted">{grid}{"".join(markers)}{"".join(hits)}{"".join(lines)}{"".join(dots)}{"".join(ticks)}</svg>'
-            f'{legend}<details><summary class="hint">Table view</summary><table><thead><tr><th>Week of</th><th>Posted</th>'
-            f'<th>Judged</th><th>Checks kept</th><th>Kept as written or edited</th></tr></thead><tbody>{rows}</tbody>'
-            f'</table></details>')
+    timeline = " · ".join(f"{day.strftime('%d %b')}: {' '.join(sorted(refs))}" for day, refs in sorted(by_day.items()))
+    note = (f'<p class="hint">Fixes reached the VM on {_e(timeline)}. UACs posted after a fix show whether it worked; '
+            "a week fills in as QE reviews its UACs, and gray means fewer than 3 judged.</p>" if timeline else "")
+    return bars + note
 
 
 def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns: list[dict],
@@ -578,7 +541,7 @@ def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns:
 </div>
 <div class="charts">
   <div class="card chart wide"><h3>What QE did with our criteria</h3><p class="hint">{impact['judged_criteria']} criteria on {impact['judged_tickets']} judged UACs</p>{_outcome_chart(impact)}</div>
-  <div class="card chart wide"><h3>Is it getting better?</h3><p class="hint">Share of judged criteria QE kept, by the week the UAC was posted. n = UACs judged / posted that week; recent weeks fill in as QE reviews them.</p>{trend_html}</div>
+  <div class="card chart wide"><h3>QE kept % by week posted</h3><p class="hint">For the UACs posted each week, the share of their checks QE kept. A higher bar in later weeks means the fixes are working.</p>{trend_html}</div>
   <div class="card chart"><h3>Ticket pipeline</h3><p class="hint">From picked to judged by QE</p>{funnel}</div>
   <div class="card chart"><h3>Criteria per UAC (median)</h3><p class="hint">What we posted against what QE ended with</p>{size}</div>
   <div class="card chart"><h3>Kept by product area</h3><p class="hint">Share of judged criteria QE kept; gray = fewer than 5 criteria</p>{areas}
