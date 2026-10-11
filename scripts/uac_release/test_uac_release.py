@@ -2030,7 +2030,7 @@ class ReleaseDashboardTests(unittest.TestCase):
             self.assertEqual(dashboard.main(["--config", str(config), "--env-file", str(self.out / "none.env"),
                                              "--out", str(page)]), 0)
         text = page.read_text(encoding="utf-8")
-        self.assertNotIn("<script>", text)
+        self.assertNotIn("<script>alert(1)", text, "ticket text is escaped; the page's own script is fine")
         self.assertIn("&lt;script&gt;", text)
         self.assertIn('href="https://jira.example.com/browse/PROJ-1"', text)
         self.assertIn("No UAC posted yet.", text)
@@ -2601,8 +2601,8 @@ class ClaudeRewriteTests(unittest.TestCase):
                  {"key": "PROJ-2", "outcome": "CHANGED", "editor": "prashantp", "edit_origin": "CLAUDE_REWRITE",
                   "rewrite_reason": "QE correction", "counts": {}}]
         page = dashboard.render([], [], edits, 0, "", "now")
-        qe = page.split("<h2>Edited by a QE</h2>")[1].split("<h2>")[0]
-        ours = page.split("<h2>QE corrections made through Claude</h2>")[1].split("<h2>")[0]
+        qe = page.split(">Edited by a QE</h2>")[1].split("<h2")[0]
+        ours = page.split(">QE corrections made through Claude</h2>")[1].split("<h2")[0]
         self.assertIn("PROJ-1", qe)
         self.assertNotIn("PROJ-2", qe)
         self.assertIn("PROJ-2", ours)

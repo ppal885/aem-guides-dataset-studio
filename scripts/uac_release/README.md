@@ -327,6 +327,9 @@ only for ticket links. The page shows:
   - A bar of what QE did with our criteria: kept as is, kept with edits, removed. A note under it gives the
     criteria QE added.
   - Columns of UACs posted per week, with a table view.
+  - Ticket pipeline (picked, posted, judged), criteria per UAC (median we posted vs QE's final), kept % by
+    product area (Jira component), why UACs were not posted, and where QE corrects us (tickets per pattern).
+  - A sticky section bar, hover and keyboard tooltips on every mark, and a filter box on the posted table.
 
   A UAC is judged when a person edited it, directly or through a Claude chat, or when its ticket reached an
   accepted status untouched. Each kept criterion counts `impact_minutes_per_criterion` minutes (config,
