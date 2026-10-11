@@ -15,6 +15,7 @@ It never calls Jira and never changes a ticket. Run it from cron after the runne
 from __future__ import annotations
 
 import argparse
+import datetime
 import html
 import json
 import os
@@ -141,6 +142,165 @@ def latest_report(out: Path) -> tuple[str, str]:
         return "", ""
 
 
+DEFAULT_MINUTES_PER_CRITERION = 10  # config "impact_minutes_per_criterion": time a QE needs to write one by hand
+
+
+def collect_impact(out: Path, posted: list[dict], minutes: float = DEFAULT_MINUTES_PER_CRITERION) -> dict:
+    """What the posted UACs saved QE, from the harvester's newest record per ticket and the posted rows.
+
+    A ticket is judged when a person edited its UAC or it reached an accepted status untouched. Each judged
+    criterion QE kept (as is or edited) is one QE did not write by hand; that time is the estimate. Nothing
+    here is invented: the counts come from records.jsonl and field-body.txt, and the minutes are config."""
+    latest: dict[str, dict] = {}
+    path = out / "learning" / "records.jsonl"
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if record.get("key") and record.get("outcome") in ("CHANGED", "ACCEPTED_AS_IS"):
+                latest[str(record["key"])] = record
+    totals = {k: 0 for k in ("accepted", "changed", "removed", "added")}
+    for record in latest.values():
+        for kind in totals:
+            totals[kind] += int((record.get("counts") or {}).get(kind) or 0)
+    judged_posted = totals["accepted"] + totals["changed"] + totals["removed"]
+    kept = totals["accepted"] + totals["changed"]
+    kept_rate = kept / judged_posted if judged_posted else 0.0
+    waiting = [r for r in posted if r["key"] not in latest]
+    waiting_criteria = sum(int(r.get("criteria") or 0) for r in waiting)
+    weeks: dict[str, int] = {}
+    for r in posted:
+        when = _week_start(str(r.get("updated") or ""))
+        if when:
+            weeks[when] = weeks.get(when, 0) + 1
+    return {
+        "posted_tickets": len(posted), "posted_criteria": sum(int(r.get("criteria") or 0) for r in posted),
+        "judged_tickets": len(latest), "waiting_tickets": len(waiting), "waiting_criteria": waiting_criteria,
+        **totals, "kept": kept, "judged_criteria": judged_posted, "kept_rate": kept_rate,
+        "minutes": minutes, "hours_saved": kept * minutes / 60,
+        "hours_potential": waiting_criteria * kept_rate * minutes / 60,
+        "weeks": sorted(weeks.items()),
+    }
+
+
+def _week_start(value: str) -> str:
+    """The Monday (YYYY-MM-DD) of a timestamp's week, or "" when it cannot be read."""
+    try:
+        day = datetime.date.fromisoformat(value[:10])
+    except ValueError:
+        return ""
+    return (day - datetime.timedelta(days=day.weekday())).isoformat()
+
+
+def _hours(value: float) -> str:
+    return f"{value:.1f}".rstrip("0").rstrip(".") if value < 10 else f"{round(value):,}"
+
+
+def _right_rounded(x: float, y: float, w: float, h: float, r: float = 4) -> str:
+    """A bar segment whose right end (the data end) is rounded and whose left end is square."""
+    r = min(r, w / 2, h / 2)
+    return (f"M{x:.1f},{y:.1f}h{w - r:.1f}a{r},{r} 0 0 1 {r},{r}v{h - 2 * r:.1f}a{r},{r} 0 0 1 -{r},{r}"
+            f"h-{w - r:.1f}z")
+
+
+def _top_rounded(x: float, y: float, w: float, h: float, r: float = 4) -> str:
+    """A column whose top (the data end) is rounded and whose baseline is square."""
+    r = min(r, w / 2, h)
+    return (f"M{x:.1f},{y + h:.1f}v-{h - r:.1f}a{r},{r} 0 0 1 {r},-{r}h{w - 2 * r:.1f}a{r},{r} 0 0 1 {r},{r}"
+            f"v{h - r:.1f}z")
+
+
+def _outcome_chart(impact: dict) -> str:
+    """One 100% bar: judged criteria QE kept as is, kept with edits, or removed; legend carries the numbers."""
+    parts = [("Kept as is", impact["accepted"], "s1"), ("Kept with edits", impact["changed"], "s2"),
+             ("Removed", impact["removed"], "s3")]
+    total = sum(n for _, n, _ in parts)
+    if not total:
+        return '<p class="empty">No UAC has been judged yet.</p>'
+    width, height, gap = 600.0, 28.0, 2.0
+    shown = [(label, n, slot) for label, n, slot in parts if n]
+    usable = width - gap * (len(shown) - 1)
+    x, marks = 0.0, []
+    for i, (label, n, slot) in enumerate(shown):
+        w = usable * n / total
+        title = f"{label}: {n} of {total} criteria ({round(100 * n / total)}%)"
+        shape = (f'<path d="{_right_rounded(x, 0, w, height)}"' if i == len(shown) - 1
+                 else f'<rect x="{x:.1f}" y="0" width="{w:.1f}" height="{height}"')
+        marks.append(f'{shape} class="{slot}"><title>{_e(title)}</title></{"path" if i == len(shown) - 1 else "rect"}>')
+        x += w + gap
+    legend = "".join(
+        f'<li><span class="key {slot}"></span>{_e(label)} <b>{n}</b> <span class="hint">({round(100 * n / total)}%)'
+        f"</span></li>" for label, n, slot in parts)
+    return (f'<svg class="bar100" viewBox="0 0 {width:.0f} {height:.0f}" preserveAspectRatio="none" role="img" '
+            f'aria-label="Outcome of {total} judged criteria">{"".join(marks)}</svg>'
+            f'<ul class="legend">{legend}</ul>'
+            f'<p class="hint">QE also added {impact["added"]} criteria we missed.</p>')
+
+
+def _weekly_chart(weeks: list[tuple[str, int]]) -> str:
+    """Columns: UACs posted per week (single series, value on each cap)."""
+    if not weeks:
+        return '<p class="empty">No UAC posted yet.</p>'
+    top = max(n for _, n in weeks)
+    step = max(1, -(-top // 4))
+    ticks = list(range(0, step * 4 + 1, step))
+    left, bottom, plot_h, slot = 28.0, 22.0, 140.0, 64.0
+    width, height = left + slot * len(weeks), plot_h + bottom + 16
+    scale = plot_h / ticks[-1]
+    grid = "".join(
+        f'<line x1="{left}" x2="{width:.0f}" y1="{16 + plot_h - t * scale:.1f}" y2="{16 + plot_h - t * scale:.1f}" '
+        f'class="{"axis" if t == 0 else "grid"}"/><text x="{left - 6}" y="{16 + plot_h - t * scale + 4:.1f}" '
+        f'class="tick" text-anchor="end">{t}</text>' for t in ticks)
+    bars = []
+    for i, (week, n) in enumerate(weeks):
+        bar_w = 24.0
+        x = left + slot * i + (slot - bar_w) / 2
+        h = n * scale
+        y = 16 + plot_h - h
+        label = datetime.date.fromisoformat(week).strftime("%d %b")
+        bars.append(f'<path d="{_top_rounded(x, y, bar_w, h)}" class="s1"><title>Week of {_e(label)}: {n} UAC(s) posted'
+                    f'</title></path><text x="{x + bar_w / 2:.1f}" y="{y - 5:.1f}" class="val" text-anchor="middle">{n}</text>'
+                    f'<text x="{x + bar_w / 2:.1f}" y="{16 + plot_h + 16:.1f}" class="tick" text-anchor="middle">{_e(label)}</text>')
+    return (f'<svg class="cols" viewBox="0 0 {width:.0f} {height:.0f}" preserveAspectRatio="xMinYMid meet" '
+            f'role="img" aria-label="UACs posted per week">'
+            f'{grid}{"".join(bars)}</svg>')
+
+
+def _impact_section(impact: dict) -> str:
+    tiles = [
+        (f"{impact['posted_tickets']}", "UACs written for QE", f"{impact['posted_criteria']} criteria in total"),
+        (f"{round(100 * impact['kept_rate'])}%", "Criteria QE kept",
+         f"{impact['kept']} of {impact['judged_criteria']} judged, as is or edited"),
+        (f"{impact['judged_tickets']}", "UACs judged by QE", "edited, or accepted untouched"),
+        (f"{impact['waiting_tickets']}", "Waiting for QE", f"{impact['waiting_criteria']} criteria not judged yet"),
+    ]
+    tile_html = "".join(f'<div class="card"><div class="label">{_e(label)}</div><div class="value">{_e(value)}</div>'
+                        f'<div class="hint">{_e(note)}</div></div>' for value, label, note in tiles)
+    weekly_rows = "".join(f"<tr><td>{_e(w)}</td><td class=\"num\">{n}</td></tr>" for w, n in impact["weeks"])
+    minutes = _hours(impact["minutes"])
+    return f"""
+<section class="impact">
+<div class="hero card">
+  <div class="label">QE time saved so far (estimate)</div>
+  <div class="hero-value">{_hours(impact['hours_saved'])} h</div>
+  <div class="hint">{impact['kept']} criteria QE kept instead of writing them, at about {minutes} minutes each.
+  Up to {_hours(impact['hours_potential'])} h more when the {impact['waiting_tickets']} waiting UACs are kept at the same rate.</div>
+</div>
+<div class="tiles">{tile_html}</div>
+<div class="charts">
+  <div class="card chart"><h3>What QE did with our criteria</h3>{_outcome_chart(impact)}</div>
+  <div class="card chart"><h3>UACs posted per week</h3>{_weekly_chart(impact['weeks'])}
+    <details><summary class="hint">Table view</summary><table><thead><tr><th>Week of</th><th>UACs</th></tr></thead>
+    <tbody>{weekly_rows}</tbody></table></details></div>
+</div>
+<p class="hint">Judged = a person edited the UAC (directly or through a Claude chat) or the ticket reached an accepted
+status untouched. Minutes per criterion is the config value impact_minutes_per_criterion; it is an estimate, not a
+measurement.</p>
+</section>"""
+
+
 def _e(value: Any) -> str:
     return html.escape(str(value), quote=True)
 
@@ -204,8 +364,9 @@ def _pattern_rows(patterns: list[dict], jira_url: str) -> list[str]:
 
 def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accepted: int,
            jira_url: str, generated: str, shared_account: bool = False, patterns: list[dict] | None = None,
-           report: tuple[str, str] = ("", "")) -> str:
+           report: tuple[str, str] = ("", ""), impact: dict | None = None) -> str:
     patterns = patterns or []
+    impact_html = _impact_section(impact) if impact else ""
     posted_rows = [
         f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
         f"<td>{_e(r['where'])}{_notes(r.get('notes'))}</td><td class=\"num\">{_criteria_cell(r)}</td>"
@@ -248,8 +409,10 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAC Release Tracker</title>
 <style>
-:root {{ --bg:#f7f7f5; --panel:#ffffff; --text:#1d1d1b; --muted:#6b6b66; --line:#e3e2dd; --accent:#2f5d8a; --bad:#a3392f; }}
+:root {{ --bg:#f7f7f5; --panel:#ffffff; --text:#1d1d1b; --muted:#6b6b66; --line:#e3e2dd; --accent:#2f5d8a; --bad:#a3392f;
+  --s1:#2a78d6; --s2:#1baf7a; --s3:#eb6834; --grid:#e1e0d9; --axis:#c3c2b7; }}
 @media (prefers-color-scheme: dark) {{
+  :root {{ --s1:#3987e5; --s2:#199e70; --s3:#d95926; --grid:#2c2c2a; --axis:#383835; }}
   :root {{ --bg:#161615; --panel:#20201e; --text:#ecebe6; --muted:#a09f99; --line:#34332f; --accent:#8db4dc; --bad:#e08a80; }}
 }}
 * {{ box-sizing:border-box; }}
@@ -273,6 +436,20 @@ details summary {{ cursor:pointer; }}
 details ul {{ margin:6px 0 0; padding-left:18px; color:var(--muted); }}
 .reasons td:nth-child(3) {{ color:var(--bad); }}
 .flag {{ color:var(--bad); font-weight:600; }}
+.impact {{ margin-top:16px; }}
+.hero {{ margin-bottom:12px; }}
+.hero-value {{ font-size:52px; font-weight:600; line-height:1.1; margin:4px 0; }}
+.tiles {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }}
+.charts {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; margin-top:12px; }}
+.chart h3 {{ font-size:15px; margin:0 0 12px; }}
+svg.bar100 {{ width:100%; height:28px; display:block; }}
+svg.cols {{ width:100%; height:200px; display:block; }}
+.s1 {{ fill:var(--s1); }} .s2 {{ fill:var(--s2); }} .s3 {{ fill:var(--s3); }}
+line.grid {{ stroke:var(--grid); stroke-width:1; }} line.axis {{ stroke:var(--axis); stroke-width:1; }}
+text.tick {{ fill:var(--muted); font-size:11px; }} text.val {{ fill:var(--text); font-size:12px; font-weight:600; }}
+ul.legend {{ list-style:none; padding:0; margin:12px 0 4px; display:flex; flex-wrap:wrap; gap:6px 18px; }}
+.key {{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }}
+.key.s1 {{ background:var(--s1); }} .key.s2 {{ background:var(--s2); }} .key.s3 {{ background:var(--s3); }}
 ul.lessons {{ margin:0; padding-left:18px; }}
 pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; font-size:13px; }}
 .empty {{ color:var(--muted); background:var(--panel); border:1px dashed var(--line); border-radius:8px; padding:14px 16px; }}
@@ -283,6 +460,7 @@ pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid va
 <h1>UAC release automation</h1>
 <p class="sub">Updated {_e(generated)} (VM time). Read-only: built from the run files on the VM, never from Jira.</p>
 <div class="cards">{cards}</div>
+{impact_html}
 
 <h2>UAC posted</h2>
 <p class="hint">Tickets where the UAC passed every check and was posted. Criteria is the number posted; "9 &rarr; 7 (edited)"
@@ -342,9 +520,11 @@ def main(argv: list[str] | None = None) -> int:
     edits, accepted = collect_human_edits(out) if out.is_dir() else ([], 0)
     patterns = collect_patterns(out) if out.is_dir() else []
     report = latest_report(out) if out.is_dir() else ("", "")
+    minutes = float(config.get("impact_minutes_per_criterion") or DEFAULT_MINUTES_PER_CRITERION)
+    impact = collect_impact(out, posted, minutes) if out.is_dir() else None
     page = render(posted, not_posted, edits, accepted, os.environ.get("JIRA_BASE_URL", ""),
                   time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")),
-                  patterns, report)
+                  patterns, report, impact)
     write_atomic(args.out, page)
     print(f"wrote {args.out}: {len(posted)} posted, {len(not_posted)} not posted, {len(edits)} edited")
     return 0

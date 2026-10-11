@@ -321,6 +321,16 @@ only for ticket links. The page shows:
   field, with the number of criteria.
 - **UAC not posted:** every other picked ticket with its reason - the first failed check (all of them
   behind a click), a field that already had text, a dry run, or an unexpected error.
+- **Impact** (top of the page):
+  - Hero figure: QE time saved so far (estimate), and the time still possible from UACs not judged yet.
+  - Tiles: UACs written for QE, % of judged criteria QE kept, UACs judged, UACs waiting for QE.
+  - A bar of what QE did with our criteria: kept as is, kept with edits, removed. A note under it gives the
+    criteria QE added.
+  - Columns of UACs posted per week, with a table view.
+
+  A UAC is judged when a person edited it, directly or through a Claude chat, or when its ticket reached an
+  accepted status untouched. Each kept criterion counts `impact_minutes_per_criterion` minutes (config,
+  default 10). That figure is an estimate, and the page says so.
 - **Repeated correction patterns:** each kind of mistake QE corrections fixed (from
   `learning/corrections.json`), the tickets it was seen on and the lessons. A pattern on two or more
   tickets is marked "Repeated: pick for a skill fix".
