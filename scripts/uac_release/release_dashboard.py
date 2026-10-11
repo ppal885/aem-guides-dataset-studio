@@ -132,6 +132,48 @@ def collect_patterns(out: Path) -> list[dict]:
     return [p for p in data.get("patterns") or [] if isinstance(p, dict)]
 
 
+PATTERN_FIXES_FILE = Path(__file__).resolve().parent / "pattern_fixes.json"
+
+
+def load_pattern_fixes(path: Path = PATTERN_FIXES_FILE) -> dict[str, dict]:
+    """pattern -> {"fix", "deployed_at"}: the skill fix for a correction pattern and when it reached the VM."""
+    data = _read_json(path) or {}
+    return {str(k): v for k, v in (data.get("fixes") or {}).items() if isinstance(v, dict)}
+
+
+def _parse_time(value: str) -> datetime.datetime | None:
+    value = str(value or "").strip()
+    for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z"):
+        try:
+            return datetime.datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.timezone.utc)
+
+
+def annotate_patterns(patterns: list[dict], fixes: dict[str, dict], posted_at: dict[str, str]) -> list[dict]:
+    """Split each fixed pattern's tickets by whether the UAC was posted after the fix reached the VM. A fixed
+    pattern is repeated only when two or more tickets posted after the fix were corrected for it, so the page
+    shows whether the fix worked; a ticket with no posted time (a hand-posted UAC) counts as before the fix."""
+    out = []
+    for p in patterns:
+        fix = fixes.get(str(p.get("pattern")))
+        deployed = _parse_time(fix.get("deployed_at")) if fix else None
+        if not fix or deployed is None:
+            out.append(p)
+            continue
+        after = [k for k in p.get("tickets") or []
+                 if (_parse_time(posted_at.get(k, "")) or deployed) > deployed]
+        before = [k for k in p.get("tickets") or [] if k not in after]
+        out.append({**p, "fix": str(fix.get("fix") or ""), "deployed_at": deployed.strftime("%Y-%m-%d %H:%M UTC"),
+                    "tickets_after": after, "tickets_before": before, "repeated": len(after) >= 2})
+    return sorted(out, key=lambda r: (not r.get("repeated"), "fix" in r, -len(r.get("tickets") or []), r.get("pattern", "")))
+
+
 def latest_report(out: Path) -> tuple[str, str]:
     """(month, text) of the newest monthly learning report, or ("", "") when there is none."""
     reports = sorted((out / "learning").glob("report-*.md")) if (out / "learning").is_dir() else []
@@ -382,7 +424,10 @@ def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns:
                      "Why UACs were not posted", "Every picked ticket was posted.")
     pattern_bars = _hbars([
         {"label": p["pattern"], "value": len(p.get("tickets") or []), "display": str(len(p.get("tickets") or [])),
-         "tip": f"{p['pattern']}: {', '.join(p.get('tickets') or [])}", "muted": not p.get("repeated")}
+         "tip": (f"{p['pattern']}: {', '.join(p.get('tickets') or [])}"
+                + (f" - fixed by {p['fix']} on {p['deployed_at']}; {len(p.get('tickets_after') or [])} ticket(s) after"
+                   if "fix" in p else "")),
+         "muted": not p.get("repeated")}
         for p in patterns], "Correction patterns", "No correction patterns recorded yet.")
     weekly_rows = "".join(f'<tr><td>{_e(w)}</td><td class="num">{n}</td></tr>' for w, n in impact["weeks"])
     area_rows = "".join(f'<tr><td>{_e(a["area"])}</td><td class="num">{a["tickets"]}</td><td class="num">{a["kept"]}'
@@ -411,7 +456,7 @@ def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns:
     <details><summary class="hint">Table view</summary><table><thead><tr><th>Week of</th><th>UACs</th></tr></thead>
     <tbody>{weekly_rows}</tbody></table></details></div>
   <div class="card chart"><h3>Why UACs were not posted</h3><p class="hint">Gray = skipped on purpose</p>{reasons}</div>
-  <div class="card chart"><h3>Where QE corrects us</h3><p class="hint">Tickets per correction pattern; gray = seen once</p>{pattern_bars}</div>
+  <div class="card chart"><h3>Where QE corrects us</h3><p class="hint">Tickets per correction pattern; gray = seen once, or fixed and not seen again after the fix</p>{pattern_bars}</div>
 </div>
 <p class="hint footnote">Judged = a person edited the UAC (directly or through a Claude chat) or the ticket reached an accepted
 status untouched. Minutes per criterion is the config value impact_minutes_per_criterion; it is an estimate, not a
@@ -474,7 +519,13 @@ def _pattern_rows(patterns: list[dict], jira_url: str) -> list[str]:
         tickets = ", ".join(_ticket(str(k), jira_url) for k in p.get("tickets") or [])
         lessons = "".join(f"<li>{_e(k)}: {_e(t)}</li>" for k, t in p.get("lessons") or [])
         lessons = f"<ul class=\"lessons\">{lessons}</ul>" if lessons else "-"
-        flag = '<span class="flag">Repeated: pick for a skill fix</span>' if p.get("repeated") else "Seen once"
+        if "fix" in p:
+            after = len(p.get("tickets_after") or [])
+            flag = (f'<span class="flag">Repeated after the fix: {after} ticket(s)</span>' if p.get("repeated") else
+                    f'<span class="ok">Fixed</span>: {_e(p["fix"])}, on the VM {_e(p["deployed_at"])}. '
+                    f'{len(p.get("tickets_before") or [])} ticket(s) before the fix, {after} after.')
+        else:
+            flag = '<span class="flag">Repeated: pick for a skill fix</span>' if p.get("repeated") else "Seen once"
         rows.append(f"<tr><td><b>{_e(p.get('pattern'))}</b><br><span class=\"hint\">{_e(p.get('description') or '')}"
                     f"</span></td><td>{tickets}</td><td>{flag}</td><td>{lessons}</td></tr>")
     return rows
@@ -528,11 +579,11 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
 <title>UAC Release Tracker</title>
 <style>
 :root {{ --bg:#f6f7f9; --panel:#ffffff; --text:#14161a; --muted:#646a73; --line:#e4e7ec; --accent:#2a63c7; --bad:#b4372c;
-  --s1:#2a78d6; --s2:#1baf7a; --s3:#eb6834; --s4:#4a3aa7; --gray:#c9ccd1; --grid:#e1e0d9; --axis:#c3c2b7; --track:#eef0f3;
+  --s1:#2a78d6; --s2:#1baf7a; --s3:#eb6834; --s4:#4a3aa7; --gray:#c9ccd1; --grid:#e1e0d9; --axis:#c3c2b7; --track:#eef0f3; --good:#006300;
   --shadow:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06); --nav:rgba(246,247,249,.85); }}
 @media (prefers-color-scheme: dark) {{
   :root {{ --bg:#0f1012; --panel:#17191c; --text:#eceef1; --muted:#9aa1ab; --line:#2a2d32; --accent:#7fb0ff; --bad:#f08a7e;
-    --s1:#3987e5; --s2:#199e70; --s3:#d95926; --s4:#9085e9; --gray:#4a4e55; --grid:#2c2c2a; --axis:#383835; --track:#22252a;
+    --s1:#3987e5; --s2:#199e70; --s3:#d95926; --s4:#9085e9; --gray:#4a4e55; --grid:#2c2c2a; --axis:#383835; --track:#22252a; --good:#0ca30c;
     --shadow:none; --nav:rgba(15,16,18,.85); }}
 }}
 * {{ box-sizing:border-box; }}
@@ -568,6 +619,7 @@ details summary {{ cursor:pointer; }}
 details ul {{ margin:6px 0 0; padding-left:18px; color:var(--muted); }}
 .reasons td:nth-child(3) {{ color:var(--bad); }}
 .flag {{ color:var(--bad); font-weight:600; }}
+.ok {{ color:var(--good); font-weight:600; }}
 .hero-row {{ display:grid; grid-template-columns:minmax(260px,1.1fr) 2fr; gap:12px; }}
 @media (max-width:820px) {{ .hero-row {{ grid-template-columns:1fr; }} }}
 .hero {{ display:flex; flex-direction:column; justify-content:center; }}
@@ -706,7 +758,8 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(config["output_dir"])
     posted, not_posted = collect_tickets(out) if out.is_dir() else ([], [])
     edits, accepted = collect_human_edits(out) if out.is_dir() else ([], 0)
-    patterns = collect_patterns(out) if out.is_dir() else []
+    posted_at = {r["key"]: str(r.get("updated") or "") for r in posted}
+    patterns = annotate_patterns(collect_patterns(out), load_pattern_fixes(), posted_at) if out.is_dir() else []
     report = latest_report(out) if out.is_dir() else ("", "")
     minutes = float(config.get("impact_minutes_per_criterion") or DEFAULT_MINUTES_PER_CRITERION)
     impact = collect_impact(out, posted, minutes) if out.is_dir() else None

@@ -1,0 +1,9 @@
+{
+  "note": "Skill fixes for QE correction patterns, with the time each fix reached the VM checkout (from the VM git reflog). The release page counts a pattern as repeated only from tickets posted after its fix; corrections on UACs posted before the fix show what the fix was for.",
+  "fixes": {
+    "hard-to-read": {"fix": "PR #153 plain statement rule", "deployed_at": "2026-10-08T10:37:05+00:00"},
+    "stale-after-rca": {"fix": "PR #182 staleness watch on every posted ticket", "deployed_at": "2026-10-11T06:17:22+00:00"},
+    "missing-placements": {"fix": "PR #187 SAME_ITEM places", "deployed_at": "2026-10-11T07:01:49+00:00"},
+    "setting-toggle-noise": {"fix": "PR #188 switches need reads_at", "deployed_at": "2026-10-11T07:20:36+00:00"}
+  }
+}

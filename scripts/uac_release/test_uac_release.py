@@ -2648,6 +2648,26 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertEqual(rows["hard-to-read"], [("PROJ-1", "Shared lesson.")])
         self.assertEqual(rows["guessed-decision"], [("PROJ-1", "The count was not decided."), ("PROJ-1", "Shared lesson.")])
 
+    def test_a_fixed_pattern_repeats_only_from_tickets_posted_after_the_fix(self) -> None:
+        patterns = [{"pattern": "hard-to-read", "tickets": ["PROJ-1", "PROJ-2", "PROJ-3"], "lessons": [], "repeated": True},
+                    {"pattern": "screen-name", "tickets": ["PROJ-1", "PROJ-4"], "lessons": [], "repeated": True}]
+        fixes = {"hard-to-read": {"fix": "PR #1", "deployed_at": "2026-10-08T10:37:05+00:00"}}
+        posted = {"PROJ-1": "2026-10-06T03:37:28+0000", "PROJ-2": "2026-10-09T02:05:06+0000",
+                  "PROJ-4": "2026-10-10T01:00:00+0000"}  # PROJ-3 was hand-posted: no posted time
+        rows = {p["pattern"]: p for p in dashboard.annotate_patterns(patterns, fixes, posted)}
+        fixed = rows["hard-to-read"]
+        self.assertEqual((fixed["tickets_before"], fixed["tickets_after"], fixed["repeated"]),
+                         (["PROJ-1", "PROJ-3"], ["PROJ-2"], False))
+        self.assertTrue(rows["screen-name"]["repeated"], "a pattern without a fix is unchanged")
+        page = dashboard.render([], [], [], 0, "", "now", patterns=list(rows.values()))
+        self.assertIn("Fixed</span>: PR #1, on the VM 2026-10-08 10:37 UTC. 2 ticket(s) before the fix, 1 after.", page)
+        fixes["hard-to-read"]["deployed_at"] = "2026-10-01T00:00:00+00:00"
+        again = {p["pattern"]: p for p in dashboard.annotate_patterns(patterns, fixes, posted)}["hard-to-read"]
+        self.assertTrue(again["repeated"])
+        self.assertIn("Repeated after the fix: 2 ticket(s)",
+                      dashboard.render([], [], [], 0, "", "now", patterns=[again]))
+        self.assertIn("hard-to-read", dashboard.load_pattern_fixes(), "the checked-in fix list loads")
+
     def test_page_splits_qe_edits_from_corrections_made_through_claude(self) -> None:
         edits = [{"key": "PROJ-1", "outcome": "CHANGED", "editor": "asherawat", "edit_origin": "QE_EDIT", "counts": {}},
                  {"key": "PROJ-2", "outcome": "CHANGED", "editor": "prashantp", "edit_origin": "CLAUDE_REWRITE",
