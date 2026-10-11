@@ -12,7 +12,10 @@ For each ticket in scope that carries the posted label:
      cause or a fix, comments that link a wiki page (a design document or specification), comments that
      give an API contract or design in their text (an HTTP method with a path, a request/response body,
      status codes, an API spec), and attachments (an API contract, a design, a screenshot);
-  3. alert once per such comment or attachment (remembered in <output_dir>/staleness-state.json).
+  3. find merged commits in the product repositories (config "staleness_repos", else STARLING_REPO_PATH and
+     XML_EDITOR_REPO_PATH) whose subject names the ticket and whose pull request number or hash the
+     Acceptance Criteria do not cite - a fix can be merged with no Jira comment at all;
+  4. alert once per such comment, attachment or commit (remembered in <output_dir>/staleness-state.json).
 
 Scope JQL: config "staleness_jql", else every ticket with the posted label, limited to tickets updated in
 the last "staleness_days" days (default 7).
@@ -22,7 +25,9 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -126,6 +131,86 @@ def new_evidence_after(issue: dict, since: str, own_name: str = "",
     return found
 
 
+# Merged commits that name the ticket in the product repositories. A fix can be merged without any Jira comment
+# (GUIDES-55887: the UAC followed an unmerged PR from a bot comment while a different fix, #8280, was already in
+# develop), so the watcher also reads the repositories' history. The repositories come from config
+# "staleness_repos" ({"path": ..., "ref": ...}), else the code researcher's *_REPO_PATH variables.
+REPO_PATH_VARIABLES = ("STARLING_REPO_PATH", "XML_EDITOR_REPO_PATH")
+DEFAULT_REF = "origin/develop"
+_PR_NUMBER = re.compile(r"\(#(\d+)\)|\bpull/(\d+)\b|#(\d+)\b")
+
+
+def staleness_repos(config: dict) -> list[dict]:
+    """[{"path", "ref"}] for every configured product repository that exists on this machine."""
+    configured = config.get("staleness_repos")
+    if configured is None:
+        configured = [{"path": os.environ.get(name, "")} for name in REPO_PATH_VARIABLES]
+    repos = []
+    for entry in configured:
+        entry = {"path": entry} if isinstance(entry, str) else dict(entry or {})
+        path = str(entry.get("path") or "").strip()
+        if path and Path(path).is_dir():
+            repos.append({"path": path, "ref": str(entry.get("ref") or DEFAULT_REF)})
+    return repos
+
+
+def _key_pattern(key: str) -> re.Pattern:
+    """GUIDES-55887 also matches "Guides- 55887", "GUIDES_55887" and "guides 55887" in a commit subject."""
+    project, _, number = key.partition("-")
+    return re.compile(rf"\b{re.escape(project)}[-_ ]*{re.escape(number)}(?!\d)", re.I)
+
+
+def fetch_repos(repos: list[dict], logger) -> None:
+    """Bring each repository's remote branches up to date once per run; a failed fetch keeps the old refs."""
+    for repo in repos:
+        try:
+            run = subprocess.run(["git", "-C", repo["path"], "fetch", "--quiet", "origin"], capture_output=True,
+                                 text=True, encoding="utf-8", errors="replace", timeout=300)
+            if run.returncode != 0:
+                logger.warning("fetch failed in %s: %s", repo["path"], run.stderr.strip()[:200])
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("fetch failed in %s: %s", repo["path"], exc)
+
+
+def merged_commits(repo: dict, key: str, logger) -> list[dict]:
+    """Commits on the repository's ref whose subject names the ticket, newest first. A repository that cannot
+    be read gives no commits and a log line, never a crash."""
+    path, ref = repo["path"], repo["ref"]
+    number = key.partition("-")[2]
+    try:
+        run = subprocess.run(["git", "-C", path, "log", ref, "-F", f"--grep={number}",
+                              "--format=%H%x09%cI%x09%an%x09%s"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("%s: could not read %s at %s: %s", key, path, ref, exc)
+        return []
+    if run.returncode != 0:
+        logger.warning("%s: could not read %s at %s: %s", key, path, ref, run.stderr.strip()[:200])
+        return []
+    pattern = _key_pattern(key)
+    commits = []
+    for line in run.stdout.splitlines():
+        sha, committed, author, subject = (line.split("\t", 3) + ["", "", ""])[:4]
+        if not pattern.search(subject):
+            continue  # the key was only in the body (a revert or a long list); the subject must name it
+        numbers = [n for group in _PR_NUMBER.findall(subject) for n in group if n]
+        commits.append({"sha": sha, "committed": committed, "author": author, "subject": subject,
+                        "pr": numbers[0] if numbers else "", "repo": Path(path).name})
+    return commits
+
+
+def unmentioned_commits(commits: list[dict], ac_text: str) -> list[dict]:
+    """Commits the Acceptance Criteria do not cite, by pull request number (#8280) or short hash."""
+    text = ac_text or ""
+    found = []
+    for commit in commits:
+        cited_pr = commit["pr"] and re.search(rf"#{commit['pr']}\b", text)
+        cited_sha = commit["sha"][:7] and commit["sha"][:7] in text
+        if not (cited_pr or cited_sha):
+            found.append(commit)
+    return found
+
+
 def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_name="") -> list[str]:
     """Alert lines for new evidence on each ticket. The ids alerted are added to `state`; the caller saves it
     only once the alert was delivered. A ticket that cannot be read becomes an alert line of its own, so the
@@ -134,10 +219,13 @@ def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_na
     hosts = tuple(config.get("linked_doc_hosts") or linked_docs.DEFAULT_HOSTS)
     if isinstance(own_name, str):
         own_name = {own_name, *(config.get("learning_generator_users") or [])} - {""}
+    repos = staleness_repos(config)
+    if repos and config.get("staleness_fetch", True):
+        fetch_repos(repos, logger)
     lines = []
     for key in keys:
         try:
-            issue = jira._json("GET", f"/rest/api/2/issue/{key}?expand=changelog&fields=comment,attachment")
+            issue = jira._json("GET", f"/rest/api/2/issue/{key}?expand=changelog&fields=comment,attachment,{field_id}")
         except Exception as exc:  # noqa: BLE001 - one ticket never hides the others' alerts
             logger.exception("%s: could not read the ticket", key)
             lines.append(f"{key}: could not be checked for new evidence ({type(exc).__name__}: {exc})")
@@ -158,6 +246,17 @@ def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_na
             lines.append(f"{key}: {item['author']} added {item['what']} on {item['created'][:10]}, after the "
                          f"Acceptance Criteria were last changed on {since[:10]}; review the UAC against it")
             seen.add(item["id"])
+        ac_text = str((issue.get("fields") or {}).get(field_id) or "")
+        for repo in repos:
+            for commit in unmentioned_commits(merged_commits(repo, key, logger), ac_text):
+                commit_id = f"commit:{commit['sha'][:12]}"
+                if commit_id in seen:
+                    continue
+                pr = f" (#{commit['pr']})" if commit["pr"] else ""
+                lines.append(f"{key}: a commit naming the ticket is merged in {commit['repo']} {repo['ref']}{pr} by "
+                             f"{commit['author']} on {commit['committed'][:10]}: \"{commit['subject'][:120]}\"; the "
+                             "Acceptance Criteria do not cite it; review the UAC against the merged change")
+                seen.add(commit_id)
         if seen:
             state[key] = sorted(seen)
         logger.info("%s: UAC last changed %s", key, since[:19])
