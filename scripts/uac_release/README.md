@@ -341,6 +341,10 @@ only for ticket links. The page shows:
   A UAC is judged when a person edited it, directly or through a Claude chat, or when its ticket reached an
   accepted status untouched. Each kept criterion counts `impact_minutes_per_criterion` minutes (config,
   default 10). That figure is an estimate, and the page says so.
+- **Fix tracker:** `scripts/uac_release/pattern_fixes.json` lists the skill fix for a correction pattern and
+  when it reached the VM checkout (`git reflog` on the VM). For a fixed pattern the page splits its tickets into
+  posted before and after the fix, and counts it as repeated only from tickets posted after the fix, so it
+  shows whether the fix worked. Add a row when a pattern fix is deployed.
 - **Repeated correction patterns:** each kind of mistake QE corrections fixed (from
   `learning/corrections.json`), the tickets it was seen on and the lessons. A pattern on two or more
   tickets is marked "Repeated: pick for a skill fix".
