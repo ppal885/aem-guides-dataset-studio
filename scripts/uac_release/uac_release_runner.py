@@ -198,12 +198,18 @@ When finished, write these files:
    widget, panel, component, service or API the change touches. One object per place:
    {{"surface": "<on-screen name, e.g. Review UI>", "evidence": ["<documentation URL>" or
    "<repo file>:<line>", ...], "authority": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" |
-   "DOCUMENTATION" | "CODE_REUSE", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "TEST_PLAN", "ac":
+   "DOCUMENTATION" | "CODE_REUSE" | "SAME_ITEM", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "TEST_PLAN", "ac":
    <Acceptance Criteria number, for AC and TBD>, "reason": "<why, for OUT_OF_SCOPE>"}}. For AC, the
    Acceptance Criterion text must name the surface. A DOCUMENTATION or CODE_REUSE surface may only get an
    AC that checks it still works as before, or a TBD; when it does not matter enough for the UAC it is
-   TEST_PLAN (the full test plan, file 2, names it). One criterion names at most {max_discovered} such
-   surfaces.
+   TEST_PLAN (the full test plan, file 2, names it). First list every other place that shows, lists or
+   prints the SAME item the ticket changes - the same list, value, task, image or title on another
+   screen, in another content placement (table, figure, key reference, SVG) or in another output place
+   (cover page, header, footer) - and read the code for each. A place that reads the item through the same
+   code path is "SAME_ITEM": give it a <file>:<line> reference and make it a sub-point of the AC that
+   covers the ticket's own screen, with the same expected result (the requested behaviour must hold there
+   too). A place that only looks related stays DOCUMENTATION or CODE_REUSE. One criterion names at most
+   {max_discovered} research-found places (SAME_ITEM, DOCUMENTATION or CODE_REUSE); the rest are TEST_PLAN.
 7. {hotfix_scope_path}: ONLY when the ticket is a hotfix, a backport or a private patch - the scope of
    every Acceptance Criterion, as the skill's scripts/hotfix_scope_check.py describes:
    {{"ticket_lines": [<the hotfix ticket's own requirement lines>], "diffs": [{{"repo": "<clone path>",
@@ -303,8 +309,16 @@ Write in simple English with AEM Guides names a QE sees on screen. A criterion t
 sees when it works: the changed content in the output itself and the final status shown. A "queued" or
 "success" message, or a successful preprocessing step, is not proof that the output changed."""
 SURFACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE", "TEST_PLAN")
-SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE")
+SURFACE_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DOCUMENTATION", "CODE_REUSE", "SAME_ITEM")
 DISCOVERED_AUTHORITIES = ("DOCUMENTATION", "CODE_REUSE")
+# A place research found that shows, lists or prints the SAME item the ticket changes, through the same code
+# path (a <file>:<line> reference). The requested behaviour must hold there too, so it may be an AC sub-point
+# of the AC that covers the ticket's own screen, not only a "still works" check: GUIDES-17576 (Document
+# State list on three screens), GUIDES-26659 (review tasks listed in three places), GUIDES-53648 (an image in
+# a table or figure), GUIDES-55040 (a title on the cover page, header and footer).
+SAME_ITEM_AUTHORITY = "SAME_ITEM"
+RESEARCH_AUTHORITIES = DISCOVERED_AUTHORITIES + (SAME_ITEM_AUTHORITY,)
+REQUESTED_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION")
 # A criterion listing six or more screens found only by research is the long route list QE review flags as
 # noise; up to five is a normal "still works as before" check.
 MAX_DISCOVERED_SURFACES_PER_AC = 5
@@ -817,7 +831,7 @@ def orphan_ac_problems(ticket_dir: Path) -> list[str]:
     inventory = _load_list(ticket_dir / common.SURFACE_INVENTORY_FILE)
     from_ticket = {ac for e in coverage if e.get("disposition") in ("AC", "TBD") for ac in _ac_numbers(e.get("ac"))}
     in_scope = [e for e in inventory if e.get("disposition") in ("AC", "TBD")]
-    requested = [e for e in in_scope if e.get("authority") not in DISCOVERED_AUTHORITIES]
+    requested = [e for e in in_scope if e.get("authority") not in RESEARCH_AUTHORITIES]
 
     def names(entries, number, text):
         return any(number in _ac_numbers(e.get("ac")) or _normalize(str(e.get("surface") or "")) in _normalize(text)
@@ -911,6 +925,8 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
     blocks = {int(n): body for n, body in re.findall(
         r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", uac, re.M | re.S)}
     problems, has_doc, has_code = [], False, False
+    requested_acs = {e.get("ac") for e in entries
+                     if e.get("authority") in REQUESTED_AUTHORITIES and e.get("disposition") == "AC"}
     for number, entry in enumerate(entries, 1):
         surface = str(entry.get("surface") or "").strip()
         label = f"surface {number} ({surface or 'unnamed'})"
@@ -936,6 +952,12 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
                 problems.append(f"{label}: Acceptance Criteria {ac!r} does not exist in UAC.md")
             elif disposition == "AC" and _normalize(surface) not in _normalize(_criterion_text(lines[ac], blocks[ac])):
                 problems.append(f"{label}: Acceptance Criteria {ac} does not name this surface")
+            elif disposition == "AC" and authority == SAME_ITEM_AUTHORITY and not code:
+                problems.append(f"{label}: SAME_ITEM needs a <file>:<line> code reference that shows this place reads "
+                                "the same item the ticket changes")
+            elif disposition == "AC" and authority == SAME_ITEM_AUTHORITY and ac not in requested_acs:
+                problems.append(f"{label}: SAME_ITEM belongs in the Acceptance Criterion that covers the ticket's own "
+                                f"screen, as a sub-point; Acceptance Criteria {ac} covers no screen the ticket asks for")
             elif (disposition == "AC" and authority in DISCOVERED_AUTHORITIES
                   and not any(f" {m} " in f" {_normalize(lines[ac])} " for m in REGRESSION_MARKERS)):
                 problems.append(f"{label}: found only by {authority}, so Acceptance Criteria {ac} may only check that it "
@@ -943,7 +965,7 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
             elif disposition == "TBD" and "TBD:" not in blocks[ac]:
                 problems.append(f"{label}: Acceptance Criteria {ac} has no TBD line")
         elif disposition == "TEST_PLAN":
-            if authority not in DISCOVERED_AUTHORITIES:
+            if authority not in RESEARCH_AUTHORITIES:
                 problems.append(f"{label}: the ticket, an attachment or a decision asks for it, so it needs an "
                                 "Acceptance Criterion or a TBD, not TEST_PLAN")
             elif surface and _normalize(surface) not in plan:
@@ -952,7 +974,7 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
             problems.append(f"{label}: OUT_OF_SCOPE needs a concrete reason")
     discovered_per_ac: dict[int, int] = {}
     for entry in entries:
-        if entry.get("disposition") == "AC" and entry.get("authority") in DISCOVERED_AUTHORITIES \
+        if entry.get("disposition") == "AC" and entry.get("authority") in RESEARCH_AUTHORITIES \
                 and isinstance(entry.get("ac"), int):
             discovered_per_ac[entry["ac"]] = discovered_per_ac.get(entry["ac"], 0) + 1
     for ac, count in sorted(discovered_per_ac.items()):
@@ -984,7 +1006,7 @@ def add_test_plan_surfaces(ticket_dir: Path) -> list[str]:
     plan, added = _normalize(text), []
     for entry in entries:
         surface = " ".join(str(entry.get("surface") or "").split())
-        if (entry.get("disposition") == "TEST_PLAN" and entry.get("authority") in DISCOVERED_AUTHORITIES
+        if (entry.get("disposition") == "TEST_PLAN" and entry.get("authority") in RESEARCH_AUTHORITIES
                 and surface and _normalize(surface) not in plan and surface not in added):
             added.append(surface)
     lines = text.splitlines()
