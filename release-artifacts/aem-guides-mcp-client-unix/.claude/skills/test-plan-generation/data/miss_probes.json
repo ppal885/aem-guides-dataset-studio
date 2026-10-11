@@ -1053,6 +1053,43 @@
       "counterexamples_checked": true,
       "equivalence_key": "value-shown-on-several-screens",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-029",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "when downloaded",
+          "when it was downloaded",
+          "download time",
+          "downloaded by",
+          "watermark",
+          "personalized pdf",
+          "personalised pdf",
+          "dynamic placeholder",
+          "dynamic content",
+          "dynamic text"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "FEATURE_MECHANISM_AND_PLACES",
+        "candidate_template": "a new capability names the outcome but not how it is built: list the ways it could be built (an existing preset option, output template field or post-generation workflow, filling it at download, filling it when the file is opened) and what QE sees with each; ask which in a TBD; check every place the ticket names exists today and who does it there (an author in AEM, a reader on the published site), one criterion per user"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261010-FEATURE-MECHANISM-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A Native PDF placeholder request: a placeholder replaced by the downloading user's name was asserted per reader, but a post-generation workflow fills it once with the person who generated it, and Native PDF has no download link on AEM Sites today. Counterexample checked: a feature request whose ticket or design document already decides the mechanism and the screen needs only the decided one.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "feature-mechanism-and-places",
+      "status": "ACTIVE"
     }
   ]
 }

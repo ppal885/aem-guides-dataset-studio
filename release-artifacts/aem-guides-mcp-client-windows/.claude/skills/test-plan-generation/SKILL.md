@@ -724,6 +724,20 @@ reason (for example a fix that restores documented output). On such a ticket, ex
 (pre_existing_items CHANGED) needs a product or development basis - the customer's ask is not a decision
 (`uac_completeness_check.output_setting_problems`).
 
+**A new capability: how it is built and where it happens.** A feature request (fix_basis NOT_A_DEFECT) names
+the outcome, rarely how it is built or where exactly it happens. Before writing its criteria, list the ways it
+could be built - search the documentation and code for an existing option or extension point that could do it
+(a preset option, an output template field, a post-generation workflow, a ui config) - and what QE would see with
+each. When the ticket or a decision does not say which, ask in a TBD, and give every criterion whose outcome
+holds only for some of them its own TBD. Then check every place the ticket names: who does it there (an author
+in AEM, a reader on the published site) and whether that place exists today. A place that does not exist is a
+TBD, and one criterion never mixes places with different users. A Native PDF feature request asked for a
+placeholder "replaced by user name and time when it was downloaded ... from AEM/AEMSites": the posted criterion asserted a
+per-reader stamp, but a post-generation workflow fills the PDF once with the person who generated it, and
+Native PDF has no download link on AEM Sites today. A case that changes who checks or when (another user, after
+sharing, after reopening) says what QE should see. Record `UAC_EVIDENCE.json` "feature_design" with
+"mechanism" and "places" (`uac_completeness_check.feature_design_problems`).
+
 **Screens that read what the change touches.** When the change touches something many screens read - element
 position and selection, the topic's CSS, how a reference is stored or resolved - list those screens and check
 that each still works: human UACs did this on three tickets where ours did not (breadcrumb, right panel,
