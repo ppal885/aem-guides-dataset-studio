@@ -187,7 +187,10 @@ When finished, write these files:
    Acceptance Criterion whose TBD line asks it. Every Acceptance Criterion must be driven by a
    ticket sentence, an attachment, a linked page or a requested screen, or carry a TBD. An
    image, video or document attachment entry also has "surfaces": ["<every product screen the attachment
-   shows>"]; a log, data or code attachment does not. Every attachment entry from a person (not this
+   shows>"]; a log, data or code attachment does not. For a video, the attachment researcher reads its
+   frames and speech transcript; name the screens its frames show. When neither the frames nor the
+   transcript could be read, write "unreadable": "<the exact reason the researcher reported>" instead of
+   "surfaces". Every attachment entry from a person (not this
    automation) also has "facts": [{{"fact": "<what it shows, in plain words>", "disposition": "AC" | "TBD" |
    "NOT_MATERIAL", "ac": <number, for AC and TBD>, "reason": "<for NOT_MATERIAL>"}}] - every configuration
    value it shows (every preset, profile or setting visible on the item, not only the one the reporter
@@ -396,6 +399,11 @@ _INVISIBLE = re.compile("[​-‍⁠﻿]")
 NON_VISUAL_ATTACHMENTS = (".txt", ".log", ".json", ".xml", ".dita", ".ditamap", ".har", ".csv", ".zip", ".gz",
                           ".md", ".yaml", ".yml", ".properties", ".java", ".js", ".ts", ".py", ".sql",
                           ".pdf", ".doc", ".docx", ".xls", ".xlsx")
+# Screen and meeting recordings: the attachment researcher reads their frames and speech transcript. When
+# neither can be read (no tool on the machine, a corrupt file), the entry says why in "unreadable" and the UAC
+# is posted with a review note instead of being blocked on every run.
+VIDEO_ATTACHMENTS = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
+MIN_UNREADABLE_REASON_WORDS = 3
 DOC_RESEARCHER = "uac-doc-researcher"
 RESEARCH_STORE_DIR = "agent-research"
 CODE_RESEARCHER = "uac-code-researcher"
@@ -419,6 +427,16 @@ _CLOSURE_REQUEST = re.compile(
     r"|\b(?:is|was) (?:this|it) (?:still )?an issue (?:any ?more|still)\b")
 # A person puts this label on a ticket that needs no UAC; the runner then never writes one.
 DEFAULT_NOT_REQUIRED_LABEL = "UAC_Not_Required"
+# A ticket whose summary asks to turn something on or off for one customer environment ("Enable Guides MCP Access
+# for IMS Org ...", "MCP erroneously enabled ... remove/disable on cm-p63456-e531327") is an operations request:
+# there is no product behaviour to accept, so no UAC is written (GUIDES-55885, GUIDES-57170). Both the action and
+# an environment identifier must be in the summary, and a summary that reports a failure is a defect, not a
+# request ("503 Error ... (cm-p132321-e1283791)", "Unable to enable translation on cm-p...").
+_OPS_ACTION = re.compile(r"\b(?:enable|disable|remove|turn (?:on|off)|provision|de-?provision|activate|deactivate|"
+                         r"whitelist|allowlist)\b", re.I)
+_OPS_ENVIRONMENT = re.compile(r"\bims\s*org\b|\b[0-9a-f]{24}@adobeorg\b|\bcm-p\d+(?:-e\d+)?\b", re.I)
+_OPS_FAILURE = re.compile(r"\b(?:error|errors|fail\w*|unable|cannot|can't|not working|broken|exception|crash\w*|"
+                          r"timeout|timed out|issue|bug)\b", re.I)
 _BOT_COMMENT = re.compile(r"^(?:h\d )?vision\b")  # Vision investigation notices, matched on _words() text
 
 
@@ -446,6 +464,14 @@ def planned_after(source: dict, comment_created, own_name: str = "") -> bool:
         if when is not None and when > since:
             return True
     return False
+
+
+def ops_request(source: dict | None) -> dict | None:
+    """{"quote": summary} when the ticket only asks to turn something on or off for one customer environment."""
+    summary = " ".join(str((source or {}).get("summary") or "").split())
+    if _OPS_ACTION.search(summary) and _OPS_ENVIRONMENT.search(summary) and not _OPS_FAILURE.search(summary):
+        return {"quote": summary[:160]}
+    return None
 
 
 def closure_request(source: dict | None, own_name: str = "") -> dict | None:
@@ -689,6 +715,36 @@ def is_non_visual_attachment(name: str) -> bool:
     return name.endswith(NON_VISUAL_ATTACHMENTS) or _ROTATION_SUFFIX.sub("", name).endswith(NON_VISUAL_ATTACHMENTS)
 
 
+def is_video_attachment(name: str) -> bool:
+    return name.lower().endswith(VIDEO_ATTACHMENTS)
+
+
+def _unreadable_reason(entry: dict) -> str:
+    reason = str(entry.get("unreadable") or "").strip()
+    return reason if len(reason.split()) >= MIN_UNREADABLE_REASON_WORDS else ""
+
+
+def unreadable_video_notes(ticket_dir: Path, source: dict | None, own_name: str = "") -> list[str]:
+    """Review notes (never failures) for recordings the researcher could not read."""
+    path = ticket_dir / common.SOURCE_COVERAGE_FILE
+    if source is None or not path.is_file():
+        return []
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError:
+        return []
+    own_files = {a.get("filename") for a in source.get("attachments") or [] if own_name and a.get("author") == own_name}
+    notes = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict) or not str(entry.get("source") or "").startswith("attachment:"):
+            continue
+        name = str(entry["source"])[len("attachment:"):]
+        reason = _unreadable_reason(entry)
+        if name not in own_files and is_video_attachment(name) and not entry.get("surfaces") and reason:
+            notes.append(f"attachment {name} was not analysed ({reason}); watch the recording before relying on the UAC")
+    return notes
+
+
 def attachment_surface_problems(ticket_dir: Path, source: dict, own_name: str = "") -> list[str]:
     """Return problems unless every screen shown in an attachment is named and in the surface inventory."""
     try:
@@ -709,6 +765,8 @@ def attachment_surface_problems(ticket_dir: Path, source: dict, own_name: str = 
             continue
         if is_non_visual_attachment(name) and not entry.get("surfaces"):
             continue
+        if is_video_attachment(name) and not entry.get("surfaces") and _unreadable_reason(entry):
+            continue  # a review note says the recording was not analysed; it does not block the UAC
         surfaces = [str(s).strip() for s in entry.get("surfaces") or [] if str(s).strip()]
         if not surfaces:
             problems.append(f"attachment {name}: list the product screens it shows in \"surfaces\"")
@@ -1394,7 +1452,8 @@ def hold_before_generation(key: str, config: dict, jira, logger, ticket_dir: Pat
     label = not_required_label(config)
     not_required = any(str(name).lower() == label.lower() for name in source.get("labels") or [])
     request = None if not_required else closure_request(source, own_name)
-    if not (not_required or request):
+    ops = None if (not_required or request or not config.get("skip_ops_requests", True)) else ops_request(source)
+    if not (not_required or request or ops):
         return ""
     (ticket_dir / common.JIRA_SOURCE_FILE).write_text(json.dumps(source, indent=2, ensure_ascii=False),
                                                       encoding="utf-8")
@@ -1402,6 +1461,11 @@ def hold_before_generation(key: str, config: dict, jira, logger, ticket_dir: Pat
         status.update(key=key, state=common.NOT_REQUIRED, problems=[], not_required_label=label)
         common.write_status(ticket_dir, status)
         logger.info("%s: label %s is on the ticket, no UAC written", key, label)
+        return "SKIPPED"
+    if ops:
+        status.update(key=key, state=common.OPS_REQUEST, problems=[], ops_request=ops)
+        common.write_status(ticket_dir, status)
+        logger.info("%s: the summary asks to turn something on or off for one environment, no UAC written", key)
         return "SKIPPED"
     status.update(key=key, state=common.CLOSURE_ASKED, problems=[], closure_comment=request)
     common.write_status(ticket_dir, status)
@@ -1513,6 +1577,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     status["runtime_research"] = research
     status["runtime_result"] = runtime_result_summary(ticket_dir)
     review_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
+                    + unreadable_video_notes(ticket_dir, source, own_name)
                     + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research)
                     + vocabulary_notes(ticket_dir)
                     + [f"moved to the test plan, not a product check: {text.splitlines()[0][:110]}" for text in moved_acs])

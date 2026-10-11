@@ -47,6 +47,9 @@ FINAL_STATES = {"POSTED", "FIELD_KEPT", WRITTEN_UNRENDERED}
 NOT_REQUIRED = "NOT_REQUIRED"
 # The last human comment is about closing the ticket; not final, so a later human comment releases it.
 CLOSURE_ASKED = "CLOSURE_ASKED"
+# The summary only asks to turn something on or off for one customer environment (an operations request); not
+# final, so a changed summary releases it.
+OPS_REQUEST = "OPS_REQUEST"
 # What kind of mistake a QE correction of a posted UAC fixed (record_manual_rewrite.py --pattern). The
 # harvester counts the tickets per pattern; a pattern seen on two or more tickets is the next skill fix.
 CORRECTION_PATTERNS = {
