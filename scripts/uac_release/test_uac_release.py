@@ -2589,6 +2589,13 @@ class ClaudeRewriteTests(unittest.TestCase):
         empty = dashboard.render([], [], [], 0, "", "now", impact=dashboard.collect_impact(Path(tmp), []))
         self.assertIn("No UAC has been judged yet.", empty)
 
+    def test_a_lesson_named_for_a_pattern_shows_only_under_that_pattern(self) -> None:
+        corrections = [{"key": "PROJ-1", "at": "2026-10-11", "patterns": ["hard-to-read", "guessed-decision"],
+                        "lessons": ["guessed-decision: The count was not decided.", "Shared lesson."]}]
+        rows = {r["pattern"]: r["lessons"] for r in harvester.pattern_summary(corrections)}
+        self.assertEqual(rows["hard-to-read"], [("PROJ-1", "Shared lesson.")])
+        self.assertEqual(rows["guessed-decision"], [("PROJ-1", "The count was not decided."), ("PROJ-1", "Shared lesson.")])
+
     def test_page_splits_qe_edits_from_corrections_made_through_claude(self) -> None:
         edits = [{"key": "PROJ-1", "outcome": "CHANGED", "editor": "asherawat", "edit_origin": "QE_EDIT", "counts": {}},
                  {"key": "PROJ-2", "outcome": "CHANGED", "editor": "prashantp", "edit_origin": "CLAUDE_REWRITE",
