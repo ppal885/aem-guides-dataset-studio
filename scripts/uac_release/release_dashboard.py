@@ -423,7 +423,101 @@ def _hbars(rows: list[dict], label: str, empty: str) -> str:
     return f'<div class="hb" role="list" aria-label="{_e(label)}">{"".join(items)}</div>'
 
 
-def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns: list[dict]) -> str:
+def collect_trend(posted: list[dict], verdicts: dict[str, dict]) -> list[dict]:
+    """Per week a UAC was posted: how many were posted and judged, and of the judged criteria the share QE kept
+    (as is, edited or reworded) and the share kept as written or edited (what time saved counts)."""
+    weeks: dict[str, dict] = {}
+    for row in posted:
+        week = _week_start(str(row.get("updated") or ""))
+        if not week:
+            continue
+        w = weeks.setdefault(week, {"week": week, "posted": 0, "judged": 0, "criteria": 0, "checks": 0, "saved": 0})
+        w["posted"] += 1
+        v = verdicts.get(row["key"])
+        if not v:
+            continue
+        c = v["counts"]
+        w["judged"] += 1
+        w["criteria"] += c["accepted"] + c["changed"] + c["rewritten"] + c["removed"]
+        w["checks"] += c["accepted"] + c["changed"] + c["rewritten"]
+        w["saved"] += c["accepted"] + c["changed"]
+    for w in weeks.values():
+        w["checks_rate"] = w["checks"] / w["criteria"] if w["criteria"] else None
+        w["saved_rate"] = w["saved"] / w["criteria"] if w["criteria"] else None
+    return [weeks[k] for k in sorted(weeks)]
+
+
+def _trend_chart(trend: list[dict], fixes: dict[str, dict], today: datetime.date | None = None) -> str:
+    """Two lines on one 0-100% axis by week posted, on a day scale from the first week to today so every fix
+    marker sits on its deploy day; a per-week hit area whose tooltip lists both values and the judged count."""
+    points = [w for w in trend if w["checks_rate"] is not None]
+    if not points:
+        return '<p class="empty">No posted UAC has been judged yet.</p>'
+    first = datetime.date.fromisoformat(trend[0]["week"])
+    last_week = datetime.date.fromisoformat(trend[-1]["week"])
+    end = max(last_week + datetime.timedelta(days=6), today or last_week)
+    span = max(7, (end - first).days)
+    width, left, right, top, plot_h, bottom = 640.0, 44.0, 16.0, 12.0, 160.0, 74.0
+    plot_w = width - left - right
+    height = top + plot_h + bottom
+
+    def x(day: datetime.date) -> float:
+        return left + plot_w * (day - first).days / span
+
+    def y(rate: float) -> float:
+        return top + plot_h * (1 - rate)
+
+    grid = "".join(f'<line x1="{left}" x2="{width - right:.0f}" y1="{y(t / 100):.1f}" y2="{y(t / 100):.1f}" '
+                   f'class="{"axis" if t == 0 else "grid"}"/><text x="{left - 6}" y="{y(t / 100) + 4:.1f}" '
+                   f'class="tick" text-anchor="end">{t}%</text>' for t in (0, 25, 50, 75, 100))
+    by_day: dict[datetime.date, list[str]] = {}
+    for fix in fixes.values():
+        when = _parse_time(fix.get("deployed_at"))
+        if when and first <= when.date() <= end:
+            ref = re.search(r"#\d+|\b[0-9a-f]{7,9}\b", str(fix.get("fix") or ""))
+            by_day.setdefault(when.date(), []).append(ref.group(0) if ref else "fix")
+    markers = []
+    for n, (day, refs) in enumerate(sorted(by_day.items())):
+        fx = x(day)
+        flip = fx > left + plot_w * 0.75  # a label near the right edge sits left of its marker
+        markers.append(f'<line x1="{fx:.1f}" x2="{fx:.1f}" y1="{top}" y2="{top + plot_h + 44 + 12 * (n % 2):.1f}" '
+                       f'class="fixline"/><text x="{fx + (-3 if flip else 3):.1f}" y="{top + plot_h + 52 + 12 * (n % 2):.1f}" '
+                       f'class="fixlabel" text-anchor="{"end" if flip else "start"}">{_e(" ".join(sorted(refs)))}</text>')
+    lines, dots = [], []
+    for key, slot in (("checks_rate", "s1"), ("saved_rate", "s2")):
+        pts = [(x(datetime.date.fromisoformat(w["week"])), y(w[key])) for w in points]
+        if len(pts) > 1:
+            lines.append(f'<polyline points="{" ".join(f"{px:.1f},{py:.1f}" for px, py in pts)}" class="line {slot}"/>')
+        dots += [f'<circle cx="{px:.1f}" cy="{py:.1f}" r="4" class="dot {slot}"/>' for px, py in pts]
+    hits, ticks = [], []
+    for w in trend:
+        start_day = datetime.date.fromisoformat(w["week"])
+        wx = x(start_day)
+        label = start_day.strftime("%d %b")
+        tip = (f"Week of {label}: {w['posted']} posted, {w['judged']} judged" +
+               (f"; checks kept {round(100 * w['checks_rate'])}%, kept as written or edited "
+                f"{round(100 * w['saved_rate'])}% of {w['criteria']} criteria" if w["checks_rate"] is not None else ""))
+        hits.append(f'<rect x="{wx:.1f}" y="{top}" width="{plot_w * 7 / span:.1f}" height="{plot_h}" class="hit" '
+                    f'tabindex="0" data-tip="{_e(tip)}"/>')
+        ticks.append(f'<text x="{wx:.1f}" y="{top + plot_h + 16:.1f}" class="tick" text-anchor="middle">{_e(label)}</text>'
+                     f'<text x="{wx:.1f}" y="{top + plot_h + 30:.1f}" class="tick" text-anchor="middle">'
+                     f'n={w["judged"]}/{w["posted"]}</text>')
+    legend = ('<ul class="legend"><li><span class="key line s1"></span>Checks QE kept (as is, edited or reworded)</li>'
+              '<li><span class="key line s2"></span>Kept as written or edited (counted as time saved)</li>'
+              '<li><span class="key fixkey"></span>Fix reached the VM (PR or commit)</li></ul>')
+    rows = "".join(f'<tr><td>{_e(w["week"])}</td><td class="num">{w["posted"]}</td><td class="num">{w["judged"]}</td>'
+                   f'<td class="num">{"-" if w["checks_rate"] is None else str(round(100 * w["checks_rate"])) + "%"}</td>'
+                   f'<td class="num">{"-" if w["saved_rate"] is None else str(round(100 * w["saved_rate"])) + "%"}</td></tr>'
+                   for w in trend)
+    return (f'<svg class="trend" viewBox="0 0 {width:.0f} {height:.0f}" role="img" aria-label="Share of criteria QE kept '
+            f'by week posted">{grid}{"".join(markers)}{"".join(hits)}{"".join(lines)}{"".join(dots)}{"".join(ticks)}</svg>'
+            f'{legend}<details><summary class="hint">Table view</summary><table><thead><tr><th>Week of</th><th>Posted</th>'
+            f'<th>Judged</th><th>Checks kept</th><th>Kept as written or edited</th></tr></thead><tbody>{rows}</tbody>'
+            f'</table></details>')
+
+
+def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns: list[dict],
+                    trend_html: str = "") -> str:
     rate = round(100 * impact["kept_rate"])
     tiles = [
         (f"{impact['posted_tickets']}", "UACs written for QE", f"{impact['posted_criteria']} criteria in total"),
@@ -484,6 +578,7 @@ def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns:
 </div>
 <div class="charts">
   <div class="card chart wide"><h3>What QE did with our criteria</h3><p class="hint">{impact['judged_criteria']} criteria on {impact['judged_tickets']} judged UACs</p>{_outcome_chart(impact)}</div>
+  <div class="card chart wide"><h3>Is it getting better?</h3><p class="hint">Share of judged criteria QE kept, by the week the UAC was posted. n = UACs judged / posted that week; recent weeks fill in as QE reviews them.</p>{trend_html}</div>
   <div class="card chart"><h3>Ticket pipeline</h3><p class="hint">From picked to judged by QE</p>{funnel}</div>
   <div class="card chart"><h3>Criteria per UAC (median)</h3><p class="hint">What we posted against what QE ended with</p>{size}</div>
   <div class="card chart"><h3>Kept by product area</h3><p class="hint">Share of judged criteria QE kept; gray = fewer than 5 criteria</p>{areas}
@@ -571,7 +666,8 @@ def _pattern_rows(patterns: list[dict], jira_url: str) -> list[str]:
 def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accepted: int,
            jira_url: str, generated: str, shared_account: bool = False, patterns: list[dict] | None = None,
            report: tuple[str, str] = ("", ""), impact: dict | None = None,
-           verdicts: dict[str, dict] | None = None, now: datetime.datetime | None = None) -> str:
+           verdicts: dict[str, dict] | None = None, now: datetime.datetime | None = None,
+           fixes: dict[str, dict] | None = None) -> str:
     patterns = patterns or []
     verdicts = verdicts or {}
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -613,7 +709,8 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
                    f"</pre></details>" if report_text else
                    '<p class="empty">No monthly report yet; the harvester writes one on the 1st of each month.</p>')
     picked = len(posted) + len(not_posted)
-    impact_html = _impact_section(impact, picked, not_posted, patterns) if impact else ""
+    trend_html = _trend_chart(collect_trend(posted, verdicts), fixes or {}, now.date())
+    impact_html = _impact_section(impact, picked, not_posted, patterns, trend_html) if impact else ""
     cards = "".join(
         f'<div class="card"><div class="value">{n}</div><div class="label">{_e(label)}</div></div>'
         for n, label in ((picked, "Tickets picked"), (len(posted), "UAC posted"),
@@ -692,6 +789,18 @@ svg.bar100 {{ width:100%; height:32px; display:block; }}
 svg.cols {{ width:100%; height:200px; display:block; }}
 .s1 {{ fill:var(--s1); }} .s2 {{ fill:var(--s2); }} .s3 {{ fill:var(--s3); }} .s4 {{ fill:var(--s4); }}
 .mark {{ outline:none; transition:opacity .12s; }}
+svg.trend {{ width:100%; max-width:760px; height:auto; display:block; }}
+polyline.line {{ fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }}
+polyline.line.s1 {{ stroke:var(--s1); }} polyline.line.s2 {{ stroke:var(--s2); }}
+circle.dot {{ stroke:var(--panel); stroke-width:2; }}
+text.endlabel {{ fill:var(--text); font-size:12px; }}
+line.fixline {{ stroke:var(--muted); stroke-width:1; opacity:.6; }}
+text.fixlabel {{ fill:var(--muted); font-size:10.5px; }}
+rect.hit {{ fill:transparent; outline:none; }}
+rect.hit:hover, rect.hit:focus {{ fill:var(--track); fill-opacity:.5; }}
+.key.line {{ height:3px; border-radius:2px; vertical-align:3px; width:14px; }}
+.key.line.s1 {{ background:var(--s1); }} .key.line.s2 {{ background:var(--s2); }}
+.key.fixkey {{ width:1px; height:12px; background:var(--muted); border-radius:0; }}
 .mark:hover, .mark:focus {{ opacity:.8; }}
 line.grid {{ stroke:var(--grid); stroke-width:1; }} line.axis {{ stroke:var(--axis); stroke-width:1; }}
 text.tick {{ fill:var(--muted); font-size:11px; }} text.val {{ fill:var(--text); font-size:12px; font-weight:600; }}
@@ -841,7 +950,7 @@ def main(argv: list[str] | None = None) -> int:
     verdicts = collect_verdicts(out) if out.is_dir() else {}
     page = render(posted, not_posted, edits, accepted, os.environ.get("JIRA_BASE_URL", ""),
                   time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")),
-                  patterns, report, impact, verdicts)
+                  patterns, report, impact, verdicts, fixes=load_pattern_fixes())
     write_atomic(args.out, page)
     print(f"wrote {args.out}: {len(posted)} posted, {len(not_posted)} not posted, {len(edits)} edited")
     return 0
