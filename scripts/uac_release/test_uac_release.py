@@ -2561,6 +2561,34 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertIn("Say console", page)
         self.assertIn("Learning report 2026-10", page)
 
+    def test_impact_counts_judged_criteria_and_estimates_time_saved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            (out / "learning").mkdir()
+            rows = [{"key": "PROJ-1", "outcome": "CHANGED", "counts": {"accepted": 1, "changed": 2, "removed": 1, "added": 3}},
+                    {"key": "PROJ-1", "outcome": "CHANGED", "counts": {"accepted": 2, "changed": 1, "removed": 1, "added": 1}},
+                    {"key": "PROJ-2", "outcome": "ACCEPTED_AS_IS", "counts": {"accepted": 4}},
+                    {"key": "PROJ-9", "outcome": "UNCHANGED", "counts": {"accepted": 9}}]
+            (out / "learning" / "records.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+            posted = [{"key": "PROJ-1", "criteria": 4, "updated": "2026-10-06T04:14:57+0000"},
+                      {"key": "PROJ-2", "criteria": 4, "updated": "2026-10-08T01:00:00+0000"},
+                      {"key": "PROJ-3", "criteria": 5, "updated": "2026-09-30T01:00:00+0000"}]
+            impact = dashboard.collect_impact(out, posted, minutes=12)
+        # Newest record per ticket: PROJ-1 kept 2+1, removed 1; PROJ-2 kept 4. PROJ-3 waits.
+        self.assertEqual((impact["accepted"], impact["changed"], impact["removed"], impact["added"]), (6, 1, 1, 1))
+        self.assertEqual((impact["kept"], impact["judged_criteria"], impact["judged_tickets"]), (7, 8, 2))
+        self.assertAlmostEqual(impact["hours_saved"], 7 * 12 / 60)
+        self.assertEqual((impact["waiting_tickets"], impact["waiting_criteria"]), (1, 5))
+        self.assertAlmostEqual(impact["hours_potential"], 5 * (7 / 8) * 12 / 60)
+        self.assertEqual(impact["weeks"], [("2026-09-28", 1), ("2026-10-05", 2)])
+        page = dashboard.render([], [], [], 0, "", "now", impact=impact)
+        self.assertIn("QE time saved so far (estimate)", page)
+        self.assertIn("Kept as is <b>6</b>", page)
+        self.assertIn("Week of 05 Oct: 2 UAC(s) posted", page)
+        self.assertIn("QE also added 1 criteria we missed.", page)
+        empty = dashboard.render([], [], [], 0, "", "now", impact=dashboard.collect_impact(Path(tmp), []))
+        self.assertIn("No UAC has been judged yet.", empty)
+
     def test_page_splits_qe_edits_from_corrections_made_through_claude(self) -> None:
         edits = [{"key": "PROJ-1", "outcome": "CHANGED", "editor": "asherawat", "edit_origin": "QE_EDIT", "counts": {}},
                  {"key": "PROJ-2", "outcome": "CHANGED", "editor": "prashantp", "edit_origin": "CLAUDE_REWRITE",
