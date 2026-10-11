@@ -755,7 +755,11 @@ scenario VARIANT:
   (`uac_completeness_check.input_source_problems`).
 - **config_switches** - every configuration, feature flag or setting that changes what the action stores or
   shows, with the result in each state ("with UUID file names enabled the GUID is inserted; when disabled
-  the path is inserted"). An empty list needs a reason.
+  the path is inserted"). An empty list needs a reason. A switch the ticket does not name (basis
+  DOCUMENTATION or CODE) is an AC case only when the changed action's own code reads it: give `reads_at`
+  (`<file>:<line>`) and the switch's on-screen label. A setting read elsewhere in the product, or an internal
+  flag or configuration key with no on-screen label, is TEST_PLAN or NOT_APPLICABLE, never an on/off sweep
+  in a criterion. Unrelated toggle sweeps were a repeated QE correction (setting-toggle-noise).
 - **mechanism** - when the ticket asks for general behaviour ("users can move content while others refer to
   it", "same as Baseline and Conditional Presets"), the other item or reference types, and the named feature
   it must match, are ACs; the reporter's own item is one case of it. When the ask is only the reporter's

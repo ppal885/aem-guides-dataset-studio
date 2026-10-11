@@ -61,7 +61,10 @@ When finished, write these files:
    "Suggested checks" section. Keep at most ten criteria; an open product decision stays a TBD.
    List every setting the code of the ticket's action reads (configuration key, profile setting, feature
    flag) and answer each one: an AC case with the setting toggled on and off, a TBD, or not relevant with a
-   reason. When the action creates new files, Use UUID based system filenames is one of them. Name each
+   reason. A setting the ticket does not name is an AC case only when the changed action's own code reads
+   it: record that line as reads_at (<file>:<line>) in config_switches. A setting read elsewhere in the
+   product (a database or UUID toggle on a fix that never reads it) is TEST_PLAN or not relevant, never an
+   on/off sweep in a criterion. When the action creates new files, Use UUID based system filenames is one of them. Name each
    setting by its on-screen label (for example Enable DITA-OT preprocessing on the General tab); an internal
    feature flag, code constant or configuration key with no on-screen label goes to the test plan, never into
    a criterion or case line.
@@ -236,7 +239,7 @@ When finished, write these files:
    "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT" | "DOCUMENTATION" | "CODE", "disposition": "AC" |
    "TBD" | "NOT_APPLICABLE" | "TEST_PLAN" (DOCUMENTATION or CODE basis, same outcome as an AC; the test plan
    names it and the UAC stays short), "ac": <number>, "reason":
-   "..."}}], "config_switches": [{{"name": "...", "basis": "...", "states": ["enabled", "disabled"],
+   "..."}}], "config_switches": [{{"name": "...", "basis": "...", "reads_at": ["<file>:<line>"], "states": ["enabled", "disabled"],
    "disposition": "AC", "acs": [<numbers>]}}] (or [] with "config_switches_reason"), "mechanism":
    {{"general_ask": true | false, "variants": [<same shape as entry_points>], "reason": "...",
    "reverse_action": {{"name": "<e.g. move the item back>", "disposition": "TEST_PLAN" | "AC" | "TBD" |
