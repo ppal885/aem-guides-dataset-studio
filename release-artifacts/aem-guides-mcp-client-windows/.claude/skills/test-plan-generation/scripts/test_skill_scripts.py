@@ -8419,7 +8419,7 @@ def test_action_variants() -> None:
         "config_switches": [{"name": "UUID file names", "basis": "DEVELOPER_COMMENT", "states": ["enabled", "disabled"],
                              "disposition": "AC", "acs": [2]},
                             {"name": "new baseline mode", "basis": "CODE", "states": ["on", "off"],
-                             "disposition": "AC", "acs": [5]}],
+                             "reads_at": ["src/baseline/service.ts:42"], "disposition": "AC", "acs": [5]}],
         "mechanism": {"general_ask": True, "variants": [
             {"name": "map reference", "basis": "TICKET", "disposition": "AC", "ac": 3},
             {"name": "key reference", "basis": "TICKET", "disposition": "TBD", "ac": 3}],
@@ -8490,6 +8490,13 @@ def test_action_variants() -> None:
         config_switches__1__acs=[2])))
     check("a code-only switch may be a TBD", variant(config_switches__1__disposition="TBD",
                                                      config_switches__1__acs=[3]) == [])
+    check("a research switch the changed code does not read fails", any("give reads_at" in p for p in variant(
+        config_switches__1__reads_at=[])))
+    check("a research switch named by a code constant fails", any("internal flag or configuration key" in p
+                                                                  for p in variant(config_switches__1__name="ENABLE_DB_USAGE")))
+    check("a dotted configuration key fails as a switch name", any("internal flag or configuration key" in p
+                                                                   for p in variant(config_switches__1__name="uuid.duplicate.check")))
+    check("a switch the ticket names needs no reads_at", not any("reads_at" in p for p in variant()))
     check("SUGGESTED is refused for a ticket-based route too", any("no longer an answer" in p for p in variant(
         entry_points__0__disposition="SUGGESTED")))
 

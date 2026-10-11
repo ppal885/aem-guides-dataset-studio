@@ -874,6 +874,12 @@ _AS_BEFORE = re.compile(r"\b(?:as before|still works?|still \w+s\b|unchanged|not
 # Where a route, switch or item type comes from. CODE alone never makes new behaviour a criterion: in blind
 # comparisons, routes and modes read only from the code were criteria the human UAC did not have.
 VARIANT_BASES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION", "DEVELOPER_COMMENT", "DOCUMENTATION", "CODE")
+# A switch our own research found (not asked for by the ticket) becomes an AC case only when the changed action's
+# code reads it (reads_at, a <file>:<line> reference) and it has an on-screen label. Unrelated toggle sweeps (a
+# database or UUID toggle on a Document State fix, internal review flags) were a repeated QE correction.
+RESEARCH_SWITCH_BASES = ("DOCUMENTATION", "CODE")
+_CODE_REF = re.compile(r"^\S+\.[A-Za-z0-9]+:\d+(?:-\d+)?$")
+_CODE_NAME = re.compile(r"^[A-Za-z0-9]+(?:[_.][A-Za-z0-9]+)+$|^[a-z]+[A-Z][A-Za-z0-9]*$")
 # Always answered, each with what it asks for. value_shapes: the human UACs test the forms of the value the
 # change reads or shows - an empty value and a missing one (href="" and no href), and special characters,
 # fragments, query strings, encoded characters and very long values (a URL used as a TOC title). Blind
@@ -938,6 +944,21 @@ def _test_plan_problems(label: str, name: str, basis, plan_text: str) -> list[st
 
 def _name_words(name) -> list[str]:
     return [w for w in re.findall(r"[a-z0-9]+", str(name or "").lower()) if len(w) >= 4 and w not in _STOP_WORDS]
+
+
+def _research_switch_problem(label: str, entry) -> str:
+    """A switch our research found (basis DOCUMENTATION or CODE) on an AC: it needs an on-screen label and the
+    line where the changed action's code reads it (reads_at); otherwise it belongs in TEST_PLAN."""
+    if not isinstance(entry, dict) or entry.get("disposition") != "AC" or entry.get("basis") not in RESEARCH_SWITCH_BASES:
+        return ""
+    name = str(entry.get("name") or "").strip()
+    if _CODE_NAME.match(name):
+        return (f"{label} \"{name}\" is an internal flag or configuration key, not a switch QE sees: name its "
+                "on-screen label, or move it to TEST_PLAN")
+    if not any(_CODE_REF.match(str(r).strip()) for r in entry.get("reads_at") or []):
+        return (f"{label} \"{name}\": found by research, so it is an AC case only when the changed action's code "
+                "reads it - give reads_at (<file>:<line>), or move it to TEST_PLAN or NOT_APPLICABLE")
+    return ""
 
 
 def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text: str = "",
@@ -1101,6 +1122,10 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
     else:
         for index, entry in enumerate(switches, 1):
             label = f"action_variants.config_switches {index}"
+            research = _research_switch_problem(label, entry)
+            if research:
+                problems.append(research)
+                continue
             found = _variant_entry_problems(label, entry, blocks, uac_text,
                                         plan_text=plan_text)
             problems += found
