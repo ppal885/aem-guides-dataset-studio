@@ -5,6 +5,7 @@
     "stale-after-rca": {"fix": "PR #182 staleness watch on every posted ticket", "deployed_at": "2026-10-11T06:17:22+00:00"},
     "missing-placements": {"fix": "PR #187 SAME_ITEM places", "deployed_at": "2026-10-11T07:01:49+00:00"},
     "setting-toggle-noise": {"fix": "PR #188 switches need reads_at", "deployed_at": "2026-10-11T07:20:36+00:00"},
+    "vague-expected-result": {"fix": "commit 5401d3376 fix ACs name the observable result and attachment facts (watching: ticket-text values not covered)", "deployed_at": "2026-10-06T19:42:31+00:00"},
     "route-list-noise": {"fix": "PR #128 at most five research-found places per AC (watching: QE kept 2 of 5 on the three tickets before it)", "deployed_at": "2026-10-04T17:54:19+00:00"}
   }
 }
