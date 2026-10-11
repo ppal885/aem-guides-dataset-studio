@@ -2497,9 +2497,9 @@ class ClaudeRewriteTests(unittest.TestCase):
 
     def test_patterns_and_lesson_are_added_to_a_new_or_an_already_marked_text(self) -> None:
         jira = PropertyJira()
-        record_manual_rewrite.mark(jira, "PROJ-1", ["new text"], "QE correction", ["screen-name"], "Say panel")
+        record_manual_rewrite.mark(jira, "PROJ-1", ["new text"], "QE correction", ["screen-name"], ["Say panel"])
         self.assertEqual(record_manual_rewrite.mark(jira, "PROJ-1", ["new text"], "again",
-                                                    ["screen-name", "tbd-answerable"], "Answer the TBD"), [])
+                                                    ["screen-name", "tbd-answerable"], ["Answer the TBD"]), [])
         entry = jira.props[("PROJ-1", record_manual_rewrite.PROPERTY)]["rewrites"][0]
         self.assertEqual(entry["reason"], "QE correction")
         self.assertEqual(entry["patterns"], ["screen-name", "tbd-answerable"])
@@ -2508,8 +2508,8 @@ class ClaudeRewriteTests(unittest.TestCase):
 
     def test_pattern_on_two_tickets_is_repeated_and_reaches_the_report_and_page(self) -> None:
         jira = PropertyJira()
-        record_manual_rewrite.mark(jira, "PROJ-1", ["a"], "QE correction", ["screen-name", "tbd-answerable"], "Say panel")
-        record_manual_rewrite.mark(jira, "PROJ-2", ["b"], "QE correction", ["screen-name"], "Say console")
+        record_manual_rewrite.mark(jira, "PROJ-1", ["a"], "QE correction", ["screen-name", "tbd-answerable"], ["Say panel"])
+        record_manual_rewrite.mark(jira, "PROJ-2", ["b"], "QE correction", ["screen-name"], ["Say console"])
         record_manual_rewrite.mark(jira, "PROJ-3", ["c"], "readability rewrite")  # no pattern: not a correction
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)

@@ -36,9 +36,9 @@ PROPERTY = "uac-manual-rewrite"
 KEEP = 50
 
 
-def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = (), lesson: str = "") -> list[str]:
-    """Add the texts' SHA-256 to the ticket's property, with the correction patterns and lesson when given.
-    A text that is already marked gets the new patterns and lesson. Returns the new hashes."""
+def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = (), lessons: list[str] = ()) -> list[str]:
+    """Add the texts' SHA-256 to the ticket's property, with the correction patterns and lessons when given.
+    A text that is already marked gets the new patterns and lessons. Returns the new hashes."""
     current = jira.get_issue_property(key, PROPERTY) or {}
     rewrites = list(current.get("rewrites") or [])
     by_sha = {r.get("sha256"): r for r in rewrites if isinstance(r, dict)}
@@ -57,8 +57,9 @@ def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = ()
         if new_patterns:
             entry["patterns"] = list(entry.get("patterns") or []) + new_patterns
             updated = True
-        if lesson and lesson not in (entry.get("lessons") or []):
-            entry["lessons"] = list(entry.get("lessons") or []) + [lesson]
+        new_lessons = [t for t in lessons if t and t not in (entry.get("lessons") or [])]
+        if new_lessons:
+            entry["lessons"] = list(entry.get("lessons") or []) + new_lessons
             updated = True
     if added or updated:
         jira.set_issue_property(key, PROPERTY, {"rewrites": rewrites[-KEEP:]})
@@ -79,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--from-history", action="store_true")
     parser.add_argument("--pattern", action="append", default=[], choices=sorted(common.CORRECTION_PATTERNS),
                         help="the kind of mistake this correction fixed (repeatable)")
-    parser.add_argument("--lesson", default="", help="one sentence: what the UAC should have said")
+    parser.add_argument("--lesson", action="append", default=[], help="one sentence: what the UAC should have said (repeatable)")
     parser.add_argument("--field", default="customfield_13400", help="the Acceptance Criteria field id")
     parser.add_argument("--env-file", type=Path, default=common.REPO_ROOT / "backend" / ".env")
     args = parser.parse_args(argv)
