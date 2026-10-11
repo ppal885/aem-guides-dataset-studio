@@ -329,8 +329,10 @@ only for ticket links. The page shows:
 - **Impact** (top of the page):
   - Hero figure: QE time saved so far (estimate), and the time still possible from UACs not judged yet.
   - Tiles: UACs written for QE, % of judged criteria QE kept, UACs judged, UACs waiting for QE.
-  - A bar of what QE did with our criteria: kept as is, kept with edits, removed. A note under it gives the
-    criteria QE added.
+  - A bar of what QE did with our criteria: kept as is, kept with edits, same check reworded, removed. A
+    removed criterion whose content words (35% or more) reappear in an added criterion of the same ticket is
+    "rewritten" (reworded or merged), not removed, and that added criterion is not counted as new
+    (`uac_learning_harvester.pair_rewrites`). Time saved counts only criteria kept as is or edited.
   - Columns of UACs posted per week, with a table view.
   - Ticket pipeline (picked, posted, judged), criteria per UAC (median we posted vs QE's final), kept % by
     product area (Jira component), why UACs were not posted, and where QE corrects us (tickets per pattern).

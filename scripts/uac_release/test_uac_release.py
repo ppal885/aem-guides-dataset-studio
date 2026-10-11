@@ -1350,7 +1350,8 @@ class LearningHarvesterTests(unittest.TestCase):
         [record] = harvester.backfill(self.config, jira, self.log, generators, ["PROJ-9"])
         self.assertEqual((record["source"], record["posted_by"], record["editor"]), ("backfill", "qe.author", "qe.lead"))
         self.assertEqual(record["posted_text"], POSTED_FIELD, "the generator's last write is the posted version")
-        self.assertEqual(record["counts"], {"accepted": 1, "changed": 1, "removed": 1, "added": 1, "promoted": 0})
+        self.assertEqual(record["counts"], {"accepted": 1, "changed": 1, "rewritten": 0, "removed": 1, "added": 1,
+                                            "promoted": 0})
         self.assertEqual(jira.calls, [], "the backfill only reads Jira")
         self.assertEqual(harvester.backfill(self.config, jira, self.log, generators, ["PROJ-9"]), [],
                          "the same version is recorded once")
@@ -2600,6 +2601,18 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertIn("Say console", page)
         self.assertIn("Learning report 2026-10", page)
 
+    def test_a_reworded_or_merged_criterion_is_rewritten_not_removed(self) -> None:
+        entries = [
+            {"kind": "removed", "old": "Native PDF output still preserves surrounding DITA content, PDF page order and page counts."},
+            {"kind": "removed", "old": "Release notes describe any change to PDF chapter support."},
+            {"kind": "removed", "old": "A removed check", "struck": True},
+            {"kind": "added", "new": "The rest of the Native PDF output stays correct: surrounding content keeps its place, "
+                                     "PDF pages keep their order, and the page count includes the PDF pages."},
+            {"kind": "added", "new": "Every selected file is locked."},
+        ]
+        kinds = [e["kind"] for e in harvester.pair_rewrites(entries)]
+        self.assertEqual(kinds, ["rewritten", "removed", "removed", "rewritten_into", "added"])
+
     def test_impact_counts_judged_criteria_and_estimates_time_saved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
@@ -2624,7 +2637,7 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertIn("QE time saved so far (estimate)", page)
         self.assertIn("Kept as is <b>6</b>", page)
         self.assertIn("Week of 05 Oct: 2 UAC(s) posted", page)
-        self.assertIn("QE also added 1 criteria we missed.", page)
+        self.assertIn("QE also added 1 new criteria we missed.", page)
         empty = dashboard.render([], [], [], 0, "", "now", impact=dashboard.collect_impact(Path(tmp), []))
         self.assertIn("No UAC has been judged yet.", empty)
 

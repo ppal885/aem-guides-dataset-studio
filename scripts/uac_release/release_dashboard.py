@@ -28,6 +28,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
+import uac_learning_harvester as harvester  # noqa: E402
 
 AC_PATTERN = re.compile(r"Acceptance Criteria \d+:")
 FIELD_NOW_FILE = "field-now.json"  # written by uac_learning_harvester.py on its nightly read of Jira
@@ -161,13 +162,16 @@ def collect_impact(out: Path, posted: list[dict], minutes: float = DEFAULT_MINUT
                 continue
             if record.get("key") and record.get("outcome") in ("CHANGED", "ACCEPTED_AS_IS"):
                 latest[str(record["key"])] = record
-    totals = {k: 0 for k in ("accepted", "changed", "removed", "added")}
+    totals = {k: 0 for k in ("accepted", "changed", "rewritten", "removed", "added")}
     for record in latest.values():
-        for kind in totals:
-            totals[kind] += int((record.get("counts") or {}).get(kind) or 0)
-    judged_posted = totals["accepted"] + totals["changed"] + totals["removed"]
+        for kind, n in _criterion_counts(record).items():
+            totals[kind] += n
+    judged_posted = totals["accepted"] + totals["changed"] + totals["rewritten"] + totals["removed"]
+    # Time saved counts only criteria QE kept as written or edited; a reworded check QE rewrote is not counted.
     kept = totals["accepted"] + totals["changed"]
-    kept_rate = kept / judged_posted if judged_posted else 0.0
+    kept_checks = kept + totals["rewritten"]
+    kept_rate = kept_checks / judged_posted if judged_posted else 0.0
+    saved_rate = kept / judged_posted if judged_posted else 0.0
     waiting = [r for r in posted if r["key"] not in latest]
     waiting_criteria = sum(int(r.get("criteria") or 0) for r in waiting)
     weeks: dict[str, int] = {}
@@ -178,9 +182,9 @@ def collect_impact(out: Path, posted: list[dict], minutes: float = DEFAULT_MINUT
     areas: dict[str, dict] = {}
     sizes_posted, sizes_final = [], []
     for record in latest.values():
-        counts = record.get("counts") or {}
-        judged = sum(int(counts.get(k) or 0) for k in ("accepted", "changed", "removed"))
-        kept_here = sum(int(counts.get(k) or 0) for k in ("accepted", "changed"))
+        counts = _criterion_counts(record)
+        judged = counts["accepted"] + counts["changed"] + counts["rewritten"] + counts["removed"]
+        kept_here = counts["accepted"] + counts["changed"] + counts["rewritten"]
         for area in record.get("components") or ["(no component)"]:
             row = areas.setdefault(str(area), {"area": str(area), "tickets": 0, "judged": 0, "kept": 0})
             row["tickets"] += 1
@@ -194,11 +198,23 @@ def collect_impact(out: Path, posted: list[dict], minutes: float = DEFAULT_MINUT
         "median_posted": _median(sizes_posted), "median_final": _median(sizes_final),
         "posted_tickets": len(posted), "posted_criteria": sum(int(r.get("criteria") or 0) for r in posted),
         "judged_tickets": len(latest), "waiting_tickets": len(waiting), "waiting_criteria": waiting_criteria,
-        **totals, "kept": kept, "judged_criteria": judged_posted, "kept_rate": kept_rate,
+        **totals, "kept": kept, "kept_checks": kept_checks, "judged_criteria": judged_posted, "kept_rate": kept_rate,
         "minutes": minutes, "hours_saved": kept * minutes / 60,
-        "hours_potential": waiting_criteria * kept_rate * minutes / 60,
+        "hours_potential": waiting_criteria * saved_rate * minutes / 60,
         "weeks": sorted(weeks.items()),
     }
+
+
+def _criterion_counts(record: dict) -> dict[str, int]:
+    """Per-criterion outcome counts of one harvested record. Records written before the harvester knew reworded
+    criteria are re-paired from their entries, so the page and new records count the same way."""
+    entries = record.get("criteria")
+    if isinstance(entries, list) and entries:
+        entries = harvester.pair_rewrites([e for e in entries if isinstance(e, dict)])
+        return {k: sum(1 for e in entries if e.get("kind") == k)
+                for k in ("accepted", "changed", "rewritten", "removed", "added")}
+    counts = record.get("counts") or {}
+    return {k: int(counts.get(k) or 0) for k in ("accepted", "changed", "rewritten", "removed", "added")}
 
 
 def _median(values: list[int]) -> float:
@@ -258,7 +274,7 @@ def _top_rounded(x: float, y: float, w: float, h: float, r: float = 4) -> str:
 def _outcome_chart(impact: dict) -> str:
     """One 100% bar: judged criteria QE kept as is, kept with edits, or removed; legend carries the numbers."""
     parts = [("Kept as is", impact["accepted"], "s1"), ("Kept with edits", impact["changed"], "s2"),
-             ("Removed", impact["removed"], "s3")]
+             ("Same check, reworded", impact["rewritten"], "s4"), ("Removed", impact["removed"], "s3")]
     total = sum(n for _, n, _ in parts)
     if not total:
         return '<p class="empty">No UAC has been judged yet.</p>'
@@ -279,7 +295,8 @@ def _outcome_chart(impact: dict) -> str:
     return (f'<svg class="bar100" viewBox="0 0 {width:.0f} {height:.0f}" preserveAspectRatio="none" role="img" '
             f'aria-label="Outcome of {total} judged criteria">{"".join(marks)}</svg>'
             f'<ul class="legend">{legend}</ul>'
-            f'<p class="hint">QE also added {impact["added"]} criteria we missed.</p>')
+            f'<p class="hint">QE also added {impact["added"]} new criteria we missed. "Same check, reworded" means '
+            f'the check stayed but was reworded or merged into another criterion.</p>')
 
 
 def _weekly_chart(weeks: list[tuple[str, int]]) -> str:
@@ -331,7 +348,7 @@ def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns:
     rate = round(100 * impact["kept_rate"])
     tiles = [
         (f"{impact['posted_tickets']}", "UACs written for QE", f"{impact['posted_criteria']} criteria in total"),
-        (f"{rate}%", "Criteria QE kept", f"{impact['kept']} of {impact['judged_criteria']} judged, as is or edited"),
+        (f"{rate}%", "Checks QE kept", f"{impact['kept_checks']} of {impact['judged_criteria']} judged: as is, edited or reworded"),
         (f"{impact['judged_tickets']}", "UACs judged by QE", "edited, or accepted untouched"),
         (f"{impact['waiting_tickets']}", "Waiting for QE", f"{impact['waiting_criteria']} criteria not judged yet"),
     ]
@@ -378,7 +395,7 @@ def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns:
   <div class="card hero">
     <div class="label">QE time saved so far (estimate)</div>
     <div class="hero-value">{_hours(impact['hours_saved'])}<span class="unit"> h</span></div>
-    <div class="hint">{impact['kept']} criteria QE kept instead of writing them, at about {minutes} minutes each.</div>
+    <div class="hint">{impact['kept']} criteria QE kept as written or edited instead of writing them, at about {minutes} minutes each. Reworded checks are not counted.</div>
     <div class="potential">+ up to {_hours(impact['hours_potential'])} h more from the {impact['waiting_tickets']} UACs still waiting for QE, at today's keep rate</div>
   </div>
   <div class="tiles">{tile_html}</div>
@@ -511,11 +528,11 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
 <title>UAC Release Tracker</title>
 <style>
 :root {{ --bg:#f6f7f9; --panel:#ffffff; --text:#14161a; --muted:#646a73; --line:#e4e7ec; --accent:#2a63c7; --bad:#b4372c;
-  --s1:#2a78d6; --s2:#1baf7a; --s3:#eb6834; --gray:#c9ccd1; --grid:#e1e0d9; --axis:#c3c2b7; --track:#eef0f3;
+  --s1:#2a78d6; --s2:#1baf7a; --s3:#eb6834; --s4:#4a3aa7; --gray:#c9ccd1; --grid:#e1e0d9; --axis:#c3c2b7; --track:#eef0f3;
   --shadow:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06); --nav:rgba(246,247,249,.85); }}
 @media (prefers-color-scheme: dark) {{
   :root {{ --bg:#0f1012; --panel:#17191c; --text:#eceef1; --muted:#9aa1ab; --line:#2a2d32; --accent:#7fb0ff; --bad:#f08a7e;
-    --s1:#3987e5; --s2:#199e70; --s3:#d95926; --gray:#4a4e55; --grid:#2c2c2a; --axis:#383835; --track:#22252a;
+    --s1:#3987e5; --s2:#199e70; --s3:#d95926; --s4:#9085e9; --gray:#4a4e55; --grid:#2c2c2a; --axis:#383835; --track:#22252a;
     --shadow:none; --nav:rgba(15,16,18,.85); }}
 }}
 * {{ box-sizing:border-box; }}
@@ -567,14 +584,14 @@ details ul {{ margin:6px 0 0; padding-left:18px; color:var(--muted); }}
 .footnote {{ margin-top:12px; }}
 svg.bar100 {{ width:100%; height:32px; display:block; }}
 svg.cols {{ width:100%; height:200px; display:block; }}
-.s1 {{ fill:var(--s1); }} .s2 {{ fill:var(--s2); }} .s3 {{ fill:var(--s3); }}
+.s1 {{ fill:var(--s1); }} .s2 {{ fill:var(--s2); }} .s3 {{ fill:var(--s3); }} .s4 {{ fill:var(--s4); }}
 .mark {{ outline:none; transition:opacity .12s; }}
 .mark:hover, .mark:focus {{ opacity:.8; }}
 line.grid {{ stroke:var(--grid); stroke-width:1; }} line.axis {{ stroke:var(--axis); stroke-width:1; }}
 text.tick {{ fill:var(--muted); font-size:11px; }} text.val {{ fill:var(--text); font-size:12px; font-weight:600; }}
 ul.legend {{ list-style:none; padding:0; margin:14px 0 4px; display:flex; flex-wrap:wrap; gap:6px 22px; }}
 .key {{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }}
-.key.s1 {{ background:var(--s1); }} .key.s2 {{ background:var(--s2); }} .key.s3 {{ background:var(--s3); }}
+.key.s1 {{ background:var(--s1); }} .key.s2 {{ background:var(--s2); }} .key.s3 {{ background:var(--s3); }} .key.s4 {{ background:var(--s4); }}
 .hb {{ display:grid; gap:8px; }}
 .hb-row {{ display:grid; grid-template-columns:minmax(110px,40%) 1fr 44px; align-items:center; gap:10px; border-radius:6px; padding:2px 4px; outline:none; }}
 .hb-row:hover, .hb-row:focus-visible {{ background:var(--track); }}
