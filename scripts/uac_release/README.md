@@ -372,7 +372,9 @@ before the mark.
 Such a rewrite is usually a QE correction asked for in a chat, so it also records what kind of mistake it
 fixed: `--pattern` (repeatable; the kinds are `common.CORRECTION_PATTERNS`, e.g. `screen-name`,
 `tbd-answerable`, `missing-placements`) and `--lesson "one sentence"`. Running it again for a text that is
-already marked adds the patterns and lesson. For a QE's own rewrite in Jira, add `--qe-edit`: the patterns
+already marked adds the patterns and lesson. A lesson written `<pattern>: text` (e.g.
+`guessed-decision: The count was not decided`) is shown only under that pattern; other lessons are shown
+under every pattern of the correction. For a QE's own rewrite in Jira, add `--qe-edit`: the patterns
 and lessons are recorded and the edit stays a QE edit. Every night the harvester reads these from all picked
 tickets, every harvested ticket and the tickets in `learning_correction_tickets` (hand-posted UACs) into
 `learning/corrections.json`, the release page shows them per pattern, and the monthly report adds a
