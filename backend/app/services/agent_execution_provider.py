@@ -29,6 +29,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
+import time
 from pathlib import Path
 
 from app.core.schemas_canonical_test_plan_runtime import (
@@ -637,6 +640,7 @@ def _attachment_files(
                     entry["path"] = str(target)
                     entry["size_bytes"] = len(data)
                     _extract_pdf_text(entry, target)
+                    _extract_video_evidence(entry, target)
             except Exception as exc:
                 entry["error"] = (
                     f"download failed: {exc.__class__.__name__}: {exc}"
@@ -704,6 +708,132 @@ def _extract_pdf_text(entry: dict, target: Path) -> None:
         entry["text_error"] = (
             f"text extraction failed: {exc.__class__.__name__}: {exc}"
         )[:300]
+
+
+# Bounded video materialization for the attachment researcher. A screen or
+# meeting recording carries its evidence in what it shows and what people say,
+# so the researcher gets still frames (``frame_paths``) and a timestamped
+# speech transcript (``transcript_path``). Each half fails on its own with the
+# exact reason in ``frames_error`` / ``transcript_error``; a missing tool is a
+# reason, never a crash.
+_VIDEO_EXTENSIONS = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
+_VIDEO_MAX_BYTES = 500 * 1024 * 1024
+_VIDEO_FRAME_INTERVAL_SECONDS = 30
+_VIDEO_MAX_FRAMES = 40
+_VIDEO_FRAME_TIMEOUT_SECONDS = 600
+_TRANSCRIPT_MAX_CHARS = 60000
+
+
+def _is_video(entry: dict) -> bool:
+    filename = str(entry.get("filename") or "").lower()
+    mime = str(entry.get("mime_type") or "").strip().lower()
+    return mime.startswith("video/") or filename.endswith(_VIDEO_EXTENSIONS)
+
+
+def _env_on(name: str) -> bool:
+    return os.environ.get(name, "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _extract_video_frames(entry: dict, target: Path) -> None:
+    entry["frame_paths"] = []
+    entry["frames_error"] = ""
+    if not _env_on("UAC_VIDEO_FRAMES"):
+        entry["frames_error"] = "frame extraction is turned off (UAC_VIDEO_FRAMES=0)"
+        return
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        entry["frames_error"] = "ffmpeg is not installed on this machine"
+        return
+    frame_dir = target.with_name(target.name + ".frames")
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    command = [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(target),
+        "-vf", f"fps=1/{_VIDEO_FRAME_INTERVAL_SECONDS},scale='min(1280,iw)':-2",
+        "-frames:v", str(_VIDEO_MAX_FRAMES), str(frame_dir / "frame_%03d.jpg"),
+    ]
+    try:
+        run = subprocess.run(command, capture_output=True, text=True,
+                             timeout=_VIDEO_FRAME_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        entry["frames_error"] = (
+            f"frame extraction exceeded {_VIDEO_FRAME_TIMEOUT_SECONDS} seconds"
+        )
+        return
+    except OSError as exc:
+        entry["frames_error"] = f"ffmpeg could not run: {exc}"[:300]
+        return
+    frames = sorted(str(path) for path in frame_dir.glob("frame_*.jpg"))
+    if run.returncode != 0 or not frames:
+        entry["frames_error"] = (
+            f"ffmpeg exit {run.returncode}: {(run.stderr or 'no frames written').strip()}"
+        )[:300]
+        return
+    entry["frame_paths"] = frames
+    entry["frame_interval_seconds"] = _VIDEO_FRAME_INTERVAL_SECONDS
+
+
+def _extract_video_transcript(entry: dict, target: Path) -> None:
+    entry["transcript_path"] = ""
+    entry["transcript_error"] = ""
+    if not _env_on("UAC_VIDEO_TRANSCRIBE"):
+        entry["transcript_error"] = "transcription is turned off (UAC_VIDEO_TRANSCRIBE=0)"
+        return
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        entry["transcript_error"] = "faster-whisper is not installed on this machine"
+        return
+    budget = float(os.environ.get("UAC_VIDEO_TRANSCRIBE_MAX_SECONDS", "1800"))
+    started = time.monotonic()
+    lines: list[str] = []
+    total = 0
+    truncated = ""
+    try:
+        model = WhisperModel(os.environ.get("UAC_WHISPER_MODEL", "base"),
+                             device="cpu", compute_type="int8")
+        segments, _info = model.transcribe(str(target), vad_filter=True)
+        for segment in segments:
+            minutes, seconds = divmod(int(segment.start), 60)
+            line = f"[{minutes:02d}:{seconds:02d}] {segment.text.strip()}"
+            lines.append(line)
+            total += len(line) + 1
+            if total >= _TRANSCRIPT_MAX_CHARS:
+                truncated = f"transcript cut at {_TRANSCRIPT_MAX_CHARS} characters"
+                break
+            if time.monotonic() - started > budget:
+                truncated = f"transcript cut after {int(budget)} seconds of transcription"
+                break
+    except Exception as exc:  # noqa: BLE001 - every failure is recorded, never raised
+        entry["transcript_error"] = (
+            f"transcription failed: {exc.__class__.__name__}: {exc}"
+        )[:300]
+        return
+    if not lines:
+        entry["transcript_error"] = "no speech found in the recording"
+        return
+    transcript_path = target.with_name(target.name + ".transcript.txt")
+    transcript_path.write_text("\n".join(lines), encoding="utf-8")
+    entry["transcript_path"] = str(transcript_path)
+    if truncated:
+        entry["transcript_error"] = truncated
+
+
+def _extract_video_evidence(entry: dict, target: Path) -> None:
+    """For video attachments, write still frames and a speech transcript beside
+    the binary so the researcher reads what the recording shows and says."""
+
+    if not _is_video(entry):
+        return
+    if int(entry.get("size_bytes") or 0) > _VIDEO_MAX_BYTES:
+        reason = (
+            f"oversized video ({entry['size_bytes']} bytes exceeds the "
+            f"{_VIDEO_MAX_BYTES}-byte extraction bound)"
+        )
+        entry.update(frame_paths=[], frames_error=reason,
+                     transcript_path="", transcript_error=reason)
+        return
+    _extract_video_frames(entry, target)
+    _extract_video_transcript(entry, target)
 
 
 def _conflict_text(conflict: object) -> str:

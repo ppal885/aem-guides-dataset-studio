@@ -901,6 +901,32 @@ class RunnerTests(unittest.TestCase):
         unknown = COVERAGE[:3] + [dict(COVERAGE[3], surfaces=["Map console", "Your tasks widget"])]
         self.assertIn("attachment shot.png shows Your tasks widget, which is not in the surface inventory", problems(unknown))
 
+    def test_unreadable_recording_is_a_review_note_not_a_failure(self) -> None:
+        ticket = self.out / "PROJ-8"
+        ticket.mkdir()
+        (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(SURFACES), encoding="utf-8")
+        source = {**SOURCE, "attachments": [{"filename": "meeting.mp4", "author": "reporter"}]}
+        video = {"source": "attachment:meeting.mp4", "text": "", "disposition": "NOT_MATERIAL", "reason": "recording",
+                 "facts": [{"fact": "meeting recording", "disposition": "NOT_MATERIAL", "reason": "not read"}]}
+
+        def check(entry):
+            (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(COVERAGE[:3] + [entry]), encoding="utf-8")
+            return (runner.attachment_surface_problems(ticket, source, own_name="uac.bot"),
+                    runner.unreadable_video_notes(ticket, source, own_name="uac.bot"))
+
+        problems, notes = check(video)
+        self.assertTrue(any("list the product screens it shows" in p for p in problems),
+                        "a recording with neither screens nor a reason still blocks")
+        problems, notes = check(dict(video, unreadable="ffmpeg is not installed on this machine"))
+        self.assertEqual(problems, [])
+        self.assertEqual(notes, ["attachment meeting.mp4 was not analysed (ffmpeg is not installed on this machine); "
+                                 "watch the recording before relying on the UAC"])
+        problems, notes = check(dict(video, surfaces=["Map console"]))
+        self.assertEqual((problems, notes), ([], []), "a recording whose frames were read names its screens")
+        problems, _ = check(dict(video, source="attachment:shot.png", unreadable="ffmpeg is not installed here"))
+        self.assertTrue(any("list the product screens it shows" in p for p in problems),
+                        "only a recording may be skipped as unreadable")
+
     def _ticket_with(self, name, uac, coverage=COVERAGE, surfaces=SURFACES):
         ticket = self.out / name
         ticket.mkdir()
@@ -1273,6 +1299,40 @@ class ClosureHoldTests(unittest.TestCase):
         reason, _ = dashboard.not_posted_reason(status)
         self.assertEqual(reason, 'Skipped: the last comment (vinod, comment 1) is about closing the ticket: '
                                  '"is this an issue anymore?". A later comment in Jira releases it.')
+
+    def test_operations_requests_are_found_only_with_an_action_and_an_environment(self) -> None:
+        for summary in ("[SLA3] Enable Experience Manager Guides MCP Access for IMS Org "
+                        "39BFB008560A6FB87F000101@AdobeOrg (cm-p143511-e1495049)",
+                        "[SLA3] Guides MCP erroneously enabled in Production for Red Hat - remove/disable on "
+                        "cm-p63456-e531327"):
+            self.assertEqual(runner.ops_request({"summary": summary})["quote"], summary)
+        for summary in ("[SLA3] 503 Error When Running Find & Replace on Large DITA Maps in IBM DEV (cm-p132321-e1283791)",
+                        "[HAAS Automation] Enable GitLab Support via proxy for EDS Publishing Profiles",
+                        "Unable to enable translation on cm-p1234-e5678",
+                        "Name of language copy not honored after moving in repository"):
+            self.assertIsNone(runner.ops_request({"summary": summary}), summary)
+
+    def test_operations_request_skips_the_ticket_without_an_alert(self) -> None:
+        summary = "Enable Guides MCP Access for IMS Org 39BFB008560A6FB87F000101@AdobeOrg"
+        jira = FakeJira(source={**SOURCE, "summary": summary})
+        with mock.patch.object(runner.subprocess, "run") as run:
+            result = runner.process_ticket("PROJ-1", self.config, jira, self.log, dry_run=False)
+        self.assertEqual(result, "SKIPPED")
+        run.assert_not_called()
+        self.assertEqual(jira.calls, [], "nothing is written to Jira, not even a label")
+        status = runner.common.read_status(self.out / "PROJ-1")
+        self.assertEqual(status["state"], runner.common.OPS_REQUEST)
+        self.assertNotIn(status["state"], runner.common.FINAL_STATES, "a changed summary releases the ticket")
+        reason, _ = dashboard.not_posted_reason(status)
+        self.assertEqual(reason, "Skipped: an operations request for one environment, with no product behaviour "
+                                 f"to accept: \"{summary}\".")
+        self.assertEqual(dashboard.not_posted_groups([{"reason": reason}]), [("Skipped: operations request", 1)])
+
+    def test_operations_request_skip_can_be_turned_off(self) -> None:
+        self.assertIsNone(runner.hold_before_generation(
+            "PROJ-1", {**self.config, "skip_ops_requests": False},
+            FakeJira(source={**SOURCE, "summary": "Disable Guides MCP on cm-p63456-e531327"}), self.log,
+            self.out, {}) or None)
 
     def test_not_required_label_skips_the_ticket_without_an_alert(self) -> None:
         jira = FakeJira(source={**SOURCE, "labels": ["Triaged", "uac_not_required"]})

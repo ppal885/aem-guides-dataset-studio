@@ -64,6 +64,10 @@ def not_posted_reason(status: dict) -> tuple[str, list[str]]:
         return (f"Skipped: the last comment ({comment.get('author') or 'unknown'}, comment {comment.get('id') or '?'}) "
                 f"is about closing the ticket: \"{comment.get('quote') or ''}\". "
                 "A later comment in Jira releases it.", [])
+    if state == common.OPS_REQUEST:
+        quote = (status.get("ops_request") or {}).get("quote") or ""
+        return (f"Skipped: an operations request for one environment, with no product behaviour to accept: \"{quote}\".",
+                [])
     if state == "READY":
         return "Dry run only: the UAC passed the checks, but nothing was posted.", []
     if state == "FAILED" and problems:
@@ -306,6 +310,7 @@ def _median(values: list[int]) -> float:
 NOT_POSTED_GROUPS = (  # (prefix of the reason, group shown on the page)
     ("Label ", "Skipped: no UAC needed (label)"),
     ("Skipped: the last comment", "Skipped: ticket being closed"),
+    ("Skipped: an operations request", "Skipped: operations request"),
     ("Copilot CLI", "Generation did not finish (Copilot)"),
     ("Dry run", "Dry run only"),
     ("Unexpected error", "Unexpected error"),
