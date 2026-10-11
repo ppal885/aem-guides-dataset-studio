@@ -12,6 +12,14 @@ matches one of them, and QE_EDIT otherwise.
 
 --from-history marks every change of the field by the automation's account after its first write (the
 runner's own post), for rewrites made before this script existed.
+
+A rewrite a QE asked for in a chat is a correction: record what kind of mistake it fixed and the lesson,
+so the harvester can count the same mistake across tickets (common.CORRECTION_PATTERNS lists the kinds):
+
+  python scripts/uac_release/record_manual_rewrite.py --ticket GUIDES-15177 --reason "QE correction" \\
+      --pattern screen-name --pattern tbd-answerable --lesson "Say Language variables panel, not window"
+
+Running it again for a text that is already marked adds the patterns and lesson to that mark.
 """
 from __future__ import annotations
 
@@ -28,19 +36,31 @@ PROPERTY = "uac-manual-rewrite"
 KEEP = 50
 
 
-def mark(jira, key: str, texts: list[str], reason: str) -> list[str]:
-    """Add the texts' SHA-256 to the ticket's property. Returns the new hashes."""
+def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = (), lesson: str = "") -> list[str]:
+    """Add the texts' SHA-256 to the ticket's property, with the correction patterns and lesson when given.
+    A text that is already marked gets the new patterns and lesson. Returns the new hashes."""
     current = jira.get_issue_property(key, PROPERTY) or {}
     rewrites = list(current.get("rewrites") or [])
-    known = {r.get("sha256") for r in rewrites}
-    added = []
+    by_sha = {r.get("sha256"): r for r in rewrites if isinstance(r, dict)}
+    added, updated = [], False
     for text in texts:
+        if not text.strip():
+            continue
         sha = harvester._sha(text)
-        if text.strip() and sha not in known:
-            rewrites.append({"sha256": sha, "reason": reason, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
-            known.add(sha)
+        entry = by_sha.get(sha)
+        if entry is None:
+            entry = {"sha256": sha, "reason": reason, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+            rewrites.append(entry)
+            by_sha[sha] = entry
             added.append(sha)
-    if added:
+        new_patterns = [p for p in patterns if p not in (entry.get("patterns") or [])]
+        if new_patterns:
+            entry["patterns"] = list(entry.get("patterns") or []) + new_patterns
+            updated = True
+        if lesson and lesson not in (entry.get("lessons") or []):
+            entry["lessons"] = list(entry.get("lessons") or []) + [lesson]
+            updated = True
+    if added or updated:
         jira.set_issue_property(key, PROPERTY, {"rewrites": rewrites[-KEEP:]})
     return added
 
@@ -57,6 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ticket", action="append", required=True)
     parser.add_argument("--reason", required=True, help='e.g. "readability rewrite" or "user-directed correction"')
     parser.add_argument("--from-history", action="store_true")
+    parser.add_argument("--pattern", action="append", default=[], choices=sorted(common.CORRECTION_PATTERNS),
+                        help="the kind of mistake this correction fixed (repeatable)")
+    parser.add_argument("--lesson", default="", help="one sentence: what the UAC should have said")
     parser.add_argument("--field", default="customfield_13400", help="the Acceptance Criteria field id")
     parser.add_argument("--env-file", type=Path, default=common.REPO_ROOT / "backend" / ".env")
     args = parser.parse_args(argv)
@@ -66,8 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     for key in args.ticket:
         texts = history_texts(jira, key, args.field, own_name) if args.from_history else [
             jira.get_field(key, args.field) or ""]
-        added = mark(jira, key, texts, args.reason)
-        print(f"{key}: marked {len(added)} text(s) as a Claude rewrite")
+        added = mark(jira, key, texts, args.reason, args.pattern, args.lesson)
+        extra = f"; patterns {', '.join(args.pattern)}" if args.pattern else ""
+        print(f"{key}: marked {len(added)} new text(s) as a Claude rewrite{extra}")
     return 0
 
 

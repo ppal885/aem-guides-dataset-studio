@@ -547,6 +547,47 @@ def rewrite_hashes(jira, key: str) -> dict[str, str]:
             if isinstance(r, dict) and r.get("sha256")}
 
 
+def ticket_corrections(jira, key: str) -> list[dict]:
+    """The QE corrections recorded on a ticket (record_manual_rewrite.py --pattern/--lesson)."""
+    getter = getattr(jira, "get_issue_property", None)
+    if getter is None:
+        return []
+    try:
+        value = getter(key, REWRITE_PROPERTY) or {}
+    except Exception:  # noqa: BLE001 - a missing property never stops the harvest
+        return []
+    return [{"key": key, "at": str(r.get("at") or ""), "reason": str(r.get("reason") or ""),
+             "patterns": [str(p) for p in r.get("patterns") or []],
+             "lessons": [str(t) for t in r.get("lessons") or []]}
+            for r in value.get("rewrites") or [] if isinstance(r, dict) and (r.get("patterns") or r.get("lessons"))]
+
+
+def pattern_summary(corrections: list[dict]) -> list[dict]:
+    """Per pattern: the tickets it was seen on and their lessons, most tickets first. A pattern on two or more
+    tickets is repeated, which is the signal for a skill fix."""
+    rows: dict[str, dict] = {}
+    for correction in corrections:
+        for pattern in correction.get("patterns") or ["(no pattern)"]:
+            row = rows.setdefault(pattern, {"pattern": pattern, "tickets": [], "lessons": [], "last_at": ""})
+            if correction["key"] not in row["tickets"]:
+                row["tickets"].append(correction["key"])
+            row["lessons"] += [(correction["key"], lesson) for lesson in correction.get("lessons") or []]
+            row["last_at"] = max(row["last_at"], correction.get("at") or "")
+    for row in rows.values():
+        row["repeated"] = len(row["tickets"]) >= 2
+        row["description"] = common.CORRECTION_PATTERNS.get(row["pattern"], "")
+    return sorted(rows.values(), key=lambda r: (-len(r["tickets"]), r["pattern"]))
+
+
+def write_corrections(learning: Path, jira, keys: list[str]) -> list[dict]:
+    """Read the corrections recorded on every picked ticket and write learning/corrections.json."""
+    corrections = [c for key in keys for c in ticket_corrections(jira, key)]
+    (learning / common.CORRECTIONS_FILE).write_text(
+        json.dumps({"corrections": corrections, "patterns": pattern_summary(corrections)}, indent=2,
+                   ensure_ascii=False), encoding="utf-8")
+    return corrections
+
+
 def edit_origin(record: dict, hashes: dict[str, str]) -> dict:
     """CLAUDE_REWRITE when the edited text is one a Claude session marked, QE_EDIT otherwise."""
     if record.get("outcome") != "CHANGED":
@@ -567,7 +608,13 @@ def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
     except ValueError:
         state = {}
     records = []
-    for ticket_dir in sorted(p for p in out.iterdir() if p.is_dir() and (p / common.STATUS_FILE).is_file()):
+    ticket_dirs = sorted(p for p in out.iterdir() if p.is_dir() and (p / common.STATUS_FILE).is_file())
+    try:
+        corrections = write_corrections(learning, jira, [p.name for p in ticket_dirs])
+        logger.info("recorded %d QE correction(s)", len(corrections))
+    except Exception:  # noqa: BLE001 - the corrections list never stops the harvest
+        logger.exception("could not write the QE corrections list")
+    for ticket_dir in ticket_dirs:
         key = ticket_dir.name
         try:
             record = harvest_ticket(key, ticket_dir, config, jira, own_name, state)
@@ -691,6 +738,26 @@ def relabel(config: dict, jira, logger) -> int:
     return changed
 
 
+def correction_report_lines(learning: Path, month: str) -> list[str]:
+    """QE corrections recorded this month, grouped by the kind of mistake; repeated ones are the next fix."""
+    try:
+        data = json.loads((learning / common.CORRECTIONS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    corrections = [c for c in data.get("corrections") or [] if str(c.get("at") or "").startswith(month)]
+    lines = ["## QE corrections by pattern", "",
+             "Corrections a QE asked for in a chat and a Claude session made (record_manual_rewrite.py --pattern). "
+             "A pattern on two or more tickets is repeated: pick the next skill fix from those.", ""]
+    if not corrections:
+        return lines + ["No corrections with a pattern were recorded this month.", ""]
+    lines += ["| Pattern | Tickets | Repeated | Lessons |", "|---|---|---|---|"]
+    for row in pattern_summary(corrections):
+        lessons = "; ".join(f"{k}: {t}" for k, t in row["lessons"]) or "-"
+        lines.append(f"| {row['pattern']} | {', '.join(row['tickets'])} | {'yes' if row['repeated'] else 'no'} "
+                     f"| {lessons} |")
+    return lines + [""]
+
+
 def monthly_report(config: dict, month: str) -> Path:
     """Write learning/report-<month>.md from the records harvested in that month (YYYY-MM)."""
     learning = Path(config["output_dir"]) / LEARNING_DIR
@@ -736,7 +803,8 @@ def monthly_report(config: dict, month: str) -> Path:
              "posted UAC never mentioned, counted so a recurring screen miss shows up in the data before any rule changes.",
              ""]
     if rewrites:
-        lines += [f"Claude or Codex rewrites (not counted below, not QE feedback): {len(rewrites)}"]
+        lines += [f"QE corrections made through Claude or Codex (counted by pattern in \"QE corrections by "
+                  f"pattern\", not in the edit counts below): {len(rewrites)}"]
         lines += [f"- {r['key']}: {r.get('rewrite_reason') or 'no reason given'}" for r in rewrites]
         lines += [""]
     totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "promoted", "missed_screens", "requested")}
@@ -782,6 +850,7 @@ def monthly_report(config: dict, month: str) -> Path:
                       f"{totals['missed_screens']}).", ""]
     if not records:
         lines.append("No ticket versions were harvested this month.")
+    lines += [""] + correction_report_lines(learning, month)
     lines += [""] + origin_report_lines(records)
     lines += [""] + kind_report_lines(records)
     firing = common.import_skill_module("gate_firing_log")

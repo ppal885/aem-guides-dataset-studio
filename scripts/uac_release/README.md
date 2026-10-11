@@ -321,8 +321,14 @@ only for ticket links. The page shows:
   field, with the number of criteria.
 - **UAC not posted:** every other picked ticket with its reason - the first failed check (all of them
   behind a click), a field that already had text, a dry run, or an unexpected error.
-- **Edited by a person:** the newest harvester record per ticket a person changed, with who, when and
-  how many criteria were kept, changed, removed and added.
+- **Repeated correction patterns:** each kind of mistake QE corrections fixed (from
+  `learning/corrections.json`), the tickets it was seen on and the lessons. A pattern on two or more
+  tickets is marked "Repeated: pick for a skill fix".
+- **Edited by a QE:** the newest harvester record per ticket a QE changed directly in Jira, with who,
+  when and how many criteria were kept, changed, removed and added.
+- **QE corrections made through Claude:** the same for rewrites a QE asked for in a Claude or Codex chat
+  (`edit_origin: CLAUDE_REWRITE`), with the recorded reason.
+- **Monthly learning report:** the newest `learning/report-YYYY-MM.md`, behind a click.
 
 Run it once by hand to check: `python3 scripts/uac_release/release_dashboard.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env --out /var/www/uac-release/index.html`.
 The nginx route comes from `setup_vm.py`; run `python3 setup_vm.py --dashboard-only` once to add it.
@@ -350,8 +356,16 @@ a QE edit, so after writing the field the session runs `record_manual_rewrite.py
 (or `--from-history` for earlier rewrites). It stores the text's SHA-256 in the ticket's hidden issue property
 `uac-manual-rewrite`; the harvester labels a matching edit `edit_origin: CLAUDE_REWRITE` (others `QE_EDIT`),
 the monthly report lists those rewrites separately and leaves them out of the per-component learning, and the
-release page marks them "(Claude rewrite)". `uac_learning_harvester.py --relabel` labels records harvested
-before the mark. A dedicated automation account is still better. An untouched field counts as accepted only once the ticket status is in
+release page lists them under "QE corrections made through Claude". `uac_learning_harvester.py --relabel` labels records harvested
+before the mark.
+
+Such a rewrite is usually a QE correction asked for in a chat, so it also records what kind of mistake it
+fixed: `--pattern` (repeatable; the kinds are `common.CORRECTION_PATTERNS`, e.g. `screen-name`,
+`tbd-answerable`, `missing-placements`) and `--lesson "one sentence"`. Running it again for a text that is
+already marked adds the patterns and lesson. Every night the harvester reads these from all picked tickets
+into `learning/corrections.json`, the release page shows them per pattern, and the monthly report adds a
+**QE corrections by pattern** table. A pattern seen on two or more tickets is the next skill fix; a pattern
+seen once is not. A dedicated automation account is still better. An untouched field counts as accepted only once the ticket status is in
 `learning_accepted_statuses` (default `UAT`, `Closed`, `Resolved`, `Done`). Each new ticket version is
 appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
 it and when.

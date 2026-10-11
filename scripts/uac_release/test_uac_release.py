@@ -2495,6 +2495,55 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertEqual(record_manual_rewrite.mark(jira, "PROJ-1", ["new text"], "again"), [], "marked once")
         self.assertEqual(harvester.rewrite_hashes(object(), "PROJ-1"), {}, "a client without properties")
 
+    def test_patterns_and_lesson_are_added_to_a_new_or_an_already_marked_text(self) -> None:
+        jira = PropertyJira()
+        record_manual_rewrite.mark(jira, "PROJ-1", ["new text"], "QE correction", ["screen-name"], "Say panel")
+        self.assertEqual(record_manual_rewrite.mark(jira, "PROJ-1", ["new text"], "again",
+                                                    ["screen-name", "tbd-answerable"], "Answer the TBD"), [])
+        entry = jira.props[("PROJ-1", record_manual_rewrite.PROPERTY)]["rewrites"][0]
+        self.assertEqual(entry["reason"], "QE correction")
+        self.assertEqual(entry["patterns"], ["screen-name", "tbd-answerable"])
+        self.assertEqual(entry["lessons"], ["Say panel", "Answer the TBD"])
+        self.assertEqual(harvester.rewrite_hashes(jira, "PROJ-1"), {harvester._sha("new text"): "QE correction"})
+
+    def test_pattern_on_two_tickets_is_repeated_and_reaches_the_report_and_page(self) -> None:
+        jira = PropertyJira()
+        record_manual_rewrite.mark(jira, "PROJ-1", ["a"], "QE correction", ["screen-name", "tbd-answerable"], "Say panel")
+        record_manual_rewrite.mark(jira, "PROJ-2", ["b"], "QE correction", ["screen-name"], "Say console")
+        record_manual_rewrite.mark(jira, "PROJ-3", ["c"], "readability rewrite")  # no pattern: not a correction
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            learning = out / harvester.LEARNING_DIR
+            learning.mkdir()
+            corrections = harvester.write_corrections(learning, jira, ["PROJ-1", "PROJ-2", "PROJ-3"])
+            self.assertEqual([c["key"] for c in corrections], ["PROJ-1", "PROJ-2"])
+            patterns = dashboard.collect_patterns(out)
+            self.assertEqual([(p["pattern"], p["tickets"], p["repeated"]) for p in patterns],
+                             [("screen-name", ["PROJ-1", "PROJ-2"], True), ("tbd-answerable", ["PROJ-1"], False)])
+            month = corrections[0]["at"][:7]
+            report = "\n".join(harvester.correction_report_lines(learning, month))
+            self.assertIn("| screen-name | PROJ-1, PROJ-2 | yes | PROJ-1: Say panel; PROJ-2: Say console |", report)
+            (learning / "report-2026-09.md").write_text("old", encoding="utf-8")
+            (learning / "report-2026-10.md").write_text("# UAC learning report 2026-10", encoding="utf-8")
+            self.assertEqual(dashboard.latest_report(out), ("2026-10", "# UAC learning report 2026-10"))
+            page = dashboard.render([], [], [], 0, "", "now", patterns=patterns, report=dashboard.latest_report(out))
+        self.assertIn("Repeated: pick for a skill fix", page)
+        self.assertIn("Say console", page)
+        self.assertIn("Learning report 2026-10", page)
+
+    def test_page_splits_qe_edits_from_corrections_made_through_claude(self) -> None:
+        edits = [{"key": "PROJ-1", "outcome": "CHANGED", "editor": "asherawat", "edit_origin": "QE_EDIT", "counts": {}},
+                 {"key": "PROJ-2", "outcome": "CHANGED", "editor": "prashantp", "edit_origin": "CLAUDE_REWRITE",
+                  "rewrite_reason": "QE correction", "counts": {}}]
+        page = dashboard.render([], [], edits, 0, "", "now")
+        qe = page.split("<h2>Edited by a QE</h2>")[1].split("<h2>")[0]
+        ours = page.split("<h2>QE corrections made through Claude</h2>")[1].split("<h2>")[0]
+        self.assertIn("PROJ-1", qe)
+        self.assertNotIn("PROJ-2", qe)
+        self.assertIn("PROJ-2", ours)
+        self.assertIn("QE correction", ours)
+        self.assertIn('<div class="value">1</div><div class="label">Edited by a QE</div>', page)
+
     def test_history_marks_every_own_write_after_the_runner_post(self) -> None:
         jira = PropertyJira([("uac.bot", "2026-10-01", "runner post"), ("qa.person", "2026-10-02", "qe text"),
                              ("uac.bot", "2026-10-03", "claude rewrite 1"), ("uac.bot", "2026-10-04", "claude rewrite 2")])
@@ -2514,7 +2563,7 @@ class ClaudeRewriteTests(unittest.TestCase):
                          criteria=[{"kind": "added", "old": "", "new": "A Claude-added line", "reason": ""}])]
             (learning / harvester.RECORDS_FILE).write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
             report = harvester.monthly_report(config, "2026-10").read_text(encoding="utf-8")
-        self.assertIn("Claude or Codex rewrites (not counted below, not QE feedback): 1", report)
+        self.assertIn("QE corrections made through Claude or Codex (counted by pattern", report)
         self.assertIn("PROJ-2: readability rewrite", report)
         self.assertIn("A QE-added check", report)
         self.assertNotIn("A Claude-added line", report)

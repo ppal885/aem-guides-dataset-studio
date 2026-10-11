@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Build a read-only HTML page that shows what the UAC release automation did.
 
-Reads <output_dir>/<KEY>/status.json (one per ticket the runner picked) and
-<output_dir>/learning/records.jsonl (the harvester's records) and writes one static page:
+Reads <output_dir>/<KEY>/status.json (one per ticket the runner picked) and the harvester's
+<output_dir>/learning/ files (records.jsonl, corrections.json, report-YYYY-MM.md) and writes one static page:
   1. tickets picked for a UAC: posted, and not posted with the reason;
-  2. tickets where a person edited our posted UAC, which the harvester picked up to learn from.
+  2. QE correction patterns, with the ones seen on two or more tickets marked for a skill fix;
+  3. tickets where a QE edited our posted UAC, and corrections a QE made through a Claude session;
+  4. the newest monthly learning report.
 
 It never calls Jira and never changes a ticket. Run it from cron after the runner and harvester:
   python3 scripts/uac_release/release_dashboard.py --config /opt/uac-release/config.json \
@@ -122,6 +124,23 @@ def collect_human_edits(out: Path) -> tuple[list[dict], int]:
     return rows, len(accepted)
 
 
+def collect_patterns(out: Path) -> list[dict]:
+    """Correction patterns with their tickets and lessons, from the harvester's learning/corrections.json."""
+    data = _read_json(out / "learning" / common.CORRECTIONS_FILE) or {}
+    return [p for p in data.get("patterns") or [] if isinstance(p, dict)]
+
+
+def latest_report(out: Path) -> tuple[str, str]:
+    """(month, text) of the newest monthly learning report, or ("", "") when there is none."""
+    reports = sorted((out / "learning").glob("report-*.md")) if (out / "learning").is_dir() else []
+    if not reports:
+        return "", ""
+    try:
+        return reports[-1].stem[len("report-"):], reports[-1].read_text(encoding="utf-8")
+    except OSError:
+        return "", ""
+
+
 def _e(value: Any) -> str:
     return html.escape(str(value), quote=True)
 
@@ -162,8 +181,31 @@ def _notes(notes: list[str] | None) -> str:
     return f"<details><summary>{len(notes)} review note(s)</summary><ul>{items}</ul></details>"
 
 
+def _edit_row(r: dict, jira_url: str) -> str:
+    counts = r.get("counts") or {}
+    reason = f"<br><span class=\"hint\">{_e(r['rewrite_reason'])}</span>" if r.get("rewrite_reason") else ""
+    return (f"<tr><td>{_ticket(str(r.get('key')), jira_url)}</td><td>{_e(r.get('summary') or '-')}</td>"
+            f"<td>{_e(r.get('editor') or '-')}{reason}</td><td>{_when(str(r.get('edited_at') or ''))}</td>"
+            f"<td class=\"num\">{_e(counts.get('accepted', 0))}</td><td class=\"num\">{_e(counts.get('changed', 0))}</td>"
+            f"<td class=\"num\">{_e(counts.get('removed', 0))}</td><td class=\"num\">{_e(counts.get('added', 0))}</td></tr>")
+
+
+def _pattern_rows(patterns: list[dict], jira_url: str) -> list[str]:
+    rows = []
+    for p in patterns:
+        tickets = ", ".join(_ticket(str(k), jira_url) for k in p.get("tickets") or [])
+        lessons = "".join(f"<li>{_e(k)}: {_e(t)}</li>" for k, t in p.get("lessons") or [])
+        lessons = f"<ul class=\"lessons\">{lessons}</ul>" if lessons else "-"
+        flag = '<span class="flag">Repeated: pick for a skill fix</span>' if p.get("repeated") else "Seen once"
+        rows.append(f"<tr><td><b>{_e(p.get('pattern'))}</b><br><span class=\"hint\">{_e(p.get('description') or '')}"
+                    f"</span></td><td>{tickets}</td><td>{flag}</td><td>{lessons}</td></tr>")
+    return rows
+
+
 def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accepted: int,
-           jira_url: str, generated: str, shared_account: bool = False) -> str:
+           jira_url: str, generated: str, shared_account: bool = False, patterns: list[dict] | None = None,
+           report: tuple[str, str] = ("", "")) -> str:
+    patterns = patterns or []
     posted_rows = [
         f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
         f"<td>{_e(r['where'])}{_notes(r.get('notes'))}</td><td class=\"num\">{_criteria_cell(r)}</td>"
@@ -179,19 +221,20 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
         not_posted_rows.append(
             f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
             f"<td>{reason}</td><td>{_when(r['updated'])}</td></tr>")
-    edit_rows = []
-    for r in edits:
-        counts = r.get("counts") or {}
-        edit_rows.append(
-            f"<tr><td>{_ticket(str(r.get('key')), jira_url)}</td><td>{_e(r.get('summary') or '-')}</td>"
-            f"<td>{_e(r.get('editor') or '-')}{' (Claude rewrite)' if r.get('edit_origin') == 'CLAUDE_REWRITE' else ''}</td><td>{_when(str(r.get('edited_at') or ''))}</td>"
-            f"<td class=\"num\">{_e(counts.get('accepted', 0))}</td><td class=\"num\">{_e(counts.get('changed', 0))}</td>"
-            f"<td class=\"num\">{_e(counts.get('removed', 0))}</td><td class=\"num\">{_e(counts.get('added', 0))}</td></tr>")
+    qe_rows = [_edit_row(r, jira_url) for r in edits if r.get("edit_origin") != "CLAUDE_REWRITE"]
+    correction_rows = [_edit_row(r, jira_url) for r in edits if r.get("edit_origin") == "CLAUDE_REWRITE"]
+    pattern_rows = _pattern_rows(patterns, jira_url)
+    repeated = sum(1 for p in patterns if p.get("repeated"))
+    month, report_text = report
+    report_html = (f"<details><summary>Learning report {_e(month)}</summary><pre class=\"report\">{_e(report_text)}"
+                   f"</pre></details>" if report_text else
+                   '<p class="empty">No monthly report yet; the harvester writes one on the 1st of each month.</p>')
     picked = len(posted) + len(not_posted)
     cards = "".join(
         f'<div class="card"><div class="value">{n}</div><div class="label">{_e(label)}</div></div>'
         for n, label in ((picked, "Tickets picked"), (len(posted), "UAC posted"),
-                         (len(not_posted), "Not posted"), (len(edits), "Edited by a person")))
+                         (len(not_posted), "Not posted"), (len(qe_rows), "Edited by a QE"),
+                         (len(correction_rows), "QE corrections via Claude"), (repeated, "Repeated patterns")))
     account_note = (
         "The automation and QE share one Jira account, so any change to the field that is not a text the "
         "runner posted counts here, including a rewrite by a Claude or Codex session with that account."
@@ -229,6 +272,9 @@ a {{ color:var(--accent); white-space:nowrap; }}
 details summary {{ cursor:pointer; }}
 details ul {{ margin:6px 0 0; padding-left:18px; color:var(--muted); }}
 .reasons td:nth-child(3) {{ color:var(--bad); }}
+.flag {{ color:var(--bad); font-weight:600; }}
+ul.lessons {{ margin:0; padding-left:18px; }}
+pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; font-size:13px; }}
 .empty {{ color:var(--muted); background:var(--panel); border:1px dashed var(--line); border-radius:8px; padding:14px 16px; }}
 </style>
 </head>
@@ -247,10 +293,23 @@ means the field was changed in Jira afterwards (read on the harvester's nightly 
 <p class="hint">Tickets the automation picked but did not post, with the reason. Click a reason to see every problem.</p>
 <div class="reasons">{_table(["Ticket", "Summary", "Reason", "Last run"], not_posted_rows, "Every picked ticket was posted.")}</div>
 
-<h2>Edited by a person</h2>
-<p class="hint">Posted UACs a person changed afterwards; the harvester learns from these edits. {account_note}
+<h2>Repeated correction patterns</h2>
+<p class="hint">The kind of mistake each QE correction fixed (recorded with record_manual_rewrite.py --pattern), with the
+tickets it was seen on. A pattern on two or more tickets is repeated: pick the next skill fix from the top rows.</p>
+{_table(["Pattern", "Tickets", "Status", "Lessons"], pattern_rows, "No correction patterns recorded yet.")}
+
+<h2>Edited by a QE</h2>
+<p class="hint">Posted UACs a QE changed directly in Jira; the harvester learns from these edits. {account_note}
 Counts are per criterion. {accepted} more ticket(s) were accepted without edits.</p>
-{_table(["Ticket", "Summary", "Edited by", "When", "Kept", "Changed", "Removed", "Added"], edit_rows, "No human edits harvested yet.")}
+{_table(["Ticket", "Summary", "Edited by", "When", "Kept", "Changed", "Removed", "Added"], qe_rows, "No QE edits harvested yet.")}
+
+<h2>QE corrections made through Claude</h2>
+<p class="hint">Rewrites a QE asked for in a Claude or Codex chat and that session wrote with the shared account.
+These are QE feedback too; their patterns are counted in the table above.</p>
+{_table(["Ticket", "Summary", "Written by", "When", "Kept", "Changed", "Removed", "Added"], correction_rows, "No corrections recorded yet.")}
+
+<h2>Monthly learning report</h2>
+{report_html}
 </main>
 </body>
 </html>
@@ -281,8 +340,11 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(config["output_dir"])
     posted, not_posted = collect_tickets(out) if out.is_dir() else ([], [])
     edits, accepted = collect_human_edits(out) if out.is_dir() else ([], 0)
+    patterns = collect_patterns(out) if out.is_dir() else []
+    report = latest_report(out) if out.is_dir() else ("", "")
     page = render(posted, not_posted, edits, accepted, os.environ.get("JIRA_BASE_URL", ""),
-                  time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")))
+                  time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")),
+                  patterns, report)
     write_atomic(args.out, page)
     print(f"wrote {args.out}: {len(posted)} posted, {len(not_posted)} not posted, {len(edits)} edited")
     return 0

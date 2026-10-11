@@ -47,6 +47,21 @@ FINAL_STATES = {"POSTED", "FIELD_KEPT", WRITTEN_UNRENDERED}
 NOT_REQUIRED = "NOT_REQUIRED"
 # The last human comment is about closing the ticket; not final, so a later human comment releases it.
 CLOSURE_ASKED = "CLOSURE_ASKED"
+# What kind of mistake a QE correction of a posted UAC fixed (record_manual_rewrite.py --pattern). The
+# harvester counts the tickets per pattern; a pattern seen on two or more tickets is the next skill fix.
+CORRECTION_PATTERNS = {
+    "screen-name": "Wrong or unclear screen name; use the name QE sees on screen (e.g. Language variables panel)",
+    "tbd-answerable": "A TBD that the code, existing tests, documentation or a quick product check already answers",
+    "doc-fact-dropped": "A documented behaviour was dropped or contradicted",
+    "untestable-ac": "A check QE cannot test from the product (internal connections, threads, caches)",
+    "route-list-noise": "Too many routes or screens in one criterion (six or more)",
+    "setting-toggle-noise": "On/off sweep of settings that the request does not touch",
+    "missing-placements": "Missed other places or variants of the same object (table, figure, key reference, SVG)",
+    "missing-after-state": "Missed what a user can still do after a task is completed or closed",
+    "wrong-mechanism": "Wrong idea of how the feature works or where it is built",
+    "closable-ticket": "UAC written on a ticket that was being closed or needed none",
+}
+CORRECTIONS_FILE = "corrections.json"  # learning/corrections.json, written by the harvester every night
 
 
 def load_env_file(path: Path) -> None:
