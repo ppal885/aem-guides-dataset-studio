@@ -263,6 +263,19 @@ When finished, write these files:
    When the ticket changes generated output, also "output_setting": {{"disposition": "AC" | "TBD" |
    "NOT_APPLICABLE", "ac": <number>, "basis": "PRODUCT_DECISION" | "DEVELOPER_COMMENT", "reason": "..."}} -
    whether the new behaviour is behind a setting and off by default (ask in a TBD when nobody decided it).
+   When fix_basis is NOT_A_DEFECT (a new capability), also "feature_design": {{"mechanism": {{"decided": true,
+   "basis": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT", "quote": "<the deciding sentence,
+   copied>"}} or {{"decided": false, "candidates": [{{"name": "<a way it could be built>", "exists_today": "YES" |
+   "PARTIAL" | "NO", "evidence": ["<documentation URL>" or "<repo file>:<line>"], "outcome": "<what QE would see
+   with it>"}}], "ac": <the criterion whose TBD asks which>, "dependent_acs": [<criteria that hold only for some
+   candidates; each has its own TBD>]}}, "places": [{{"place": "<where the ticket says it happens>", "actor": "<who
+   does it there>", "exists_today": "YES" | "PARTIAL" | "NO", "evidence": [...], "disposition": "AC" | "TBD" |
+   "OUT_OF_SCOPE", "ac": <number>, "reason": "..."}}]}} - before writing its criteria, search the documentation and
+   code for an existing option or extension point that could build it (a preset option, an output template
+   field, a post-generation workflow, a ui config) and list at least two candidates when nobody decided; a place
+   that does not exist today is a TBD, and one criterion never mixes places with different users (an author in
+   AEM and a reader on the published site). A case line that changes who checks or when (another user, after
+   sharing, after reopening) says what QE should see.
    Also "shared_consumers": {{"mechanism": "<what the change touches that other screens read>", "consumers":
    [{{"name": "<screen, e.g. outline panel>", "disposition": "AC" | "TEST_PLAN" | "NOT_APPLICABLE", "ac":
    <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - list the AC consumers as sub-points of one

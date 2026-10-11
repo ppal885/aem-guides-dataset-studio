@@ -8247,6 +8247,67 @@ def test_output_setting_and_existing_output() -> None:
           uc.pre_existing_problems(changed, uac, output) == [])
 
 
+def test_feature_design_mechanism_and_places() -> None:
+    uc = uac_completeness_check_mod
+    source = {"summary": "Native PDF Publishing | Dynamic placeholder support",
+              "description": "Ability to add placeholder which gets replaced by user name and time when it was "
+                             "downloaded. They want to publish content to secured website."}
+    feature = {"fix_basis": {"status": "NOT_A_DEFECT", "reason": "new placeholder capability in Native PDF"}}
+    uac = ("- Acceptance Criteria 01: The generated Native PDF keeps the placeholder text.\n"
+           "  **Source:** Ticket description.\n"
+           "  **TBD:** Is the placeholder filled at generation, at download or when the PDF is opened?\n"
+           "- Acceptance Criteria 02: A PDF downloaded from the published website by a signed-in reader shows the "
+           "reader's name and download time.\n"
+           "  **Source:** Ticket description.\n"
+           "- Acceptance Criteria 03: A PDF downloaded from AEM or AEM Sites shows the user's name.\n"
+           "  **Source:** Ticket description.\n")
+    candidates = [
+        {"name": "post-generation workflow", "exists_today": "YES", "evidence": ["Native PDF preset Advanced tab"],
+         "outcome": "the PDF is filled once with the person who generated it"},
+        {"name": "fill on download", "exists_today": "NO", "evidence": ["no download servlet found"],
+         "outcome": "each reader's copy shows that reader's name"}]
+    places = [{"place": "published website", "actor": "website reader", "exists_today": "PARTIAL",
+               "evidence": ["legacy AEM Site topic page Download PDF link"], "disposition": "AC", "ac": 2}]
+
+    def design(**changes):
+        block = {"mechanism": {"decided": False, "candidates": candidates, "ac": 1, "dependent_acs": []},
+                 "places": places}
+        block.update(changes)
+        return dict(feature, feature_design=block)
+
+    check("a defect ticket needs no feature design", uc.feature_design_problems(
+        {"fix_basis": {"status": "UNCONFIRMED"}}, uac, source) == [])
+    check("a new capability must record its feature design", any("feature_design is missing" in p for p in
+          uc.feature_design_problems(feature, uac, source)))
+    check("an undecided mechanism with candidates and a TBD passes", uc.feature_design_problems(
+        design(), uac, source) == [])
+    check("one candidate is not enough", any("at least 2 ways" in p for p in uc.feature_design_problems(
+        design(mechanism={"decided": False, "candidates": candidates[:1], "ac": 1, "dependent_acs": []}),
+        uac, source)))
+    check("a criterion that holds for some candidates needs a TBD", any(
+        "Acceptance Criteria 02 holds only for some ways" in p for p in uc.feature_design_problems(
+            design(mechanism={"decided": False, "candidates": candidates, "ac": 1, "dependent_acs": [2]}),
+            uac, source)))
+    check("a decided mechanism needs the deciding sentence from the ticket", any(
+        "not text from the ticket" in p for p in uc.feature_design_problems(
+            design(mechanism={"decided": True, "basis": "TICKET", "quote": "use a post-generation workflow"}),
+            uac, source)))
+    check("a decided mechanism quoted from the ticket passes", uc.feature_design_problems(
+        design(mechanism={"decided": True, "basis": "TICKET", "quote": "publish content to secured website"}),
+        uac, source) == [])
+    missing_place = [dict(places[0], exists_today="NO")]
+    check("a place that does not exist today needs a TBD", any("needs a TBD line" in p for p in
+          uc.feature_design_problems(design(places=missing_place), uac, source)))
+    mixed = [{"place": "AEM", "actor": "author", "exists_today": "YES", "evidence": ["output history"],
+              "disposition": "AC", "ac": 3},
+             {"place": "AEM Sites", "actor": "website reader", "exists_today": "PARTIAL",
+              "evidence": ["legacy AEM Site Download PDF link"], "disposition": "AC", "ac": 3}]
+    check("one criterion never mixes places with different users", any("different users" in p for p in
+          uc.feature_design_problems(design(places=mixed), uac, source)))
+    check("a place the criterion does not name fails", any("does not name it" in p for p in
+          uc.feature_design_problems(design(places=[dict(places[0], ac=1)]), uac, source)))
+
+
 def test_not_named_reasons_and_scope_boundaries() -> None:
     uc = uac_completeness_check_mod
     blocks = {1: "The baseline stays selected after a refresh."}
@@ -18319,6 +18380,7 @@ def main() -> int:
     test_output_route_entry_points()
     test_not_named_reasons_and_scope_boundaries()
     test_output_setting_and_existing_output()
+    test_feature_design_mechanism_and_places()
     test_shared_consumers()
     test_input_sources()
     test_test_plan_disposition()

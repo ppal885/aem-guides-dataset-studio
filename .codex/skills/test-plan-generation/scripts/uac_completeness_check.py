@@ -99,6 +99,14 @@ WHAT IT CHECKS in a UAC folder
    ("consumers"), each an AC sub-point of a "still works as before" criterion, TEST_PLAN, or NOT_APPLICABLE
    with a reason; an empty list needs a reason, and is refused when the ticket says the change reaches other
    areas.
+18. "feature_design": when fix_basis is NOT_A_DEFECT (a new capability), how it would be built and where it
+   happens. "mechanism" is decided (basis and the deciding sentence, copied) or lists at least two candidate
+   ways - an existing product option or extension point found in the documentation or code among them - each
+   with whether it exists today, evidence and what QE would see; a TBD asks which, and every criterion that
+   holds only for some candidates ("dependent_acs") carries a TBD. "places" lists every place the ticket
+   says it happens, with who does it there and whether that place exists today: a place that does not exist
+   is a TBD, and one criterion never mixes places with different users (a Native PDF placeholder request:
+   an author downloading in AEM and a reader on AEM Sites, where Native PDF has no download link today).
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -257,6 +265,129 @@ def output_setting_problems(evidence: dict, uac_text: str, source: dict | None) 
     return []
 
 
+# A new capability (fix_basis NOT_A_DEFECT) usually names the outcome but not how it is built. A Native PDF ticket
+# asked for a PDF placeholder "replaced by user name and time when it was downloaded ... from AEM/AEMSites": the posted
+# UAC asserted a per-reader stamp although a post-generation workflow (fills it once, at generation, with the
+# person who generated it) and PDF JavaScript (fills it when opened) give different results, and it merged two
+# places with different users (an author downloading in AEM, a reader on the published site) where Native PDF
+# has no download link on AEM Sites today. Each criterion that holds only for some ways of building it must
+# say so, and each place the ticket names is checked to exist before a criterion asserts behaviour there.
+FEATURE_DECIDED_BASES = PRE_EXISTING_DECIDED_BASES
+FEATURE_EXISTS = ("YES", "PARTIAL", "NO")
+FEATURE_PLACE_DISPOSITIONS = ("AC", "TBD", "OUT_OF_SCOPE")
+MIN_MECHANISM_CANDIDATES = 2
+
+
+def _feature_evidence_ok(value) -> bool:
+    return isinstance(value, list) and any(str(item).strip() for item in value)
+
+
+def feature_design_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
+    """A new capability says how it would be built and where it happens, before criteria assert its outcome."""
+    if (evidence.get("fix_basis") or {}).get("status") != "NOT_A_DEFECT":
+        return []
+    block = evidence.get("feature_design")
+    if not isinstance(block, dict):
+        return ["feature_design is missing: the ticket asks for a new capability - record how it would be built "
+                "(\"mechanism\": decided with the deciding text, or at least two candidate ways found in the "
+                "documentation and code, such as an existing preset option or post-generation workflow) and every "
+                "place the ticket says it happens (\"places\") with who does it there and whether that place exists "
+                "today"]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    problems: list[str] = []
+    mechanism = block.get("mechanism")
+    if not isinstance(mechanism, dict) or not isinstance(mechanism.get("decided"), bool):
+        problems.append("feature_design.mechanism needs \"decided\": true or false")
+    elif mechanism["decided"]:
+        quote = _normalize(mechanism.get("quote"))
+        if mechanism.get("basis") not in FEATURE_DECIDED_BASES:
+            problems.append("feature_design.mechanism is decided only by "
+                            f"{', '.join(FEATURE_DECIDED_BASES)}; otherwise list the candidates and ask in a TBD")
+        elif not quote:
+            problems.append("feature_design.mechanism is decided without \"quote\": copy the sentence that decided it")
+        elif source and quote not in _ticket_text(source):
+            problems.append("feature_design.mechanism.quote is not text from the ticket; copy the sentence that "
+                            "decided how it is built")
+    else:
+        candidates = [c for c in mechanism.get("candidates") or [] if isinstance(c, dict)]
+        if len(candidates) < MIN_MECHANISM_CANDIDATES:
+            problems.append(f"feature_design.mechanism is not decided: list at least {MIN_MECHANISM_CANDIDATES} ways "
+                            "it could be built, including an existing product option or extension point found in the "
+                            "documentation or code, and what QE would see with each")
+        for index, candidate in enumerate(candidates, 1):
+            name = str(candidate.get("name") or "").strip() or f"candidate {index}"
+            if candidate.get("exists_today") not in FEATURE_EXISTS:
+                problems.append(f"feature_design candidate \"{name}\" needs exists_today ({', '.join(FEATURE_EXISTS)})")
+            if not _feature_evidence_ok(candidate.get("evidence")):
+                problems.append(f"feature_design candidate \"{name}\" needs evidence (documentation page or code)")
+            if len(str(candidate.get("outcome") or "").split()) < 4:
+                problems.append(f"feature_design candidate \"{name}\" needs \"outcome\": what QE would see with it")
+        ac = mechanism.get("ac")
+        if not isinstance(ac, int) or ac not in blocks:
+            problems.append(f"feature_design.mechanism: Acceptance Criteria {ac!r} with the TBD on how it is built "
+                            "does not exist")
+        elif "TBD:" not in blocks[ac]:
+            problems.append(f"feature_design.mechanism: Acceptance Criteria {ac:02d} has no TBD line asking how it "
+                            "is built")
+        dependent = mechanism.get("dependent_acs")
+        if not isinstance(dependent, list):
+            problems.append("feature_design.mechanism needs \"dependent_acs\": the criteria whose outcome holds only "
+                            "for some of the candidates ([] when every criterion holds for all of them)")
+        else:
+            for number in _ac_list(dependent):
+                if number not in blocks:
+                    problems.append(f"feature_design.mechanism: dependent Acceptance Criteria {number!r} does not exist")
+                elif number != ac and "TBD:" not in blocks[number]:
+                    problems.append(f"Acceptance Criteria {number:02d} holds only for some ways of building it; add a "
+                                    "TBD line that says which, or rewrite it so it holds for every candidate")
+    places = block.get("places")
+    if not isinstance(places, list) or not places:
+        return problems + ["feature_design.places needs every place the ticket says the new behaviour happens, with "
+                           "who does it there"]
+    actors_by_ac: dict[int, set[str]] = {}
+    for index, place in enumerate(places, 1):
+        if not isinstance(place, dict) or not str(place.get("place") or "").strip():
+            problems.append(f"feature_design place {index} needs a name")
+            continue
+        name = str(place["place"]).strip()
+        actor = _normalize(place.get("actor"))
+        if not actor:
+            problems.append(f"feature_design place \"{name}\" needs \"actor\": who does it there")
+        exists = place.get("exists_today")
+        if exists not in FEATURE_EXISTS:
+            problems.append(f"feature_design place \"{name}\" needs exists_today ({', '.join(FEATURE_EXISTS)})")
+        if not _feature_evidence_ok(place.get("evidence")):
+            problems.append(f"feature_design place \"{name}\" needs evidence that it exists or not")
+        disposition = place.get("disposition")
+        if disposition == "OUT_OF_SCOPE":
+            if len(str(place.get("reason") or "").split()) < 5:
+                problems.append(f"feature_design place \"{name}\" is out of scope without a concrete reason")
+            continue
+        if disposition not in FEATURE_PLACE_DISPOSITIONS:
+            problems.append(f"feature_design place \"{name}\": disposition must be "
+                            f"{', '.join(FEATURE_PLACE_DISPOSITIONS)}")
+            continue
+        ac = place.get("ac")
+        if not isinstance(ac, int) or ac not in blocks:
+            problems.append(f"feature_design place \"{name}\": Acceptance Criteria {ac!r} does not exist")
+            continue
+        if disposition == "TBD" or exists == "NO":
+            if "TBD:" not in blocks[ac]:
+                problems.append(f"feature_design place \"{name}\" does not exist today or is not decided; Acceptance "
+                                f"Criteria {ac:02d} needs a TBD line asking whether and how it is added")
+            continue
+        words = _name_words(name)
+        if words and not any(re.search(rf"\b{re.escape(w)}", _normalize(blocks[ac])) for w in words):
+            problems.append(f"feature_design place \"{name}\": Acceptance Criteria {ac:02d} does not name it")
+        if actor:
+            actors_by_ac.setdefault(ac, set()).add(actor)
+    for ac, actors in sorted(actors_by_ac.items()):
+        if len(actors) > 1:
+            problems.append(f"Acceptance Criteria {ac:02d} covers places with different users "
+                            f"({', '.join(sorted(actors))}); give each its own criterion")
+    return problems
+
+
 def _load(path: Path):
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
@@ -406,6 +537,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac, source),
         "action_variants": action_variant_problems(evidence, uac, source, plan),
         "output_setting": output_setting_problems(evidence, uac, source),
+        "feature_design": feature_design_problems(evidence, uac, source),
         "shared_consumers": shared_consumer_problems(evidence, uac, source, plan),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
         "internal_settings": internal_setting_problems(uac),
