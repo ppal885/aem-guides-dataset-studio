@@ -571,7 +571,9 @@ def pattern_summary(corrections: list[dict]) -> list[dict]:
             row = rows.setdefault(pattern, {"pattern": pattern, "tickets": [], "lessons": [], "last_at": ""})
             if correction["key"] not in row["tickets"]:
                 row["tickets"].append(correction["key"])
-            row["lessons"] += [(correction["key"], lesson) for lesson in correction.get("lessons") or []]
+            # One correction marked on several texts (each write of the field) repeats its lessons.
+            row["lessons"] += [(correction["key"], lesson) for lesson in correction.get("lessons") or []
+                               if (correction["key"], lesson) not in row["lessons"]]
             row["last_at"] = max(row["last_at"], correction.get("at") or "")
     for row in rows.values():
         row["repeated"] = len(row["tickets"]) >= 2

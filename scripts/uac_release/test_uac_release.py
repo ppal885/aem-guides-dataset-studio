@@ -2511,12 +2511,13 @@ class ClaudeRewriteTests(unittest.TestCase):
         record_manual_rewrite.mark(jira, "PROJ-1", ["a"], "QE correction", ["screen-name", "tbd-answerable"], ["Say panel"])
         record_manual_rewrite.mark(jira, "PROJ-2", ["b"], "QE correction", ["screen-name"], ["Say console"])
         record_manual_rewrite.mark(jira, "PROJ-3", ["c"], "readability rewrite")  # no pattern: not a correction
+        record_manual_rewrite.mark(jira, "PROJ-1", ["a2"], "QE correction", ["screen-name"], ["Say panel"])  # 2nd write
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
             learning = out / harvester.LEARNING_DIR
             learning.mkdir()
             corrections = harvester.write_corrections(learning, jira, ["PROJ-1", "PROJ-2", "PROJ-3"])
-            self.assertEqual([c["key"] for c in corrections], ["PROJ-1", "PROJ-2"])
+            self.assertEqual([c["key"] for c in corrections], ["PROJ-1", "PROJ-1", "PROJ-2"])
             patterns = dashboard.collect_patterns(out)
             self.assertEqual([(p["pattern"], p["tickets"], p["repeated"]) for p in patterns],
                              [("screen-name", ["PROJ-1", "PROJ-2"], True), ("tbd-answerable", ["PROJ-1"], False)])
