@@ -1023,8 +1023,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
 
     def test_staleness_jql_uses_the_posted_label(self) -> None:
+        # Every posted ticket, not only the release scope: GUIDES-51870 had no unreleased fix version.
         jql = staleness.staleness_jql(dict(self.config, approved_scope_jql="project = PROJ"))
-        self.assertEqual(jql, '(project = PROJ) AND labels = "QEVision_UAC_DONE" AND updated >= -7d')
+        self.assertEqual(jql, 'labels = "QEVision_UAC_DONE" AND updated >= -7d')
+        self.assertEqual(staleness.staleness_jql(dict(self.config, staleness_jql="key = PROJ-1")), "key = PROJ-1")
 
     def test_ticket_without_evidence_record_is_not_posted(self) -> None:
         jira = FakeJira()
@@ -2505,6 +2507,26 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertEqual(entry["patterns"], ["screen-name", "tbd-answerable"])
         self.assertEqual(entry["lessons"], ["Say panel", "Answer the TBD"])
         self.assertEqual(harvester.rewrite_hashes(jira, "PROJ-1"), {harvester._sha("new text"): "QE correction"})
+
+    def test_qe_edit_records_patterns_without_becoming_a_claude_rewrite(self) -> None:
+        jira = PropertyJira()
+        record_manual_rewrite.mark(jira, "PROJ-1", ["qe text"], "QE rewrite", ["stale-after-rca"],
+                                   ["Refresh after the RCA"], qe_edit=True)
+        self.assertEqual(harvester.rewrite_hashes(jira, "PROJ-1"), {}, "still a QE edit")
+        record = {"outcome": "CHANGED", "current_sha256": harvester._sha("qe text")}
+        self.assertEqual(harvester.edit_origin(record, harvester.rewrite_hashes(jira, "PROJ-1")),
+                         {"edit_origin": "QE_EDIT"})
+        corrections = harvester.ticket_corrections(jira, "PROJ-1")
+        self.assertEqual([(c["patterns"], c["qe_edit"]) for c in corrections], [(["stale-after-rca"], True)])
+
+    def test_corrections_are_read_from_picked_harvested_and_configured_tickets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            learning = Path(tmp) / harvester.LEARNING_DIR
+            learning.mkdir()
+            (learning / harvester.RECORDS_FILE).write_text('{"key": "PROJ-2"}\nnot json\n', encoding="utf-8")
+            keys = harvester.correction_keys({"learning_correction_tickets": ["PROJ-3", "PROJ-1"]}, learning,
+                                             [Path(tmp) / "PROJ-1"])
+        self.assertEqual(keys, ["PROJ-1", "PROJ-2", "PROJ-3"])
 
     def test_pattern_on_two_tickets_is_repeated_and_reaches_the_report_and_page(self) -> None:
         jira = PropertyJira()

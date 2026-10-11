@@ -362,8 +362,10 @@ before the mark.
 Such a rewrite is usually a QE correction asked for in a chat, so it also records what kind of mistake it
 fixed: `--pattern` (repeatable; the kinds are `common.CORRECTION_PATTERNS`, e.g. `screen-name`,
 `tbd-answerable`, `missing-placements`) and `--lesson "one sentence"`. Running it again for a text that is
-already marked adds the patterns and lesson. Every night the harvester reads these from all picked tickets
-into `learning/corrections.json`, the release page shows them per pattern, and the monthly report adds a
+already marked adds the patterns and lesson. For a QE's own rewrite in Jira, add `--qe-edit`: the patterns
+and lessons are recorded and the edit stays a QE edit. Every night the harvester reads these from all picked
+tickets, every harvested ticket and the tickets in `learning_correction_tickets` (hand-posted UACs) into
+`learning/corrections.json`, the release page shows them per pattern, and the monthly report adds a
 **QE corrections by pattern** table. A pattern seen on two or more tickets is the next skill fix; a pattern
 seen once is not. A dedicated automation account is still better. An untouched field counts as accepted only once the ticket status is in
 `learning_accepted_statuses` (default `UAT`, `Closed`, `Resolved`, `Done`). Each new ticket version is
@@ -404,8 +406,9 @@ still the generator's and the status has not reached an accepted status has noth
 
 ## Stale UAC alert
 
-`uac_staleness_watch.py` (cron 07:30 Mon-Fri) checks tickets that carry the posted label and were updated
-in the last `staleness_days` days (default 7; or set `staleness_jql`). When, after the Acceptance Criteria
+`uac_staleness_watch.py` (cron 07:30 Mon-Fri) checks every ticket that carries the posted label and was updated
+in the last `staleness_days` days (default 7; or set `staleness_jql`), whatever its fix version: a posted
+ticket outside the release scope can still get its root cause after the UAC (GUIDES-51870). When, after the Acceptance Criteria
 field last changed, someone other than the automation added a comment reporting a root cause, a fix, a pull
 request or a merge, a comment linking a wiki page (a design document or specification), a comment that gives an API
 contract or design in its text (an HTTP method with a path, a request/response body, status codes, an API

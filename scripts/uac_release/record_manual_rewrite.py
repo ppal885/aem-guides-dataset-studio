@@ -20,6 +20,12 @@ so the harvester can count the same mistake across tickets (common.CORRECTION_PA
       --pattern screen-name --pattern tbd-answerable --lesson "Say Language variables panel, not window"
 
 Running it again for a text that is already marked adds the patterns and lesson to that mark.
+
+A QE who rewrote the field directly in Jira made a QE edit, not a Claude rewrite. --qe-edit records the
+patterns and lessons for that text without relabelling the edit:
+
+  python scripts/uac_release/record_manual_rewrite.py --ticket GUIDES-51870 --qe-edit --reason "QE rewrite" \\
+      --pattern stale-after-rca --lesson "Refresh the UAC when the root cause arrives"
 """
 from __future__ import annotations
 
@@ -36,7 +42,8 @@ PROPERTY = "uac-manual-rewrite"
 KEEP = 50
 
 
-def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = (), lessons: list[str] = ()) -> list[str]:
+def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = (), lessons: list[str] = (),
+         qe_edit: bool = False) -> list[str]:
     """Add the texts' SHA-256 to the ticket's property, with the correction patterns and lessons when given.
     A text that is already marked gets the new patterns and lessons. Returns the new hashes."""
     current = jira.get_issue_property(key, PROPERTY) or {}
@@ -50,6 +57,8 @@ def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = ()
         entry = by_sha.get(sha)
         if entry is None:
             entry = {"sha256": sha, "reason": reason, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+            if qe_edit:
+                entry["qe_edit"] = True  # a correction record only; the harvester keeps it a QE_EDIT
             rewrites.append(entry)
             by_sha[sha] = entry
             added.append(sha)
@@ -80,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--from-history", action="store_true")
     parser.add_argument("--pattern", action="append", default=[], choices=sorted(common.CORRECTION_PATTERNS),
                         help="the kind of mistake this correction fixed (repeatable)")
+    parser.add_argument("--qe-edit", action="store_true",
+                        help="the text is a QE's own edit: record patterns and lessons, do not mark a Claude rewrite")
     parser.add_argument("--lesson", action="append", default=[], help="one sentence: what the UAC should have said (repeatable)")
     parser.add_argument("--field", default="customfield_13400", help="the Acceptance Criteria field id")
     parser.add_argument("--env-file", type=Path, default=common.REPO_ROOT / "backend" / ".env")
@@ -90,9 +101,10 @@ def main(argv: list[str] | None = None) -> int:
     for key in args.ticket:
         texts = history_texts(jira, key, args.field, own_name) if args.from_history else [
             jira.get_field(key, args.field) or ""]
-        added = mark(jira, key, texts, args.reason, args.pattern, args.lesson)
+        added = mark(jira, key, texts, args.reason, args.pattern, args.lesson, args.qe_edit)
         extra = f"; patterns {', '.join(args.pattern)}" if args.pattern else ""
-        print(f"{key}: marked {len(added)} new text(s) as a Claude rewrite{extra}")
+        kind = "a QE edit with patterns" if args.qe_edit else "a Claude rewrite"
+        print(f"{key}: marked {len(added)} new text(s) as {kind}{extra}")
     return 0
 
 
