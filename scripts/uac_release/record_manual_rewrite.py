@@ -43,7 +43,7 @@ KEEP = 50
 
 
 def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = (), lessons: list[str] = (),
-         qe_edit: bool = False) -> list[str]:
+         qe_edit: bool = False, replace: bool = False) -> list[str]:
     """Add the texts' SHA-256 to the ticket's property, with the correction patterns and lessons when given.
     A text that is already marked gets the new patterns and lessons. Returns the new hashes."""
     current = jira.get_issue_property(key, PROPERTY) or {}
@@ -62,6 +62,10 @@ def mark(jira, key: str, texts: list[str], reason: str, patterns: list[str] = ()
             rewrites.append(entry)
             by_sha[sha] = entry
             added.append(sha)
+        if replace and (patterns or lessons):
+            # A wrong tag is corrected by replacing the text's patterns and lessons with the given ones.
+            entry["patterns"], entry["lessons"] = [], []
+            updated = True
         new_patterns = [p for p in patterns if p not in (entry.get("patterns") or [])]
         if new_patterns:
             entry["patterns"] = list(entry.get("patterns") or []) + new_patterns
@@ -91,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="the kind of mistake this correction fixed (repeatable)")
     parser.add_argument("--qe-edit", action="store_true",
                         help="the text is a QE's own edit: record patterns and lessons, do not mark a Claude rewrite")
+    parser.add_argument("--replace", action="store_true",
+                        help="replace the text's patterns and lessons instead of adding to them")
     parser.add_argument("--lesson", action="append", default=[], help="one sentence: what the UAC should have said (repeatable)")
     parser.add_argument("--field", default="customfield_13400", help="the Acceptance Criteria field id")
     parser.add_argument("--env-file", type=Path, default=common.REPO_ROOT / "backend" / ".env")
@@ -101,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     for key in args.ticket:
         texts = history_texts(jira, key, args.field, own_name) if args.from_history else [
             jira.get_field(key, args.field) or ""]
-        added = mark(jira, key, texts, args.reason, args.pattern, args.lesson, args.qe_edit)
+        added = mark(jira, key, texts, args.reason, args.pattern, args.lesson, args.qe_edit, args.replace)
         extra = f"; patterns {', '.join(args.pattern)}" if args.pattern else ""
         kind = "a QE edit with patterns" if args.qe_edit else "a Claude rewrite"
         print(f"{key}: marked {len(added)} new text(s) as {kind}{extra}")

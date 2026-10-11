@@ -2508,6 +2508,13 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertEqual(entry["lessons"], ["Say panel", "Answer the TBD"])
         self.assertEqual(harvester.rewrite_hashes(jira, "PROJ-1"), {harvester._sha("new text"): "QE correction"})
 
+    def test_replace_corrects_a_wrong_tag(self) -> None:
+        jira = PropertyJira()
+        record_manual_rewrite.mark(jira, "PROJ-1", ["t"], "QE correction", ["screen-name"], ["wrong"])
+        record_manual_rewrite.mark(jira, "PROJ-1", ["t"], "QE correction", ["hard-to-read"], ["right"], replace=True)
+        entry = jira.props[("PROJ-1", record_manual_rewrite.PROPERTY)]["rewrites"][0]
+        self.assertEqual((entry["patterns"], entry["lessons"]), (["hard-to-read"], ["right"]))
+
     def test_qe_edit_records_patterns_without_becoming_a_claude_rewrite(self) -> None:
         jira = PropertyJira()
         record_manual_rewrite.mark(jira, "PROJ-1", ["qe text"], "QE rewrite", ["stale-after-rca"],
