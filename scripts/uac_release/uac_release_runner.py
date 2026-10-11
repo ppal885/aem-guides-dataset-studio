@@ -64,7 +64,11 @@ When finished, write these files:
    reason. A setting the ticket does not name is an AC case only when the changed action's own code reads
    it: record that line as reads_at (<file>:<line>) in config_switches. A setting read elsewhere in the
    product (a database or UUID toggle on a fix that never reads it) is TEST_PLAN or not relevant, never an
-   on/off sweep in a criterion. When the action creates new files, Use UUID based system filenames is one of them. Name each
+   on/off sweep in a criterion. The Cloud DB flavour and JCR flavour are deployment variants, not a toggle:
+   when the changed action reads or writes data AEM Guides keeps in its database on Cloud (Document State,
+   metadata, references, versions, review data), add the switch "DB flavour and JCR flavour" with the case
+   "Try it on Cloud with the DB flavour, and again with the JCR flavour" (no reads_at needed).
+   When the action creates new files, Use UUID based system filenames is one of them. Name each
    setting by its on-screen label (for example Enable DITA-OT preprocessing on the General tab); an internal
    feature flag, code constant or configuration key with no on-screen label goes to the test plan, never into
    a criterion or case line.

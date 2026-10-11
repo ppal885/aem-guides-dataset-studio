@@ -1078,12 +1078,23 @@ def _name_words(name) -> list[str]:
     return [w for w in re.findall(r"[a-z0-9]+", str(name or "").lower()) if len(w) >= 4 and w not in _STOP_WORDS]
 
 
+# The Cloud DB flavour and JCR flavour are deployment variants QE runs the same check on, not a toggle QE flips:
+# they need no reads_at. A switch written as the database toggle is refused with the flavour wording to use.
+_DEPLOYMENT_FLAVOUR = re.compile(r"\b(?:db|database|jcr)\b.*\bflavou?rs?\b|\bflavou?rs?\b.*\b(?:db|database|jcr)\b", re.I)
+_DATABASE_TOGGLE = re.compile(r"\buse database for aem guides\b|\bdatabase (?:toggle|setting|usage)\b", re.I)
+
+
 def _research_switch_problem(label: str, entry) -> str:
     """A switch our research found (basis DOCUMENTATION or CODE) on an AC: it needs an on-screen label and the
     line where the changed action's code reads it (reads_at); otherwise it belongs in TEST_PLAN."""
     if not isinstance(entry, dict) or entry.get("disposition") != "AC" or entry.get("basis") not in RESEARCH_SWITCH_BASES:
         return ""
     name = str(entry.get("name") or "").strip()
+    if _DEPLOYMENT_FLAVOUR.search(name):
+        return ""
+    if _DATABASE_TOGGLE.search(name):
+        return (f"{label} \"{name}\": QE does not flip a database toggle; name the Cloud deployment variants "
+                "\"DB flavour and JCR flavour\" and check the same result on each")
     if _CODE_NAME.match(name):
         return (f"{label} \"{name}\" is an internal flag or configuration key, not a switch QE sees: name its "
                 "on-screen label, or move it to TEST_PLAN")
