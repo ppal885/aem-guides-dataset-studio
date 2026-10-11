@@ -175,7 +175,23 @@ def collect_impact(out: Path, posted: list[dict], minutes: float = DEFAULT_MINUT
         when = _week_start(str(r.get("updated") or ""))
         if when:
             weeks[when] = weeks.get(when, 0) + 1
+    areas: dict[str, dict] = {}
+    sizes_posted, sizes_final = [], []
+    for record in latest.values():
+        counts = record.get("counts") or {}
+        judged = sum(int(counts.get(k) or 0) for k in ("accepted", "changed", "removed"))
+        kept_here = sum(int(counts.get(k) or 0) for k in ("accepted", "changed"))
+        for area in record.get("components") or ["(no component)"]:
+            row = areas.setdefault(str(area), {"area": str(area), "tickets": 0, "judged": 0, "kept": 0})
+            row["tickets"] += 1
+            row["judged"] += judged
+            row["kept"] += kept_here
+        if judged:
+            sizes_posted.append(judged)
+            sizes_final.append(kept_here + int(counts.get("added") or 0))
     return {
+        "by_area": sorted(areas.values(), key=lambda a: (-(a["kept"] / a["judged"] if a["judged"] else 0), a["area"])),
+        "median_posted": _median(sizes_posted), "median_final": _median(sizes_final),
         "posted_tickets": len(posted), "posted_criteria": sum(int(r.get("criteria") or 0) for r in posted),
         "judged_tickets": len(latest), "waiting_tickets": len(waiting), "waiting_criteria": waiting_criteria,
         **totals, "kept": kept, "judged_criteria": judged_posted, "kept_rate": kept_rate,
@@ -183,6 +199,33 @@ def collect_impact(out: Path, posted: list[dict], minutes: float = DEFAULT_MINUT
         "hours_potential": waiting_criteria * kept_rate * minutes / 60,
         "weeks": sorted(weeks.items()),
     }
+
+
+def _median(values: list[int]) -> float:
+    if not values:
+        return 0.0
+    ordered, mid = sorted(values), len(values) // 2
+    return float(ordered[mid]) if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+
+
+NOT_POSTED_GROUPS = (  # (prefix of the reason, group shown on the page)
+    ("Label ", "Skipped: no UAC needed (label)"),
+    ("Skipped: the last comment", "Skipped: ticket being closed"),
+    ("Copilot CLI", "Generation did not finish (Copilot)"),
+    ("Dry run", "Dry run only"),
+    ("Unexpected error", "Unexpected error"),
+    ("The Acceptance Criteria field already had text", "Field already filled by a person"),
+)
+
+
+def not_posted_groups(not_posted: list[dict]) -> list[tuple[str, int]]:
+    """Not-posted tickets grouped by the kind of reason, most first; anything else failed a UAC check."""
+    counts: dict[str, int] = {}
+    for row in not_posted:
+        reason = str(row.get("reason") or "")
+        group = next((g for prefix, g in NOT_POSTED_GROUPS if reason.startswith(prefix)), "Failed a UAC check")
+        counts[group] = counts.get(group, 0) + 1
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
 def _week_start(value: str) -> str:
@@ -228,7 +271,7 @@ def _outcome_chart(impact: dict) -> str:
         title = f"{label}: {n} of {total} criteria ({round(100 * n / total)}%)"
         shape = (f'<path d="{_right_rounded(x, 0, w, height)}"' if i == len(shown) - 1
                  else f'<rect x="{x:.1f}" y="0" width="{w:.1f}" height="{height}"')
-        marks.append(f'{shape} class="{slot}"><title>{_e(title)}</title></{"path" if i == len(shown) - 1 else "rect"}>')
+        marks.append(f'{shape} class="{slot} mark" tabindex="0" data-tip="{_e(title)}"></{"path" if i == len(shown) - 1 else "rect"}>')
         x += w + gap
     legend = "".join(
         f'<li><span class="key {slot}"></span>{_e(label)} <b>{n}</b> <span class="hint">({round(100 * n / total)}%)'
@@ -260,42 +303,100 @@ def _weekly_chart(weeks: list[tuple[str, int]]) -> str:
         h = n * scale
         y = 16 + plot_h - h
         label = datetime.date.fromisoformat(week).strftime("%d %b")
-        bars.append(f'<path d="{_top_rounded(x, y, bar_w, h)}" class="s1"><title>Week of {_e(label)}: {n} UAC(s) posted'
-                    f'</title></path><text x="{x + bar_w / 2:.1f}" y="{y - 5:.1f}" class="val" text-anchor="middle">{n}</text>'
+        bars.append(f'<path d="{_top_rounded(x, y, bar_w, h)}" class="s1 mark" tabindex="0" '
+                    f'data-tip="Week of {_e(label)}: {n} UAC(s) posted"></path><text x="{x + bar_w / 2:.1f}" y="{y - 5:.1f}" class="val" text-anchor="middle">{n}</text>'
                     f'<text x="{x + bar_w / 2:.1f}" y="{16 + plot_h + 16:.1f}" class="tick" text-anchor="middle">{_e(label)}</text>')
     return (f'<svg class="cols" viewBox="0 0 {width:.0f} {height:.0f}" preserveAspectRatio="xMinYMid meet" '
             f'role="img" aria-label="UACs posted per week">'
             f'{grid}{"".join(bars)}</svg>')
 
 
-def _impact_section(impact: dict) -> str:
+def _hbars(rows: list[dict], label: str, empty: str) -> str:
+    """Horizontal bars in HTML: one row per item with its label, a bar and its value. Each row is a hover and
+    keyboard target that shows its tooltip; "muted" rows are drawn in the de-emphasis gray."""
+    if not rows:
+        return f'<p class="empty">{_e(empty)}</p>'
+    top = max(float(r["value"]) for r in rows) or 1.0
+    items = []
+    for r in rows:
+        width = max(1.5, 100 * float(r["value"]) / top) if r["value"] else 0
+        muted = " muted" if r.get("muted") else ""
+        items.append(f'<div class="hb-row" tabindex="0" data-tip="{_e(r["tip"])}"><span class="hb-label">{_e(r["label"])}</span>'
+                     f'<span class="hb-track"><span class="hb-fill{muted}" style="width:{width:.1f}%"></span></span>'
+                     f'<span class="hb-val">{_e(r["display"])}</span></div>')
+    return f'<div class="hb" role="list" aria-label="{_e(label)}">{"".join(items)}</div>'
+
+
+def _impact_section(impact: dict, picked: int, not_posted: list[dict], patterns: list[dict]) -> str:
+    rate = round(100 * impact["kept_rate"])
     tiles = [
         (f"{impact['posted_tickets']}", "UACs written for QE", f"{impact['posted_criteria']} criteria in total"),
-        (f"{round(100 * impact['kept_rate'])}%", "Criteria QE kept",
-         f"{impact['kept']} of {impact['judged_criteria']} judged, as is or edited"),
+        (f"{rate}%", "Criteria QE kept", f"{impact['kept']} of {impact['judged_criteria']} judged, as is or edited"),
         (f"{impact['judged_tickets']}", "UACs judged by QE", "edited, or accepted untouched"),
         (f"{impact['waiting_tickets']}", "Waiting for QE", f"{impact['waiting_criteria']} criteria not judged yet"),
     ]
-    tile_html = "".join(f'<div class="card"><div class="label">{_e(label)}</div><div class="value">{_e(value)}</div>'
+    tile_html = "".join(f'<div class="card tile"><div class="label">{_e(label)}</div><div class="value">{_e(value)}</div>'
                         f'<div class="hint">{_e(note)}</div></div>' for value, label, note in tiles)
-    weekly_rows = "".join(f"<tr><td>{_e(w)}</td><td class=\"num\">{n}</td></tr>" for w, n in impact["weeks"])
+    funnel = _hbars([
+        {"label": "Tickets picked", "value": picked, "display": str(picked), "tip": f"{picked} tickets picked for a UAC"},
+        {"label": "UAC posted", "value": impact["posted_tickets"], "display": str(impact["posted_tickets"]),
+         "tip": f"{impact['posted_tickets']} of {picked} picked tickets got a UAC"},
+        {"label": "Judged by QE", "value": impact["judged_tickets"], "display": str(impact["judged_tickets"]),
+         "tip": f"{impact['judged_tickets']} posted UACs were edited or accepted untouched"},
+    ], "Ticket pipeline", "No ticket picked yet.")
+    areas = _hbars([
+        {"label": a["area"], "value": a["kept"] / a["judged"] if a["judged"] else 0,
+         "display": f"{round(100 * a['kept'] / a['judged']) if a['judged'] else 0}%",
+         "tip": f"{a['area']}: QE kept {a['kept']} of {a['judged']} criteria on {a['tickets']} ticket(s)",
+         "muted": a["judged"] < 5}
+        for a in impact["by_area"]], "Criteria kept by product area", "No UAC has been judged yet.")
+    if impact["judged_tickets"]:
+        size = _hbars([
+            {"label": "Our UAC", "value": impact["median_posted"], "display": f"{impact['median_posted']:g}",
+             "tip": f"Median criteria we posted on a judged UAC: {impact['median_posted']:g}"},
+            {"label": "QE's final UAC", "value": impact["median_final"], "display": f"{impact['median_final']:g}",
+             "tip": f"Median criteria in the UAC after QE's edits (kept plus added): {impact['median_final']:g}"},
+        ], "Criteria per UAC", "No UAC has been judged yet.")
+    else:
+        size = '<p class="empty">No UAC has been judged yet.</p>'
+    groups = not_posted_groups(not_posted)
+    reasons = _hbars([{"label": g, "value": n, "display": str(n), "tip": f"{g}: {n} ticket(s)",
+                       "muted": g.startswith("Skipped")} for g, n in groups],
+                     "Why UACs were not posted", "Every picked ticket was posted.")
+    pattern_bars = _hbars([
+        {"label": p["pattern"], "value": len(p.get("tickets") or []), "display": str(len(p.get("tickets") or [])),
+         "tip": f"{p['pattern']}: {', '.join(p.get('tickets') or [])}", "muted": not p.get("repeated")}
+        for p in patterns], "Correction patterns", "No correction patterns recorded yet.")
+    weekly_rows = "".join(f'<tr><td>{_e(w)}</td><td class="num">{n}</td></tr>' for w, n in impact["weeks"])
+    area_rows = "".join(f'<tr><td>{_e(a["area"])}</td><td class="num">{a["tickets"]}</td><td class="num">{a["kept"]}'
+                        f'</td><td class="num">{a["judged"]}</td></tr>' for a in impact["by_area"])
     minutes = _hours(impact["minutes"])
     return f"""
-<section class="impact">
-<div class="hero card">
-  <div class="label">QE time saved so far (estimate)</div>
-  <div class="hero-value">{_hours(impact['hours_saved'])} h</div>
-  <div class="hint">{impact['kept']} criteria QE kept instead of writing them, at about {minutes} minutes each.
-  Up to {_hours(impact['hours_potential'])} h more when the {impact['waiting_tickets']} waiting UACs are kept at the same rate.</div>
+<section id="impact" class="impact">
+<div class="eyebrow">Impact</div>
+<div class="hero-row">
+  <div class="card hero">
+    <div class="label">QE time saved so far (estimate)</div>
+    <div class="hero-value">{_hours(impact['hours_saved'])}<span class="unit"> h</span></div>
+    <div class="hint">{impact['kept']} criteria QE kept instead of writing them, at about {minutes} minutes each.</div>
+    <div class="potential">+ up to {_hours(impact['hours_potential'])} h more from the {impact['waiting_tickets']} UACs still waiting for QE, at today's keep rate</div>
+  </div>
+  <div class="tiles">{tile_html}</div>
 </div>
-<div class="tiles">{tile_html}</div>
 <div class="charts">
-  <div class="card chart"><h3>What QE did with our criteria</h3>{_outcome_chart(impact)}</div>
-  <div class="card chart"><h3>UACs posted per week</h3>{_weekly_chart(impact['weeks'])}
+  <div class="card chart wide"><h3>What QE did with our criteria</h3><p class="hint">{impact['judged_criteria']} criteria on {impact['judged_tickets']} judged UACs</p>{_outcome_chart(impact)}</div>
+  <div class="card chart"><h3>Ticket pipeline</h3><p class="hint">From picked to judged by QE</p>{funnel}</div>
+  <div class="card chart"><h3>Criteria per UAC (median)</h3><p class="hint">What we posted against what QE ended with</p>{size}</div>
+  <div class="card chart"><h3>Kept by product area</h3><p class="hint">Share of judged criteria QE kept; gray = fewer than 5 criteria</p>{areas}
+    <details><summary class="hint">Table view</summary><table><thead><tr><th>Area</th><th>Tickets</th><th>Kept</th><th>Judged</th></tr></thead>
+    <tbody>{area_rows}</tbody></table></details></div>
+  <div class="card chart"><h3>UACs posted per week</h3><p class="hint">By the week the UAC was posted</p>{_weekly_chart(impact['weeks'])}
     <details><summary class="hint">Table view</summary><table><thead><tr><th>Week of</th><th>UACs</th></tr></thead>
     <tbody>{weekly_rows}</tbody></table></details></div>
+  <div class="card chart"><h3>Why UACs were not posted</h3><p class="hint">Gray = skipped on purpose</p>{reasons}</div>
+  <div class="card chart"><h3>Where QE corrects us</h3><p class="hint">Tickets per correction pattern; gray = seen once</p>{pattern_bars}</div>
 </div>
-<p class="hint">Judged = a person edited the UAC (directly or through a Claude chat) or the ticket reached an accepted
+<p class="hint footnote">Judged = a person edited the UAC (directly or through a Claude chat) or the ticket reached an accepted
 status untouched. Minutes per criterion is the config value impact_minutes_per_criterion; it is an estimate, not a
 measurement.</p>
 </section>"""
@@ -366,7 +467,6 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
            jira_url: str, generated: str, shared_account: bool = False, patterns: list[dict] | None = None,
            report: tuple[str, str] = ("", ""), impact: dict | None = None) -> str:
     patterns = patterns or []
-    impact_html = _impact_section(impact) if impact else ""
     posted_rows = [
         f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
         f"<td>{_e(r['where'])}{_notes(r.get('notes'))}</td><td class=\"num\">{_criteria_cell(r)}</td>"
@@ -391,6 +491,7 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
                    f"</pre></details>" if report_text else
                    '<p class="empty">No monthly report yet; the harvester writes one on the 1st of each month.</p>')
     picked = len(posted) + len(not_posted)
+    impact_html = _impact_section(impact, picked, not_posted, patterns) if impact else ""
     cards = "".join(
         f'<div class="card"><div class="value">{n}</div><div class="label">{_e(label)}</div></div>'
         for n, label in ((picked, "Tickets picked"), (len(posted), "UAC posted"),
@@ -409,26 +510,40 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UAC Release Tracker</title>
 <style>
-:root {{ --bg:#f7f7f5; --panel:#ffffff; --text:#1d1d1b; --muted:#6b6b66; --line:#e3e2dd; --accent:#2f5d8a; --bad:#a3392f;
-  --s1:#2a78d6; --s2:#1baf7a; --s3:#eb6834; --grid:#e1e0d9; --axis:#c3c2b7; }}
+:root {{ --bg:#f6f7f9; --panel:#ffffff; --text:#14161a; --muted:#646a73; --line:#e4e7ec; --accent:#2a63c7; --bad:#b4372c;
+  --s1:#2a78d6; --s2:#1baf7a; --s3:#eb6834; --gray:#c9ccd1; --grid:#e1e0d9; --axis:#c3c2b7; --track:#eef0f3;
+  --shadow:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06); --nav:rgba(246,247,249,.85); }}
 @media (prefers-color-scheme: dark) {{
-  :root {{ --s1:#3987e5; --s2:#199e70; --s3:#d95926; --grid:#2c2c2a; --axis:#383835; }}
-  :root {{ --bg:#161615; --panel:#20201e; --text:#ecebe6; --muted:#a09f99; --line:#34332f; --accent:#8db4dc; --bad:#e08a80; }}
+  :root {{ --bg:#0f1012; --panel:#17191c; --text:#eceef1; --muted:#9aa1ab; --line:#2a2d32; --accent:#7fb0ff; --bad:#f08a7e;
+    --s1:#3987e5; --s2:#199e70; --s3:#d95926; --gray:#4a4e55; --grid:#2c2c2a; --axis:#383835; --track:#22252a;
+    --shadow:none; --nav:rgba(15,16,18,.85); }}
 }}
 * {{ box-sizing:border-box; }}
+html {{ scroll-behavior:smooth; scroll-padding-top:64px; }}
 body {{ margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }}
-main {{ max-width:1100px; margin:0 auto; padding:24px 16px 48px; }}
-h1 {{ font-size:22px; margin:0 0 4px; }}
-h2 {{ font-size:17px; margin:32px 0 4px; }}
-.sub, .hint {{ color:var(--muted); margin:0 0 12px; font-size:14px; }}
-.cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:20px; }}
-.card {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }}
-.value {{ font-size:26px; font-weight:600; }}
+nav.top {{ position:sticky; top:0; z-index:5; background:var(--nav); backdrop-filter:saturate(1.4) blur(8px);
+  border-bottom:1px solid var(--line); }}
+nav.top div {{ max-width:1160px; margin:0 auto; padding:10px 16px; display:flex; gap:4px; align-items:center; overflow-x:auto; scrollbar-width:none; }}
+nav.top div::-webkit-scrollbar {{ display:none; }}
+nav.top b {{ margin-right:12px; white-space:nowrap; }}
+nav.top a {{ color:var(--muted); text-decoration:none; padding:5px 10px; border-radius:6px; font-size:14px; white-space:nowrap; }}
+nav.top a:hover, nav.top a:focus-visible {{ background:var(--track); color:var(--text); }}
+main {{ max-width:1160px; margin:0 auto; padding:24px 16px 64px; }}
+h1 {{ font-size:26px; letter-spacing:-.01em; margin:0 0 4px; }}
+h2 {{ font-size:18px; margin:40px 0 4px; }}
+h3 {{ font-size:15px; margin:0 0 2px; }}
+.eyebrow {{ text-transform:uppercase; letter-spacing:.08em; font-size:12px; font-weight:600; color:var(--muted); margin:28px 0 10px; }}
+.sub, .hint {{ color:var(--muted); margin:0 0 12px; font-size:13.5px; }}
+.chip {{ display:inline-block; background:var(--track); border-radius:999px; padding:2px 10px; font-size:12.5px; color:var(--muted); }}
+.cards {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:18px; }}
+.card {{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }}
+.value {{ font-size:28px; font-weight:600; letter-spacing:-.01em; }}
 .label {{ color:var(--muted); font-size:13px; }}
-.wrap {{ overflow-x:auto; background:var(--panel); border:1px solid var(--line); border-radius:8px; }}
+.wrap {{ overflow-x:auto; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); }}
 table {{ width:100%; border-collapse:collapse; }}
-th, td {{ text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }}
-th {{ font-size:13px; color:var(--muted); font-weight:600; white-space:nowrap; }}
+th, td {{ text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); vertical-align:top; }}
+th {{ font-size:12.5px; color:var(--muted); font-weight:600; white-space:nowrap; background:var(--panel); }}
+tbody tr:hover td {{ background:var(--track); }}
 tr:last-child td {{ border-bottom:none; }}
 td.num {{ text-align:right; font-variant-numeric:tabular-nums; }}
 a {{ color:var(--accent); white-space:nowrap; }}
@@ -436,59 +551,115 @@ details summary {{ cursor:pointer; }}
 details ul {{ margin:6px 0 0; padding-left:18px; color:var(--muted); }}
 .reasons td:nth-child(3) {{ color:var(--bad); }}
 .flag {{ color:var(--bad); font-weight:600; }}
-.impact {{ margin-top:16px; }}
-.hero {{ margin-bottom:12px; }}
-.hero-value {{ font-size:52px; font-weight:600; line-height:1.1; margin:4px 0; }}
-.tiles {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }}
-.charts {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; margin-top:12px; }}
-.chart h3 {{ font-size:15px; margin:0 0 12px; }}
-svg.bar100 {{ width:100%; height:28px; display:block; }}
+.hero-row {{ display:grid; grid-template-columns:minmax(260px,1.1fr) 2fr; gap:12px; }}
+@media (max-width:820px) {{ .hero-row {{ grid-template-columns:1fr; }} }}
+.hero {{ display:flex; flex-direction:column; justify-content:center; }}
+.hero-value {{ font-size:60px; font-weight:650; line-height:1.05; letter-spacing:-.02em; margin:6px 0 8px; }}
+.hero-value .unit {{ font-size:28px; color:var(--muted); font-weight:500; }}
+.potential {{ margin-top:4px; font-size:13.5px; color:var(--text); background:var(--track); border-radius:8px; padding:8px 10px; }}
+.tiles {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }}
+@media (max-width:520px) {{ .tiles {{ grid-template-columns:1fr; }} }}
+.tile .value {{ margin:2px 0; }}
+.tile .hint {{ margin:0; }}
+.charts {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:12px; margin-top:12px; }}
+.chart.wide {{ grid-column:1 / -1; }}
+.chart .hint {{ margin-bottom:14px; }}
+.footnote {{ margin-top:12px; }}
+svg.bar100 {{ width:100%; height:32px; display:block; }}
 svg.cols {{ width:100%; height:200px; display:block; }}
 .s1 {{ fill:var(--s1); }} .s2 {{ fill:var(--s2); }} .s3 {{ fill:var(--s3); }}
+.mark {{ outline:none; transition:opacity .12s; }}
+.mark:hover, .mark:focus {{ opacity:.8; }}
 line.grid {{ stroke:var(--grid); stroke-width:1; }} line.axis {{ stroke:var(--axis); stroke-width:1; }}
 text.tick {{ fill:var(--muted); font-size:11px; }} text.val {{ fill:var(--text); font-size:12px; font-weight:600; }}
-ul.legend {{ list-style:none; padding:0; margin:12px 0 4px; display:flex; flex-wrap:wrap; gap:6px 18px; }}
+ul.legend {{ list-style:none; padding:0; margin:14px 0 4px; display:flex; flex-wrap:wrap; gap:6px 22px; }}
 .key {{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }}
 .key.s1 {{ background:var(--s1); }} .key.s2 {{ background:var(--s2); }} .key.s3 {{ background:var(--s3); }}
+.hb {{ display:grid; gap:8px; }}
+.hb-row {{ display:grid; grid-template-columns:minmax(110px,40%) 1fr 44px; align-items:center; gap:10px; border-radius:6px; padding:2px 4px; outline:none; }}
+.hb-row:hover, .hb-row:focus-visible {{ background:var(--track); }}
+.hb-label {{ font-size:13.5px; line-height:1.3; overflow-wrap:anywhere; }}
+.hb-track {{ height:14px; }}
+.hb-fill {{ display:block; height:14px; background:var(--s1); border-radius:0 4px 4px 0; }}
+.hb-fill.muted {{ background:var(--gray); }}
+.hb-val {{ text-align:right; font-weight:600; font-size:13.5px; font-variant-numeric:tabular-nums; }}
+.filter {{ display:flex; gap:8px; align-items:center; margin:0 0 10px; }}
+.filter input {{ width:min(360px,100%); padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); font:inherit; font-size:14px; }}
 ul.lessons {{ margin:0; padding-left:18px; }}
-pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; font-size:13px; }}
-.empty {{ color:var(--muted); background:var(--panel); border:1px dashed var(--line); border-radius:8px; padding:14px 16px; }}
+pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; font-size:13px; }}
+.empty {{ color:var(--muted); background:var(--panel); border:1px dashed var(--line); border-radius:12px; padding:14px 16px; margin:0; }}
+#tip {{ position:fixed; z-index:10; pointer-events:none; max-width:320px; background:var(--text); color:var(--bg); font-size:13px;
+  padding:7px 10px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.18); opacity:0; transition:opacity .08s; }}
 </style>
 </head>
 <body>
+<nav class="top" aria-label="Sections"><div><b>UAC release</b>
+<a href="#impact">Impact</a><a href="#posted">Posted</a><a href="#not-posted">Not posted</a>
+<a href="#patterns">Patterns</a><a href="#edits">QE edits</a><a href="#corrections">Corrections</a><a href="#report">Report</a></div></nav>
 <main>
 <h1>UAC release automation</h1>
-<p class="sub">Updated {_e(generated)} (VM time). Read-only: built from the run files on the VM, never from Jira.</p>
+<p class="sub"><span class="chip">Updated {_e(generated)} (VM time)</span> Read-only: built from the run files on the VM, never from Jira.</p>
 <div class="cards">{cards}</div>
 {impact_html}
 
-<h2>UAC posted</h2>
+<h2 id="posted">UAC posted</h2>
 <p class="hint">Tickets where the UAC passed every check and was posted. Criteria is the number posted; "9 &rarr; 7 (edited)"
 means the field was changed in Jira afterwards (read on the harvester's nightly run; hover for who and when).</p>
-{_table(["Ticket", "Summary", "Posted to", "Criteria", "When"], posted_rows, "No UAC posted yet.")}
+<div class="filter"><input type="search" placeholder="Filter by ticket or summary" data-filter="posted-table" aria-label="Filter posted tickets"></div>
+<div id="posted-table">{_table(["Ticket", "Summary", "Posted to", "Criteria", "When"], posted_rows, "No UAC posted yet.")}</div>
 
-<h2>UAC not posted</h2>
+<h2 id="not-posted">UAC not posted</h2>
 <p class="hint">Tickets the automation picked but did not post, with the reason. Click a reason to see every problem.</p>
 <div class="reasons">{_table(["Ticket", "Summary", "Reason", "Last run"], not_posted_rows, "Every picked ticket was posted.")}</div>
 
-<h2>Repeated correction patterns</h2>
+<h2 id="patterns">Repeated correction patterns</h2>
 <p class="hint">The kind of mistake each QE correction fixed (recorded with record_manual_rewrite.py --pattern), with the
 tickets it was seen on. A pattern on two or more tickets is repeated: pick the next skill fix from the top rows.</p>
 {_table(["Pattern", "Tickets", "Status", "Lessons"], pattern_rows, "No correction patterns recorded yet.")}
 
-<h2>Edited by a QE</h2>
+<h2 id="edits">Edited by a QE</h2>
 <p class="hint">Posted UACs a QE changed directly in Jira; the harvester learns from these edits. {account_note}
 Counts are per criterion. {accepted} more ticket(s) were accepted without edits.</p>
 {_table(["Ticket", "Summary", "Edited by", "When", "Kept", "Changed", "Removed", "Added"], qe_rows, "No QE edits harvested yet.")}
 
-<h2>QE corrections made through Claude</h2>
+<h2 id="corrections">QE corrections made through Claude</h2>
 <p class="hint">Rewrites a QE asked for in a Claude or Codex chat and that session wrote with the shared account.
 These are QE feedback too; their patterns are counted in the table above.</p>
 {_table(["Ticket", "Summary", "Written by", "When", "Kept", "Changed", "Removed", "Added"], correction_rows, "No corrections recorded yet.")}
 
-<h2>Monthly learning report</h2>
+<h2 id="report">Monthly learning report</h2>
 {report_html}
 </main>
+<div id="tip" role="tooltip"></div>
+<script>
+(() => {{
+  const tip = document.getElementById("tip");
+  const show = (el, x, y) => {{
+    tip.textContent = el.getAttribute("data-tip");
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(x + 12, innerWidth - w - 8)) + "px";
+    tip.style.top = Math.max(8, y - h - 12) + "px";
+    tip.style.opacity = "1";
+  }};
+  const hide = () => {{ tip.style.opacity = "0"; }};
+  document.addEventListener("pointermove", e => {{
+    const el = e.target.closest && e.target.closest("[data-tip]");
+    el ? show(el, e.clientX, e.clientY) : hide();
+  }});
+  document.addEventListener("focusin", e => {{
+    const el = e.target.closest && e.target.closest("[data-tip]");
+    if (el) {{ const r = el.getBoundingClientRect(); show(el, r.left, r.top); }}
+  }});
+  document.addEventListener("focusout", hide);
+  document.querySelectorAll("input[data-filter]").forEach(input => {{
+    const rows = document.querySelectorAll("#" + input.dataset.filter + " tbody tr");
+    input.addEventListener("input", () => {{
+      const q = input.value.trim().toLowerCase();
+      rows.forEach(r => {{ r.hidden = q && !r.textContent.toLowerCase().includes(q); }});
+    }});
+  }});
+}})();
+</script>
 </body>
 </html>
 """
