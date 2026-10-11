@@ -73,7 +73,12 @@ an Acceptance Criterion or a TBD.
 Each entry also records its `authority`: `TICKET`, `ATTACHMENT`, `PRODUCT_DECISION`,
 `DOCUMENTATION` or `CODE_REUSE`. A surface found only in documentation or code may get an AC
 only when that AC checks the screen still works as before; asking for new behaviour there needs a
-TBD. Every attachment entry in `SOURCE_COVERAGE.json` lists the screens it shows in `surfaces`,
+TBD. The exception is `SAME_ITEM`: a place research found that shows, lists or prints the same item the
+ticket changes through the same code path (another screen with the same list, another content placement of
+the same image, another output place of the same title). It needs a `<file>:<line>` reference and is a
+sub-point of the AC that covers the ticket's own screen, so the requested behaviour is checked there too.
+SAME_ITEM places count toward the five research-found places per AC.
+Every attachment entry in `SOURCE_COVERAGE.json` lists the screens it shows in `surfaces`,
 and each of those screens must be in the surface inventory.
 
 ## Every Acceptance Criterion is asked for

@@ -787,6 +787,45 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(any("authority None is not one of" in p
                             for p in problems([{k: v for k, v in SURFACES[0].items() if k != "authority"}] + SURFACES[1:])))
 
+    def test_same_item_place_gets_the_requested_behaviour_as_a_sub_point(self) -> None:
+        ticket = self.out / "PROJ-13"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC.replace(
+            "- Acceptance Criteria 01: Verify that the report opens from the Map console.\n",
+            "- Acceptance Criteria 01: Verify that the report opens from the Map console.\n"
+            "  - The same report opens from the Map dashboard.\n"), encoding="utf-8")
+
+        def problems(entries):
+            (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(entries), encoding="utf-8")
+            return runner.surface_inventory_problems(ticket)
+
+        same = {"surface": "Map dashboard", "evidence": ["src/views/dashboard_report.ts:30"], "authority": "SAME_ITEM",
+                "disposition": "AC", "ac": 1}
+        self.assertEqual(problems(SURFACES[:3] + [same]), [], "new behaviour, not only 'still works', is allowed")
+        no_code = dict(same, evidence=["https://experienceleague.adobe.com/report"])
+        self.assertTrue(any("SAME_ITEM needs a <file>:<line> code reference" in p
+                            for p in problems(SURFACES[:3] + [no_code])))
+        stray = dict(same, surface="Report dialog", ac=2, disposition="AC")
+        (ticket / common.UAC_FILE).write_text(UAC.replace("Verify that an empty report shows a message.",
+                                                          "Verify that an empty report shows a message in the Report dialog."),
+                                              encoding="utf-8")
+        self.assertTrue(any("covers no screen the ticket asks for" in p
+                            for p in problems([SURFACES[0], stray] + SURFACES[2:3])))
+
+    def test_same_item_places_count_toward_the_per_criterion_limit(self) -> None:
+        ticket = self.out / "PROJ-14"
+        ticket.mkdir()
+        names = ("Map dashboard", "Baseline panel", "Review panel", "Map Collection", "Output history", "Translation panel")
+        (ticket / common.UAC_FILE).write_text(UAC.replace(
+            "- Acceptance Criteria 01: Verify that the report opens from the Map console.\n",
+            "- Acceptance Criteria 01: Verify that the report opens from the Map console.\n"
+            + "".join(f"  - The same report opens from the {n}.\n" for n in names)), encoding="utf-8")
+        entries = SURFACES[:3] + [{"surface": n, "evidence": [f"src/views/{i}.ts:1"], "authority": "SAME_ITEM",
+                                   "disposition": "AC", "ac": 1} for i, n in enumerate(names)]
+        (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(entries), encoding="utf-8")
+        self.assertIn("Acceptance Criteria 1 lists 6 screens found only by research; keep at most 5 and move the "
+                      "rest to TEST_PLAN", runner.surface_inventory_problems(ticket))
+
     def test_discovered_surface_can_go_to_the_test_plan(self) -> None:
         ticket = self.out / "PROJ-10"
         ticket.mkdir()

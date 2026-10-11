@@ -665,7 +665,15 @@ comment (`uac_completeness_check.suggested_problems` refuses one). The ten-AC ca
 research check that cannot fit as an AC or a sub-point goes to the full test plan.
 
 A surface found only in documentation or code gets at most a "still works as before" AC or a TBD
-(`uac_release_runner.surface_inventory_problems`). A criterion on a scenario the reporter did not hit
+(`uac_release_runner.surface_inventory_problems`). The exception is a place that shows, lists or prints the
+SAME item the ticket changes through the same code path: the same list, value, task, image or title on
+another screen, in another content placement (table, figure, key reference, SVG) or in another output place
+(cover page, header, footer). List these places before writing ACs and read the code for each one. A place
+that reads the item through the same path (`SAME_ITEM`, with a `<file>:<line>` reference) must show the
+requested behaviour too, so it is a sub-point of the AC that covers the ticket's own screen, with the same
+expected result. It is not a new AC, and it is not a TBD. A place that only looks related stays a "still
+works" check, a TBD or TEST_PLAN, and one AC names at most five research-found places. Missed places of the
+same item were the most repeated QE correction (missing-placements on five tickets). A criterion on a scenario the reporter did not hit
 (ADJACENT) is a research check: an AC only when it matters, and never in place of the reporter's own
 scenario. The reporter's own action done another way is not a different scenario - see "Every way to do
 the ticket's action" below.
