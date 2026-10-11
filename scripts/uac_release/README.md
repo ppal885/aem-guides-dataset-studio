@@ -337,6 +337,9 @@ only for ticket links. The page shows:
     "rewritten" (reworded or merged), not removed, and that added criterion is not counted as new
     (`uac_learning_harvester.pair_rewrites`). Time saved counts only criteria kept as is or edited.
   - Columns of UACs posted per week, with a table view.
+  - "Is it getting better?": by the week a UAC was posted, the share of judged criteria QE kept (as is,
+    edited or reworded) and the share kept as written or edited, with n = judged/posted per week and a marker
+    on the day each fix in `pattern_fixes.json` reached the VM.
   - Ticket pipeline (picked, posted, judged), criteria per UAC (median we posted vs QE's final), kept % by
     product area (Jira component), why UACs were not posted, and where QE corrects us (tickets per pattern).
   - A sticky section bar, hover and keyboard tooltips on every mark, and a filter box on the posted table.

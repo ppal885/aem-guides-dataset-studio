@@ -2689,6 +2689,29 @@ class ClaudeRewriteTests(unittest.TestCase):
         self.assertNotIn("PROJ-3", waiting)
         self.assertIn('<td class="num">9</td>', waiting, "PROJ-2 waited nine days")
 
+    def test_trend_by_week_posted_with_fix_markers(self) -> None:
+        posted = [{"key": "PROJ-1", "updated": "2026-09-29T08:00:00+0000"},
+                  {"key": "PROJ-2", "updated": "2026-10-06T08:00:00+0000"},
+                  {"key": "PROJ-3", "updated": "2026-10-07T08:00:00+0000"}]
+        counts = lambda a, c, rw, rm: {"accepted": a, "changed": c, "rewritten": rw, "removed": rm, "added": 0}
+        verdicts = {"PROJ-1": {"outcome": "CHANGED", "edit_origin": "", "counts": counts(1, 1, 1, 1)},
+                    "PROJ-2": {"outcome": "ACCEPTED_AS_IS", "edit_origin": "", "counts": counts(4, 0, 0, 0)}}
+        trend = dashboard.collect_trend(posted, verdicts)
+        self.assertEqual([(w["week"], w["posted"], w["judged"]) for w in trend],
+                         [("2026-09-28", 1, 1), ("2026-10-05", 2, 1)])
+        self.assertEqual((trend[0]["checks_rate"], trend[0]["saved_rate"]), (0.75, 0.5))
+        self.assertEqual((trend[1]["checks_rate"], trend[1]["saved_rate"]), (1.0, 1.0))
+        fixes = {"a": {"fix": "PR #153 x", "deployed_at": "2026-10-08T10:37:05+00:00"},
+                 "b": {"fix": "commit 5401d3376 y", "deployed_at": "2026-10-06T19:42:31+00:00"},
+                 "c": {"fix": "PR #187 z", "deployed_at": "2026-10-11T07:01:49+00:00"},
+                 "d": {"fix": "PR #188 z", "deployed_at": "2026-10-11T07:20:36+00:00"}}
+        svg = dashboard._trend_chart(trend, fixes, datetime.date(2026, 10, 11))
+        for label in (">#153<", ">5401d3376<", ">#187 #188<"):
+            self.assertIn(label, svg)
+        self.assertIn("n=1/2", svg)
+        self.assertIn("checks kept 75%, kept as written or edited 50% of 4 criteria", svg)
+        self.assertIn("No posted UAC has been judged yet.", dashboard._trend_chart(dashboard.collect_trend(posted, {}), {}))
+
     def test_nightly_harvest_refreshes_the_month_to_date_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.object(harvester, "harvest", return_value=[]), \
