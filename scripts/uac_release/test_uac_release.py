@@ -5,6 +5,7 @@ import datetime
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -163,6 +164,7 @@ def make_config(out: Path) -> dict:
         "output_dir": str(out),
         "acceptance_criteria_field": "customfield_1",
         "labels": {"posted": "QEVision_UAC_DONE"},
+        "staleness_repos": [],
         "copilot": {"command": "copilot", "add_dirs": ["/repos/a"], "allow_all_tools": True,
                     "deny_tools": ["corp-jira(update_jira_issue)"], "timeout_minutes": 1},
     }
@@ -970,6 +972,48 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("PROJ-1: a root cause or fix was reported by dev on 2026-01-12", first[0])
         self.assertEqual(second, [], "an already alerted comment is not alerted again")
         self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
+
+    def _repo_with_commits(self, subjects: list[str]) -> Path:
+        repo = self.out / "starling"
+        repo.mkdir()
+        git = ["git", "-C", str(repo), "-c", "user.name=dev", "-c", "user.email=dev@example.com"]
+        subprocess.run(git[:3] + ["init", "-q"], check=True)
+        for index, subject in enumerate(subjects):
+            (repo / f"f{index}.txt").write_text(subject, encoding="utf-8")
+            subprocess.run(git + ["add", "."], check=True)
+            subprocess.run(git + ["commit", "-q", "-m", subject], check=True)
+        return repo
+
+    @unittest.skipUnless(shutil.which("git"), "git is needed to build a repository")
+    def test_staleness_alerts_a_merged_commit_the_uac_does_not_cite(self) -> None:
+        repo = self._repo_with_commits(["Guides- 55887 (#8280)", "GUIDES-558870 other ticket",
+                                        "fix: unrelated change (#8301)", "GUIDES-55887: follow-up (#8299)"])
+        issue = {"changelog": {"histories": [{"created": "2026-10-08T10:57:00.000+0000",
+                                              "items": [{"fieldId": "customfield_1"}]}]},
+                 "fields": {"comment": {"comments": []}, "attachment": [],
+                            "customfield_1": "* Acceptance Criteria 01: ...\n** Source: proposed fix starling #8299."}}
+        jira = FakeJira()
+        jira._json = mock.Mock(return_value=issue)
+        config = dict(self.config, staleness_repos=[{"path": str(repo), "ref": "HEAD"}], staleness_fetch=False)
+        state: dict = {}
+        first = staleness.stale_lines(config, jira, self.log, ["GUIDES-55887"], state, "uac.bot")
+        self.assertEqual(len(first), 1, "the cited #8299, the other ticket and the unrelated commit are not alerted")
+        self.assertIn("GUIDES-55887: a commit naming the ticket is merged in starling HEAD (#8280) by dev", first[0])
+        self.assertIn('"Guides- 55887 (#8280)"; the Acceptance Criteria do not cite it', first[0])
+        self.assertEqual(staleness.stale_lines(config, jira, self.log, ["GUIDES-55887"], state, "uac.bot"), [],
+                         "a commit is alerted once")
+        self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
+
+    def test_staleness_repositories_come_from_config_or_the_researcher_paths(self) -> None:
+        self.assertEqual(staleness.staleness_repos({"staleness_repos": []}), [])
+        with mock.patch.dict(os.environ, {"STARLING_REPO_PATH": str(self.out), "XML_EDITOR_REPO_PATH": ""}):
+            self.assertEqual(staleness.staleness_repos({}), [{"path": str(self.out), "ref": "origin/develop"}])
+        self.assertEqual(staleness.staleness_repos({"staleness_repos": [str(self.out / "missing")]}), [],
+                         "a path that is not on this machine is skipped")
+
+    def test_staleness_unreadable_repository_gives_no_commits(self) -> None:
+        self.assertEqual(staleness.merged_commits({"path": str(self.out), "ref": "origin/develop"},
+                                                  "GUIDES-1", self.log), [])
 
     def test_staleness_alerts_a_contract_or_design_added_after_the_uac(self) -> None:
         issue = {"changelog": {"histories": [{"created": "2026-10-04T05:08:00.000+0000",
