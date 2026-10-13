@@ -18399,6 +18399,48 @@ def test_repeated_qe_correction_gates() -> None:
     print("test_repeated_qe_correction_gates: OK")
 
 
+def test_guessed_decision_gate() -> None:
+    """guessed-decision: a handling choice in a new-behaviour criterion needs the basis that decided it."""
+    uc = uac_completeness_check_mod
+    source = {"summary": "Dynamic baseline stuck", "description": "If resolution fails, the operation should fail loudly.",
+              "comments": [], "attachments": [{"filename": "meeting.mp4"}]}
+    uac = ("- Acceptance Criteria 01: Export baseline stops with an error when the baseline cannot be rebuilt.\n"
+           "  **Source:** Ticket description.\n"
+           "- Acceptance Criteria 02: A second export while the update runs waits and then uses the new versions.\n"
+           "  **Source:** Code.\n"
+           "  **TBD:** Is the second export blocked with a failure instead?\n"
+           "- Acceptance Criteria 03: Export baseline lists the newer version.\n"
+           "  **Source:** Ticket description.\n")
+    scenario = {"scenario": {"acs": [{"ac": 1, "scenario": "CUSTOMER"}, {"ac": 2, "scenario": "VARIANT"},
+                                     {"ac": 3, "scenario": "CUSTOMER"}]}}
+    found = uc.decision_problems(scenario, uac, source)
+    check("an undecided handling choice must be recorded", any("Acceptance Criteria 01" in p for p in found)
+          and any("Acceptance Criteria 02" in p for p in found))
+    check("a criterion with no handling choice needs no record", not any("Acceptance Criteria 03" in p for p in found))
+    decided = dict(scenario, decisions=[
+        {"ac": 1, "choice": "stops with an error", "basis": "TICKET", "quote": "the operation should fail loudly"},
+        {"ac": 2, "choice": "waits for the update", "basis": "PRODUCT_DECISION", "ref": "QE decision in chat 2026-10-13"}])
+    check("decided choices pass", uc.decision_problems(decided, uac, source) == [])
+    unmerged = dict(scenario, decisions=[decided["decisions"][0],
+                                         {"ac": 2, "choice": "waits", "basis": "CODE", "ref": "branch baseline-fix"}])
+    check("a choice read from code is not a decision", any("basis must be" in p for p in
+                                                           uc.decision_problems(unmerged, uac, source)))
+    branch = dict(scenario, decisions=[decided["decisions"][0],
+                                       {"ac": 2, "choice": "waits", "basis": "MERGED_FIX", "ref": "branch baseline-fix"}])
+    check("MERGED_FIX needs a merged pull request or commit", any("merged pull request" in p for p in
+                                                                  uc.decision_problems(branch, uac, source)))
+    invented = dict(scenario, decisions=[{"ac": 1, "choice": "stops", "basis": "TICKET", "quote": "it must stop at once"},
+                                         decided["decisions"][1]])
+    check("a ticket quote must be in the ticket", any("copy the deciding sentence" in p for p in
+                                                      uc.decision_problems(invented, uac, source)))
+    recording = dict(scenario, decisions=[decided["decisions"][0],
+                                          {"ac": 2, "choice": "waits", "basis": "ATTACHMENT", "ref": "meeting.mp4"}])
+    check("an attached recording can decide", uc.decision_problems(recording, uac, source) == [])
+    regression = {"scenario": {"acs": [{"ac": n, "scenario": "REGRESSION"} for n in (1, 2, 3)]}}
+    check("a regression criterion needs no decisions record", uc.decision_problems(regression, uac, source) == [])
+    print("test_guessed_decision_gate: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -18457,6 +18499,7 @@ def main() -> int:
     test_uac_size_and_pre_existing_items()
     test_action_variants()
     test_repeated_qe_correction_gates()
+    test_guessed_decision_gate()
     test_gate_false_positives_from_questions_and_side_sections()
     test_output_route_entry_points()
     test_not_named_reasons_and_scope_boundaries()

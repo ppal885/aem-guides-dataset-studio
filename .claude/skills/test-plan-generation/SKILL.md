@@ -846,6 +846,14 @@ or three tickets:
   from the ticket's profile, the Node version at the reported path, "Generated Outputs shows success, not the
   orange warning"). The criterion states it. "Works as expected" or "only permitted changes" is not an answer.
   A "still works as before" regression criterion needs no "sees".
+- **A decision nobody made** (guessed-decision, `decisions`). When a CUSTOMER or VARIANT criterion states a
+  handling choice - the second action waits or fails, a file is skipped or blocked, a count, a precedence,
+  something that cannot be done - record who decided it: `{"ac", "choice", "basis": "TICKET" |
+  "DEVELOPER_COMMENT" (with "quote", the sentence copied from the ticket) | "ATTACHMENT" ("ref": the recording or
+  document) | "PRODUCT_DECISION" ("ref": who decided and where) | "MERGED_FIX" ("ref": the merged pull request or
+  commit)}`. Code on an unmerged branch, a similar ticket or our own reasoning decides nothing: write a TBD.
+  When a criterion's TBD asks which way it goes, the criterion says it follows the decision in the TBD and does
+  not pick a side (a Select All count asserted as 150 while its TBD asked 150 or 180).
 
 **Delivered format - chat and the Jira Acceptance Criteria field.** A list of criteria with optional short
 case sub-points; no ticket title line, no Open Questions section, and at most one short sentence of

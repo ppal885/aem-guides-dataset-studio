@@ -256,6 +256,13 @@ When finished, write these files:
    action finishes: the report of changed and unchanged items, the final status) | "STILL_POSSIBLE" (what the
    user can still open or do after the task is closed: the email link, notifications, comments, comparing
    versions), "what": "...", "disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason": "..."}}].
+   Also "decisions": [{{"ac": <a CUSTOMER or VARIANT criterion that states a handling choice: waits or fails,
+   skipped or blocked, a count, a precedence, cannot>, "choice": "...", "basis": "TICKET" | "DEVELOPER_COMMENT"
+   (with "quote": the deciding sentence copied from the ticket) | "ATTACHMENT" ("ref": the recording or document
+   file name) | "PRODUCT_DECISION" ("ref": who decided and where) | "MERGED_FIX" ("ref": the merged pull request
+   or commit)}}]. Code on an unmerged branch, a similar ticket or your own reasoning decides nothing: make it a
+   TBD. When a criterion's TBD asks which way it goes, the criterion follows the decision in the TBD and does not
+   pick a side.
    Also "scope_boundaries": [{{"boundary": "<a limit the ticket, a developer or product decided, e.g. V2
    baseline is out of scope>", "basis": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT",
    "disposition": "OUT_OF_SCOPE" (named in the UAC's Out of scope list) | "AC", "ac": <number>}}] (or [] with
