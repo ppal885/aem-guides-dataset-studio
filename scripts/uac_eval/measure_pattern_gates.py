@@ -95,10 +95,28 @@ def run_cases(cases: list[dict], sources: dict[str, dict]) -> int:
     return failed
 
 
+def run_line_cases(cases: list[dict]) -> int:
+    """UAC lines QE corrected (guessed-decision) must ask for a decisions record; plain lines must not."""
+    failed = 0
+    print("Line cases (a handling choice needs a decisions record):")
+    for case in cases:
+        fired = bool(uc._handling_lines(case["line"]))
+        ok = fired == case["needs_decision"]
+        failed += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {case['key']}: {'asks' if fired else 'no record'} - {case['line'][:80]}")
+    return failed
+
+
 def corpus_rates(path: Path = CORPUS) -> dict:
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    counts = {"tickets": len(rows), "action_settings": {}, "after_state": {}}
+    counts = {"tickets": len(rows), "action_settings": {}, "after_state": {}, "ac_lines": 0, "handling_lines": 0,
+              "handling_tickets": 0}
     for row in rows:
+        lines = [line for line in (row.get("human_ac") or "").splitlines() if line.strip()]
+        handling = [line for line in lines if uc._handling_lines(line)]
+        counts["ac_lines"] += len(lines)
+        counts["handling_lines"] += len(handling)
+        counts["handling_tickets"] += bool(handling)
         found = signals({"summary": row.get("summary") or "", "description": row.get("description") or ""})
         for name in ("action_settings", "after_state"):
             for value in found[name]:
@@ -114,6 +132,10 @@ def print_rates(counts: dict) -> None:
             print(f"  {name}: {value} on {n} ticket(s) ({100 * n / total:.1f}%)")
         if not counts[name]:
             print(f"  {name}: never")
+    if counts["ac_lines"]:
+        print(f"  decisions: {counts['handling_lines']} of {counts['ac_lines']} human AC lines state a handling choice "
+              f"({100 * counts['handling_lines'] / counts['ac_lines']:.1f}%), on {counts['handling_tickets']} ticket(s) "
+              f"({100 * counts['handling_tickets'] / total:.1f}%)")
 
 
 def self_test() -> int:
@@ -127,6 +149,9 @@ def self_test() -> int:
     assert judge({"expect": {"action_settings": ["Enable Replace All"]}}, signals(steps))
     rec = {"summary": "x", "attachments": [{"filename": "call.mp4"}, {"filename": "a.png"}]}
     assert judge({"expect": {"tbd_attachments_min": 1}}, signals(rec)) == []
+    assert uc._handling_lines("The second action waits and then uses the new versions.")
+    assert not uc._handling_lines("Export baseline lists the newer version.")
+    assert not uc._handling_lines("  TBD: Should the second action wait?")
     print("measure_pattern_gates self-test: PASS")
     return 0
 
@@ -146,7 +171,9 @@ def main(argv: list[str] | None = None) -> int:
     failed = 0
     if not args.corpus_only:
         cases = json.loads(args.cases.read_text(encoding="utf-8"))["cases"]
+        data = json.loads(args.cases.read_text(encoding="utf-8"))
         failed = run_cases(cases, load_sources(sorted({c["key"] for c in cases}), args.cache, args.env))
+        failed += run_line_cases(data.get("line_cases") or [])
     if args.corpus.is_file():
         print_rates(corpus_rates(args.corpus))
     else:

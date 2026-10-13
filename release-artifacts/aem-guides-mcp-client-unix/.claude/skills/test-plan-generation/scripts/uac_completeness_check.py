@@ -118,6 +118,10 @@ WHAT IT CHECKS in a UAC folder
 22. "reporter_screen" (from scenario.acs): a CUSTOMER criterion names the screen its reporter step names.
 23. "observable_result" (scenario.acs "sees"): a CUSTOMER criterion states the value, status, message or output
    content QE sees, not only "works as expected".
+24. "decisions": a CUSTOMER or VARIANT criterion that states a handling choice (waits or fails, skipped or
+   blocked, a count, a precedence) records who decided it - TICKET or DEVELOPER_COMMENT with the sentence
+   copied, ATTACHMENT, PRODUCT_DECISION with who and where, or MERGED_FIX with the merged pull request or commit.
+   A choice nobody decided is a TBD.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -557,6 +561,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "after_state": after_state_problems(evidence, uac, source),
         "reporter_screen": reporter_screen_problems(evidence, uac),
         "observable_result": observable_result_problems(evidence, uac),
+        "decisions": decision_problems(evidence, uac, source),
     }
 
 
@@ -1614,6 +1619,75 @@ def observable_result_problems(evidence: dict, uac_text: str) -> list[str]:
         if len(shown) * 2 < len(words):
             problems.append(f"Acceptance Criteria {ac:02d} does not state what QE sees (\"{str(entry.get('sees'))[:70]}\"): "
                             "put that value, status or message in the statement or a sub-point")
+    return problems
+
+
+# guessed-decision: a criterion asserted a handling choice nobody decided - "Select All counts only files the user
+# can update (150)" while its own TBD asked 150 or 180; "the second action waits" read from an unmerged branch
+# while QE decided it is blocked with a failure; read-only files put out of scope without a decision.
+HANDLING_SIGNAL = re.compile(
+    r"\b(?:wait(?:s|ing)?|block(?:s|ed)?|skip(?:s|ped)?|stop(?:s|ped)?|fail(?:s|ed)?|reject(?:s|ed)?|ignor(?:e|es|ed)|"
+    r"denied|retr(?:y|ies)|queue(?:s|d)?|count(?:s|ed)?|precedence|overrid(?:e|es|den)|wins|cannot|not allowed|"
+    r"only (?:the )?files?)\b", re.I)
+DECISION_BASES = ("TICKET", "ATTACHMENT", "DEVELOPER_COMMENT", "PRODUCT_DECISION", "MERGED_FIX")
+_QUOTED_BASES = ("TICKET", "DEVELOPER_COMMENT")
+_MERGED_REF = re.compile(r"/pull/\d+|\bPR\s*#?\d+|\b[0-9a-f]{7,40}\b", re.I)
+_NEW_BEHAVIOUR = ("CUSTOMER", "VARIANT")
+_LABEL_OR_TBD = re.compile(r"^\s*(?:[-*]+\s*)?\**\s*(?:Source|TBD):", re.I)
+
+
+def _handling_lines(body: str) -> list[str]:
+    """Statement and case lines of one criterion that state a handling choice (not Source or TBD lines)."""
+    return [line.strip() for line in body.splitlines()
+            if line.strip() and not _LABEL_OR_TBD.match(line) and HANDLING_SIGNAL.search(line)]
+
+
+def decision_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
+    """A handling choice in a new-behaviour criterion (wait or fail, skip or block, a count, a precedence) needs the
+    basis that decided it; one nobody decided is a TBD. (A word-overlap check against the criterion's own TBD was
+    tried and dropped: it flagged a QE-written "blocked by showing failure" next to a TBD on another case.)"""
+    scenario = evidence.get("scenario") if isinstance(evidence.get("scenario"), dict) else {}
+    kinds = {e["ac"]: e.get("scenario") for e in scenario.get("acs") or []
+             if isinstance(e, dict) and isinstance(e.get("ac"), int)}
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    entries = [e for e in evidence.get("decisions") or [] if isinstance(e, dict)]
+    by_ac: dict[int, list[dict]] = {}
+    for entry in entries:
+        if isinstance(entry.get("ac"), int):
+            by_ac.setdefault(entry["ac"], []).append(entry)
+    ticket = _ticket_text(source) if source else ""
+    attachments = {str(a.get("filename") or "").lower() for a in (source or {}).get("attachments") or []
+                   if isinstance(a, dict)}
+    problems = []
+    for ac, body in sorted(blocks.items()):
+        if kinds.get(ac) not in _NEW_BEHAVIOUR:
+            continue
+        lines = _handling_lines(body)
+        if lines and ac not in by_ac:
+            problems.append(f"Acceptance Criteria {ac:02d} states a handling choice (\"{lines[0][:70]}\"): record in "
+                            "decisions who decided it (ticket, attachment, developer comment, product decision or "
+                            "the merged fix), or make it a TBD")
+    for index, entry in enumerate(entries, 1):
+        choice = str(entry.get("choice") or "").strip()
+        label = f"decisions {index} \"{choice[:60]}\""
+        ac, basis = entry.get("ac"), entry.get("basis")
+        if ac not in blocks or not choice:
+            problems.append(f"{label}: needs choice and an existing Acceptance Criteria number")
+            continue
+        if basis not in DECISION_BASES:
+            problems.append(f"{label}: basis must be {', '.join(DECISION_BASES)} - a choice read from unmerged code, "
+                            "a similar ticket or our own reasoning was not decided by anyone; make it a TBD")
+        elif basis in _QUOTED_BASES:
+            quote = _normalize(entry.get("quote"))
+            if len(quote.split()) < 3 or (ticket and quote not in ticket):
+                problems.append(f"{label}: copy the deciding sentence from the ticket into quote")
+        elif basis == "ATTACHMENT" and str(entry.get("ref") or "").strip().lower() not in attachments:
+            problems.append(f"{label}: ref must name the attachment (a recording or document) that decided it")
+        elif basis == "MERGED_FIX" and not _MERGED_REF.search(str(entry.get("ref") or "")):
+            problems.append(f"{label}: ref must name the merged pull request or commit; an unmerged branch decides "
+                            "nothing")
+        elif basis == "PRODUCT_DECISION" and len(str(entry.get("ref") or "").split()) < 3:
+            problems.append(f"{label}: ref must say who decided it and where (for example a QE decision in chat)")
     return problems
 
 

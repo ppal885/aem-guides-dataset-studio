@@ -24,5 +24,27 @@
      "lesson": "the meeting recording decided what the comments left open"},
     {"key": "GUIDES-26367", "pattern": "tbd-answerable", "expect": {"tbd_attachments_min": 1},
      "lesson": "existing-install activation and scan paths were answerable from code and the attached scan"}
+  ],
+  "line_cases": [
+    {"key": "GUIDES-38845", "needs_decision": true,
+     "line": "Select All in Reports > Metadata counts only files the user can update.",
+     "lesson": "the Select All count was not decided; QE made it a TBD"},
+    {"key": "GUIDES-56739", "needs_decision": true,
+     "line": "On one author instance, the second action waits and then uses the new versions.",
+     "lesson": "read from an unmerged branch; QE decided the second action is blocked with a failure"},
+    {"key": "GUIDES-56739", "needs_decision": true,
+     "line": "When a baseline update is still running, a second export or generation with the same baseline does not use the old versions and will get blocked by showing failure.",
+     "lesson": "the QE-decided line still records its basis (PRODUCT_DECISION)"},
+    {"key": "GUIDES-30153", "needs_decision": true,
+     "line": "A topic that is still in a translation job cannot be renamed, as before.",
+     "lesson": "the meeting recording decided the blocking cases; record ATTACHMENT as the basis"},
+    {"key": "GUIDES-56739", "needs_decision": false,
+     "line": "Export baseline (Map Console > Baseline > Options > Export baseline) lists the newer version."},
+    {"key": "GUIDES-56739", "needs_decision": false,
+     "line": "After a label moves to a newer topic version, every action that uses the dynamic baseline uses that newer version."},
+    {"key": "GUIDES-38845", "needs_decision": false,
+     "line": "Metadata updates from Reports still work as before for DITA maps and bookmaps that have topics, images and non-DITA files."},
+    {"key": "GUIDES-38845", "needs_decision": false,
+     "line": "TBD: Must Select All show 150 (only the files you can update) before Update, or is today's count of 180 acceptable?"}
   ]
 }
