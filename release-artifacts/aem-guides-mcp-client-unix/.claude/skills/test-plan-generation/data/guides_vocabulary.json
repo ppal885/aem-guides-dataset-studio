@@ -20,6 +20,26 @@
       "message": "There is no 'stale preset' concept in AEM Guides. It is an existing preset; recreating it (delete + create again) was a support workaround, not a product mechanism. Do not assert stale-preset detection or advice - move any 'show the preset needs recreation' requirement to an Open Question.",
       "source": "human-correction",
       "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "language-variables-panel",
+      "pattern": "\\blanguage\\s+variables?\\s+(?:window|pop-?up)\\b",
+      "wrong": "Language variables window",
+      "correct": "Language variables panel",
+      "message": "Language variables open in the Language variables panel; the tab opened from it is not a separate window. Write 'Language variables panel'. Blocking: the UAC is not delivered until the line is rewritten.",
+      "source": "human-correction",
+      "source_context": "QE correction 2026-10-11: say Language variables panel; the tab opened from it is not a separate window",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "enable-replace-all-workspace-settings",
+      "pattern": "\\beditor\\s+settings\\b[^.\\n]{0,60}\\benable\\s+replace\\s+all\\b|\\benable\\s+replace\\s+all\\b[^.\\n]{0,60}\\beditor\\s+settings\\b",
+      "wrong": "Enable Replace All in Editor settings",
+      "correct": "Enable Replace All on the General tab of Workspace settings",
+      "message": "Enable Replace All is a switch in Workspace settings (General tab, Authoring section), not in Editor settings. Blocking: the UAC is not delivered until the line is rewritten.",
+      "source": "human-correction",
+      "source_context": "QE correction 2026-10-11: the dialog is Workspace settings (General tab), not Editor settings",
+      "governance": "HUMAN_APPROVED"
     }
   ],
   "advise": [
@@ -277,6 +297,7 @@
   ],
   "canonical_terms": [
     "workspace settings",
+    "Language variables panel",
     "Subject Scheme Panel",
     "Map Panel",
     "Map console",
