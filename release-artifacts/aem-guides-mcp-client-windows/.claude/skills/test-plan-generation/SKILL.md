@@ -846,6 +846,16 @@ or three tickets:
   from the ticket's profile, the Node version at the reported path, "Generated Outputs shows success, not the
   orange warning"). The criterion states it. "Works as expected" or "only permitted changes" is not an answer.
   A "still works as before" regression criterion needs no "sees".
+- **The setting the ticket names, and no sweep** (setting-toggle-noise, `named_settings` and the
+  `config_switches` cap). A setting the ticket or a comment names (`ticket_names` in
+  `data/guides_config_settings.json`, for example PDF Engine v2) is a `config_switches` AC case or a TBD - never
+  TEST_PLAN, even when the code calls it by an internal name. Settings found only in the code or documentation
+  get at most three on/off cases in one UAC: keep the ones the reported behaviour depends on (on a Native PDF
+  ticket human UACs keep Enable DITA-OT preprocessing and the microservice workflow) and move the rest to
+  TEST_PLAN, where they are still checked. A value seen in attached temporary files (a topic's Document State in
+  merged.html) is not a case; for a Native PDF layout bug, one sub-point that checks merged.html inside Retain
+  temporary files is the check. Ticket-named settings, the action's own settings and the DB and JCR flavours do
+  not count toward the three.
 - **A decision nobody made** (guessed-decision, `decisions`). When a CUSTOMER or VARIANT criterion states a
   handling choice - the second action waits or fails, a file is skipped or blocked, a count, a precedence,
   something that cannot be done - record who decided it: `{"ac", "choice", "basis": "TICKET" |

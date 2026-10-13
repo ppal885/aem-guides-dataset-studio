@@ -44,6 +44,36 @@
   ],
   "advise": [
     {
+      "id": "unclear-eligible",
+      "pattern": "\\beligible\\b",
+      "wrong": "eligible files / eligible pages",
+      "correct": "say which ones: files you can update, pages created by this output",
+      "message": "'Eligible' does not tell QE which items to check. Name them by what makes them count, for example 'files nobody has locked' or 'pages this output created earlier'.",
+      "source": "human-correction",
+      "source_context": "User correction 2026-10-14: do not write words a QE does not understand; found in 3 of 46 posted UACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "unclear-equivalents",
+      "pattern": "\\bequivalents?\\b",
+      "wrong": "Dev, Stage and Prod equivalents / equivalent to",
+      "correct": "name the environment or the item itself",
+      "message": "'Equivalent' leaves QE guessing what to set up. Name the environment (a Cloud test environment) or the exact item to compare with.",
+      "source": "human-correction",
+      "source_context": "User correction 2026-10-14 on a Native PDF UAC: found in 2 of 46 posted UACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
+      "id": "unclear-stale",
+      "pattern": "\\bstale\\b(?!\\s*(?:preset|output))",
+      "wrong": "a stale blocker / stale project",
+      "correct": "say what QE sees: a translation project that is no longer active still blocks the move",
+      "message": "'Stale' is an investigation word. Say what QE sees, for example 'a translation that is finished or deleted still blocks the move'.",
+      "source": "human-correction",
+      "source_context": "User correction 2026-10-14: found in 2 of 46 posted UACs",
+      "governance": "HUMAN_APPROVED"
+    },
+    {
       "id": "native-pdf-retained-html-location",
       "pattern": "\\btemporary\\s+html(?:\\s+files?)?\\b",
       "wrong": "in the temporary HTML",

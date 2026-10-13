@@ -557,6 +557,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "scope_boundaries": scope_boundary_problems(evidence, uac),
         "internal_settings": internal_setting_problems(uac),
         "action_settings": action_setting_problems(evidence, source),
+        "named_settings": named_setting_problems(evidence, source),
         "tbd_checks": tbd_check_problems(evidence, uac, source),
         "after_state": after_state_problems(evidence, uac, source),
         "reporter_screen": reporter_screen_problems(evidence, uac),
@@ -1305,6 +1306,7 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
                 if not re.search(rf"\b{re.escape(_normalize(state))}\b", text):
                     problems.append(f"{label} \"{entry['name']}\": no Acceptance Criterion states the result when it "
                                     f"is {state}")
+        problems += research_switch_cap_problems(switches, source)
     mechanism = block.get("mechanism")
     if not isinstance(mechanism, dict) or not isinstance(mechanism.get("general_ask"), bool):
         problems.append("action_variants.mechanism needs general_ask true or false: does the ticket ask for a general "
@@ -1459,6 +1461,70 @@ def action_setting_problems(evidence: dict, source: dict | None) -> list[str]:
                         f"{where}: add it to action_variants.config_switches - an AC case with it toggled on and off, "
                         f"a TBD, or NOT_APPLICABLE with a reason{reads}")
     return problems
+
+
+def named_settings(source: dict | None) -> list[dict]:
+    """Settings the ticket, a comment or the summary names (data/guides_config_settings.json "ticket_names")."""
+    if not source:
+        return []
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import config_settings_lookup  # noqa: PLC0415
+
+        data = config_settings_lookup.load()
+    except (ImportError, ValueError):
+        return []
+    text = _ticket_text(source)
+    found = []
+    for setting in data["settings"]:
+        names = [str(n) for n in setting.get("ticket_names") or []]
+        hits = [n for n in names if re.search(rf"(?<![a-z0-9]){re.escape(_normalize(n))}(?![a-z0-9])", text)]
+        if hits:
+            found.append({"label": setting["label"], "names": names, "matched": hits})
+    return found
+
+
+def named_setting_problems(evidence: dict, source: dict | None) -> list[str]:
+    """A setting the ticket or a comment names is an AC case or a TBD - never TEST_PLAN or not applicable. On a
+    Native PDF ticket whose comments asked four times to turn PDF Engine v2 off, the engine was left in the test
+    plan under an internal name while unrelated switches were swept."""
+    block = evidence.get("action_variants") if isinstance(evidence.get("action_variants"), dict) else {}
+    switches = [e for e in block.get("config_switches") or [] if isinstance(e, dict)]
+    problems = []
+    for setting in named_settings(source):
+        names = [_normalize(n) for n in [setting["label"], *setting["names"]]]
+        entries = [e for e in switches if any(n in _normalize(e.get("name")) for n in names)]
+        if not any(e.get("disposition") in ("AC", "TBD") for e in entries):
+            problems.append(f"the ticket names the setting \"{setting['matched'][0]}\": add \"{setting['label']}\" to "
+                            "action_variants.config_switches as an AC case (on and off) or a TBD - a setting the ticket "
+                            "or a comment names is never TEST_PLAN")
+    return problems
+
+
+# Human UACs: 94% of 397 toggle no setting, 99.7% at most two, the most is three. QE kept three research-found
+# toggles on one posted UAC (Enable JavaScript, Create interactive PDF form, Enable DITA-OT preprocessing), and
+# the UACs QE corrected for unrelated toggle sweeps (setting-toggle-noise) swept three to nine. Three is the most
+# that never cuts a toggle QE or a human kept; four or more is the sweep QE removed.
+MAX_RESEARCH_SWITCH_CASES = 3
+
+
+def research_switch_cap_problems(switches: list, source: dict | None) -> list[str]:
+    """At most MAX_RESEARCH_SWITCH_CASES on/off cases for settings found only by research (basis CODE or
+    DOCUMENTATION). Not counted: a setting the ticket names, a setting the ticket's action reads
+    (action_reads), and the Cloud DB and JCR flavours. Keep the ones the reported behaviour depends on (for Native
+    PDF human UACs keep Enable DITA-OT preprocessing and the microservice workflow); the rest go to TEST_PLAN."""
+    exempt = [_normalize(s["label"]) for s in required_action_settings(source)]
+    for setting in named_settings(source):
+        exempt += [_normalize(n) for n in [setting["label"], *setting["names"]]]
+    research = [str(e.get("name") or "") for e in switches
+                if isinstance(e, dict) and e.get("disposition") == "AC" and e.get("basis") in RESEARCH_SWITCH_BASES
+                and "flavour" not in _normalize(e.get("name"))
+                and not any(x and x in _normalize(e.get("name")) for x in exempt)]
+    if len(research) <= MAX_RESEARCH_SWITCH_CASES:
+        return []
+    return [f"action_variants.config_switches: {len(research)} on/off cases for settings found only in the code or "
+            f"documentation ({'; '.join(research[:6])}). Human UACs toggle at most {MAX_RESEARCH_SWITCH_CASES}: keep the "
+            "ones the reported behaviour depends on and move the rest to TEST_PLAN"]
 
 
 TBD_REQUIRED_SEARCHES = ("code", "tests")
