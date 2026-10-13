@@ -365,7 +365,7 @@ The nginx route comes from `setup_vm.py`; run `python3 setup_vm.py --dashboard-o
 
 ## Learning from QE edits
 
-`uac_learning_harvester.py` (cron 02:30 nightly) reads every ticket this automation posted to the
+`uac_learning_harvester.py` (cron every 30 minutes, just before the release page is rebuilt) reads every ticket this automation posted to the
 Acceptance Criteria field (`status.json` state `POSTED`, exact text in `field-body.txt`). It compares
 the posted criteria with the current field, one criterion at a time: **accepted** (unchanged),
 **removed** (QE deleted it), **added** (QE wrote one we did not have) or **changed** (wording or
@@ -404,7 +404,7 @@ seen once is not. A dedicated automation account is still better. An untouched f
 appended once to `<output_dir>/learning/records.jsonl` with the posted text, the new text, who changed
 it and when.
 
-The nightly harvest also rewrites this month's report, so the release page never shows a weeks-old report.
+Each harvest also rewrites this month's report, so the release page never shows a weeks-old report.
 `uac_learning_harvester.py --report last` (cron 06:00 on the 1st) writes
 `<output_dir>/learning/report-YYYY-MM.md`: an overall line, then per component the counts, what QE
 removed (we wrote too much) with QE's reason, what QE added (we missed), criteria **asked for in a Jira
@@ -425,8 +425,17 @@ writes to it.
 
 ### Backfill hand-posted UACs
 
-A UAC posted by hand (not by this automation) has no `field-body.txt`, so the nightly harvest skips it.
-Backfill it from the Jira history, read-only:
+A UAC posted by hand (by a Claude session with the automation's account, not by the runner) has no
+`field-body.txt`. Every harvest run finds these by themselves: it searches Jira for
+`labels = "<labels.posted>" AND updated >= -<learning_discover_days, 14>d`, and each ticket without a runner folder
+whose field the automation's account wrote is treated like a backfill - the record says `source: backfill`, its
+corrections (`record_manual_rewrite.py`) are read on the same run, and `learning/hand-posted.json` lists when and
+by whom it was posted. The release page shows them under **Recently added UACs** and **Recently edited UACs**
+(last `recent_days`, default 7) and uses the post time to count a pattern before or after its fix. Set
+`"learning_discover_hand_posted": false` to turn this off. A run that finds nothing new records nothing (each
+ticket version is recorded once), so the 30-minute schedule never duplicates records.
+
+To backfill an older ticket by hand (outside the search window, or posted by another user), read-only:
 
 ```
 python3 scripts/uac_release/uac_learning_harvester.py --config /opt/uac-release/config.json --env-file /opt/uac-release/uac.env --backfill GUIDES-12345 GUIDES-23456 --generator-user <jira user who posted the UAC> --dry-run
