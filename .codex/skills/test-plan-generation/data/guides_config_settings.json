@@ -369,6 +369,24 @@
     "output.notification"
    ]
   },
+  "RENAME": {
+   "triggers": [
+    "rename*"
+   ],
+   "keys": [
+    "xmleditor.uniquefilenames"
+   ]
+  },
+  "FIND_AND_REPLACE": {
+   "triggers": [
+    "replace all",
+    "find and replace",
+    "find & replace"
+   ],
+   "keys": [
+    "xmleditor.preference.settingReplaceAll"
+   ]
+  },
   "NEW_FILE_CREATION": {
    "triggers": [
     "map template*",
@@ -1938,7 +1956,42 @@
    "pid": "com.adobe.fmdita.xmleditor.config.XmlEditorConfig",
    "areas": [
     "FILE_NAMES_AND_TOPICS",
-    "NEW_FILE_CREATION"
+    "NEW_FILE_CREATION",
+    "RENAME"
+   ],
+   "where": "XML Editor Configuration (Use UUID based system filenames)",
+   "action_reads": [
+    {
+     "actions": [
+      "create topic*",
+      "create map*",
+      "topic creat*",
+      "map creat*",
+      "new topic*",
+      "new map*",
+      "map template*",
+      "topic template*",
+      "create markdown*",
+      "new markdown*"
+     ],
+     "fields": [
+      "summary"
+     ],
+     "reads_at": [
+      "starling:core/assets/src/main/java/com/adobe/guides/assets/service/CreateTopicService.java:76",
+      "starling:core/utils/src/main/java/com/adobe/fmdita/ditamaputils/MapTemplateInitialiser.java:97",
+      "xmleditor:src/controllers/dialogs/create_new_dita_controller.ts:113"
+     ],
+     "effect": "When on, a new topic or map gets a UUID based system file name and the Name field is not shown; when off, the Name field is shown with a name suggested from the Title."
+    },
+    {
+     "actions": [
+      "rename*"
+     ],
+     "reads_at": [],
+     "basis": "QE-confirmed product behaviour",
+     "effect": "When on, files have UUID based system file names, so a rename changes the title and not the file name; renaming the translated copies by name applies only when it is off."
+    }
    ],
    "defaults": {
     "all": "false"
@@ -1952,6 +2005,42 @@
    "doc_urls": [],
    "doc_behavior": "Experience League (Create topics, Create a map): when automatic file names based on UUID are configured, the Name field is not shown and a UUID-based file name is assigned; otherwise the Name field is shown with a name suggested from the Title. A new topic's topic ID is its file name. Map creation from a map template reads this setting for the new map and the new topics.",
    "doc_code_conflict": "Experience League says an administrator configures 'automatic file name based on UUID' in the Global or Folder Profile; the product reads 'Use UUID based system filenames' from the XML Editor Configuration (PID com.adobe.fmdita.xmleditor.config.XmlEditorConfig)."
+  },
+  {
+   "key": "xmleditor.preference.settingReplaceAll",
+   "label": "Enable Replace All",
+   "pid": null,
+   "where": "Workspace settings, General tab, Authoring section",
+   "areas": [
+    "FIND_AND_REPLACE"
+   ],
+   "defaults": {
+    "all": "false"
+   },
+   "options": [
+    "true",
+    "false"
+   ],
+   "source_description": "Workspace settings switch that shows the Replace all action in Find and Replace and the Repository Search panel",
+   "documented": false,
+   "doc_urls": [],
+   "doc_behavior": "Product source: the Workspace settings General tab has an Authoring switch Enable Replace All; the Find and Replace panel shows Replace all only when it is on (off when it was never set).",
+   "action_reads": [
+    {
+     "actions": [
+      "replace all",
+      "replace-all",
+      "replaceall",
+      "find & replace",
+      "find and replace"
+     ],
+     "reads_at": [
+      "xmleditor:src/controllers/panels/advanced_find_and_replace_panel_controller.ts:128",
+      "xmleditor:src/controllers/panels/search_panel_controller.ts:270"
+     ],
+     "effect": "Replace all is offered only when Enable Replace All is on; when off, only file-by-file Replace is available."
+    }
+   ]
   }
  ]
 }

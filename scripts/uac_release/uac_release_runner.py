@@ -68,7 +68,10 @@ When finished, write these files:
    when the changed action reads or writes data AEM Guides keeps in its database on Cloud (Document State,
    metadata, references, versions, review data), add the switch "DB flavour and JCR flavour" with the case
    "Try it on Cloud with the DB flavour, and again with the JCR flavour" (no reads_at needed).
-   When the action creates new files, Use UUID based system filenames is one of them. Name each
+   When the action creates new files or renames a file, Use UUID based system filenames is one of them; for
+   Replace all it is Enable Replace All (Workspace settings, General tab). The skill's
+   data/guides_config_settings.json "action_reads" lists these with reads_at; the checker refuses a UAC that
+   leaves out a setting the ticket's action reads. Name each
    setting by its on-screen label (for example Enable DITA-OT preprocessing on the General tab); an internal
    feature flag, code constant or configuration key with no on-screen label goes to the test plan, never into
    a criterion or case line.
@@ -235,9 +238,24 @@ When finished, write these files:
    "ac": [<numbers>]}}, {{"finding": <index>, "disposition": "TEST_PLAN"}} (the test plan names it) or
    {{"finding": <index>, "disposition": "SET_ASIDE", "reason": "..."}}.
    Also "scenario": {{"customer_steps": [<the reporter's own steps or requested outcome, copied>], "acs":
-   [{{"ac": <number>, "scenario": "CUSTOMER" | "REGRESSION" | "VARIANT", "step": "<one of customer_steps>"}} or
+   [{{"ac": <number>, "scenario": "CUSTOMER" | "REGRESSION" | "VARIANT", "step": "<one of customer_steps>",
+   "sees": "<CUSTOMER only: the value, status, message, list or output content QE sees when it works, e.g. the
+   allowed states from the ticket's profile, or Generated Outputs shows success and not the orange warning>"}} or
    {{"ac": <number>, "scenario": "ADJACENT"}} for a research check on a scenario the reporter did not hit; at
-   least one criterion follows the reporter's own scenario]}}.
+   least one criterion follows the reporter's own scenario]}}. A CUSTOMER criterion states what it "sees" and
+   names the screen its step names, as the reporter called it (Map panel); "works as expected" or "only
+   permitted changes" is not what QE sees.
+   Also "tbd_checks": [{{"ac": <a criterion with a TBD line>, "question": "...", "searched": [{{"where": "code" |
+   "tests" | "attachment:<file name>" | "documentation", "found": "<file:line, test name, what the recording or
+   document shows, or nothing: <search terms>>"}}], "open_because": "<who has to decide and why none of these
+   answers it>"}}] - before leaving a TBD, look for the answer in the code, the existing automated tests and
+   every recording or document attached to the ticket (a meeting recording often decides what the comments left
+   open); when one answers it, write a criterion instead.
+   When the ticket's action is a bulk action (Replace all, bulk, Select all) or completes or closes a task,
+   review, project or workflow, also "after_state": [{{"kind": "END_RESULT" (what the user sees when the bulk
+   action finishes: the report of changed and unchanged items, the final status) | "STILL_POSSIBLE" (what the
+   user can still open or do after the task is closed: the email link, notifications, comments, comparing
+   versions), "what": "...", "disposition": "AC" | "TBD" | "NOT_APPLICABLE", "ac": <number>, "reason": "..."}}].
    Also "scope_boundaries": [{{"boundary": "<a limit the ticket, a developer or product decided, e.g. V2
    baseline is out of scope>", "basis": "TICKET" | "ATTACHMENT" | "PRODUCT_DECISION" | "DEVELOPER_COMMENT",
    "disposition": "OUT_OF_SCOPE" (named in the UAC's Out of scope list) | "AC", "ac": <number>}}] (or [] with

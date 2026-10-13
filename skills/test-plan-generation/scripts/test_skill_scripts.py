@@ -8639,8 +8639,8 @@ def test_uac_completeness_check() -> None:
                          {"finding": 2, "disposition": "SET_ASIDE", "reason": "the hotfix keeps the same HTTP client"}],
         "similar_uacs": {"status": "none_found", "queries": ["component = X AND text ~ preview"], "uacs": []},
         "scenario": {"customer_steps": ["Fix the preview"], "acs": [
-            {"ac": 1, "scenario": "CUSTOMER", "step": "Fix the preview"},
-            {"ac": 2, "scenario": "CUSTOMER", "step": "Fix the preview"}]},
+            {"ac": 1, "scenario": "CUSTOMER", "step": "Fix the preview", "sees": "Validate in Workspace settings"},
+            {"ac": 2, "scenario": "REGRESSION", "step": "Fix the preview"}]},
         "fix_basis": {"status": "UNCONFIRMED"},
         "pre_existing_items": {"disposition": "NOT_APPLICABLE", "reason": "the preview change stores nothing that existed before"},
         "action_variants": {"entry_points": [{"name": "the only route", "disposition": "NOT_APPLICABLE",
@@ -18324,6 +18324,81 @@ def test_customer_discovery() -> None:
     print("test_customer_discovery: OK")
 
 
+def test_repeated_qe_correction_gates() -> None:
+    """missing-setting, tbd-answerable, missing-after-state, screen-name and vague-expected-result."""
+    uc = uac_completeness_check_mod
+    # missing-setting: the action's own setting (Enable Replace All on a Replace all ticket).
+    source = {"summary": "Replace all on a large map stops in the Map panel", "description": "", "comments": [],
+              "attachments": [{"filename": "meeting-recording.mp4"}, {"filename": "screen.png"}]}
+    swept = {"action_variants": {"config_switches": [{"name": "Find and Replace filters", "basis": "CODE"}]}}
+    check("a Replace all ticket needs Enable Replace All in config_switches",
+          any("Enable Replace All" in p for p in uc.action_setting_problems(swept, source)))
+    answered = {"action_variants": {"config_switches": [{"name": "Enable Replace All (Workspace settings)"}]}}
+    check("Enable Replace All in config_switches satisfies it", uc.action_setting_problems(answered, source) == [])
+    check("a rename ticket needs Use UUID based system filenames", any(
+        "Use UUID based system filenames" in p for p in uc.action_setting_problems(
+            {}, {"summary": "Renaming a source file does not rename its language copies"})))
+    check("a ticket whose action reads no listed setting needs nothing",
+          uc.action_setting_problems({}, {"summary": "Outline panel scroll jumps"}) == [])
+
+    # tbd-answerable: every TBD records the code, tests and every recording or document attached.
+    uac = ("- Acceptance Criteria 01: Replace all in the Map panel replaces the text in every topic and shows the "
+           "report of replaced and not replaced files.\n"
+           "  **Source:** Ticket description.\n"
+           "- Acceptance Criteria 02: A locked topic is listed as not replaced.\n"
+           "  **Source:** Ticket description.\n"
+           "  **TBD:** Is a topic locked by another user skipped or does Replace all stop?\n")
+    tbd = {"ac": 2, "question": "locked topic", "open_because": "product owner must decide; code and tests are silent",
+           "searched": [{"where": "code", "found": "nothing: searched replace all lock handling"},
+                        {"where": "tests", "found": "nothing: no Replace all lock test"},
+                        {"where": "attachment:meeting-recording.mp4", "found": "the recording shows no locked file"}]}
+    check("a TBD with code, tests and the recording searched passes",
+          uc.tbd_check_problems({"tbd_checks": [tbd]}, uac, source) == [])
+    check("a TBD with no record fails", any("record in tbd_checks" in p for p in uc.tbd_check_problems({}, uac, source)))
+    unwatched = json.loads(json.dumps(tbd))
+    unwatched["searched"] = unwatched["searched"][:2]
+    check("a TBD that skipped the attached recording fails", any(
+        "attachment:meeting-recording.mp4" in p for p in uc.tbd_check_problems({"tbd_checks": [unwatched]}, uac, source)))
+    lazy = dict(tbd, open_because="TBD")
+    check("a TBD with no reason it is open fails",
+          any("open_because" in p for p in uc.tbd_check_problems({"tbd_checks": [lazy]}, uac, source)))
+    check("a UAC without TBDs needs no tbd_checks", uc.tbd_check_problems({}, uac.split("  **TBD:**")[0], source) == [])
+
+    # missing-after-state: a bulk action's end result; a closed task's what-is-still-possible.
+    check("a bulk action needs its END_RESULT", any(
+        "END_RESULT" in p for p in uc.after_state_problems({}, uac, source)))
+    end = {"after_state": [{"kind": "END_RESULT", "what": "report of replaced and not replaced files",
+                            "disposition": "AC", "ac": 1}]}
+    check("an END_RESULT named in its criterion passes", uc.after_state_problems(end, uac, source) == [])
+    wrong = {"after_state": [{"kind": "END_RESULT", "what": "summary toast", "disposition": "AC", "ac": 2}]}
+    check("an END_RESULT its criterion does not name fails",
+          any("does not name it" in p for p in uc.after_state_problems(wrong, uac, source)))
+    closed = {"summary": "Reviewer cannot open the review after their review task is closed"}
+    check("a closed review task needs STILL_POSSIBLE",
+          any("STILL_POSSIBLE" in p for p in uc.after_state_problems({}, uac, closed)))
+    check("a ticket with no bulk or close action needs no after_state",
+          uc.after_state_problems({}, uac, {"summary": "Outline panel scroll jumps"}) == [])
+
+    # screen-name and vague-expected-result: the reporter's screen and what QE sees.
+    scenario = {"scenario": {"customer_steps": ["Run Replace all from the Map panel"], "acs": [
+        {"ac": 1, "scenario": "CUSTOMER", "step": "Run Replace all from the Map panel",
+         "sees": "report of replaced and not replaced files"},
+        {"ac": 2, "scenario": "REGRESSION", "step": "Run Replace all from the Map panel"}]}}
+    check("the reporter's screen named in its criterion passes", uc.reporter_screen_problems(scenario, uac) == [])
+    renamed = uac.replace("in the Map panel ", "in Find and Replace ")
+    check("a criterion on the reporter's step that drops the reporter's screen fails",
+          any("map panel" in p for p in uc.reporter_screen_problems(scenario, renamed)))
+    check("what QE sees named in the criterion passes", uc.observable_result_problems(scenario, uac) == [])
+    vague = json.loads(json.dumps(scenario))
+    vague["scenario"]["acs"][0]["sees"] = "works as expected with only permitted changes"
+    check("a vague sees fails", any("must name what QE sees" in p for p in uc.observable_result_problems(vague, uac)))
+    absent = json.loads(json.dumps(scenario))
+    absent["scenario"]["acs"][0]["sees"] = "orange warning status in Generated Outputs"
+    check("a sees the criterion does not state fails",
+          any("does not state what QE sees" in p for p in uc.observable_result_problems(absent, uac)))
+    print("test_repeated_qe_correction_gates: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -18381,6 +18456,7 @@ def main() -> int:
     test_human_uac_shape()
     test_uac_size_and_pre_existing_items()
     test_action_variants()
+    test_repeated_qe_correction_gates()
     test_gate_false_positives_from_questions_and_side_sections()
     test_output_route_entry_points()
     test_not_named_reasons_and_scope_boundaries()

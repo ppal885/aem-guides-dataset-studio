@@ -1,0 +1,28 @@
+{
+  "schema_version": "pattern-gate-cases-v1",
+  "note": "Tickets QE corrected for a repeated pattern (the release page, 2026-10-13) and what the ticket-text signals of uac_completeness_check.py must say for each. expect: the gate must ask for it (a QE correction asked for it). forbid: the gate must not ask for it (QE called it noise). Ticket text is read live from Jira, read-only, or from --cache.",
+  "cases": [
+    {"key": "GUIDES-53351", "pattern": "missing-setting", "expect": {"action_settings": ["Enable Replace All"]},
+     "lesson": "Replace all on a large map must be checked with Enable Replace All on and off"},
+    {"key": "GUIDES-30153", "pattern": "missing-setting", "expect": {"action_settings": ["Use UUID based system filenames"]},
+     "lesson": "with Use UUID based system filenames on, a rename does not change the GUID file name"},
+    {"key": "GUIDES-41774", "pattern": "missing-setting", "expect": {"action_settings": ["Use UUID based system filenames"]},
+     "lesson": "map creation creates files"},
+    {"key": "GUIDES-17576", "pattern": "setting-toggle-noise", "forbid": {"action_settings": ["Use UUID based system filenames"]},
+     "lesson": "UUID and database toggles were unrelated to a Document State fix"},
+    {"key": "GUIDES-26367", "pattern": "setting-toggle-noise", "forbid": {"action_settings": ["*"]},
+     "lesson": "preset and workflow toggle sweeps do not choose the Node version"},
+    {"key": "GUIDES-26659", "pattern": "setting-toggle-noise", "forbid": {"action_settings": ["*"]},
+     "lesson": "internal review feature flags are not QE switches"},
+    {"key": "GUIDES-38845", "pattern": "setting-toggle-noise", "forbid": {"action_settings": ["*"]},
+     "lesson": "internal flags are not QE switches"},
+    {"key": "GUIDES-24646", "pattern": "missing-after-state", "expect": {"after_state": ["STILL_POSSIBLE"]},
+     "lesson": "after the review task is completed, the email link, notifications, comments and compare must still work"},
+    {"key": "GUIDES-53351", "pattern": "missing-after-state", "expect": {"after_state": ["END_RESULT"]},
+     "lesson": "a bulk action such as Replace all needs the report of replaced and not replaced files"},
+    {"key": "GUIDES-30153", "pattern": "tbd-answerable", "expect": {"tbd_attachments_min": 2},
+     "lesson": "the meeting recording decided what the comments left open"},
+    {"key": "GUIDES-26367", "pattern": "tbd-answerable", "expect": {"tbd_attachments_min": 1},
+     "lesson": "existing-install activation and scan paths were answerable from code and the attached scan"}
+  ]
+}

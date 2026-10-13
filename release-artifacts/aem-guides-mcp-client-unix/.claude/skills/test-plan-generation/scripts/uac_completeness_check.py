@@ -107,6 +107,17 @@ WHAT IT CHECKS in a UAC folder
    says it happens, with who does it there and whether that place exists today: a place that does not exist
    is a TBD, and one criterion never mixes places with different users (a Native PDF placeholder request:
    an author downloading in AEM and a reader on AEM Sites, where Native PDF has no download link today).
+19. "action_settings" (no record of its own): a setting whose code the ticket's action reads
+   (data/guides_config_settings.json "action_reads": Enable Replace All for Replace all, Use UUID based system
+   filenames for creating a topic or map and for a rename) is an action_variants.config_switches entry.
+20. "tbd_checks": every criterion with a TBD line records where the answer was looked for - the code, the
+   existing tests, and every recording or document attached to the ticket - and who has to decide.
+21. "after_state": a bulk action (Replace all, bulk, Select all) has its END_RESULT checked; an action that
+   completes or closes a task, review, project or workflow has what the user can STILL_POSSIBLE do afterwards -
+   each an AC that names it, a TBD, or NOT_APPLICABLE with a reason.
+22. "reporter_screen" (from scenario.acs): a CUSTOMER criterion names the screen its reporter step names.
+23. "observable_result" (scenario.acs "sees"): a CUSTOMER criterion states the value, status, message or output
+   content QE sees, not only "works as expected".
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -541,6 +552,11 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "shared_consumers": shared_consumer_problems(evidence, uac, source, plan),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
         "internal_settings": internal_setting_problems(uac),
+        "action_settings": action_setting_problems(evidence, source),
+        "tbd_checks": tbd_check_problems(evidence, uac, source),
+        "after_state": after_state_problems(evidence, uac, source),
+        "reporter_screen": reporter_screen_problems(evidence, uac),
+        "observable_result": observable_result_problems(evidence, uac),
     }
 
 
@@ -1379,6 +1395,225 @@ def scope_boundary_problems(evidence: dict, uac_text: str) -> list[str]:
                                 f"{', '.join(f'{a:02d}' for a in acs)} does not state it")
         else:
             problems.append(f"{label} \"{boundary[:60]}\": disposition must be {', '.join(BOUNDARY_DISPOSITIONS)}")
+    return problems
+
+
+# --- repeated QE corrections: the action's own setting, answerable TBDs, the state after the action, the
+# reporter's screen, and the result QE sees ---------------------------------------------------------------
+# missing-setting: the action's own setting was missed (Enable Replace All on a Replace all ticket; Use UUID
+# based system filenames on a rename or map-creation ticket) while unrelated settings were swept.
+# tbd-answerable: TBDs the code, an existing UI test, an attached scan or a meeting recording already answered.
+# missing-after-state: what the user can still do after a review task is completed or closed, and the end
+# result of a bulk action (the report of replaced and not replaced files).
+# screen-name: the criterion that follows the reporter's steps did not name the reporter's screen (Map panel).
+# vague-expected-result: "only permitted changes" or "the replacement executable" instead of the values QE checks.
+
+
+def required_action_settings(source: dict | None) -> list[dict]:
+    """Settings whose own product code the ticket's action reads (data/guides_config_settings.json
+    "action_reads"), matched on the ticket's summary, description and comments - or only on the fields an entry
+    names ("fields": ["summary"]), when its words also appear in ordinary reproduction steps ("Create topic1")."""
+    if not source:
+        return []
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import config_settings_lookup  # noqa: PLC0415
+
+        data = config_settings_lookup.load()
+    except (ImportError, ValueError):
+        return []
+    full = _ticket_text(source)
+    found = []
+    for setting in data["settings"]:
+        for read in setting.get("action_reads") or []:
+            fields = read.get("fields") or []
+            text = _normalize(" ".join(str(source.get(f) or "") for f in fields)) if fields else full
+            matched = [t for t in read.get("actions") or [] if config_settings_lookup._hits(t, text)]
+            if matched:
+                found.append({"label": setting["label"], "where": setting.get("where") or "",
+                              "reads_at": read.get("reads_at") or [], "matched": matched})
+                break
+    return found
+
+
+def action_setting_problems(evidence: dict, source: dict | None) -> list[str]:
+    """A setting the ticket's own action reads is a config_switches entry: an AC case with it toggled on and off,
+    a TBD, or NOT_APPLICABLE with a reason (the existing config_switches checks judge the answer)."""
+    required = required_action_settings(source)
+    if not required:
+        return []
+    block = evidence.get("action_variants") if isinstance(evidence.get("action_variants"), dict) else {}
+    names = [_normalize(e.get("name")) for e in block.get("config_switches") or [] if isinstance(e, dict)]
+    problems = []
+    for setting in required:
+        if any(_normalize(setting["label"]) in name for name in names):
+            continue
+        where = f" ({setting['where']})" if setting["where"] else ""
+        reads = f"; reads_at {', '.join(setting['reads_at'][:2])}" if setting["reads_at"] else ""
+        problems.append(f"the ticket's action ({', '.join(setting['matched'])}) reads the setting \"{setting['label']}\""
+                        f"{where}: add it to action_variants.config_switches - an AC case with it toggled on and off, "
+                        f"a TBD, or NOT_APPLICABLE with a reason{reads}")
+    return problems
+
+
+TBD_REQUIRED_SEARCHES = ("code", "tests")
+_TBD_LINE = re.compile(r"TBD:\**\s*(\S.*)")
+# Attachments that can decide what a TBD asks: recordings and documents. Screenshots are already read for facts
+# and surfaces; logs and data files rarely decide a product question.
+_DECIDING_ATTACHMENT = re.compile(r"\.(?:mp4|mov|webm|mkv|avi|m4v|wmv|pdf|docx?|pptx?|xlsx?)$", re.I)
+
+
+def tbd_check_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
+    """Every TBD records where the answer was looked for: the code, the existing automated tests, and every
+    recording or document attached to the ticket. A TBD that one of them answers is a criterion instead."""
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    with_tbd = sorted(ac for ac, body in blocks.items() if _TBD_LINE.search(body))
+    if not with_tbd:
+        return []
+    entries = {e["ac"]: e for e in evidence.get("tbd_checks") or []
+               if isinstance(e, dict) and isinstance(e.get("ac"), int)}
+    deciding = [str(a.get("filename")) for a in (source or {}).get("attachments") or []
+                if isinstance(a, dict) and _DECIDING_ATTACHMENT.search(str(a.get("filename") or ""))]
+    problems = []
+    for ac in with_tbd:
+        entry = entries.get(ac)
+        if entry is None:
+            problems.append(f"Acceptance Criteria {ac:02d} has a TBD: record in tbd_checks where the answer was looked "
+                            "for (the code, the existing tests, every recording or document attached) and why it is "
+                            "still open")
+            continue
+        searched = {str(item.get("where") or "").strip().lower() for item in entry.get("searched") or []
+                    if isinstance(item, dict) and str(item.get("found") or "").strip()}
+        missing = [w for w in TBD_REQUIRED_SEARCHES if w not in searched]
+        missing += [f"attachment:{name}" for name in deciding if f"attachment:{name.lower()}" not in searched]
+        if missing:
+            problems.append(f"tbd_checks Acceptance Criteria {ac:02d}: say what was found in {', '.join(missing)} - a "
+                            "TBD that the code, an existing test, an attached recording or a document answers is a "
+                            "criterion")
+        because = str(entry.get("open_because") or "")
+        if _normalize(because) in EMPTY_REASONS or len(because.split()) < 5:
+            problems.append(f"tbd_checks Acceptance Criteria {ac:02d}: open_because must say who has to decide and why "
+                            "none of the searched sources answers it")
+    for ac in sorted(set(entries) - set(with_tbd)):
+        problems.append(f"tbd_checks lists Acceptance Criteria {ac:02d}, which has no TBD line")
+    return problems
+
+
+# The ticket's own action is a bulk action, or it completes or closes a task, review, project or workflow.
+BULK_ACTION_SIGNAL = re.compile(r"\breplace all\b|\bfind\s*(?:&|and)\s*replace\b|\bbulk\b|\bselect all\b|\bapply to all\b",
+                                re.I)
+TASK_CLOSE_SIGNAL = re.compile(
+    r"\b(?:tasks?|reviews?|projects?|workflows?)\b[^.\n]{0,40}\b(?:complet\w*|clos\w*|finish\w*|archiv\w*)\b"
+    r"|\b(?:complet\w*|clos\w*|finish\w*|archiv\w*)\b[^.\n]{0,25}\b(?:tasks?|reviews?|projects?|workflows?)\b", re.I)
+AFTER_STATE_KINDS = {
+    "END_RESULT": "what the user sees when the bulk action finishes (the report or list of changed and unchanged "
+                  "items, the final status)",
+    "STILL_POSSIBLE": "what the user can still open or do after the task is completed or closed (links, lists, "
+                      "comments, versions)",
+}
+AFTER_STATE_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
+
+
+def after_state_kinds(source: dict | None) -> list[str]:
+    """END_RESULT for a bulk action, STILL_POSSIBLE for a completed or closed task (summary and description)."""
+    if not source:
+        return []
+    text = f"{source.get('summary') or ''}\n{source.get('description') or ''}"
+    return [kind for kind, signal in (("END_RESULT", BULK_ACTION_SIGNAL), ("STILL_POSSIBLE", TASK_CLOSE_SIGNAL))
+            if signal.search(text)]
+
+
+def after_state_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
+    """A bulk action needs its end result checked; a completed or closed task needs what the user can still do."""
+    kinds = after_state_kinds(source)
+    if not kinds:
+        return []
+    entries = [e for e in evidence.get("after_state") or [] if isinstance(e, dict)]
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    problems = []
+    for kind in kinds:
+        mine = [e for e in entries if e.get("kind") == kind]
+        if not mine:
+            problems.append(f"after_state needs a {kind} entry: {AFTER_STATE_KINDS[kind]} - an AC, a TBD or "
+                            "NOT_APPLICABLE with a reason")
+        for entry in mine:
+            what = str(entry.get("what") or "").strip()
+            label = f"after_state {kind} \"{what[:50]}\""
+            disposition = entry.get("disposition")
+            if disposition not in AFTER_STATE_DISPOSITIONS or not what:
+                problems.append(f"{label}: needs what and disposition {', '.join(AFTER_STATE_DISPOSITIONS)}")
+            elif disposition == "NOT_APPLICABLE":
+                if len(str(entry.get("reason") or "").split()) < 5:
+                    problems.append(f"{label} is not applicable without a concrete reason")
+            elif entry.get("ac") not in blocks:
+                problems.append(f"{label}: Acceptance Criteria {entry.get('ac')!r} does not exist")
+            elif disposition == "TBD" and not _TBD_LINE.search(blocks[entry["ac"]]):
+                problems.append(f"{label}: Acceptance Criteria {entry['ac']:02d} has no TBD line")
+            elif disposition == "AC":
+                words, text = _name_words(what), _normalize(blocks[entry["ac"]])
+                if words and not any(re.search(rf"\b{re.escape(w)}", text) for w in words):
+                    problems.append(f"{label}: Acceptance Criteria {entry['ac']:02d} does not name it")
+    return problems
+
+
+_SCREEN_TERM = re.compile(r"\b(?:panel|dashboard|console|dialog|tab|view|settings|wizard|page)$", re.I)
+
+
+def _canonical_screens() -> list[str]:
+    """Multi-word screen names from data/guides_vocabulary.json canonical_terms (Map Panel, Review Dashboard)."""
+    path = Path(__file__).resolve().parents[1] / "data" / "guides_vocabulary.json"
+    try:
+        terms = json.loads(path.read_text(encoding="utf-8")).get("canonical_terms") or []
+    except (OSError, ValueError):
+        return []
+    return sorted({_normalize(t) for t in terms if len(str(t).split()) >= 2 and _SCREEN_TERM.search(str(t))},
+                  key=len, reverse=True)
+
+
+def reporter_screen_problems(evidence: dict, uac_text: str) -> list[str]:
+    """A criterion that follows the reporter's step names the screen that step names (Map panel)."""
+    scenario = evidence.get("scenario") if isinstance(evidence.get("scenario"), dict) else {}
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    screens = _canonical_screens()
+    problems = []
+    for entry in scenario.get("acs") or []:
+        if not isinstance(entry, dict) or entry.get("scenario") != "CUSTOMER" or entry.get("ac") not in blocks:
+            continue
+        step = _normalize(entry.get("step"))
+        named = next((s for s in screens if re.search(rf"\b{re.escape(s)}\b", step)), "")
+        if named and not re.search(rf"\b{re.escape(named)}\b", _normalize(blocks[entry["ac"]])):
+            problems.append(f"Acceptance Criteria {entry['ac']:02d} follows the reporter's step on the {named}: name that "
+                            "screen in the criterion, as the reporter called it")
+    return problems
+
+
+# Words that say a result is fine without saying what QE sees.
+_VAGUE_WORDS = {"works", "work", "working", "expected", "correctly", "correct", "properly", "successfully",
+                "success", "fine", "before", "permitted", "allowed", "appropriate", "valid", "behaviour", "behavior",
+                "should", "must", "issue", "issues", "error", "errors", "fixed", "same", "only", "change", "changes"}
+
+
+def observable_result_problems(evidence: dict, uac_text: str) -> list[str]:
+    """A criterion that follows the reporter's scenario records what QE sees ("sees": the value, status, message,
+    list or output content) and names it - never only "works as expected" or "only permitted changes"."""
+    scenario = evidence.get("scenario") if isinstance(evidence.get("scenario"), dict) else {}
+    blocks = {int(n): body for n, body in _AC_BLOCK.findall(uac_text or "")}
+    problems = []
+    for entry in scenario.get("acs") or []:
+        if not isinstance(entry, dict) or entry.get("scenario") != "CUSTOMER" or entry.get("ac") not in blocks:
+            continue
+        ac = entry["ac"]
+        words = [w for w in _name_words(entry.get("sees")) if w not in _VAGUE_WORDS]
+        if not words:
+            problems.append(f"Acceptance Criteria {ac:02d}: scenario.acs \"sees\" must name what QE sees when it works - "
+                            "the value, status, message, list or output content from the ticket or an attachment - "
+                            "not only \"works as expected\" or \"only permitted changes\"")
+            continue
+        text = _normalize(blocks[ac])
+        shown = [w for w in words if re.search(rf"\b{re.escape(w)}", text)]
+        if len(shown) * 2 < len(words):
+            problems.append(f"Acceptance Criteria {ac:02d} does not state what QE sees (\"{str(entry.get('sees'))[:70]}\"): "
+                            "put that value, status or message in the statement or a sub-point")
     return problems
 
 

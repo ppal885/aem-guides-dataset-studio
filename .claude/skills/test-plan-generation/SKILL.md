@@ -817,6 +817,36 @@ that must be on, a DITA-OT argument in the output preset, the default behaviour 
 behaviour, so existing customers are unaffected"), a parity target ("same as AEM Sites"), or what is not
 supported ("flagging not supported") - write it as a criterion. A TBD is only for a decision nobody has made.
 
+**Repeated QE corrections, each checked by `uac_completeness_check.py`.** QE corrected each of these on two
+or three tickets:
+- **The action's own setting** (missing-setting, `action_settings`). `data/guides_config_settings.json`
+  "action_reads" names the settings whose code the ticket's action reads: Enable Replace All (Workspace
+  settings, General tab, Authoring section) for Replace all, and Use UUID based system filenames for creating
+  a topic or map and for a rename. When the ticket names that action, the setting is a `config_switches` entry
+  - an AC case with it toggled on and off, a TBD, or NOT_APPLICABLE with a reason. Copy its `reads_at`. Do not
+  sweep unrelated filters or toggles instead.
+- **A TBD the sources already answer** (tbd-answerable, `tbd_checks`). Before you leave a TBD, look for the
+  answer in the code, the existing automated tests (UI and API test repositories), and every recording or
+  document attached to the ticket. A meeting recording often decides what the comments left open. Record
+  `{"ac", "question", "searched": [{"where": "code" | "tests" | "attachment:<file name>" | "documentation",
+  "found": "<file:line, test name, what the recording shows, or nothing: <search terms>>"}], "open_because":
+  "<who has to decide and why none of these answers it>"}` for each criterion with a TBD line. When one of them
+  answers it, write a criterion instead.
+- **The state after the action** (missing-after-state, `after_state`). When the ticket's action is a bulk
+  action (Replace all, bulk, Select all), check its end result: the report or list of changed and unchanged
+  items and the final status (END_RESULT). When it completes or closes a task, review, project or workflow,
+  check what the user can still open or do afterwards: the email link, the notification list, reading and
+  replying to comments, comparing versions (STILL_POSSIBLE). Each is an AC that names it, a TBD, or
+  NOT_APPLICABLE with a reason.
+- **The reporter's screen** (screen-name, `reporter_screen`). A criterion that follows the reporter's step
+  names the screen that step names, as the reporter called it (Map panel, Language variables panel). Name a
+  setting where it is shown: Enable Replace All is in Workspace settings, not Editor settings.
+- **What QE sees** (vague-expected-result, `observable_result`). For each CUSTOMER criterion, `scenario.acs`
+  records "sees": the value, status, message, list or output content that shows it works (the allowed states
+  from the ticket's profile, the Node version at the reported path, "Generated Outputs shows success, not the
+  orange warning"). The criterion states it. "Works as expected" or "only permitted changes" is not an answer.
+  A "still works as before" regression criterion needs no "sees".
+
 **Delivered format - chat and the Jira Acceptance Criteria field.** A list of criteria with optional short
 case sub-points; no ticket title line, no Open Questions section, and at most one short sentence of
 narration. The only lines outside the criteria are the Note, an optional Scope line and an optional Out of
