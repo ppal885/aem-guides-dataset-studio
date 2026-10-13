@@ -1468,6 +1468,43 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertEqual(harvester.backfill(self.config, jira, self.log, generators, ["PROJ-9"]), [],
                          "the same version is recorded once")
 
+    def test_harvest_finds_and_learns_a_hand_posted_uac_without_backfill(self) -> None:
+        issue = _issue(HUMAN_FIELD, "In Progress", [])
+        issue["fields"]["summary"] = "Hand-posted ticket"
+        issue["changelog"]["histories"] = [
+            {"created": "2026-01-02T10:00:00.000+0000", "author": {"name": "uac.bot"},
+             "items": [{"fieldId": "customfield_1", "toString": POSTED_FIELD}]},
+            {"created": "2026-01-05T09:30:00.000+0000", "author": {"name": "qe.lead"},
+             "items": [{"fieldId": "customfield_1", "toString": HUMAN_FIELD}]}]
+
+        class LabelJira(FakeJira):
+            def search_keys(self, jql: str, max_results: int = 100) -> list[str]:
+                self.calls.append(("search", jql, max_results))
+                return ["PROJ-1", "PROJ-9"]
+
+        jira = LabelJira()
+        jira._json = mock.Mock(side_effect=lambda method, path, *a, **k:
+                               issue if "PROJ-9" in path else _issue(POSTED_FIELD, "Open", [("2026-01-01T10:00:00.000+0000", "uac.bot")]))
+        records = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        [record] = [r for r in records if r["key"] == "PROJ-9"]
+        self.assertEqual((record["source"], record["posted_by"], record["editor"], record["edit_origin"]),
+                         ("backfill", "uac.bot", "qe.lead", "QE_EDIT"))
+        self.assertIn('labels = "QEVision_UAC_DONE"', jira.calls[0][1], "found by the posted label")
+        [entry] = json.loads((self.out / "learning" / harvester.HAND_POSTED_FILE).read_text(encoding="utf-8"))["tickets"]
+        self.assertEqual((entry["key"], entry["posted_at"], entry["edited_by"]),
+                         ("PROJ-9", "2026-01-02T10:00:00.000+0000", "qe.lead"))
+        self.assertNotIn("PROJ-1", [e["key"] for e in [entry]], "a runner ticket is not hand-posted")
+        self.assertIn("PROJ-9", harvester.correction_keys(self.config, self.out / "learning", []),
+                      "its corrections are read on the same run")
+        self.assertEqual([r["key"] for r in harvester.harvest(self.config, jira, self.log, "uac.bot")], [],
+                         "a run every 30 minutes records the same version once")
+
+    def test_hand_posted_discovery_can_be_turned_off(self) -> None:
+        config = dict(self.config, learning_discover_hand_posted=False)
+        jira = self.jira_with(_issue(POSTED_FIELD, "Open", [("2026-01-01T10:00:00.000+0000", "uac.bot")]))
+        harvester.harvest(config, jira, self.log, "uac.bot")
+        self.assertFalse(any(c[0] == "search" for c in jira.calls))
+
     def test_backfill_waits_while_the_generator_wrote_last(self) -> None:
         issue = _issue(POSTED_FIELD, "Open", [])
         issue["changelog"]["histories"] = [
@@ -1763,7 +1800,7 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertEqual(record["posted_text"], POSTED_FIELD)
         self.assertEqual(record["current_text"], HUMAN_FIELD)
         self.assertEqual(record["components"], ["Publishing"])
-        self.assertEqual(human.calls, [], "the harvester only reads Jira")
+        self.assertEqual([c for c in human.calls if c[0] != "search"], [], "the harvester only reads Jira")
         lines = (self.out / "learning" / "records.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(lines), 1)
 
@@ -2113,6 +2150,38 @@ class ReleaseDashboardTests(unittest.TestCase):
         where = {r["key"]: r["where"] for r in posted}
         self.assertIn("runtime gates not passed", where["PROJ-1"])
         self.assertEqual(where["PROJ-2"], "Acceptance Criteria field")
+
+    def test_recently_added_and_edited_uacs_include_hand_posted_ones(self) -> None:
+        now = datetime.datetime(2026, 10, 13, 12, 0, tzinfo=datetime.timezone.utc)
+        self.ticket("PROJ-1", {"state": "POSTED", "posted_at": "2026-10-12T01:40:00+0000"}, "Runner post",
+                    "*Acceptance Criteria 01:* a")
+        self.ticket("PROJ-2", {"state": "POSTED", "posted_at": "2026-09-01T01:40:00+0000"}, "Old post",
+                    "*Acceptance Criteria 01:* a")
+        learning = self.out / "learning"
+        learning.mkdir()
+        (learning / harvester.HAND_POSTED_FILE).write_text(json.dumps({"tickets": [
+            {"key": "PROJ-9", "summary": "Chat post", "posted_at": "2026-10-12T22:43:39.604+0000",
+             "posted_by": "uac.bot", "criteria": 7, "criteria_now": 7, "edited_by": "qe.lead",
+             "edited_at": "2026-10-13T09:58:34.840+0000"}]}), encoding="utf-8")
+        edits = [{"key": "PROJ-9", "summary": "Chat post", "editor": "qe.lead", "edited_at": "2026-10-13T09:58:34.840+0000",
+                  "edit_origin": "QE_EDIT", "source": "backfill", "counts": {"accepted": 5, "changed": 1}},
+                 {"key": "PROJ-2", "summary": "Old post", "editor": "qe.lead", "edited_at": "2026-09-02T09:00:00.000+0000",
+                  "counts": {}}]
+        posted, _ = dashboard.collect_tickets(self.out)
+        hand = dashboard.collect_hand_posted(self.out)
+        added = dashboard.recent_added(posted, hand, now)
+        self.assertEqual([r["key"] for r in added], ["PROJ-9", "PROJ-1"], "newest first, older than 7 days left out")
+        self.assertTrue(added[0]["by"].startswith("Hand-posted"))
+        self.assertEqual([r["key"] for r in dashboard.recent_edited(edits, now)], ["PROJ-9"])
+        page = dashboard.render(posted, [], edits, 0, "https://jira.example", "now", now=now, hand_posted=hand)
+        added_part = page.split('id="recent-added"')[1].split('id="recent-edited"')[0]
+        edited_part = page.split('id="recent-edited"')[1].split("<h2")[0]
+        self.assertIn("PROJ-9", added_part)
+        self.assertIn("Hand-posted (uac.bot)", added_part)
+        self.assertNotIn("PROJ-2", added_part)
+        self.assertIn("QE edit of a hand-posted UAC", edited_part)
+        self.assertNotIn("PROJ-2", edited_part)
+        self.assertIn("Hand-posted UAC", page, "a summary card counts them")
 
     def test_dashboard_hint_says_how_shared_account_edits_are_counted(self) -> None:
         page = dashboard.render([], [], [], 0, "", "now")

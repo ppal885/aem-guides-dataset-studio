@@ -54,6 +54,9 @@ import common  # noqa: E402
 LEARNING_DIR = "learning"
 RECORDS_FILE = "records.jsonl"
 STATE_FILE = "state.json"
+HAND_POSTED_FILE = "hand-posted.json"  # UACs a Claude session posted by hand, found by their label
+DEFAULT_DISCOVER_DAYS = 14  # config "learning_discover_days": how far back the label search looks
+DISCOVER_MAX = 200
 FIELD_BODY_FILE = "field-body.txt"
 # What the Acceptance Criteria field holds now, written on every harvest so the release page can show a
 # field changed after posting without calling Jira. Written for any change, whoever made it.
@@ -451,8 +454,11 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
 
 def backfill_ticket(key: str, config: dict, jira, generators: set[str], state: dict) -> dict | None:
     """Learn from a hand-posted UAC: the last generator write in the Jira history is the posted version."""
+    return _backfill_record(key, _issue(jira, key, config["acceptance_criteria_field"]), config, generators, state)
+
+
+def _backfill_record(key: str, issue: dict, config: dict, generators: set[str], state: dict) -> dict | None:
     field_id = config["acceptance_criteria_field"]
-    issue = _issue(jira, key, field_id)
     fields = issue.get("fields") or {}
     changes = ac_field_changes(issue, field_id)
     posted = [i for i, c in enumerate(changes) if c["by"] in generators]
@@ -489,6 +495,66 @@ def backfill(config: dict, jira, logger, generators: set[str], keys: list[str], 
             for record in records:
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    return records
+
+
+def discover_jql(config: dict) -> str:
+    """Tickets with the posted label that changed recently: hand-posted UACs are found among them."""
+    label = (config.get("labels") or {}).get("posted") or "QEVision_UAC_DONE"
+    days = int(config.get("learning_discover_days") or DEFAULT_DISCOVER_DAYS)
+    return f'labels = "{label}" AND updated >= -{days}d'
+
+
+def hand_posted_entry(key: str, issue: dict, field_id: str, generators: set[str]) -> dict | None:
+    """When and by whom a UAC was posted by hand (a Claude session with the automation's account), and whether a
+    person changed it since. None when no generator ever wrote the field."""
+    fields = issue.get("fields") or {}
+    changes = ac_field_changes(issue, field_id)
+    mine = [i for i, c in enumerate(changes) if c["by"] in generators and c["to"].strip()]
+    if not mine:
+        return None
+    first, last = changes[mine[0]], changes[mine[-1]]
+    human = [c for c in changes[mine[-1] + 1:] if c["by"] and c["by"] not in generators]
+    return {"key": key, "summary": str(fields.get("summary") or ""), "posted_at": first["at"], "posted_by": first["by"],
+            "generated_at": last["at"],
+            "criteria": sum(1 for c in parse_criteria(last["to"]) if not c.get("struck")),
+            "criteria_now": sum(1 for c in parse_criteria(fields.get(field_id) or "") if not c.get("struck")),
+            "edited_by": human[-1]["by"] if human else "", "edited_at": human[-1]["at"] if human else ""}
+
+
+def discover_hand_posted(config: dict, jira, logger, own_name: str, picked: set[str], state: dict) -> list[dict]:
+    """Find UACs posted by hand (the posted label, but no runner folder), list them in learning/hand-posted.json for
+    the release page, and learn from their QE edits the same way --backfill does - on every run, so nobody has to
+    run --backfill for a ticket a Claude session posted."""
+    learning = Path(config["output_dir"]) / LEARNING_DIR
+    path = learning / HAND_POSTED_FILE
+    try:
+        known = {t["key"]: t for t in json.loads(path.read_text(encoding="utf-8")).get("tickets") or []
+                 if isinstance(t, dict) and t.get("key")} if path.is_file() else {}
+    except ValueError:
+        known = {}
+    field_id = config["acceptance_criteria_field"]
+    generators = generator_users(config, own_name)
+    keys = [k for k in jira.search_keys(discover_jql(config), max_results=DISCOVER_MAX) if k not in picked]
+    records = []
+    for key in keys:
+        try:
+            issue = _issue(jira, key, field_id)
+            entry = hand_posted_entry(key, issue, field_id, generators)
+            if not entry:
+                continue
+            known[key] = entry
+            record = _backfill_record(key, issue, config, generators, state)
+            if record:
+                record.update(edit_origin(record, rewrite_hashes(jira, key)))
+                records.append(record)
+                logger.info("%s (hand-posted): %s %s %s", key, record["outcome"], record.get("edit_origin", ""),
+                            record["counts"])
+        except Exception:  # noqa: BLE001 - one ticket never stops the discovery
+            logger.exception("%s: could not read the hand-posted UAC", key)
+    learning.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"tickets": sorted(known.values(), key=lambda t: str(t.get("posted_at") or ""),
+                                                  reverse=True)}, indent=2, ensure_ascii=False), encoding="utf-8")
     return records
 
 
@@ -635,6 +701,13 @@ def correction_keys(config: dict, learning: Path, ticket_dirs: list[Path]) -> li
             except ValueError:
                 continue
     keys += [str(k) for k in config.get("learning_correction_tickets") or []]
+    hand = learning / HAND_POSTED_FILE
+    if hand.is_file():
+        try:
+            keys += [str(t.get("key") or "") for t in json.loads(hand.read_text(encoding="utf-8")).get("tickets") or []
+                     if isinstance(t, dict)]
+        except ValueError:
+            pass
     return sorted({k for k in keys if k})
 
 
@@ -668,11 +741,6 @@ def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
         state = {}
     records = []
     ticket_dirs = sorted(p for p in out.iterdir() if p.is_dir() and (p / common.STATUS_FILE).is_file())
-    try:
-        corrections = write_corrections(learning, jira, correction_keys(config, learning, ticket_dirs))
-        logger.info("recorded %d QE correction(s)", len(corrections))
-    except Exception:  # noqa: BLE001 - the corrections list never stops the harvest
-        logger.exception("could not write the QE corrections list")
     for ticket_dir in ticket_dirs:
         key = ticket_dir.name
         try:
@@ -684,10 +752,21 @@ def harvest(config: dict, jira, logger, own_name: str) -> list[dict]:
             record.update(edit_origin(record, rewrite_hashes(jira, key)))
             records.append(record)
             logger.info("%s: %s %s %s", key, record["outcome"], record.get("edit_origin", ""), record["counts"])
+    if config.get("learning_discover_hand_posted", True):
+        try:
+            records += discover_hand_posted(config, jira, logger, own_name, {p.name for p in ticket_dirs}, state)
+        except Exception:  # noqa: BLE001 - discovery never stops the harvest
+            logger.exception("could not discover hand-posted UACs")
     with (learning / RECORDS_FILE).open("a", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    # After the discovery, so a hand-posted ticket's corrections (record_manual_rewrite.py) count on this run.
+    try:
+        corrections = write_corrections(learning, jira, correction_keys(config, learning, ticket_dirs))
+        logger.info("recorded %d QE correction(s)", len(corrections))
+    except Exception:  # noqa: BLE001 - the corrections list never stops the harvest
+        logger.exception("could not write the QE corrections list")
     return records
 
 

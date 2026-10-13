@@ -18,11 +18,10 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # 02:00 UTC (07:30 IST) Mon-Fri: alert QE when a root cause, fix or API contract arrives after a UAC was posted (read-only on tickets).
 0 2 * * 1-5 cd $REPO && /usr/bin/python3 scripts/uac_release/uac_staleness_watch.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1
 
-# 02:30 UTC (08:00 IST) every night: learn from QE edits to posted UACs (read-only on Jira).
-30 2 * * * cd $REPO && /usr/bin/python3 scripts/uac_release/uac_learning_harvester.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1
-
 # 06:00 UTC (11:30 IST) on the 1st: monthly learning report for the previous month.
 0 6 1 * * cd $REPO && /usr/bin/python3 scripts/uac_release/uac_learning_harvester.py --config $CONFIG --env-file /opt/uac-release/uac.env --report last >> /opt/uac-release/cron.log 2>&1
 
-# Every 30 minutes: rebuild the read-only release page served at http://<vm>:4502/uac-release (never calls Jira).
-*/30 * * * * cd $REPO && /usr/bin/python3 scripts/uac_release/release_dashboard.py --config $CONFIG --env-file /opt/uac-release/uac.env --out /var/www/uac-release/index.html >> /opt/uac-release/cron.log 2>&1
+# Every 30 minutes: learn from QE edits to posted UACs, find UACs a Claude session posted by hand (by their
+# QEVision_UAC_DONE label) - both read-only on Jira, and a run that finds nothing new records nothing - then
+# rebuild the read-only release page served at http://<vm>:4502/uac-release (the page itself never calls Jira).
+*/30 * * * * cd $REPO && /usr/bin/python3 scripts/uac_release/uac_learning_harvester.py --config $CONFIG --env-file /opt/uac-release/uac.env >> /opt/uac-release/cron.log 2>&1; /usr/bin/python3 scripts/uac_release/release_dashboard.py --config $CONFIG --env-file /opt/uac-release/uac.env --out /var/www/uac-release/index.html >> /opt/uac-release/cron.log 2>&1

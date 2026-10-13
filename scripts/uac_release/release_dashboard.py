@@ -2,7 +2,9 @@
 """Build a read-only HTML page that shows what the UAC release automation did.
 
 Reads <output_dir>/<KEY>/status.json (one per ticket the runner picked) and the harvester's
-<output_dir>/learning/ files (records.jsonl, corrections.json, report-YYYY-MM.md) and writes one static page:
+<output_dir>/learning/ files (records.jsonl, corrections.json, hand-posted.json, report-YYYY-MM.md) and writes one
+static page:
+  0. recently added UACs (by the runner or posted by hand) and recently edited UACs;
   1. tickets picked for a UAC: posted, and not posted with the reason;
   2. QE correction patterns, with the ones seen on two or more tickets marked for a skill fix;
   3. tickets where a QE edited our posted UAC, and corrections a QE made through a Claude session;
@@ -105,6 +107,35 @@ def collect_tickets(out: Path) -> tuple[list[dict], list[dict]]:
             row["reason"], row["problems"] = not_posted_reason(status)
             not_posted.append(row)
     return posted, not_posted
+
+
+def collect_hand_posted(out: Path) -> list[dict]:
+    """UACs a Claude session posted by hand, from the harvester's learning/hand-posted.json (found by their label)."""
+    data = _read_json(out / "learning" / harvester.HAND_POSTED_FILE) or {}
+    return [t for t in data.get("tickets") or [] if isinstance(t, dict) and t.get("key")]
+
+
+RECENT_DAYS = 7  # config "recent_days": how far back the Recently added and Recently edited lists look
+
+
+def recent_added(posted: list[dict], hand_posted: list[dict], now: datetime.datetime, days: int = RECENT_DAYS) -> list[dict]:
+    """UACs posted in the last `days` days, by the automation or by hand, newest first."""
+    since = now - datetime.timedelta(days=days)
+    rows = [{"key": r["key"], "summary": r.get("summary") or "", "at": str(r.get("updated") or ""),
+             "by": "Automation", "criteria": r.get("criteria") or 0,
+             "criteria_now": (r.get("field_now") or {}).get("criteria"),
+             "edited": bool((r.get("field_now") or {}).get("changed"))} for r in posted]
+    rows += [{"key": t["key"], "summary": t.get("summary") or "", "at": str(t.get("posted_at") or ""),
+              "by": f"Hand-posted ({t.get('posted_by') or '?'})", "criteria": t.get("criteria") or 0,
+              "criteria_now": t.get("criteria_now"), "edited": bool(t.get("edited_by"))} for t in hand_posted]
+    recent = [r for r in rows if (_parse_time(r["at"]) or since) > since]
+    return sorted(recent, key=lambda r: _parse_time(r["at"]), reverse=True)
+
+
+def recent_edited(edits: list[dict], now: datetime.datetime, days: int = RECENT_DAYS) -> list[dict]:
+    """The newest change per ticket made in the last `days` days, by a QE or through a Claude session."""
+    since = now - datetime.timedelta(days=days)
+    return [r for r in edits if (_parse_time(str(r.get("edited_at") or "")) or since) > since]
 
 
 def collect_human_edits(out: Path) -> tuple[list[dict], int]:
@@ -604,10 +635,15 @@ def _notes(notes: list[str] | None) -> str:
     return f"<details><summary>{len(notes)} review note(s)</summary><ul>{items}</ul></details>"
 
 
-def _edit_row(r: dict, jira_url: str) -> str:
+def _edit_row(r: dict, jira_url: str, with_origin: bool = False) -> str:
     counts = r.get("counts") or {}
     reason = f"<br><span class=\"hint\">{_e(r['rewrite_reason'])}</span>" if r.get("rewrite_reason") else ""
-    return (f"<tr><td>{_ticket(str(r.get('key')), jira_url)}</td><td>{_e(r.get('summary') or '-')}</td>"
+    origin = ""
+    if with_origin:
+        kind = "Claude rewrite" if r.get("edit_origin") == "CLAUDE_REWRITE" else "QE edit"
+        posted = " of a hand-posted UAC" if r.get("source") == "backfill" else ""
+        origin = f"<td>{_e(kind + posted)}</td>"
+    return (f"<tr><td>{_ticket(str(r.get('key')), jira_url)}</td><td>{_e(r.get('summary') or '-')}</td>{origin}"
             f"<td>{_e(r.get('editor') or '-')}{reason}</td><td>{_when(str(r.get('edited_at') or ''))}</td>"
             f"<td class=\"num\">{_e(counts.get('accepted', 0))}</td><td class=\"num\">{_e(counts.get('changed', 0))}</td>"
             f"<td class=\"num\">{_e(counts.get('removed', 0))}</td><td class=\"num\">{_e(counts.get('added', 0))}</td></tr>")
@@ -635,8 +671,10 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
            jira_url: str, generated: str, shared_account: bool = False, patterns: list[dict] | None = None,
            report: tuple[str, str] = ("", ""), impact: dict | None = None,
            verdicts: dict[str, dict] | None = None, now: datetime.datetime | None = None,
-           fixes: dict[str, dict] | None = None) -> str:
+           fixes: dict[str, dict] | None = None, hand_posted: list[dict] | None = None,
+           recent_days: int = RECENT_DAYS) -> str:
     patterns = patterns or []
+    hand_posted = hand_posted or []
     verdicts = verdicts or {}
     now = now or datetime.datetime.now(datetime.timezone.utc)
     verdict_of = {r["key"]: _verdict(r, verdicts, now) for r in posted}
@@ -670,6 +708,14 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
             f"<td>{reason}</td><td>{_when(r['updated'])}</td></tr>")
     qe_rows = [_edit_row(r, jira_url) for r in edits if r.get("edit_origin") != "CLAUDE_REWRITE"]
     correction_rows = [_edit_row(r, jira_url) for r in edits if r.get("edit_origin") == "CLAUDE_REWRITE"]
+    added_rows = []
+    for r in recent_added(posted, hand_posted, now, recent_days):
+        count = str(r["criteria"] or "-")
+        if r["edited"] and r["criteria_now"] is not None:
+            count = f"{r['criteria']} &rarr; {r['criteria_now']} (edited)"
+        added_rows.append(f"<tr><td>{_ticket(r['key'], jira_url)}</td><td>{_e(r['summary'] or '-')}</td>"
+                          f"<td>{_e(r['by'])}</td><td class=\"num\">{count}</td><td>{_when(r['at'])}</td></tr>")
+    edited_rows = [_edit_row(r, jira_url, with_origin=True) for r in recent_edited(edits, now, recent_days)]
     pattern_rows = _pattern_rows(patterns, jira_url)
     repeated = sum(1 for p in patterns if p.get("repeated"))
     month, report_text = report
@@ -681,7 +727,7 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
     impact_html = _impact_section(impact, picked, not_posted, patterns, trend_html) if impact else ""
     cards = "".join(
         f'<div class="card"><div class="value">{n}</div><div class="label">{_e(label)}</div></div>'
-        for n, label in ((picked, "Tickets picked"), (len(posted), "UAC posted"),
+        for n, label in ((picked, "Tickets picked"), (len(posted), "UAC posted"), (len(hand_posted), "Hand-posted UAC"),
                          (len(not_posted), "Not posted"), (len(qe_rows), "Edited by a QE"),
                          (len(correction_rows), "QE corrections via Claude"), (repeated, "Repeated patterns")))
     account_note = (
@@ -801,17 +847,29 @@ pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid va
 </head>
 <body>
 <nav class="top" aria-label="Sections"><div><b>UAC release</b>
+<a href="#recent-added">Recently added</a><a href="#recent-edited">Recently edited</a>
 <a href="#impact">Impact</a><a href="#posted">Posted</a><a href="#waiting">Waiting for QE</a><a href="#not-posted">Not posted</a>
 <a href="#patterns">Patterns</a><a href="#edits">QE edits</a><a href="#corrections">Corrections</a><a href="#report">Report</a></div></nav>
 <main>
 <h1>UAC release automation</h1>
 <p class="sub"><span class="chip">Updated {_e(generated)} (VM time)</span> Read-only: built from the run files on the VM, never from Jira.</p>
 <div class="cards">{cards}</div>
+
+<h2 id="recent-added">Recently added UACs</h2>
+<p class="hint">UACs posted in the last {recent_days} days, newest first: by the automation, or by hand from a Claude
+session (found by the {_e("QEVision_UAC_DONE")} label). The harvester reads Jira every 30 minutes, so a hand-posted UAC
+shows up here within the hour without anyone running --backfill.</p>
+{_table(["Ticket", "Summary", "Posted by", "Criteria", "Posted"], added_rows, f"No UAC posted in the last {recent_days} days.")}
+
+<h2 id="recent-edited">Recently edited UACs</h2>
+<p class="hint">The newest change per ticket in the last {recent_days} days, by a QE in Jira or through a Claude session.
+Counts are per criterion.</p>
+{_table(["Ticket", "Summary", "Type", "Edited by", "When", "Kept", "Changed", "Removed", "Added"], edited_rows, f"No UAC edited in the last {recent_days} days.")}
 {impact_html}
 
 <h2 id="posted">UAC posted</h2>
 <p class="hint">Tickets where the UAC passed every check and was posted. Criteria is the number posted; "9 &rarr; 7 (edited)"
-means the field was changed in Jira afterwards (read on the harvester's nightly run; hover for who and when).</p>
+means the field was changed in Jira afterwards (read by the harvester every 30 minutes; hover for who and when).</p>
 <div class="filter"><input type="search" placeholder="Filter by ticket or summary" data-filter="posted-table" aria-label="Filter posted tickets">
 <div class="chips" role="group" aria-label="Filter by QE verdict">{chips}</div></div>
 <div id="posted-table">{_table(["Ticket", "Summary", "Posted to", "Criteria", "QE verdict", "When"], posted_rows, "No UAC posted yet.")}</div>
@@ -910,7 +968,11 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(config["output_dir"])
     posted, not_posted = collect_tickets(out) if out.is_dir() else ([], [])
     edits, accepted = collect_human_edits(out) if out.is_dir() else ([], 0)
+    hand_posted = collect_hand_posted(out) if out.is_dir() else []
     posted_at = {r["key"]: str(r.get("updated") or "") for r in posted}
+    # A hand-posted UAC's post time decides whether its correction counts before or after a skill fix.
+    for t in hand_posted:
+        posted_at.setdefault(t["key"], str(t.get("posted_at") or ""))
     patterns = annotate_patterns(collect_patterns(out), load_pattern_fixes(), posted_at) if out.is_dir() else []
     report = latest_report(out) if out.is_dir() else ("", "")
     minutes = float(config.get("impact_minutes_per_criterion") or DEFAULT_MINUTES_PER_CRITERION)
@@ -918,9 +980,11 @@ def main(argv: list[str] | None = None) -> int:
     verdicts = collect_verdicts(out) if out.is_dir() else {}
     page = render(posted, not_posted, edits, accepted, os.environ.get("JIRA_BASE_URL", ""),
                   time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")),
-                  patterns, report, impact, verdicts, fixes=load_pattern_fixes())
+                  patterns, report, impact, verdicts, fixes=load_pattern_fixes(), hand_posted=hand_posted,
+                  recent_days=int(config.get("recent_days") or RECENT_DAYS))
     write_atomic(args.out, page)
-    print(f"wrote {args.out}: {len(posted)} posted, {len(not_posted)} not posted, {len(edits)} edited")
+    print(f"wrote {args.out}: {len(posted)} posted, {len(hand_posted)} hand-posted, {len(not_posted)} not posted, "
+          f"{len(edits)} edited")
     return 0
 
 
