@@ -18441,6 +18441,40 @@ def test_guessed_decision_gate() -> None:
     print("test_guessed_decision_gate: OK")
 
 
+def test_named_settings_and_research_switch_cap() -> None:
+    """setting-toggle-noise v2: a setting the ticket names is an AC or TBD; at most three research-found sweeps."""
+    uc = uac_completeness_check_mod
+    source = {"summary": "Native PDF inline images wrap", "description": "",
+              "comments": [{"body": "Please verify whether turning off PDF Engine v2 resolves this issue."}]}
+    in_plan = {"action_variants": {"config_switches": [
+        {"name": "Guides Publish Config (PDF Engine v2)", "basis": "CODE", "disposition": "TEST_PLAN"}]}}
+    check("a setting a comment names cannot stay in the test plan",
+          any("PDF Engine v2" in p for p in uc.named_setting_problems(in_plan, source)))
+    check("a named setting missing from config_switches fails",
+          any("PDF Engine v2" in p for p in uc.named_setting_problems({}, source)))
+    as_ac = {"action_variants": {"config_switches": [{"name": "PDF Engine v2", "basis": "TICKET", "disposition": "AC"}]}}
+    check("a named setting as an AC case passes", uc.named_setting_problems(as_ac, source) == [])
+    check("a ticket that names no setting needs nothing",
+          uc.named_setting_problems({}, {"summary": "Outline panel scroll jumps"}) == [])
+
+    def sweep(*names, basis="CODE"):
+        return [{"name": n, "basis": basis, "disposition": "AC"} for n in names]
+
+    three = sweep("Enable JavaScript", "Create interactive PDF form", "Enable DITA-OT preprocessing")
+    check("three research-found toggles are allowed (QE kept three on one UAC)",
+          uc.research_switch_cap_problems(three, source) == [])
+    four = three + sweep("Enable the Usage of the Split Workflow")
+    check("four research-found toggles are the sweep QE removed",
+          any("Human UACs toggle at most 3" in p for p in uc.research_switch_cap_problems(four, source)))
+    exempt = three + sweep("DB flavour and JCR flavour") + sweep("PDF Engine v2", basis="CODE")
+    check("the DB and JCR flavours and a ticket-named setting do not count",
+          uc.research_switch_cap_problems(exempt, source) == [])
+    named = three + sweep("Retain temporary files", basis="ATTACHMENT")
+    check("a switch the ticket or an attachment asked for does not count",
+          uc.research_switch_cap_problems(named, source) == [])
+    print("test_named_settings_and_research_switch_cap: OK")
+
+
 def main() -> int:
     test_validator()
     test_ac_readability()
@@ -18500,6 +18534,7 @@ def main() -> int:
     test_action_variants()
     test_repeated_qe_correction_gates()
     test_guessed_decision_gate()
+    test_named_settings_and_research_switch_cap()
     test_gate_false_positives_from_questions_and_side_sections()
     test_output_route_entry_points()
     test_not_named_reasons_and_scope_boundaries()

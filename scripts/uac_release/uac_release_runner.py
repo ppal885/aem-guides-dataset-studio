@@ -71,7 +71,11 @@ When finished, write these files:
    When the action creates new files or renames a file, Use UUID based system filenames is one of them; for
    Replace all it is Enable Replace All (Workspace settings, General tab). The skill's
    data/guides_config_settings.json "action_reads" lists these with reads_at; the checker refuses a UAC that
-   leaves out a setting the ticket's action reads. Name each
+   leaves out a setting the ticket's action reads. A setting the ticket or a comment names (for example PDF
+   Engine v2) is an AC case or a TBD, never TEST_PLAN, even when the code calls it by an internal name. Settings
+   found only in the code or documentation get at most three on/off cases in the whole UAC - keep the ones the
+   reported behaviour depends on and put the rest in the test plan. A value seen in attached temporary files (a
+   topic's Document State in merged.html) is not a case. Name each
    setting by its on-screen label (for example Enable DITA-OT preprocessing on the General tab); an internal
    feature flag, code constant or configuration key with no on-screen label goes to the test plan, never into
    a criterion or case line.

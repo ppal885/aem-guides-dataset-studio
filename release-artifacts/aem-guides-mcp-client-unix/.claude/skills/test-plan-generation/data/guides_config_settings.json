@@ -142,6 +142,17 @@
     "native.pdf.node.opts"
    ]
   },
+  "PDF_ENGINE": {
+   "triggers": [
+    "pdf engine*",
+    "pdfreactor",
+    "pdf reactor",
+    "pdf-publisher"
+   ],
+   "keys": [
+    "guides.publish.pdfEngine"
+   ]
+  },
   "TRANSLATION": {
    "triggers": [
     "translation workflow",
@@ -2040,6 +2051,37 @@
      ],
      "effect": "Replace all is offered only when Enable Replace All is on; when off, only file-by-file Replace is available."
     }
+   ],
+   "ticket_names": [
+    "Enable Replace All"
+   ]
+  },
+  {
+   "key": "guides.publish.pdfEngine",
+   "label": "PDF Engine v2",
+   "pid": null,
+   "where": "Cloud: Guides Publish Config (PDF_ENGINE v1 or v2, set by Adobe through Cloud Manager); on-prem: the PDF Publisher v3 package",
+   "areas": [
+    "PDF_ENGINE"
+   ],
+   "defaults": {
+    "all": "v1"
+   },
+   "options": [
+    "v1",
+    "v2"
+   ],
+   "source_description": "Which PDF engine Native PDF uses: v1 renders with PDFReactor 11, v2 with PDFReactor 12",
+   "documented": true,
+   "doc_urls": [
+    "https://experienceleague.adobe.com/en/docs/experience-manager-guides/using/install-conf-guide/output-gen-config/config-native-pdf-publish/content-styles/conf-new-pdf-engine"
+   ],
+   "doc_behavior": "Experience League (Enable new PDF engine): the new PDF engine is enabled per environment; layout and CSS can render differently between the engines. Product source: Cloud uses PDFReactor 12 when PDF_ENGINE is v2, otherwise PDFReactor 11 (starling PDFEngineResolver line 48); on-prem uses PDFReactor 12 when the PDF Publisher v3 package is installed.",
+   "ticket_names": [
+    "PDF Engine v2",
+    "PDF Engine 2.0",
+    "new PDF engine",
+    "PDFReactor 12"
    ]
   }
  ]
