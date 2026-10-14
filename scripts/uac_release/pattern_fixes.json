@@ -4,7 +4,7 @@
     "hard-to-read": {"fix": "PR #153 plain statement rule", "deployed_at": "2026-10-08T10:37:05+00:00"},
     "stale-after-rca": {"fix": "PR #182 staleness watch on every posted ticket", "deployed_at": "2026-10-11T06:17:22+00:00"},
     "missing-placements": {"fix": "PR #187 SAME_ITEM places", "deployed_at": "2026-10-11T07:01:49+00:00"},
-    "setting-toggle-noise": {"fix": "PR #188 switches need reads_at", "deployed_at": "2026-10-11T07:20:36+00:00"},
+    "setting-toggle-noise": {"fix": "PR #204 ticket-named settings are AC or TBD; at most three code-found toggles (after PR #188 reads_at repeated on 3 tickets)", "deployed_at": "2026-10-14T06:56:07+00:00"},
     "vague-expected-result": {"fix": "PR #199 scenario.acs sees: a CUSTOMER criterion states what QE sees (after commit 5401d3376 repeated on 2 tickets)", "deployed_at": "2026-10-13T09:47:42+00:00"},
     "missing-setting": {"fix": "PR #199 action_reads: the setting the ticket's action reads is a config switch", "deployed_at": "2026-10-13T09:47:42+00:00"},
     "tbd-answerable": {"fix": "PR #199 tbd_checks: code, tests and every recording or document searched before a TBD", "deployed_at": "2026-10-13T09:47:42+00:00"},
