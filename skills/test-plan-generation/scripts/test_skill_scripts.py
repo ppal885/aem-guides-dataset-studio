@@ -7985,6 +7985,21 @@ def test_fix_basis_and_no_suggested_checks() -> None:
     web = ("- Acceptance Criteria 01: Validate accepts an https Site URL on a Salesforce domain.\n"
            "  - A my.salesforce.com URL, a sandbox My Domain URL and a force.com URL.\n")
     check("web addresses are not internal settings", uc.internal_setting_problems(web) == [])
+    npdf = {"summary": "PDF chapters missing in Native PDF", "description": "Publish the bookmap via Native PDF."}
+    dash = ("- Acceptance Criteria 01: The PDF pages appear from the other Native PDF routes.\n"
+            "  - Generate from the Map Dashboard.\n"
+            "  - A Map Collection that includes the bookmap.\n")
+    check("a Native PDF UAC that lists the Map Dashboard as a route is refused",
+          any("Map Dashboard" in p for p in uc.native_pdf_route_problems(dash, npdf)))
+    console = dash.replace("Generate from the Map Dashboard.", "Generate from the output preset in the Map console.")
+    check("Native PDF routes without the Map Dashboard pass", uc.native_pdf_route_problems(console, npdf) == [])
+    ditaot = ("- Acceptance Criteria 01: The DITA-OT PDF output keeps the change bars.\n"
+              "  - Generate the DITA-OT PDF preset from the Map Dashboard.\n")
+    check("the Map Dashboard is a valid route for DITA-OT output",
+          uc.native_pdf_route_problems(ditaot, {"summary": "DITA-OT PDF change bars", "description": ""}) == [])
+    check("a Map Dashboard line that names its DITA-OT engine passes on a Native PDF ticket",
+          uc.native_pdf_route_problems("- Acceptance Criteria 01: Native PDF keeps the pages.\n"
+                                       "  - The Map Dashboard DITA-OT PDF preset is unchanged.\n", npdf) == [])
 
     suggested = body + (
         "\nSuggested checks (QE decide):\n"

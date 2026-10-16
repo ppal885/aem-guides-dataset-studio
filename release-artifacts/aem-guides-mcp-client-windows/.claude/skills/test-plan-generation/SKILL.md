@@ -755,10 +755,12 @@ scenario VARIANT:
   menu, a keyboard shortcut, an API. When the reporter dragged a file in, the toolbar insert is part of the
   ticket too. Merge routes with the same outcome into one AC and list them as sub-points. When the ticket
   generates output (Native PDF, AEM Sites, HTML5, custom DITA-OT or any other type), name each documented
-  generation route: the output preset from the map (Map console or Map Dashboard), Map Collection, a
+  generation route: the output preset from the map (Map console), Map Collection, a
   baseline, and for PDF the Download as PDF / single-topic path. Each gets an AC, a TBD or NOT_APPLICABLE
   with a reason - the routes share one engine and the reporter used only one (miss probe MP-004;
-  `uac_completeness_check.output_route_problems`). When the ticket adds or changes a setting in an output
+  `uac_completeness_check.output_route_problems`). The Map Dashboard generates DITA-OT, FMPS and AEM Sites
+  output only: it has no Native PDF generator, so never list it as a Native PDF route
+  (`uac_completeness_check.native_pdf_route_problems`). When the ticket adds or changes a setting in an output
   preset, also name a Global or Folder Profile preset template applied to maps with Apply Preset Changes: the
   setting must survive that path (human UACs checked it on two tickets where ours did not).
 - **input_sources** - when the ticket brings content in (paste, import, upload, drag and drop), where that
