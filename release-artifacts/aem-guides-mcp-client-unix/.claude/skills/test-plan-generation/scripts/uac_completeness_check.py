@@ -556,6 +556,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "shared_consumers": shared_consumer_problems(evidence, uac, source, plan),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
         "internal_settings": internal_setting_problems(uac),
+        "native_pdf_routes": native_pdf_route_problems(uac, source),
         "action_settings": action_setting_problems(evidence, source),
         "named_settings": named_setting_problems(evidence, source),
         "tbd_checks": tbd_check_problems(evidence, uac, source),
@@ -1183,7 +1184,7 @@ OUTPUT_SIGNAL = re.compile(
     r"publish(?:es|ed|ing)?\s+(?:the\s+)?(?:map|output|site)s?)\b", re.IGNORECASE)
 PDF_SIGNAL = re.compile(r"\b(?:native\s+pdf|pdf\s+output|download\s+as\s+pdf|pdf\s+preset)\b", re.IGNORECASE)
 OUTPUT_ROUTES = {
-    "the output preset from the map (Map console or Map Dashboard Generate)": (
+    "the output preset from the map (Map console Generate; the Map Dashboard only for non-Native-PDF output)": (
         "output preset", "map console", "map dashboard", "output tab", "output panel", "generate"),
     "Map Collection": ("map collection",),
     "a baseline": ("baseline",),
@@ -1215,6 +1216,35 @@ def output_route_problems(entry_points, source: dict | None) -> list[str]:
     return [f"the ticket generates output: action_variants.entry_points must name {label} - an AC, a TBD or "
             "NOT_APPLICABLE with a reason (the generation routes share one engine; MP-004)"
             for label, terms in routes.items() if not any(term in names for term in terms)]
+
+
+# The Map Dashboard Outputs tab generates PDF with DITA-OT or FMPS only (Starling ditamap-dashboard output
+# controller: pdfGenerator "ditaot", validation knows "fmps"); it has no Native PDF generator. Our Native PDF
+# UACs kept listing it as a generation route, and QE corrected it.
+NATIVE_PDF_SIGNAL = re.compile(r"\bnative\s+pdf\b", re.IGNORECASE)
+MAP_DASHBOARD = re.compile(r"\bmap\s+dashboard\b", re.IGNORECASE)
+NON_NATIVE_ENGINE = re.compile(r"\b(?:dita[\s-]?ot|fmps|framemaker|aem\s+sites?|html5)\b|\bno\s+native\s+pdf\b",
+                               re.IGNORECASE)
+
+
+def native_pdf_route_problems(uac_text: str, source: dict | None) -> list[str]:
+    """A Native PDF UAC does not name the Map Dashboard as a place that generates Native PDF."""
+    text = "\n".join([(source or {}).get("summary") or "", (source or {}).get("description") or "", uac_text or ""])
+    if not NATIVE_PDF_SIGNAL.search(text):
+        return []
+    problems = []
+    ac = 0
+    for line in (uac_text or "").splitlines():
+        head = re.match(r"^- Acceptance Criteria (\d+):", line)
+        if head:
+            ac = int(head.group(1))
+        elif not re.match(r"^\s+- ", line):
+            continue
+        if MAP_DASHBOARD.search(line) and not NON_NATIVE_ENGINE.search(line):
+            problems.append(f"Acceptance Criteria {ac:02d} names the Map Dashboard on a Native PDF ticket: the Map "
+                            "Dashboard generates DITA-OT, FMPS and AEM Sites output only, never Native PDF - use the "
+                            "Map console output preset, Map Collection, a baseline or Download as PDF")
+    return problems
 
 
 # Content brought in from outside - pasted, imported, uploaded, dragged in - arrives from several places that the
