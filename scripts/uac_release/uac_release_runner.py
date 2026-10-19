@@ -393,6 +393,11 @@ _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _STATUS_PING = re.compile(r"\b(?:eta|an update|any update|update on this|been picked up|picked this up"
                           r"|please update|update here|prioriti[sz]e this|pending from)\b")
 _STATUS_PING_MAX_WORDS = 16
+# A comment's closing offer of help is not a requirement. GUIDES-58680's note quoted "let me know if there are any
+# open point" as the uncovered sentence of a comment whose three numbered requirements were all mapped. Matched
+# per sentence only, never on the whole comment (closure_request), so a real request beside it is still read.
+_SIGN_OFF = re.compile(r"^(?:please )?(?:do )?let (?:me|us) know if (?:you have |there (?:are|is) )?any "
+                       r"(?:open (?:points?|items?|questions?)|questions?|concerns?|queries|doubts?|issues?|inputs?)\b")
 _NOT_A_REQUIREMENT = re.compile(
     r"\bcrm is watching this ticket\b|\bprogressing without uac\b|\bjira closed without automating\b"
     r"|\bcredentials? shared\b"
@@ -644,7 +649,8 @@ def _is_reference_line(clause: str) -> bool:
 
 
 def _is_requirement(clause: str) -> bool:
-    if _NOT_A_REQUIREMENT.search(clause) or _TICKET_METADATA.search(clause) or _is_reference_line(clause):
+    if _NOT_A_REQUIREMENT.search(clause) or _TICKET_METADATA.search(clause) or _is_reference_line(clause) \
+            or _SIGN_OFF.search(clause):
         return False
     return not (_STATUS_PING.search(clause) and len(clause.split()) <= _STATUS_PING_MAX_WORDS)
 
