@@ -201,15 +201,15 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    without it the non-interactive session is denied the runtime. `status.json` records `runtime_research` (requests and how many were answered), and
    unanswered requests show as a review note on the release page.
 6. **Config**: copy `config.example.json` to e.g. `/opt/uac-release/config.json` and set:
-   - `jql`: which tickets need a UAC. The example picks open Customer Request tickets in the
-     `AEMGuides_CurrentDevSprint` sprint (tickets in it are fixed in the coming release), whoever the
-     QE is, and the Acceptance Criteria field is still empty. The sprint name stays the same every
-     release, so nothing changes per release (no fix version to edit). To pin one release instead, add
-     `fixVersion = "2702"`. Keep
-     `resolution = Unresolved` so closed tickets are skipped. Keep `(labels is EMPTY OR labels != QEVision_UAC_DONE)`:
-     plain `labels != X` in JQL also drops tickets that have no labels at all.
+   - `jql`: which tickets need a UAC. The example picks open tickets of any issue type that carry the
+     `UAC_Check` label (a person adds it when the ticket needs a UAC), whoever the QE is, and whose
+     Acceptance Criteria field is still empty. It does not use the fix version or the sprint: the fix
+     version is often set later and can change, so a ticket is picked as soon as it is labelled.
+     Keep `resolution = Unresolved` so closed tickets are skipped, and `labels != QEVision_UAC_DONE`
+     so a ticket with a posted UAC is not picked again (with `labels = UAC_Check` in the query the
+     ticket always has a label, so no `labels is EMPTY` guard is needed).
    - `tickets`: optional exact list, e.g. `["GUIDES-12345", "GUIDES-23456"]`. When it is not
-     empty it is used instead of `jql` (useful before the fix version or sprint is set).
+     empty it is used instead of `jql` (useful for a ticket that has no `UAC_Check` label yet).
    - `max_tickets`: the most tickets one nightly run takes from `jql` (default 100). Tickets
      left over are picked up the next night.
    - `approved_scope_jql`: the release scope without the sprint (`fixVersion in unreleasedVersions(GUIDES)`
