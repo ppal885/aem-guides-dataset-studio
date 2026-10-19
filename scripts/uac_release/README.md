@@ -207,7 +207,9 @@ A missing request is logged as a warning in `status.json` and never blocks the A
      version is often set later and can change, so a ticket is picked as soon as it is labelled.
      Keep `resolution = Unresolved` so closed tickets are skipped, and `labels != QEVision_UAC_DONE`
      so a ticket with a posted UAC is not picked again (with `labels = UAC_Check` in the query the
-     ticket always has a label, so no `labels is EMPTY` guard is needed).
+     ticket always has a label, so no `labels is EMPTY` guard is needed). `updated >= -30d` keeps the
+     old `UAC_Check` backlog out: only tickets changed in the last 30 days are picked (any change counts,
+     so an old ticket that got a comment recently is picked too).
    - `tickets`: optional exact list, e.g. `["GUIDES-12345", "GUIDES-23456"]`. When it is not
      empty it is used instead of `jql` (useful for a ticket that has no `UAC_Check` label yet).
    - `max_tickets`: the most tickets one nightly run takes from `jql` (default 100). Tickets

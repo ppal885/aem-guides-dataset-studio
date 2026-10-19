@@ -1,5 +1,5 @@
 {
-  "jql": "project = GUIDES AND labels = UAC_Check AND resolution = Unresolved AND \"Acceptance Criteria\" is EMPTY AND labels != QEVision_UAC_DONE",
+  "jql": "project = GUIDES AND labels = UAC_Check AND resolution = Unresolved AND \"Acceptance Criteria\" is EMPTY AND labels != QEVision_UAC_DONE AND updated >= -30d",
   "tickets": [],
   "approved_scope_jql": "project = GUIDES AND fixVersion in unreleasedVersions(GUIDES) AND issuetype = \"Customer Request\"",
   "max_tickets": 10,
