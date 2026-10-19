@@ -556,6 +556,8 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "shared_consumers": shared_consumer_problems(evidence, uac, source, plan),
         "scope_boundaries": scope_boundary_problems(evidence, uac),
         "internal_settings": internal_setting_problems(uac),
+        "untestable": untestable_problems(uac),
+        "construct_family": construct_family_problems(uac, plan),
         "native_pdf_routes": native_pdf_route_problems(uac, source),
         "action_settings": action_setting_problems(evidence, source),
         "named_settings": named_setting_problems(evidence, source),
@@ -837,6 +839,75 @@ def internal_setting_problems(uac_text: str) -> list[str]:
             problems.append(f"Acceptance Criteria {ac:02d} names internal settings or code ({', '.join(names[:4])}): "
                             "use the setting's on-screen label (for example Enable DITA-OT preprocessing on the "
                             f"General tab), or move the internal flag or configuration key to the test plan ({PLAN_FILE})")
+    return problems
+
+
+def _criterion_lines(uac_text: str):
+    """(criterion number, is the statement line, text) for each statement and case sub-point; Source and TBD
+    lines are left out. Accepts the chat form (- Acceptance Criteria 01: / indented - case) and the Jira field
+    form (* *Acceptance Criteria 01:* / ** case)."""
+    ac = 0
+    for line in (uac_text or "").splitlines():
+        head = re.match(r"^\s*(?:[-*]\s+)?\**Acceptance Criteria (\d+):\**\s*(.*)$", line)
+        if head:
+            ac = int(head.group(1))
+            yield ac, True, head.group(2)
+            continue
+        case = re.match(r"^(?:\s+-|\*\*)\s+(.*)$", line)
+        if ac and case and not re.match(r"\**\s*(?:Source|TBD)\s*:", case.group(1), re.I):
+            yield ac, False, case.group(1)
+
+
+# --- checks QE cannot make from the product ------------------------------------------------------------
+# Internal mechanics a QE cannot see on any screen: connections, threads, caches, memory, loops. A posted UAC
+# said "Closing the datasource releases the validation database connection" and "Circular-reference validation
+# finishes ... rather than looping indefinitely"; QE removed both ("not QE checks").
+_INTERNAL_MECHANICS = re.compile(
+    r"\bdata ?sources?\b|\bconnection pools?\b|\b(?:database|db|jdbc|repository session) connections?\b"
+    r"|\b(?:releases?|released|releasing|leaks?|leaked|leaking)\b[^.;]{0,40}\bconnections?\b"
+    r"|\bthread (?:pool|dump)s?\b|\b(?:worker|background) threads?\b|\bthreads? (?:hang|block|leak)\w*\b"
+    r"|\bdeadlocks?\b|\brace conditions?\b|\bmutex\w*\b|\bsemaphores?\b|\bheap\b|\bgarbage collect\w*\b"
+    r"|\bmemory leaks?\b|\bloop(?:s|ing)? (?:indefinitely|forever|endlessly)\b|\binfinite(?:ly)? loops?\b"
+    r"|\bin-memory (?:store|state|cache)\b|\bcache (?:entr(?:y|ies)|is (?:cleared|evicted|invalidated|flushed))\b"
+    r"|\bevict(?:s|ed|ion)?\b", re.I)
+
+
+def untestable_problems(uac_text: str) -> list[str]:
+    """A criterion states what a QE sees in the product, never an internal mechanism."""
+    found: dict[int, list[str]] = {}
+    for ac, _statement, text in _criterion_lines(uac_text):
+        for match in _INTERNAL_MECHANICS.finditer(text):
+            found.setdefault(ac, []).append(match.group(0))
+    return [f"Acceptance Criteria {ac:02d} checks something QE cannot see in the product ({', '.join(dict.fromkeys(words))}): "
+            "write what the user sees instead (the save finishes, a message shows, the list loads), or move the "
+            f"internal check to the full test plan ({PLAN_FILE})" for ac, words in found.items()]
+
+
+# --- every member of a construct family ---------------------------------------------------------------
+# When a criterion covers one DITA table type whose cells hold text, the change reaches the others too. A
+# partial-tag paste UAC covered simpletable and choicetable; QE added the properties table ("cover every DITA table
+# type with cells, not only the ones the reporter named"). The others go in the UAC or in the full test plan.
+CONSTRUCT_FAMILIES = {
+    "DITA table types with cells": {
+        "simpletable": re.compile(r"\bsimple ?tables?\b|\bstentry\b|\bstrow\b", re.I),
+        "choicetable": re.compile(r"\bchoice ?tables?\b|\bchdesc\b|\bchoption\b|\bchrow\b", re.I),
+        "properties table": re.compile(r"\bproperties (?:tables?|elements?)\b|\bpropvalue\b|\bpropdesc\b|\bproptype\b",
+                                       re.I),
+    },
+}
+
+
+def construct_family_problems(uac_text: str, plan_text: str = "") -> list[str]:
+    criteria = " ".join(text for _ac, _statement, text in _criterion_lines(uac_text))
+    problems = []
+    for family, members in CONSTRUCT_FAMILIES.items():
+        named = [name for name, pattern in members.items() if pattern.search(criteria)]
+        missing = [name for name, pattern in members.items()
+                   if name not in named and not pattern.search(plan_text or "")]
+        if named and missing:
+            problems.append(f"the criteria cover {', '.join(named)} but not {', '.join(missing)} ({family}): add each "
+                            "as a case sub-point of the criterion with the same outcome, or name it in the full test "
+                            f"plan ({PLAN_FILE}) when its outcome is the same and nobody asked for it")
     return problems
 
 

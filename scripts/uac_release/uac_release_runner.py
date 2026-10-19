@@ -98,6 +98,16 @@ When finished, write these files:
    a QE can check, in at most two clauses, using only names shown on screen. Exact technical values - API
    paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
    (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
+   Say what the user does and sees, not the markup: "a topic reference to an external web page", not
+   scope="external" format="html"; one outcome per criterion - inserting and editing are two criteria
+   when the ticket names both. Name a setting by its on-screen label and its tab when the tab is known
+   ("Enable DITA-OT preprocessing toggled on, then off (General tab)"), never as a bare fragment such as
+   "DITA-OT preprocessing enabled". A criterion is something QE sees in the product: never a database
+   connection, thread, cache or loop - say what the user sees instead (the save finishes, a message
+   shows). A case that needs a customer schema, DTD or sample the ticket does not attach is a TBD that
+   asks for it, not a plain criterion (GUIDES-15746 UBS document-link). When a criterion covers one DITA
+   table type whose cells hold text (simpletable, choicetable, properties), cover the others as case
+   sub-points or name them in the test plan (GUIDES-58592).
    Use the everyday AEM Guides words QE use: topic reference, map reference, direct reference, indirect
    reference, DITA map, bookmap, topic, DITA files, non-DITA files, images, asset update, Map console, Map
    dashboard, publishing, review, postprocessing, DAM Update Asset workflow, Cloud (AEMaaCS), doc state,
@@ -186,12 +196,17 @@ When finished, write these files:
 5. {source_coverage_path}: a JSON list that maps EVERY sentence and bullet of the Jira description,
    every sentence of every comment (skip comments posted by this automation), and every
    attachment to the UAC, before you write it. One object per item:
-   {{"source": "description" | "comment:<id>" | "attachment:<filename>" | "linked:<url from {linked_docs_path}>",
+   {{"source": "description" | "comment:<id>" | "attachment:<filename>" | "linked:<url from {linked_docs_path}>"
+   | "referenced:<key from {referenced_path}>",
    "text": "<the exact
    sentence, copied; for a linked page, the requirement copied from it>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
    "ac": <Acceptance Criteria number, or a list when one sentence drives several criteria, for AC
    and TBD>, "reason": "<why, for OUT_OF_SCOPE and NOT_MATERIAL>"}}. A TBD must point at the
-   Acceptance Criterion whose TBD line asks it. Every Acceptance Criterion must be driven by a
+   Acceptance Criterion whose TBD line asks it. Map each ticket in {referenced_path} (tickets the
+   description or comments refer to) with "text" set to its summary: a referenced ticket that names a
+   screen, dialog or editor where this change is set or seen makes that place an AC or a TBD
+   (GUIDES-37561 missed the DITAVAL Editor that its referenced GUIDES-30168 named); otherwise
+   OUT_OF_SCOPE or NOT_MATERIAL with a reason. Every Acceptance Criterion must be driven by a
    ticket sentence, an attachment, a linked page or a requested screen, or carry a TBD. An
    image, video or document attachment entry also has "surfaces": ["<every product screen the attachment
    shows>"]; a log, data or code attachment does not. For a video, the attachment researcher reads its
@@ -731,6 +746,7 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
     if missing:
         shown = "; ".join(f"{label}: \"{clause[:80]}\"" for label, clause in missing[:5])
         problems.append(f"{len(missing)} Jira sentence(s) are not mapped to the UAC, e.g. {shown}")
+    problems += referenced_ticket_problems(ticket_dir, entries)
     mapped_files = {str(e.get("source") or "")[len("attachment:"):] for e in entries
                     if str(e.get("source") or "").startswith("attachment:")}
     for attachment in source.get("attachments") or []:
@@ -1362,6 +1378,63 @@ def write_field(key: str, config: dict, jira, logger, ticket_dir: Path, status: 
     return "POSTED"
 
 
+# Jira keys the ticket text refers to ("related to GUIDES-30168", "similar to ..."). A referenced ticket can name the
+# place the change happens: GUIDES-37561 pointed to GUIDES-30168 ("Changebar Option Missing in DITAVAL Authoring
+# UI ..."), and the UAC never covered the DITAVAL Editor. Its summary must be mapped like a ticket sentence.
+_JIRA_KEY = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
+_NOT_TICKET_PREFIXES = {"AC", "OQ", "TS", "REQ", "SRC", "UAC", "OOS", "UTF", "ISO", "HTTP", "MP", "SHA"}
+MAX_REFERENCED_TICKETS = 8
+
+
+def referenced_keys(source: dict | None, key: str, own_name: str = "") -> list[str]:
+    """Jira keys in the description and human comments, first mention first, without the ticket itself."""
+    texts = [(source or {}).get("description") or ""]
+    texts += [c.get("body") or "" for c in (source or {}).get("comments") or []
+              if not own_name or c.get("author") != own_name]
+    found: list[str] = []
+    for text in texts:
+        for match in _JIRA_KEY.finditer(text):
+            ref = match.group(1)
+            if ref != key and ref.split("-")[0] not in _NOT_TICKET_PREFIXES and ref not in found:
+                found.append(ref)
+    return found[:MAX_REFERENCED_TICKETS]
+
+
+def fetch_referenced_tickets(key: str, jira, logger, ticket_dir: Path) -> list[dict]:
+    """Write REFERENCED_TICKETS.json: summary and status of each ticket the ticket text refers to. Never raises."""
+    entries: list[dict] = []
+    getter = getattr(jira, "get_summary", None)
+    try:
+        source = jira.get_source(key)
+        own_name = str((jira.myself() or {}).get("name") or "")
+    except Exception as exc:  # noqa: BLE001 - the Copilot session still reads the ticket itself
+        logger.warning("%s: could not read the ticket to find referenced tickets: %s", key, exc)
+        source, own_name = {}, ""
+    for ref in referenced_keys(source, key, own_name) if getter else []:
+        try:
+            entries.append(getter(ref))
+        except Exception as exc:  # noqa: BLE001 - one unreadable ticket never stops the run
+            entries.append({"key": ref, "error": f"{type(exc).__name__}: {exc}"[:160]})
+    (ticket_dir / common.REFERENCED_TICKETS_FILE).write_text(json.dumps(entries, indent=2, ensure_ascii=False),
+                                                              encoding="utf-8")
+    return entries
+
+
+def referenced_ticket_problems(ticket_dir: Path, entries: list) -> list[str]:
+    """Every referenced ticket that could be read needs a SOURCE_COVERAGE.json entry "referenced:<key>"."""
+    path = ticket_dir / common.REFERENCED_TICKETS_FILE
+    try:
+        referenced = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
+    except ValueError:
+        return []
+    mapped = {str(e.get("source") or "") for e in entries if isinstance(e, dict)}
+    return [f"referenced ticket {r['key']} (\"{str(r.get('summary') or '')[:80]}\") is not mapped to the UAC: add a "
+            f"\"referenced:{r['key']}\" entry - AC or TBD when it names a screen, dialog or editor where this change is "
+            "set or seen, otherwise OUT_OF_SCOPE or NOT_MATERIAL with a reason"
+            for r in referenced if isinstance(r, dict) and r.get("key") and not r.get("error")
+            and f"referenced:{r['key']}" not in mapped]
+
+
 def fetch_linked_docs(key: str, config: dict, jira, logger, ticket_dir: Path) -> list[dict]:
     """Download the wiki pages the ticket links to (LINKED_DOCS.json). Never raises."""
     try:
@@ -1523,7 +1596,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     for name in (common.UAC_FILE, common.PLAN_FILE, common.DECISIONS_FILE, common.DECISION_BODY_FILE,
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
                  common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE, common.EVIDENCE_FILE,
-                 common.RUNTIME_FALLBACK_FILE, common.RUNTIME_RESULT_FILE, linked_docs.LINKED_DOCS_FILE):
+                 common.RUNTIME_FALLBACK_FILE, common.RUNTIME_RESULT_FILE, linked_docs.LINKED_DOCS_FILE,
+                 common.REFERENCED_TICKETS_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     shutil.rmtree(ticket_dir / linked_docs.LINKED_DOCS_DIR, ignore_errors=True)
     shutil.rmtree(ticket_dir / RESEARCH_STORE_DIR, ignore_errors=True)  # each attempt answers its own requests
@@ -1531,7 +1605,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     if held:
         return held
     links = fetch_linked_docs(key, config, jira, logger, ticket_dir)
-    prompt = PROMPT.format(key=key, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
+    fetch_referenced_tickets(key, jira, logger, ticket_dir)
+    prompt = PROMPT.format(key=key, referenced_path=ticket_dir / common.REFERENCED_TICKETS_FILE, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
                            doc_research_path=ticket_dir / common.DOC_RESEARCH_FILE,
                            source_coverage_path=ticket_dir / common.SOURCE_COVERAGE_FILE,

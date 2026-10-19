@@ -892,6 +892,13 @@ Out of scope:                                          (optional, when a decisio
   (a map template and a topic template stay distinct); shorten by moving detail to sub-points. A rewrite
   re-reads the ticket's description, comments and attachments and keeps each criterion on the screen and
   behaviour its sources name; a documentation answer marked not verified can only be a TBD.
+- What QE sees, not internals: say what the user does and sees, not the markup ("a topic reference to an
+  external web page", not its attribute values); name a setting by its on-screen label and its tab when known;
+  never assert a database connection, thread, cache or loop (`uac_completeness_check.untestable_problems`). A
+  case that needs a customer schema, DTD or sample the ticket does not attach is a TBD asking for it. A
+  criterion on one DITA table type with text cells covers the other types too, as case sub-points or in the
+  test plan (`construct_family_problems`). A ticket the description or comments refer to is mapped in source
+  coverage as "referenced:<key>"; a screen it names is an AC or a TBD.
 - The label is spelled out as `Acceptance Criteria 01`, never `AC-01`, because Jira auto-links and strikes
   through issue-key shapes. `AC-##` stays internal in the record, mappings and extracted JSON.
 - No `[Proposed]`/`[Confirmed]` tags, spheres, Given/When/Then, pipes, or Starting point/Action/Expected
