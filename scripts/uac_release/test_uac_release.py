@@ -670,6 +670,49 @@ class RunnerTests(unittest.TestCase):
                             for p in runner.source_coverage_problems(ticket, source)),
                         "an unmapped description sentence still stops the UAC")
 
+    def test_a_referenced_ticket_must_be_mapped(self) -> None:
+        # GUIDES-37561 referred to GUIDES-30168 (the DITAVAL authoring UI) and the UAC never covered that editor.
+        source = {"description": "This is related to [GUIDES-30168|https://jira/browse/GUIDES-30168]. See AC-01.",
+                  "comments": [{"id": "1", "author": "dev", "body": "Same as GUIDES-30168 and GUIDES-11111; PROJ-1."},
+                               {"id": "2", "author": "uac.bot", "body": "GUIDES-99999 from the automation"}]}
+        self.assertEqual(runner.referenced_keys(source, "PROJ-1", "uac.bot"), ["GUIDES-30168", "GUIDES-11111"])
+        ticket = self.out / "PROJ-12"
+        ticket.mkdir()
+        (ticket / common.UAC_FILE).write_text(UAC, encoding="utf-8")
+        jira = FakeJira(source=source)
+        jira.get_summary = lambda key: (_ for _ in ()).throw(RuntimeError("HTTP 404")) if key == "GUIDES-11111" \
+            else {"key": key, "summary": "Changebar Option Missing in DITAVAL Authoring UI", "status": "Open"}
+        entries = runner.fetch_referenced_tickets("PROJ-1", jira, self.log, ticket)
+        self.assertEqual([e["key"] for e in entries], ["GUIDES-30168", "GUIDES-11111"])
+        self.assertIn("error", entries[1])
+        coverage = [{"source": "description", "text": "This is related to GUIDES-30168.", "disposition": "AC", "ac": 1}]
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
+        problems = runner.source_coverage_problems(ticket, {"description": "", "comments": []})
+        self.assertTrue(any("referenced ticket GUIDES-30168" in p and "DITAVAL Authoring UI" in p for p in problems),
+                        problems)
+        self.assertFalse(any("GUIDES-11111" in p for p in problems), "an unreadable ticket is not required")
+        coverage.append({"source": "referenced:GUIDES-30168", "text": "Changebar Option Missing in DITAVAL Authoring UI",
+                         "disposition": "TBD", "ac": 2})
+        (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(coverage), encoding="utf-8")
+        self.assertFalse(any("referenced ticket" in p for p in
+                             runner.source_coverage_problems(ticket, {"description": "", "comments": []})))
+
+    def test_untestable_checks_and_missing_table_types_are_flagged(self) -> None:
+        check = common.import_skill_module("uac_completeness_check")
+        posted = ("- Acceptance Criteria 06: Closing the datasource releases the validation database connection.\n"
+                  "  **Source:** GUIDES-55887 Request to Engineering.\n"
+                  "- Acceptance Criteria 07: Circular-reference validation finishes rather than looping indefinitely.\n"
+                  "- Acceptance Criteria 08: The References panel shows the list is too large to show.\n"
+                  "  - The comment thread in the Review panel still shows replies.\n")
+        problems = check.untestable_problems(posted)
+        self.assertEqual([p[:23] for p in problems], ["Acceptance Criteria 06 ", "Acceptance Criteria 07 "], problems)
+        tables = ("* *Acceptance Criteria 02:* Table text keeps valid nesting after paste.\n"
+                  "** Copy a partial simpletable cell.\n** A partial choicetable description stays in a chdesc.\n")
+        self.assertTrue(any("not properties table" in p for p in check.construct_family_problems(tables)))
+        self.assertEqual(check.construct_family_problems(tables, "Repeat with a properties table propdesc."), [],
+                         "a member named in the test plan is covered")
+        self.assertEqual(check.construct_family_problems("- Acceptance Criteria 01: The map saves.\n"), [])
+
     def test_a_closing_offer_of_help_is_not_a_requirement(self) -> None:
         # GUIDES-58680: the note quoted the sign-off line of a comment whose three numbered points were all mapped.
         body = ("[~piraj] lets create a sample extension for this with following -\n"

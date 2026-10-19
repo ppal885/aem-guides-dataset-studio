@@ -33,6 +33,7 @@ DECISION_BODY_FILE = "decision-body.txt"
 DOC_RESEARCH_FILE = "DOC_RESEARCH.json"
 SOURCE_COVERAGE_FILE = "SOURCE_COVERAGE.json"
 SURFACE_INVENTORY_FILE = "SURFACE_INVENTORY.json"
+REFERENCED_TICKETS_FILE = "REFERENCED_TICKETS.json"
 JIRA_SOURCE_FILE = "jira-source.json"
 HOTFIX_SCOPE_FILE = "HOTFIX_SCOPE.json"
 EVIDENCE_FILE = "UAC_EVIDENCE.json"
@@ -402,6 +403,12 @@ class JiraClient:
                 "comments": comments, "attachments": attachments,
                 "labels": [str(label) for label in fields.get("labels") or []],
                 "planning_changes": planning_changes}
+
+    def get_summary(self, key: str) -> dict[str, str]:
+        """{"key", "summary", "status"} of a ticket the ticket under work refers to."""
+        fields = (self._json("GET", f"/rest/api/2/issue/{key}?fields=summary,status") or {}).get("fields") or {}
+        return {"key": key, "summary": str(fields.get("summary") or ""),
+                "status": str((fields.get("status") or {}).get("name") or "")}
 
     def get_issue_property(self, key: str, name: str) -> Any:
         """A hidden issue property's value, or None when the ticket has none."""
