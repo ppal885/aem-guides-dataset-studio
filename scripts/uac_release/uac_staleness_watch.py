@@ -11,7 +11,8 @@ For each ticket in scope that carries the posted label:
   2. find what people other than the automation added after that time: comments that report a root
      cause or a fix, comments that link a wiki page (a design document or specification), comments that
      give an API contract or design in their text (an HTTP method with a path, a request/response body,
-     status codes, an API spec), and attachments (an API contract, a design, a screenshot);
+     status codes, an API spec), comments that decide what to build (a numbered list of steps, "let's
+     create ...", a scope decision), and attachments (an API contract, a design, a screenshot);
   3. find merged commits in the product repositories (config "staleness_repos", else STARLING_REPO_PATH and
      XML_EDITOR_REPO_PATH) whose subject names the ticket and whose pull request number or hash the
      Acceptance Criteria do not cite - a fix can be merged with no Jira comment at all;
@@ -48,6 +49,15 @@ CONTRACT_SIGNAL = re.compile(
     r"|\bAPI\s+(?:contract|spec(?:ification)?|design)\b|\brequest\s+(?:body|payload|schema)\b"
     r"|\bresponse\s+schema\b|\bstatus\s+codes?\s*[:=-]?\s*\d{3}\s*(?:,|/|and|or)\s*\d{3}"
     r"|\b(?:swagger|openapi)\b|\btechnical\s+design\b|\bdesign\s+doc(?:ument)?\b", re.IGNORECASE)
+# A decision on what to build, written after the UAC: a numbered list of what to do, "let's create ...", or a
+# scope decision. GUIDES-58680 got "lets create a sample extension for this with following - 1. ... 2. ... 3. ..."
+# from the product owner; had it come after the UAC, none of the signals above would have caught it.
+DECISION_SIGNAL = re.compile(
+    r"(?m)^\s*(?:\d{1,2}[.)]|#)\s+\w"
+    r"|\blet'?s\s+(?:create|build|implement|go\s+with|keep|drop|add|remove|make|not)\b"
+    r"|\b(?:out\s+of\s+scope|in\s+scope|scope\s+is|we\s+(?:have\s+)?decided|decision\s+is|agreed\s+to|we\s+will\s+not"
+    r"|won'?t\s+(?:support|fix|implement))\b", re.IGNORECASE)
+DECISION_MIN_WORDS = 8
 AC_FIELD_NAME = "Acceptance Criteria"
 
 
@@ -122,6 +132,9 @@ def new_evidence_after(issue: dict, since: str, own_name: str = "",
         elif CONTRACT_SIGNAL.search(body):
             found.append({"id": str(comment.get("id")), "author": author, "created": created,
                           "what": "an API contract or design in a comment"})
+        elif DECISION_SIGNAL.search(body) and len(body.split()) >= DECISION_MIN_WORDS:
+            found.append({"id": str(comment.get("id")), "author": author, "created": created,
+                          "what": "a decision on what to build (a list of steps or a scope decision) in a comment"})
     for attachment in fields.get("attachment") or []:
         author = str((attachment.get("author") or {}).get("name") or "")
         created = str(attachment.get("created") or "")
@@ -295,10 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 3
     for line in lines:
         logger.warning("stale: %s", line)
-    common.append_run_record(out, {
-        "run_id": run_id, "tool": "uac-staleness", "dry_run": args.dry_run,
-        "started": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(started)),
-        "seconds": round(time.time() - started), "exit_code": exit_code, "alerts": lines})
+    result = "DRY_RUN" if args.dry_run else "NOT_SENT"
     if not args.dry_run and jira is not None:
         result = common.send_alert(config, jira, logger, "uac-staleness", run_id, lines)
         # Remember what was alerted only once QE has it; a failed or unconfigured alert is tried again next run.
@@ -306,6 +316,13 @@ def main(argv: list[str] | None = None) -> int:
             state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
         else:
             logger.warning("alert %s: the alerted comments are not marked as seen", result)
+    # The release page lists these alerts and says when they did not reach anyone: from 2026-10-01 every alert
+    # was NOT_CONFIGURED (no alerts.ticket) and only this log knew.
+    common.append_run_record(out, {
+        "run_id": run_id, "tool": "uac-staleness", "dry_run": args.dry_run,
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(started)),
+        "seconds": round(time.time() - started), "exit_code": exit_code, "alerts": lines,
+        "alert_result": result})
     return exit_code
 
 

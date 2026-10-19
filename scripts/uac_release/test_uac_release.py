@@ -670,6 +670,19 @@ class RunnerTests(unittest.TestCase):
                             for p in runner.source_coverage_problems(ticket, source)),
                         "an unmapped description sentence still stops the UAC")
 
+    def test_a_closing_offer_of_help_is_not_a_requirement(self) -> None:
+        # GUIDES-58680: the note quoted the sign-off line of a comment whose three numbered points were all mapped.
+        body = ("[~piraj] lets create a sample extension for this with following -\n"
+                "1. Dropdown listing the labels of the all asset versions on Version label dialog.\n"
+                "let me know if there are any open point. cc: [~vinodgupta]")
+        clauses = [c for _, c in runner.source_clauses({"comments": [{"id": "1", "author": "pm", "body": body}]})]
+        self.assertTrue(any("dropdown listing the labels" in c for c in clauses))
+        self.assertFalse(any(c.startswith("let me know") for c in clauses), clauses)
+        for text in ("Please let me know if you have any questions", "let us know if there is any concern"):
+            self.assertFalse(runner._is_requirement(runner._normalize(text)), text)
+        self.assertTrue(runner._is_requirement("let me know the expected label order for a bookmap"),
+                        "a real question is still a sentence to map")
+
     def test_unmapped_comment_note_is_recorded_for_qe_not_posted_to_the_ticket(self) -> None:
         source = dict(SOURCE, comments=SOURCE["comments"] + [
             {"id": "99", "author": "support.eng", "body": "Can you share the server url to do UAT please"}])
@@ -1070,6 +1083,60 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         self.assertIn("PROJ-1: a root cause or fix was reported by dev", lines[0])
         self.assertIn("PROJ-1: dev added an API contract or design in a comment on 2026-01-12", lines[1])
+
+    def test_staleness_alerts_a_decision_on_what_to_build_after_the_uac(self) -> None:
+        # GUIDES-58680: the product owner listed what the sample extension must do; after a UAC this needs a review.
+        decision = ("[~piraj] lets create a sample extension for this with following -\n"
+                    "1. Dropdown listing the labels of the all asset versions on Version label dialog. "
+                    "(fetch the labels from api: v1/asset/version/list)\n"
+                    "2. If user selects the one or more label from this drop down, input written in text area "
+                    "for adding a new label will be ignored.\n"
+                    "3. Clicking on the save should honour the selected labels from the dropdown.\n"
+                    "let me know if there are any open point.")
+        issue = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
+                                              "items": [{"field": "Acceptance Criteria"}]}]},
+                 "fields": {"comment": {"comments": [
+                     {"id": "1", "author": {"name": "pm"}, "created": "2026-01-12T09:00:00.000+0000", "body": decision},
+                     {"id": "2", "author": {"name": "lead"}, "created": "2026-01-12T10:00:00.000+0000",
+                      "body": "Will move to bucket 3"},
+                     {"id": "3", "author": {"name": "lead"}, "created": "2026-01-12T11:00:00.000+0000",
+                      "body": "[~piraj] Run with Vision and see. [~prashantp] define UAC"},
+                     {"id": "4", "author": {"name": "pm"}, "created": "2026-01-09T09:00:00.000+0000",
+                      "body": decision}]}}}
+        found = staleness.new_evidence_after(issue, "2026-01-10T10:00:00.000+0000", "uac.bot")
+        self.assertEqual([f["id"] for f in found], ["1"], "status pings and a decision before the UAC are not alerts")
+        self.assertIn("a decision on what to build", found[0]["what"])
+        for text in ("Out of scope: V2 baseline for this ticket, as agreed with PM",
+                     "We have decided to keep the old dialog and only add the dropdown",
+                     "# Show the labels\n# Ignore the typed text when a label is selected"):
+            self.assertTrue(staleness.DECISION_SIGNAL.search(text), text)
+        for text in ("Can you share the server url to do UAT please", "Is this fixed in 2026.10?",
+                     "Steps: open the map and press Esc"):
+            self.assertFalse(staleness.DECISION_SIGNAL.search(text), text)
+
+    def test_staleness_run_record_says_whether_the_alert_reached_anyone(self) -> None:
+        issue = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
+                                              "items": [{"field": "Acceptance Criteria"}]}]},
+                 "fields": {"comment": {"comments": [
+                     {"id": "9", "author": {"name": "dev"}, "created": "2026-01-12T09:00:00.000+0000",
+                      "body": "Root cause found"}]}}}
+        config_path = self.out / "config.json"
+        config_path.write_text(json.dumps(self.config), encoding="utf-8")
+        jira = FakeJira()
+        jira._json = mock.Mock(side_effect=lambda *a, **k: issue)
+        jira.myself = mock.Mock(return_value={"name": "uac.bot"})
+        jira.search_keys = mock.Mock(return_value=["PROJ-1"])
+        with mock.patch.object(staleness.common.JiraClient, "from_env", return_value=jira), \
+                mock.patch.object(staleness.common, "load_env_file"):
+            try:
+                staleness.main(["--config", str(config_path)])
+            finally:
+                close_logger("uac-staleness")
+        records = [json.loads(line) for line in
+                   (Path(self.config["output_dir"]) / common.RUNS_FILE).read_text(encoding="utf-8").splitlines()]
+        record = [r for r in records if r.get("tool") == "uac-staleness"][-1]
+        self.assertEqual(record["alert_result"], "NOT_CONFIGURED", "no alerts.ticket in the test config")
+        self.assertEqual(len(record["alerts"]), 1)
 
     def test_contract_signal_ignores_repro_steps_and_errors(self) -> None:
         contract = ["POST https://author.example.com/bin/guides/v1/purge with {path}",
@@ -2182,6 +2249,29 @@ class ReleaseDashboardTests(unittest.TestCase):
         self.assertIn("QE edit of a hand-posted UAC", edited_part)
         self.assertNotIn("PROJ-2", edited_part)
         self.assertIn("Hand-posted UAC", page, "a summary card counts them")
+
+    def test_stale_uacs_are_listed_and_an_undelivered_alert_is_flagged(self) -> None:
+        runs = self.out / common.RUNS_FILE
+        runs.write_text("\n".join(json.dumps(r) for r in (
+            {"tool": "uac-staleness", "started": "2026-10-18T02:00:00+0000", "alerts": ["PROJ-1: old"]},
+            {"tool": "uac-release", "started": "2026-10-19T01:30:00+0000"},
+            {"tool": "uac-staleness", "started": "2026-10-19T02:00:04+0000", "dry_run": False,
+             "alerts": ["PROJ-2: a root cause or fix was reported by dev on 2026-10-16", "The check stopped"],
+             "alert_result": "NOT_CONFIGURED"},
+            {"tool": "uac-staleness", "started": "2026-10-19T09:00:00+0000", "dry_run": True,
+             "alerts": [], "alert_result": "DRY_RUN"})) + "\n", encoding="utf-8")
+        staleness = dashboard.collect_staleness(self.out)
+        self.assertEqual(staleness["at"], "2026-10-19T02:00:04+0000", "the newest real run, not a dry run")
+        page = dashboard.render([], [], [], 0, "https://jira.example", "now", staleness=staleness)
+        part = page.split('id="stale"')[1].split("<h2")[0]
+        self.assertIn('href="https://jira.example/browse/PROJ-2"', part)
+        self.assertIn("a root cause or fix was reported by dev", part)
+        self.assertIn("The check stopped", part)
+        self.assertIn("These alerts reached nobody: alerts.ticket is not set", part)
+        self.assertNotIn("PROJ-1", part)
+        delivered = dict(staleness, alert_result="POSTED")
+        self.assertNotIn("reached nobody", dashboard.render([], [], [], 0, "", "now", staleness=delivered))
+        self.assertIn("has not run yet", dashboard.render([], [], [], 0, "", "now"))
 
     def test_dashboard_hint_says_how_shared_account_edits_are_counted(self) -> None:
         page = dashboard.render([], [], [], 0, "", "now")

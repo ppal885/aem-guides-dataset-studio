@@ -4,7 +4,8 @@
 Reads <output_dir>/<KEY>/status.json (one per ticket the runner picked) and the harvester's
 <output_dir>/learning/ files (records.jsonl, corrections.json, hand-posted.json, report-YYYY-MM.md) and writes one
 static page:
-  0. recently added UACs (by the runner or posted by hand) and recently edited UACs;
+  0. recently added UACs (by the runner or posted by hand) and recently edited UACs, and the posted UACs the
+     staleness watch says need a review (from runs.jsonl), flagged when its Jira alert reached nobody;
   1. tickets picked for a UAC: posted, and not posted with the reason;
   2. QE correction patterns, with the ones seen on two or more tickets marked for a skill fix;
   3. tickets where a QE edited our posted UAC, and corrections a QE made through a Claude session;
@@ -308,6 +309,55 @@ def collect_verdicts(out: Path) -> dict[str, dict]:
                 verdicts[str(record["key"])] = {"outcome": record["outcome"], "counts": _criterion_counts(record),
                                                 "edit_origin": record.get("edit_origin") or ""}
     return verdicts
+
+
+STALENESS_TOOL = "uac-staleness"
+ALERT_DELIVERED = ("POSTED", "SUPPRESSED", "NONE")
+
+
+def collect_staleness(out: Path) -> dict | None:
+    """The newest uac_staleness_watch.py run from runs.jsonl: when it ran, its alert lines, and whether the alert
+    reached anyone. None when the watch has never run. A run recorded before alert_result existed has "" there."""
+    latest = None
+    try:
+        lines = (out / common.RUNS_FILE).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict) and record.get("tool") == STALENESS_TOOL and not record.get("dry_run"):
+            latest = record
+    if latest is None:
+        return None
+    return {"at": str(latest.get("started") or ""), "alerts": [str(a) for a in latest.get("alerts") or []],
+            "alert_result": str(latest.get("alert_result") or "")}
+
+
+def _staleness_section(staleness: dict | None, jira_url: str) -> str:
+    if staleness is None:
+        return '<p class="empty">The staleness watch has not run yet.</p>'
+    result = staleness["alert_result"]
+    notice = ""
+    if staleness["alerts"] and result not in ALERT_DELIVERED:
+        why = {"NOT_CONFIGURED": "alerts.ticket is not set in the config, so no Jira alert was posted",
+               "FAILED": "posting the Jira alert failed (see the staleness log)",
+               "NOT_SENT": "Jira could not be reached, so no alert was posted",
+               "": "this run did not record whether its alert was delivered"}.get(result, f"alert result {result}")
+        notice = (f'<p class="flag">These alerts reached nobody: {_e(why)}. Review the tickets below from this '
+                  "page until the alert ticket is configured.</p>")
+    rows = []
+    for line in staleness["alerts"]:
+        key, sep, rest = line.partition(": ")
+        if sep and re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", key):
+            rows.append(f"<tr><td>{_ticket(key, jira_url)}</td><td>{_e(rest)}</td></tr>")
+        else:
+            rows.append(f"<tr><td>-</td><td>{_e(line)}</td></tr>")
+    table = _table(["Ticket", "What arrived after the UAC"], rows,
+                   "No new evidence after any posted UAC in the last check.")
+    return f'<p class="hint">Last check {_when(staleness["at"])}.</p>{notice}{table}'
 
 
 def _days_since(value: str, now: datetime.datetime) -> int | None:
@@ -672,8 +722,10 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
            report: tuple[str, str] = ("", ""), impact: dict | None = None,
            verdicts: dict[str, dict] | None = None, now: datetime.datetime | None = None,
            fixes: dict[str, dict] | None = None, hand_posted: list[dict] | None = None,
-           recent_days: int = RECENT_DAYS) -> str:
+           recent_days: int = RECENT_DAYS, staleness: dict | None = None) -> str:
     patterns = patterns or []
+    stale_count = len((staleness or {}).get("alerts") or [])
+    staleness_html = _staleness_section(staleness, jira_url)
     hand_posted = hand_posted or []
     verdicts = verdicts or {}
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -729,7 +781,8 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
         f'<div class="card"><div class="value">{n}</div><div class="label">{_e(label)}</div></div>'
         for n, label in ((picked, "Tickets picked"), (len(posted), "UAC posted"), (len(hand_posted), "Hand-posted UAC"),
                          (len(not_posted), "Not posted"), (len(qe_rows), "Edited by a QE"),
-                         (len(correction_rows), "QE corrections via Claude"), (repeated, "Repeated patterns")))
+                         (len(correction_rows), "QE corrections via Claude"), (repeated, "Repeated patterns"),
+                         (stale_count, "UACs to review (new evidence)")))
     account_note = (
         "The automation and QE share one Jira account, so any change to the field that is not a text the "
         "runner posted counts here, including a rewrite by a Claude or Codex session with that account."
@@ -848,7 +901,7 @@ pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid va
 <body>
 <nav class="top" aria-label="Sections"><div><b>UAC release</b>
 <a href="#recent-added">Recently added</a><a href="#recent-edited">Recently edited</a>
-<a href="#impact">Impact</a><a href="#posted">Posted</a><a href="#waiting">Waiting for QE</a><a href="#not-posted">Not posted</a>
+<a href="#stale">To review</a><a href="#impact">Impact</a><a href="#posted">Posted</a><a href="#waiting">Waiting for QE</a><a href="#not-posted">Not posted</a>
 <a href="#patterns">Patterns</a><a href="#edits">QE edits</a><a href="#corrections">Corrections</a><a href="#report">Report</a></div></nav>
 <main>
 <h1>UAC release automation</h1>
@@ -865,6 +918,11 @@ shows up here within the hour without anyone running --backfill.</p>
 <p class="hint">The newest change per ticket in the last {recent_days} days, by a QE in Jira or through a Claude session.
 Counts are per criterion.</p>
 {_table(["Ticket", "Summary", "Type", "Edited by", "When", "Kept", "Changed", "Removed", "Added"], edited_rows, f"No UAC edited in the last {recent_days} days.")}
+
+<h2 id="stale">UACs to review: new evidence after posting</h2>
+<p class="hint">From the staleness watch (weekdays 02:00 UTC): a root cause or fix, a design link, an API contract, a
+decision on what to build, an attachment or a merged commit that arrived after the UAC was written.</p>
+{staleness_html}
 {impact_html}
 
 <h2 id="posted">UAC posted</h2>
@@ -981,7 +1039,8 @@ def main(argv: list[str] | None = None) -> int:
     page = render(posted, not_posted, edits, accepted, os.environ.get("JIRA_BASE_URL", ""),
                   time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")),
                   patterns, report, impact, verdicts, fixes=load_pattern_fixes(), hand_posted=hand_posted,
-                  recent_days=int(config.get("recent_days") or RECENT_DAYS))
+                  recent_days=int(config.get("recent_days") or RECENT_DAYS),
+                  staleness=collect_staleness(out) if out.is_dir() else None)
     write_atomic(args.out, page)
     print(f"wrote {args.out}: {len(posted)} posted, {len(hand_posted)} hand-posted, {len(not_posted)} not posted, "
           f"{len(edits)} edited")
