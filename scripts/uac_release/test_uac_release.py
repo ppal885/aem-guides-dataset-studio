@@ -697,6 +697,25 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(any("referenced ticket" in p for p in
                              runner.source_coverage_problems(ticket, {"description": "", "comments": []})))
 
+    def test_linked_tickets_are_referenced_first(self) -> None:
+        # GUIDES-29986 was linked to GUIDES-53702 (Map dashboard sunset) without naming it in the text.
+        source = {"description": "See GUIDES-111 for the older report.", "comments": [],
+                  "links": [{"key": "GUIDES-53702", "type": "relates to"}, {"key": "PROJ-1", "type": "clones"},
+                            {"key": "GUIDES-111", "type": "relates to"}]}
+        self.assertEqual(runner.referenced_keys(source, "PROJ-1"), ["GUIDES-53702", "GUIDES-111"])
+
+    def test_a_flavour_case_needs_the_stored_data_it_depends_on(self) -> None:
+        check = common.import_skill_module("uac_completeness_check")
+        uac = ("- Acceptance Criteria 01: A publishing job ends as Finished.\n"
+               "  - Try it on Cloud with the DB flavour, and again with the JCR flavour.\n")
+        self.assertTrue(check.storage_flavour_problems({}, uac), "no record: the flavour case is refused")
+        self.assertTrue(check.storage_flavour_problems({"storage_flavour": {"data": "status", "source": "x"}}, uac),
+                        "a one-word data description is not enough")
+        self.assertEqual(check.storage_flavour_problems(
+            {"storage_flavour": {"data": "Document State values stored per topic version",
+                                 "source": "DocStateService.java:120"}}, uac), [])
+        self.assertEqual(check.storage_flavour_problems({}, "- Acceptance Criteria 01: The map saves.\n"), [])
+
     def test_untestable_checks_and_missing_table_types_are_flagged(self) -> None:
         check = common.import_skill_module("uac_completeness_check")
         posted = ("- Acceptance Criteria 06: Closing the datasource releases the validation database connection.\n"

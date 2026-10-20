@@ -558,6 +558,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "internal_settings": internal_setting_problems(uac),
         "untestable": untestable_problems(uac),
         "construct_family": construct_family_problems(uac, plan),
+        "storage_flavour": storage_flavour_problems(evidence, uac),
         "native_pdf_routes": native_pdf_route_problems(uac, source),
         "action_settings": action_setting_problems(evidence, source),
         "named_settings": named_setting_problems(evidence, source),
@@ -909,6 +910,31 @@ def construct_family_problems(uac_text: str, plan_text: str = "") -> list[str]:
                             "as a case sub-point of the criterion with the same outcome, or name it in the full test "
                             f"plan ({PLAN_FILE}) when its outcome is the same and nobody asked for it")
     return problems
+
+
+# --- Cloud DB and JCR flavours ------------------------------------------------------------------------
+# A "try it on Cloud with the DB flavour, and again with the JCR flavour" case is a QE check only when the change
+# reads or writes data the two flavours store differently. QE kept it on Doc State, Reports metadata and Native
+# PDF flag tickets and removed it on a Map Editor insertion fix; a release-runner UAC added it to a ticket whose
+# own evidence said the data stays in JCR. The evidence record must say what data and how it is known.
+_FLAVOUR = re.compile(r"\b(?:DB|database|JCR) flavou?rs?\b|\bCloud DB\b|\bDB and JCR\b", re.I)
+MIN_FLAVOUR_WORDS = 4
+
+
+def storage_flavour_problems(evidence: dict, uac_text: str) -> list[str]:
+    lines = [text for _ac, _statement, text in _criterion_lines(uac_text) if _FLAVOUR.search(text)]
+    if not lines:
+        return []
+    record = evidence.get("storage_flavour") if isinstance(evidence, dict) else None
+    record = record if isinstance(record, dict) else {}
+    data = str(record.get("data") or "").strip()
+    source = str(record.get("source") or "").strip()
+    if len(data.split()) >= MIN_FLAVOUR_WORDS and source:
+        return []
+    return [f"the UAC asks for a Cloud DB and JCR flavour run (\"{lines[0][:70]}\") but {EVIDENCE_FILE} has no "
+            "\"storage_flavour\" record with \"data\" (what this change reads or writes that the two flavours store "
+            "differently) and \"source\" (the code or documentation that shows it); add the record, or remove the "
+            "flavour case when the change does not touch stored data"]
 
 
 # --- root cause or fix known ---------------------------------------------------------------------------
