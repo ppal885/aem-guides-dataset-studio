@@ -1090,6 +1090,47 @@
       "counterexamples_checked": true,
       "equivalence_key": "feature-mechanism-and-places",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-030",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "breadcrumb",
+          "left toc",
+          "site navigation",
+          "navtitle",
+          "locktitle",
+          "topichead",
+          "topicgroup",
+          "toc=\"no\"",
+          "processing-role",
+          "collection-type",
+          "chunk",
+          "html5 output",
+          "aem sites output",
+          "aem site output"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "OUTPUT_PRESET",
+        "candidate_template": "site or HTML navigation follows DITA-OT map processing: query the DITA spec and DITA-OT HTML5 processing docs for each construct the change touches (navtitle with locktitle yes and no, topichead, topicgroup with and without a title, toc no, processing-role resource-only, collection-type, chunk); add a parity criterion that generates the same map as the DITA-OT based output (old AEM Site or HTML5) and compares the navigation labels, order and links; a difference is a TBD for the product owner, never a guessed expected result; the DITA-OT based output stays out of scope for change"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261021-DITA-OT-NAV-ORACLE-01"
+        ],
+        "promotion_state": "APPROVED",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "A new AEM Sites Breadcrumb request covered topichead and topicgroup but missed navtitle with locktitle yes, and missed comparing with old AEM Site output, which is DITA-OT based and is the existing reference for map navigation processing. The QE reviewer said such tickets follow DITA-OT processing rules, so HTML publishing and DITA-OT docs must be queried. Normative because navtitle and locktitle processing is defined by the DITA specification. Counterexample checked: a ticket about site templates, page names or styling only, with no map navigation construct, does not need the DITA-OT oracle.",
+      "normative_invariant": true,
+      "counterexamples_checked": true,
+      "equivalence_key": "site-navigation-dita-ot-oracle",
+      "status": "ACTIVE"
     }
   ]
 }

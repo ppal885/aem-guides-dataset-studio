@@ -66,6 +66,17 @@ the relevant chunks and inspected UI labels. Preserve the console/dashboard fiel
 mapping, engine restrictions, and version-dependent outside-map content setting;
 do not transfer Native PDF behaviour into HTML5 because the field names overlap.
 
+For site or HTML navigation (Breadcrumb, left TOC, next/previous links, page hierarchy) in
+new AEM Sites, old AEM Site or HTML5 output, the expected labels and order come from DITA map
+processing, which DITA-OT implements. Query `ask_dita_expert` three ways before writing a
+criterion: the DITA specification for each construct the change touches (navtitle with
+locktitle yes and no, topichead, topicgroup with and without a title, toc no,
+processing-role resource-only, collection-type, chunk), the DITA-OT HTML5 processing docs
+for how navigation is built from them, and the AEM Guides HTML5 or AEM Sites page for the
+product surface. Old AEM Site output and HTML5 are DITA-OT based, so the same map generated
+there is the comparison reference for new AEM Sites navigation (miss probe MP-030). A
+difference between them is a TBD for the product owner, never a guessed expected result.
+
 For Custom DITA-OT presets, use `references/custom-publishing-evidence.md`. Retrieve
 the integrated-plugin/transformation relationship, not just a shared option name.
 The Custom page's EPUB wording is a source inconsistency, not proof of output format
