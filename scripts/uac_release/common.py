@@ -380,8 +380,8 @@ class JiraClient:
         """The ticket text a UAC must cover: summary, description, comments and attachment names, plus labels,
         and the label and sprint changes from the history (who and when), which show the ticket is still
         being planned."""
-        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=summary,description,comment,attachment,labels"
-                                 "&expand=changelog")
+        data = self._json("GET", f"/rest/api/2/issue/{key}?fields=summary,description,comment,attachment,labels,"
+                                 "issuelinks&expand=changelog")
         fields = data.get("fields") or {}
         comments = [
             {"id": str(c.get("id") or ""), "author": str((c.get("author") or {}).get("name") or ""),
@@ -399,8 +399,16 @@ class JiraClient:
             {"filename": str(a.get("filename") or ""), "author": str((a.get("author") or {}).get("name") or "")}
             for a in fields.get("attachment") or []
         ]
+        # Linked tickets ("Relates", "Clones", ...): GUIDES-29986 was linked to GUIDES-53702 (Map dashboard
+        # sunset) without naming it in the text, so the UAC kept Map dashboard checks.
+        links = []
+        for link in fields.get("issuelinks") or []:
+            other = link.get("outwardIssue") or link.get("inwardIssue") or {}
+            if other.get("key"):
+                kind = (link.get("type") or {}).get("outward" if link.get("outwardIssue") else "inward") or ""
+                links.append({"key": str(other["key"]), "type": str(kind)})
         return {"summary": fields.get("summary") or "", "description": fields.get("description") or "",
-                "comments": comments, "attachments": attachments,
+                "comments": comments, "attachments": attachments, "links": links,
                 "labels": [str(label) for label in fields.get("labels") or []],
                 "planning_changes": planning_changes}
 

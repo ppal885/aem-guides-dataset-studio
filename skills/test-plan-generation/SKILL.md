@@ -898,7 +898,9 @@ Out of scope:                                          (optional, when a decisio
   case that needs a customer schema, DTD or sample the ticket does not attach is a TBD asking for it. A
   criterion on one DITA table type with text cells covers the other types too, as case sub-points or in the
   test plan (`construct_family_problems`). A ticket the description or comments refer to is mapped in source
-  coverage as "referenced:<key>"; a screen it names is an AC or a TBD.
+  coverage as "referenced:<key>" (linked tickets included); a screen it names is an AC or a TBD. A Cloud DB and
+  JCR flavour case needs a `storage_flavour` record naming the stored data the change reads or writes and its
+  source (`storage_flavour_problems`); a change that touches no stored data has no flavour case.
 - The label is spelled out as `Acceptance Criteria 01`, never `AC-01`, because Jira auto-links and strikes
   through issue-key shapes. `AC-##` stays internal in the record, mappings and extracted JSON.
 - No `[Proposed]`/`[Confirmed]` tags, spheres, Given/When/Then, pipes, or Starting point/Action/Expected

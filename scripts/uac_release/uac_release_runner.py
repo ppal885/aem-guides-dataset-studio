@@ -104,7 +104,9 @@ When finished, write these files:
    ("Enable DITA-OT preprocessing toggled on, then off (General tab)"), never as a bare fragment such as
    "DITA-OT preprocessing enabled". A criterion is something QE sees in the product: never a database
    connection, thread, cache or loop - say what the user sees instead (the save finishes, a message
-   shows). A case that needs a customer schema, DTD or sample the ticket does not attach is a TBD that
+   shows). Add a Cloud DB and JCR flavour case only when the change reads or writes stored data that
+   the two flavours keep differently, and record it in {evidence_path} as "storage_flavour": {{"data":
+   "<what is stored>", "source": "<code or documentation>"}}. A case that needs a customer schema, DTD or sample the ticket does not attach is a TBD that
    asks for it, not a plain criterion (GUIDES-15746 UBS document-link). When a criterion covers one DITA
    table type whose cells hold text (simpletable, choicetable, properties), cover the others as case
    sub-points or name them in the test plan (GUIDES-58592).
@@ -202,8 +204,8 @@ When finished, write these files:
    sentence, copied; for a linked page, the requirement copied from it>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
    "ac": <Acceptance Criteria number, or a list when one sentence drives several criteria, for AC
    and TBD>, "reason": "<why, for OUT_OF_SCOPE and NOT_MATERIAL>"}}. A TBD must point at the
-   Acceptance Criterion whose TBD line asks it. Map each ticket in {referenced_path} (tickets the
-   description or comments refer to) with "text" set to its summary: a referenced ticket that names a
+   Acceptance Criterion whose TBD line asks it. Map each ticket in {referenced_path} (linked tickets and
+   tickets the description or comments refer to) with "text" set to its summary: a referenced ticket that names a
    screen, dialog or editor where this change is set or seen makes that place an AC or a TBD
    (GUIDES-37561 missed the DITAVAL Editor that its referenced GUIDES-30168 named); otherwise
    OUT_OF_SCOPE or NOT_MATERIAL with a reason. Every Acceptance Criterion must be driven by a
@@ -1387,11 +1389,16 @@ MAX_REFERENCED_TICKETS = 8
 
 
 def referenced_keys(source: dict | None, key: str, own_name: str = "") -> list[str]:
-    """Jira keys in the description and human comments, first mention first, without the ticket itself."""
+    """Linked tickets first, then Jira keys in the description and human comments, first mention first, without
+    the ticket itself."""
     texts = [(source or {}).get("description") or ""]
     texts += [c.get("body") or "" for c in (source or {}).get("comments") or []
               if not own_name or c.get("author") != own_name]
     found: list[str] = []
+    for link in (source or {}).get("links") or []:
+        ref = str(link.get("key") or "")
+        if ref and ref != key and ref not in found:
+            found.append(ref)
     for text in texts:
         for match in _JIRA_KEY.finditer(text):
             ref = match.group(1)
