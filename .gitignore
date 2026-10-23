@@ -215,3 +215,6 @@ backend/storage/*.json
 
 # stale one-off client-package build artifacts under tmp/
 tmp/aem-guides-mcp-client-*/
+
+# Local Claude Code worktrees; never commit them as gitlinks
+.claude/worktrees/
