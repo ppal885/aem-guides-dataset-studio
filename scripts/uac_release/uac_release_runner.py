@@ -36,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
+import uac_field_parser  # noqa: E402
 import linked_docs  # noqa: E402
 
 PROMPT = """Generate the UAC for Jira {key} using the test-plan-generation skill.
@@ -726,8 +727,7 @@ def source_coverage_problems(ticket_dir: Path, source: dict, own_name: str = "")
     if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
         return [f"{common.SOURCE_COVERAGE_FILE} must be a JSON list of objects"]
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
-    blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", uac, re.M | re.S)}
+    blocks = uac_field_parser.ac_blocks_md(uac)
     problems = []
     for number, entry in enumerate(entries, 1):
         disposition = entry.get("disposition")
@@ -955,9 +955,8 @@ def attachment_fact_notes(ticket_dir: Path, source: dict | None, own_name: str =
 def orphan_ac_problems(ticket_dir: Path) -> list[str]:
     """Return problems for Acceptance Criteria that no ticket line, attachment or in-scope surface asks for."""
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
-    lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
-    blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", uac, re.M | re.S)}
+    lines = uac_field_parser.ac_lines_md(uac)
+    blocks = uac_field_parser.ac_blocks_md(uac)
     coverage = _load_list(ticket_dir / common.SOURCE_COVERAGE_FILE)
     inventory = _load_list(ticket_dir / common.SURFACE_INVENTORY_FILE)
     from_ticket = {ac for e in coverage if e.get("disposition") in ("AC", "TBD") for ac in _ac_numbers(e.get("ac"))}
@@ -1052,9 +1051,8 @@ def surface_inventory_problems(ticket_dir: Path) -> list[str]:
     uac = (ticket_dir / common.UAC_FILE).read_text(encoding="utf-8") if (ticket_dir / common.UAC_FILE).is_file() else ""
     plan_file = ticket_dir / common.PLAN_FILE
     plan = _normalize(plan_file.read_text(encoding="utf-8", errors="replace")) if plan_file.is_file() else ""
-    lines = {int(n): text for n, text in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac, re.M)}
-    blocks = {int(n): body for n, body in re.findall(
-        r"^- Acceptance Criteria (\d+):(.*?)(?=^- Acceptance Criteria \d+:|^Suggested checks\b|^Out of scope\b|\Z)", uac, re.M | re.S)}
+    lines = uac_field_parser.ac_lines_md(uac)
+    blocks = uac_field_parser.ac_blocks_md(uac)
     problems, has_doc, has_code = [], False, False
     requested_acs = {e.get("ac") for e in entries
                      if e.get("authority") in REQUESTED_AUTHORITIES and e.get("disposition") == "AC"}
@@ -1169,7 +1167,7 @@ def check_outputs(ticket_dir: Path) -> list[str]:
     if result.returncode != 0:
         problems.append("test plan failed validate_test_plan.py: " + (result.stdout + result.stderr).strip()[-600:])
     text = uac.read_text(encoding="utf-8")
-    count = len(re.findall(r"^- Acceptance Criteria \d+:", text, re.MULTILINE))
+    count = uac_field_parser.ac_count_md(text)
     if not 1 <= count <= 10:
         problems.append(f"UAC.md has {count} Acceptance Criteria (expected 1-10)")
     blocked, _ = _vocabulary_hits(text)
@@ -1180,8 +1178,8 @@ def check_outputs(ticket_dir: Path) -> list[str]:
 def _vocabulary_hits(uac_text: str) -> tuple[list[str], list[str]]:
     """(blocked, advisory) vocabulary hits for the criterion statements and case sub-points of a UAC."""
     vocabulary = common.import_skill_module("guides_vocabulary")
-    found = re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$|^\s+- (.+)$", uac_text, re.MULTILINE)
-    lines = "\n".join(f"- AC-{i:02d}: {a or b}" for i, (a, b) in enumerate(found, 1))
+    found = uac_field_parser.statements_and_cases_md(uac_text)
+    lines = "\n".join(f"- AC-{i:02d}: {t}" for i, t in enumerate(found, 1))
     return vocabulary.check(lines)
 
 
@@ -1194,8 +1192,8 @@ def vocabulary_notes(ticket_dir: Path) -> list[str]:
         return []
     text = uac.read_text(encoding="utf-8")
     # Statements and their case sub-points: a confusing word in a case line misleads QE just as much.
-    lines = re.findall(r"^- Acceptance Criteria \d+:\s*(.+)$|^\s+- (.+)$", text, re.MULTILINE)
-    checked = "\n".join(f"- AC-{i:02d}: {a or b}" for i, (a, b) in enumerate(lines, 1))
+    lines = uac_field_parser.statements_and_cases_md(text)
+    checked = "\n".join(f"- AC-{i:02d}: {t}" for i, t in enumerate(lines, 1))
     _, advisories = common.import_skill_module("guides_vocabulary").check(checked)
     return [f"wording: {a}" for a in advisories]
 
@@ -1213,7 +1211,7 @@ def process_ac_problems(uac_text: str) -> list[str]:
     """Criteria whose statement is a process deliverable, not a product check."""
     return [f"Acceptance Criteria {number} is a process deliverable, not a product check a QE can run "
             f"(move it to the test plan): \"{statement.strip()[:100]}\""
-            for number, statement in re.findall(r"^- Acceptance Criteria (\d+):\s*(.+)$", uac_text, re.MULTILINE)
+            for number, statement in uac_field_parser.AC_LINE_MD.findall(uac_text)
             if _PROCESS_AC.search(statement)]
 
 
