@@ -163,27 +163,42 @@ def generate_maps_reltable_basic(config: DatasetConfig, base_path: str, id_prefi
     }
 
 
-def generate_maps_topichead_basic(config: DatasetConfig, base_path: str, id_prefix: str = "t", **kwargs) -> Dict[str, bytes]:
-    """Map with topichead elements - section headings without href. Topicrefs under topichead for output/TOC under heading."""
+def generate_maps_topichead_basic(config: DatasetConfig, base_path: str, id_prefix: str = "t",
+                                  topic_count: int = 3, **kwargs) -> Dict[str, bytes]:
+    """Map with topichead elements - section headings without href. Topicrefs under topichead for output/TOC under heading.
+
+    ``topic_count`` is the number of companion topics (default 3: intro, install, advanced). The planner passes
+    the count from the reviewed contract, so it must be declared here: the executor only forwards parameters the
+    signature names. The first topichead holds the first half (at least one topic); a second topichead holds the
+    rest and is omitted when nothing is left for it.
+    """
+    count = max(1, int(topic_count))
+    named = [
+        ("intro", "Introduction", "Introduction content."),
+        ("install", "Installation", "Installation content."),
+        ("advanced", "Advanced Topics", "Advanced content."),
+    ]
+    topics = named[:count] + [
+        (f"topic_{i}", f"Topic {i}", f"Topic {i} content.") for i in range(len(named) + 1, count + 1)
+    ]
     used = set()
     map_id = stable_id("maps_th", id_prefix, "map", used)
-    t1 = stable_id("maps_th", id_prefix, "t1", used)
-    t2 = stable_id("maps_th", id_prefix, "t2", used)
-    t3 = stable_id("maps_th", id_prefix, "t3", used)
+    topic_ids = [stable_id("maps_th", id_prefix, f"t{i}", used) for i in range(1, count + 1)]
     root = f"{base_path}/maps_topichead_basic"
     map_elem = ET.Element("map", {"id": map_id})
     ET.SubElement(map_elem, "title").text = "Topichead Basic"
+    first_half = max(1, (count + 1) // 2)
     th1 = ET.SubElement(map_elem, "topichead", {"navtitle": "Getting Started"})
-    ET.SubElement(th1, "topicref", {"href": "../topics/intro.dita", "navtitle": "Introduction"})
-    ET.SubElement(th1, "topicref", {"href": "../topics/install.dita", "navtitle": "Installation"})
-    th2 = ET.SubElement(map_elem, "topichead", {"navtitle": "Advanced"})
-    ET.SubElement(th2, "topicref", {"href": "../topics/advanced.dita", "navtitle": "Advanced Topics"})
-    return {
-        f"{root}/maps/main.ditamap": _map_xml(config, map_elem),
-        f"{root}/topics/intro.dita": _topic_xml(config, t1, "Introduction", "Introduction content."),
-        f"{root}/topics/install.dita": _topic_xml(config, t2, "Installation", "Installation content."),
-        f"{root}/topics/advanced.dita": _topic_xml(config, t3, "Advanced Topics", "Advanced content."),
-    }
+    for slug, title, _ in topics[:first_half]:
+        ET.SubElement(th1, "topicref", {"href": f"../topics/{slug}.dita", "navtitle": title})
+    if topics[first_half:]:
+        th2 = ET.SubElement(map_elem, "topichead", {"navtitle": "Advanced"})
+        for slug, title, _ in topics[first_half:]:
+            ET.SubElement(th2, "topicref", {"href": f"../topics/{slug}.dita", "navtitle": title})
+    files = {f"{root}/maps/main.ditamap": _map_xml(config, map_elem)}
+    for topic_id, (slug, title, body) in zip(topic_ids, topics):
+        files[f"{root}/topics/{slug}.dita"] = _topic_xml(config, topic_id, title, body)
+    return files
 
 
 def generate_maps_navtitle_override(config: DatasetConfig, base_path: str, id_prefix: str = "t", **kwargs) -> Dict[str, bytes]:
@@ -254,7 +269,7 @@ def generate_maps_navref_basic(config: DatasetConfig, base_path: str, id_prefix:
 
 def _spec(id_: str, title: str, desc: str, fn: str, tags: list, use_when: list, avoid_when: list,
           positive: str = "positive", scenario_types: list = None, complexity: str = "minimal",
-          constructs: list = None) -> dict:
+          constructs: list = None, params: dict = None) -> dict:
     default_constructs = ["map", "topicref", "topicgroup", "mapref", "reltable"]
     return {
         "id": id_,
@@ -270,8 +285,10 @@ def _spec(id_: str, title: str, desc: str, fn: str, tags: list, use_when: list, 
         "output_scale": "minimal" if complexity != "stress" else "stress",
         "module": "app.generator.maps",
         "function": fn,
-        "params_schema": {"id_prefix": "str"},
-        "default_params": {"id_prefix": "t"},
+        # ``params`` adds generator parameters beyond id_prefix as {name: (type, default)}; the executor drops
+        # every parameter the schema does not name, so a generator that reads one must declare it here.
+        "params_schema": {"id_prefix": "str", **{k: t for k, (t, _) in (params or {}).items()}},
+        "default_params": {"id_prefix": "t", **{k: d for k, (_, d) in (params or {}).items()}},
         "stability": "stable",
         "examples": [{"prompt": desc[:80]}],
     }
@@ -293,7 +310,8 @@ RECIPE_SPECS = [
     _spec("maps.navtitle_override", "Navtitle Override", "Topicref with navtitle override.", "generate_maps_navtitle_override",
           ["MAP", "NAVTITLE"], ["navtitle", "override title"], ["default title"], "positive"),
     _spec("maps.topichead_basic", "Topichead Basic", "Map with topichead elements - section headings without href. Topicrefs under topichead for output/TOC under heading.", "generate_maps_topichead_basic",
-          ["MAP", "TOPICHEAD"], ["topichead", "output pages under topichead", "TOC under topichead", "map structure"], ["ditaval", "conditionals"], "positive"),
+          ["MAP", "TOPICHEAD"], ["topichead", "output pages under topichead", "TOC under topichead", "map structure"], ["ditaval", "conditionals"], "positive",
+          params={"topic_count": ("int", 3)}),
     _spec("maps.topicset_basic", "Topicset Basic", "Map with topicset - groups topics for navigation without affecting output order (DITA 1.3).", "generate_maps_topicset_basic",
           ["MAP", "TOPICSET"], ["topicset", "topic grouping", "navigation group"], ["flat topicrefs"], "positive",
           constructs=["map", "topicref", "topicset"]),
