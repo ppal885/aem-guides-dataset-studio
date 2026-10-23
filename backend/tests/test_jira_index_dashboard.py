@@ -155,58 +155,21 @@ def test_recent_failures_payload_combines_logged_keys(monkeypatch):
         shutil.rmtree(work, ignore_errors=True)
 
 
-def test_admin_jira_index_dashboard_endpoints(client: TestClient, auth_headers: dict, monkeypatch):
-    monkeypatch.setattr(
-        "app.api.v1.routes.admin.build_jira_index_status",
-        lambda session: {
-            "total_indexed_jira": 3,
-            "total_enriched_jira": 4,
-            "total_chunks": 12,
-            "last_sync_time": "2026-05-15T10:00:00+00:00",
-            "failed_jira_keys": ["G-1"],
-            "domain_distribution": [{"domain": "publishing", "count": 3}],
-            "customer_distribution": [{"customer": "Acme", "count": 2}],
-            "tickets_with_unknown_domain": 1,
-            "tickets_missing_expected_or_actual": 2,
-            "totals": {},
-        },
-    )
-    monkeypatch.setattr(
-        "app.api.v1.routes.admin.build_recent_failures_payload",
-        lambda limit=100: {"failed_jira_keys": ["G-1"], "total_failed_jira_keys": 1, "failure_log_items": []},
-    )
-    monkeypatch.setattr(
-        "app.api.v1.routes.admin.index_jira_project_backfill",
-        lambda project_key, **kwargs: {"mode": "backfill", "project_key": project_key, **kwargs},
-    )
-    monkeypatch.setattr(
-        "app.api.v1.routes.admin.index_jira_project_incremental",
-        lambda project_key, **kwargs: {"mode": "incremental", "project_key": project_key, **kwargs},
-    )
+def test_admin_jira_index_routes_are_not_exposed(client: TestClient, auth_headers: dict):
+    """The Jira index is operated through the ai_dataset routes; no ``/api/v1/admin/jira-index/*`` surface exists.
 
-    status = client.get("/api/v1/admin/jira-index/status", headers=auth_headers)
-    assert status.status_code == 200
-    assert status.json()["total_indexed_jira"] == 3
-
-    failures = client.get("/api/v1/admin/jira-index/recent-failures?limit=5", headers=auth_headers)
-    assert failures.status_code == 200
-    assert failures.json()["failed_jira_keys"] == ["G-1"]
-
+    Former application routes must return 404, so these stay 404 even for an authenticated admin."""
+    assert client.get("/api/v1/admin/jira-index/status", headers=auth_headers).status_code == 404
+    assert client.get("/api/v1/admin/jira-index/recent-failures?limit=5", headers=auth_headers).status_code == 404
     backfill = client.post(
         "/api/v1/admin/jira-index/backfill",
         json={"project_key": "GUIDES", "limit": 5, "force_reindex": True},
         headers=auth_headers,
     )
-    assert backfill.status_code == 200
-    assert backfill.json()["mode"] == "backfill"
-    assert backfill.json()["project_key"] == "GUIDES"
-    assert backfill.json()["limit"] == 5
-    assert backfill.json()["force_reindex"] is True
-
+    assert backfill.status_code == 404
     incremental = client.post(
         "/api/v1/admin/jira-index/sync-incremental",
         json={"project_key": "GUIDES", "limit": 2},
         headers=auth_headers,
     )
-    assert incremental.status_code == 200
-    assert incremental.json()["mode"] == "incremental"
+    assert incremental.status_code == 404

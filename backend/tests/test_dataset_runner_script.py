@@ -1,4 +1,7 @@
-"""Tests for server-generated Python client scripts (POST /api/v1/jobs/render-python-client)."""
+"""Tests for server-generated Python client scripts (render_jobs_api_python_script).
+
+The former ``POST /api/v1/jobs/render-python-client`` route belonged to the retired web application and is
+not exposed any more; the service function is still tested directly."""
 
 import json
 import base64
@@ -27,7 +30,8 @@ def test_render_script_roundtrips_config_via_base64():
 _AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 
-def test_render_python_client_endpoint(client):
+def test_render_python_client_route_is_not_exposed(client):
+    """Former application routes must return 404; this path also matches ``GET /jobs/{job_id}``, so 405 is accepted."""
     body = {
         "config": {
             "name": "Script export test",
@@ -38,25 +42,4 @@ def test_render_python_client_endpoint(client):
         }
     }
     r = client.post("/api/v1/jobs/render-python-client", json=body, headers=_AUTH_HEADERS)
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert "python_script" in data
-    assert "_CONFIG_B64" in data["python_script"]
-    assert data.get("filename_hint") == "run_dataset_job.py"
-
-
-def test_render_python_client_invalid_config_422(client):
-    r = client.post(
-        "/api/v1/jobs/render-python-client",
-        json={
-            "config": {
-                "name": "x",
-                "seed": "s",
-                "root_folder": "/c",
-                "windows_safe_filenames": True,
-                "recipes": [{"type": "not_a_real_recipe_type_ever"}],
-            }
-        },
-        headers=_AUTH_HEADERS,
-    )
-    assert r.status_code == 422
+    assert r.status_code in (404, 405), r.text

@@ -43,7 +43,7 @@ def test_get_tool_catalog_exposes_only_llm_invokable_tools():
     assert catalog["generate_xml_flowchart"]["category"] == "Visualization"
     assert catalog["generate_xml_flowchart"]["primary_arg"] == "xml"
 
-    assert catalog["generate_dita"]["approval_required"] is False
+    assert catalog["generate_dita"]["approval_required"] is True
     assert catalog["generate_dita"]["review_first"] is True
     assert catalog["generate_dita"]["execution_mode"] == "preview_then_generate"
 

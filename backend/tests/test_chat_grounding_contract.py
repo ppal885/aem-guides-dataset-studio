@@ -31,6 +31,7 @@ async def test_chat_turn_abstains_without_calling_llm_when_grounding_is_weak(mon
     async def fail_if_called(*_args, **_kwargs):
         raise AssertionError("LLM text generation should not run when grounding abstains early")
 
+    monkeypatch.setattr(chat_service, "is_llm_available", lambda: True)
     monkeypatch.setattr(chat_service, "_build_chat_evidence_pack", fake_build_pack)
     monkeypatch.setattr(chat_service, "generate_text", fail_if_called)
 

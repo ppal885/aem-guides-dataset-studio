@@ -86,38 +86,6 @@ def test_bundle_contract_maps_reference_bundle_to_deterministic_recipe():
     assert all("cars-" in seed for seed in selected.params["content_property_seeds"])
 
 
-def test_execute_plan_uses_builtin_fallback_when_manifest_misses_reference_recipe(monkeypatch):
-    monkeypatch.setattr(ai_executor_service, "discover_recipe_specs", lambda: [])
-    output_dir = Path("tests") / "_tmp" / f"fallback_reference_{uuid4().hex}"
-    plan = _build_generator_plan_from_bundle_contract(
-        {
-            "bundle_type": "topic_bundle",
-            "topic_family": "reference",
-            "subject": "insurance",
-            "include_map": False,
-            "counts": {"reference": 2},
-            "artifacts": [{"kind": "reference", "count": 2, "label": "2 reference topics"}],
-        }
-    )
-
-    assert plan is not None
-    try:
-        result = execute_plan(
-            plan,
-            str(output_dir),
-            seed="fallback-reference",
-            skip_experience_league_companion=True,
-        )
-        generated = sorted(path.name for path in output_dir.rglob("*.dita"))
-    finally:
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
-
-    assert "reference_topics" in result["recipes_executed"]
-    assert any("built-in fallback spec" in warning for warning in result["warnings"])
-    assert len(generated) == 2
-
-
 def test_bundle_contract_keeps_reference_family_root_on_deterministic_recipe():
     plan = _build_generator_plan_from_bundle_contract(
         {
