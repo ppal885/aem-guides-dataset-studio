@@ -377,3 +377,60 @@ lines and an optional proposed-fix `Note:` first line; TBD = decision
 pending. Vision must keep the `[Vision]` comment prefix so the runner
 ignores its comments (no loop), and must never write the AC field or our
 labels. Full implementation prompt: `docs/vision_uac_integration_prompt.md`.
+
+## On-demand UAC requests (REST and MCP)
+
+Live since PR #220. Any caller, Vision included, can ask for a UAC on one
+ticket and have it generated, checked and **posted** into the Acceptance
+Criteria field, instead of waiting for the nightly batch. Same FastAPI app,
+two protocols, one handler.
+
+```
+caller ── POST /api/v1/uac-requests {"jira_key": "GUIDES-60001"}   ─┐
+       ── MCP tools/call request_uac {"jira_key": ...}            ─┤ 202 {request_id, status: queued, poll_url}
+                                                                   ▼
+          request file in UAC_REQUESTS_DIR (backend writes nothing else)
+                                                                   ▼
+          uac_release_runner.py --on-demand   (cron every 2 min, same run lock as nightly)
+          → process_ticket, unchanged: skill generation · all checks · AC field
+            · test plan attached · QEVision_UAC_DONE · outcome written on the request
+                                                                   ▼
+caller ── GET /api/v1/uac-requests/{id} | MCP request_uac_status | watch the label
+       → posted (ac_count) | failed (CHECKS_FAILED + problems, WRITTEN_UNRENDERED, ERROR)
+         | skipped (FIELD_KEPT, NOT_REQUIRED, CLOSURE_ASKED, OPS_REQUEST, ALREADY_POSTED)
+```
+
+Points to make in the demo:
+- Trigger to posted is typically 10-30 minutes: 2-minute pickup plus the
+  normal generation and checks. The call is asynchronous by design; the
+  proxy's 10-minute ceiling would cut a synchronous one.
+- The backend only records the request. Jira is written by the runner,
+  after every check the nightly run applies; Copilot still has Jira writes
+  denied. Nothing about generation or posting changed.
+- A second request for a ticket still queued or running returns the same
+  request (HTTP 200), not a duplicate. A ticket whose field already has
+  text is skipped with FIELD_KEPT: read that UAC.
+- Max 3 requests per on-demand run, so a burst cannot starve the nightly
+  batch. A request left running by a dead run is queued again after the
+  lock timeout.
+- Three entry points now: `UAC_Check` label (nightly), this API/MCP
+  (on-demand), `--ticket KEY` on the VM (manual). Same engine, same checks.
+
+Example for Vision:
+
+```bash
+curl -X POST http://<VM>:4502/api/v1/uac-requests \
+  -H "Authorization: Bearer $STUDIO_TOKEN" -H "Content-Type: application/json" \
+  -d '{"jira_key": "GUIDES-60001", "requested_by": "vision"}'
+# poll every 1-2 min, allow ~2 h; on "posted", read the AC field and start the fix
+```
+
+Deployment: backend env `UAC_REQUESTS_DIR` = runner `requests_dir`
+(`/opt/uac-release/runs/requests`), the `*/2` cron line from
+`scripts/uac_release/uac-release.cron`, first request with `--dry-run`.
+
+Sources: `backend/app/api/v1/routes/uac_requests.py`,
+`backend/app/services/uac_request_service.py`,
+`backend/app/api/routes/remote_mcp.py` (`request_uac`, `request_uac_status`),
+`scripts/uac_release/uac_request_queue.py`, `uac_release_runner.py`
+(`process_requests`, `--on-demand`), `docs/vision_uac_contract.md` section 8.
