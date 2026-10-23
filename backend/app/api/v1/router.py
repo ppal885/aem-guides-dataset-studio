@@ -29,6 +29,7 @@ from app.api.v1.routes import (
     test_plans,
     test_plan_learning,
     test_plan_learning_readiness,
+    uac_requests,
     uac_copilot,
 )
 from app.api.v1.routes import mcp_bridge
@@ -119,3 +120,4 @@ api_router.include_router(mcp_bridge.router)
 api_router.include_router(test_plans.router)
 api_router.include_router(test_plan_learning.router)
 api_router.include_router(test_plan_learning_readiness.router)
+api_router.include_router(uac_requests.router)

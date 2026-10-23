@@ -3,6 +3,8 @@
   "tickets": [],
   "approved_scope_jql": "project = GUIDES AND fixVersion in unreleasedVersions(GUIDES) AND issuetype = \"Customer Request\"",
   "max_tickets": 10,
+  "requests_dir": "/opt/uac-release/runs/requests",
+  "on_demand_max_tickets": 3,
   "output_dir": "/opt/uac-release/runs",
   "acceptance_criteria_field": "customfield_13400",
   "mcp_health_url": "http://10.42.46.78:4502/mcp/health",

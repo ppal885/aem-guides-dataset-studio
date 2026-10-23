@@ -133,6 +133,32 @@ def _tools() -> list[dict[str, Any]]:
     return [
         *_learning_tools(),
         _tool(
+            "request_uac",
+            (
+                "Ask the UAC release runner to generate a UAC for one Jira ticket and post it into the "
+                "ticket's Acceptance Criteria field. Returns a request_id to poll with request_uac_status; "
+                "the ticket also gets the QEVision_UAC_DONE label when posted. The request only queues: "
+                "generation runs with every nightly check and takes minutes. A ticket whose field already "
+                "holds text is skipped (FIELD_KEPT); read that UAC instead."
+            ),
+            _schema(
+                {
+                    "jira_key": {"type": "string", "description": "Ticket key, for example GUIDES-60001"},
+                    "requested_by": {"type": "string", "default": "", "description": "Caller name, for example vision"},
+                    "note": {"type": "string", "default": ""},
+                },
+                ["jira_key"],
+            ),
+        ),
+        _tool(
+            "request_uac_status",
+            (
+                "Status of a UAC request: queued, running, posted, failed or skipped, with a reason "
+                "(FIELD_KEPT, NOT_REQUIRED, CLOSURE_ASKED, CHECKS_FAILED ...) and the posted AC count."
+            ),
+            _schema({"request_id": {"type": "string"}}, ["request_id"]),
+        ),
+        _tool(
             "ask_dita_expert",
             "Answer DITA, DITA-OT, and AEM Guides behavior questions using VM-hosted RAG evidence.",
             _schema(
@@ -450,6 +476,22 @@ async def remote_mcp_json_rpc(
         )
 
 
+def _uac_request_tool(name: str, arguments: dict[str, Any], user: UserIdentity) -> dict[str, Any]:
+    from app.services import uac_request_service
+
+    if name == "request_uac":
+        request, created = uac_request_service.create_request(
+            str(arguments.get("jira_key") or ""),
+            requested_by=str(arguments.get("requested_by") or "") or user.id,
+            note=str(arguments.get("note") or ""),
+        )
+        return {**request, "created": created}
+    request = uac_request_service.get_request(str(arguments.get("request_id") or ""))
+    if request is None:
+        raise ValueError("Unknown UAC request")
+    return request
+
+
 async def _call_tool(
     name: str,
     arguments: dict[str, Any],
@@ -476,6 +518,10 @@ async def _call_tool(
                 "Authenticated user context is required for evidence graph queries."
             )
         return _query_test_evidence_graph(arguments, user)
+    if name in {"request_uac", "request_uac_status"}:
+        if user is None:
+            raise ValueError("Authenticated user context is required for UAC requests.")
+        return await asyncio.to_thread(_uac_request_tool, name, arguments, user)
     if name not in tools:
         raise ValueError(f"Unknown tool: {name}")
     result = tools[name](arguments)

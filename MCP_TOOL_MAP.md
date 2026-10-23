@@ -18,6 +18,8 @@ For setup (Cursor, Claude Code, Codex), see [Client configuration samples](#clie
 | `preview_glossary_recipe` | POST | `/api/v1/specialized/glossary/preview` | |
 | `get_rag_status` | GET | `/api/v1/ai/rag-status` | Query `tenant_id` (default `default`) |
 | `guides_test_plan_generator` | POST | `/api/v1/mcp/guides-test-plan-generator` | Read-only evidence packet for `/guides-test-plan-generator GUIDES-12345` |
+| `request_uac` | POST | `/api/v1/uac-requests` | Queue a UAC for one ticket; the release runner (`--on-demand`) generates, checks and posts it to Jira |
+| `request_uac_status` | GET | `/api/v1/uac-requests/{request_id}` | `queued`/`running`/`posted`/`failed`/`skipped` with reason and AC count |
 | `generate_from_text` | POST | `/api/v1/ai/generate-from-text` | Query `async`, `skip_rag_check` |
 | `create_chat_session` | POST | `/api/v1/chat/sessions` | |
 | `send_chat_message` | POST | `/api/v1/chat/sessions/{session_id}/messages` | SSE aggregated to JSON |
