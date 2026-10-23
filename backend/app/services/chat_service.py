@@ -465,6 +465,24 @@ def _looks_like_short_definition_question(text: str) -> bool:
     return bool(_SHORT_DEFINITION_OR_EXPLAIN.match(t))
 
 
+def _compose_grounded_evidence_context(evidence_ctx: str, dita_rag: str, *, max_chars: int = 3000) -> str:
+    """Join the grounded tool evidence with the supplementary DITA spec RAG for the LLM prompt.
+
+    The evidence pack (official DITA-OT / AEM docs, verified snippets) is what the answer is verified
+    against, so it keeps its place inside the prompt window; the structural spec chunks only get the
+    remaining budget instead of pushing that evidence out when both are prepended and then truncated."""
+    evidence = (evidence_ctx or "")[:max_chars]
+    spec = (dita_rag or "").strip()
+    if not spec:
+        return evidence
+    if not evidence:
+        return spec[:max_chars]
+    remaining = max_chars - len(evidence) - 2
+    if remaining <= 0:
+        return evidence
+    return spec[:remaining] + "\n\n" + evidence
+
+
 def _should_include_structural_dita_rag(question: str) -> bool:
     text = (question or "").strip()
     if not text:
@@ -7458,6 +7476,15 @@ def _build_generate_dita_preview_plan(
     # Fallback: LLM analysis marker
     if not _is_freeform and "DITA keyref scenario" in (_original_request or ""):
         _is_freeform = True
+    preview = None
+    if _is_freeform:
+        # A construct the contract service plans as an example bundle ("Generate a keyscope example")
+        # keeps its review-first contract preview: the shape clarification and demo counts are what
+        # the user reviews. execute_generate_dita still redirects the same keywords to freeform.
+        contract_preview = build_generate_dita_preview(text=text, instructions=instructions)
+        if contract_preview.get("example_request") and contract_preview.get("example_construct"):
+            preview = contract_preview
+            _is_freeform = False
     if _is_freeform:
         # Freeform advanced-construct request: skip the contract service entirely.
         # execute_generate_dita will detect the same keywords and redirect to
@@ -7467,7 +7494,8 @@ def _build_generate_dita_preview_plan(
         preview_ready = True
         clarification_required = False
     else:
-        preview = build_generate_dita_preview(text=text, instructions=instructions)
+        if preview is None:
+            preview = build_generate_dita_preview(text=text, instructions=instructions)
         bundle_contract = build_generate_dita_execution_contract(preview=preview)
         preview_status = str(preview.get("status") or "").strip().lower()
         preview_ready = preview_status == "preview_ready"
@@ -8344,9 +8372,7 @@ async def _build_grounded_dita_answer_payload(
                 max_chars=CHAT_GROUNDED_EVIDENCE_MAX_CHARS,
                 limit=CHAT_GROUNDED_EVIDENCE_LIMIT,
             )
-            if dita_rag:
-                evidence_ctx = dita_rag + "\n\n" + evidence_ctx
-            evidence_ctx_for_prompt = evidence_ctx[:3000]
+            evidence_ctx_for_prompt = _compose_grounded_evidence_context(evidence_ctx, dita_rag)
             if evidence_pack.decision.status in {"abstain", "conflict"}:
                 evidence_ctx_for_prompt = (
                     "The indexed evidence is thin or conflicting. Answer directly from your general DITA knowledge in a "
@@ -8986,7 +9012,16 @@ async def _stream_assistant_reply(
             yield event
         return
 
-    if allow_tool_routing and route_decision.intent == "dita_generation" and policy_decision.action in {"preview_first", "clarify_first"} and not _DITA_AUTHORING_PATTERN.search(user_content):
+    # "Generate a keyscope example" names an authoring-guidance construct, but the router has already kept
+    # question-led example requests on grounded Q&A, and the contract resolved this one as an explicit
+    # construct example request: it must reach the review-first preview plan, not the authoring answer.
+    _route_preview = (route_decision.candidate_contract or {}).get("preview") if isinstance(route_decision.candidate_contract, dict) else None
+    _explicit_construct_example = bool(
+        isinstance(_route_preview, dict) and _route_preview.get("example_request") and _route_preview.get("example_construct")
+    )
+    if allow_tool_routing and route_decision.intent == "dita_generation" and policy_decision.action in {"preview_first", "clarify_first"} and (
+        _explicit_construct_example or not _DITA_AUTHORING_PATTERN.search(user_content)
+    ):
         contract = route_decision.candidate_contract or {}
         fresh_generate_dita_plan = _build_generate_dita_preview_plan(
             user_request=user_content,
@@ -9183,10 +9218,8 @@ async def _stream_assistant_reply(
                 max_chars=CHAT_GROUNDED_EVIDENCE_MAX_CHARS,
                 limit=CHAT_GROUNDED_EVIDENCE_LIMIT,
             )
-            if dita_rag:
-                evidence_ctx = dita_rag + "\n\n" + evidence_ctx
             rag_context = _build_rag_context(user_content, tenant_id=tenant_id)
-            evidence_ctx_for_prompt = evidence_ctx[:3000]
+            evidence_ctx_for_prompt = _compose_grounded_evidence_context(evidence_ctx, dita_rag)
             if evidence_pack.decision.status in {"abstain", "conflict"}:
                 evidence_ctx_for_prompt = (
                     "The indexed evidence is thin or conflicting. Answer directly from your general DITA knowledge in a "
