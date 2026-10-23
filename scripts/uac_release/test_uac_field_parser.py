@@ -95,10 +95,15 @@ class JiraFieldGrammarTests(unittest.TestCase):
         # The harvester keeps the bold marker's trailing "* " in Source; consumers use ``text``, not ``source``.
         self.assertTrue(criteria[0]["source"].endswith("Jira description, line 2."), criteria[0]["source"])
         self.assertTrue(criteria[1]["tbd"].endswith("keep the special characters or encode them?"), criteria[1]["tbd"])
+        # A criterion's text is its statement plus its case sub-points; Source and TBD lines are never part of it.
         self.assertEqual(parser.ac_texts_only(FIELD_WIKI), [
-            "Export to PDF works when the document name contains & or #.",
+            "Export to PDF works when the document name contains & or #. Name with &: the PDF opens. "
+            "Name with #: the PDF opens.",
             "Export to PDF with a plain name still works as before.",
         ])
+        for text in parser.ac_texts_only(FIELD_WIKI):
+            self.assertNotIn("Source", text)
+            self.assertNotIn("TBD", text)
         self.assertTrue(parser.has_open_decision(FIELD_WIKI))
 
     def test_note_line_in_field_is_skipped(self):

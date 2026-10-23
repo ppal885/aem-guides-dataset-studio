@@ -62,10 +62,11 @@ def parse_field(field_text: str) -> list[dict]:
 
 
 def ac_texts_only(field_text: str, *, include_struck: bool = False) -> list[str]:
-    """The criterion statements of a Jira Acceptance Criteria field, in order, without Source/TBD/case lines.
+    """The text of each criterion in a Jira Acceptance Criteria field, in order, without Source and TBD lines.
 
-    This is the view a downstream reader such as Vision needs. Criteria QE struck through are left out
-    unless ``include_struck`` is true, in which case their original statement is returned.
+    A criterion's text is its statement followed by its case sub-points (the nested bullets QE reads as part
+    of the criterion). This is the view a downstream reader such as Vision needs. Criteria QE struck through
+    are left out unless ``include_struck`` is true, in which case their original text is returned.
     """
     texts: list[str] = []
     for criterion in parse_field(field_text):

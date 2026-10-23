@@ -53,7 +53,8 @@ Python consumers can import the parser directly:
 
 ```python
 from uac_field_parser import ac_texts_only, has_open_decision   # scripts/uac_release on sys.path
-texts = ac_texts_only(field_value)          # ["Export to PDF works when ...", ...]; struck criteria left out
+texts = ac_texts_only(field_value)          # one string per criterion: statement + its case sub-points;
+                                            # Source/TBD lines excluded, struck criteria left out
 pending = has_open_decision(field_value)    # True while any criterion still has a TBD
 ```
 
