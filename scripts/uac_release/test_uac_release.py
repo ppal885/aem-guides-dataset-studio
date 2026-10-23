@@ -1039,6 +1039,23 @@ class RunnerTests(unittest.TestCase):
         found = [c["id"] for c in staleness.fix_comments_after(issue, since, "uac.bot")]
         self.assertEqual(found, ["2", "5"], "before the UAC, plain questions and own comments are ignored")
 
+    def test_staleness_names_the_vision_agent_when_its_pr_arrives_after_the_uac(self) -> None:
+        since = "2026-01-10T10:00:00.000+0000"
+        issue = {"fields": {"comment": {"comments": [
+            {"id": "7", "author": {"name": "nupur"}, "created": "2026-01-12T09:00:00.000+0000",
+             "body": "[Vision] PR created — xmleditor · via Copilot\n\n*Outcome*: A pull request is ready for your "
+                     "review.\n\n*PR*: xmleditor #8516\n*Root cause*: Backend rejects non-GUID renames.\n\n"
+                     "— Vision · GUIDES-00001 · PR created"},
+            {"id": "8", "author": {"name": "nupur"}, "created": "2026-01-12T10:00:00.000+0000",
+             "body": "Root cause: the rename handler ignores the GUID flag"},
+        ]}}}
+        found = staleness.fix_comments_after(issue, since, "uac.bot")
+        self.assertEqual([c["id"] for c in found], ["7", "8"], "a Vision PR is a fix signal like any other")
+        self.assertEqual(found[0]["reporter"], "the Vision agent (posted by nupur)")
+        self.assertEqual(found[1]["reporter"], "nupur", "a person's own comment is reported under their name")
+        self.assertTrue(staleness.VISION_COMMENT.match("h3. [Vision] Needs review — xmleditor · via Copilot"))
+        self.assertFalse(staleness.VISION_COMMENT.match("The vision statement in the PRD is outdated."))
+
     def test_staleness_alerts_each_comment_once_and_never_writes_the_ticket(self) -> None:
         issue = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
                                               "items": [{"fieldId": "customfield_1"}]}]},

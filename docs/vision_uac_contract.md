@@ -105,7 +105,13 @@ confirmation. Rules:
   ever used by the UAC pipeline, they enter as observation evidence only, like historical ticket findings,
   never as the source of an Acceptance Criterion without a human decision.
 - A Vision PR arriving after the UAC does **not** regenerate the UAC. The staleness watch
-  (`uac_staleness_watch.py`) alerts QE once; QE decides whether to re-run.
+  (`uac_staleness_watch.py`) already treats any later comment with a root cause, fix or PR link as a
+  "UAC may be stale" signal, whoever posted it, and alerts QE once per comment. When the comment carries
+  the `[Vision]` tag, the alert names "the Vision agent (posted by <account>)" so QE knows it is an
+  automated fix proposal. Later Vision states on the same ticket (Checked PR for feedback, Needs review)
+  add no second alert unless they themselves carry a new fix signal. QE decides whether to re-run.
+- No `UAC.json` attachment is produced on purpose: the field is the single source of truth QE edits, and a
+  second copy would go stale. Consumers use the field with the grammar above (or `uac_field_parser.py`).
 
 ## 6. What Vision must not do
 
@@ -116,8 +122,7 @@ confirmation. Rules:
 
 ## 7. Open questions for the Vision team
 
-1. Is the `[Vision]` prefix guaranteed on every comment, including failures and retries?
-2. Does Vision want a machine-readable `UAC.json` attachment (criteria with numbers, sources and TBD flags)
-   in addition to the field? The runner can attach one behind a config flag if so.
-3. Which Vision state should trigger a QE alert that the UAC may be stale: `PR created` only, or also
-   `Needs review`?
+1. Is the `[Vision]` prefix guaranteed on every comment, including failures and retries? Both the runner's
+   bot-notice rule and the staleness alert's "Vision agent" naming depend on it.
+2. Does Vision need the criterion statement alone, without its case sub-points? `ac_texts_only` returns
+   statement plus cases today; a statement-only view is a small addition if wanted.
