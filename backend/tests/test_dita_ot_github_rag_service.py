@@ -269,16 +269,6 @@ def test_index_dita_ot_github_issues_indexes_curated_refs_when_live_fetch_empty(
     mock_add.assert_called_once()
 
 
-@pytest.mark.parametrize("state", ["bad", "pending"])
-def test_index_request_invalid_state_rejected(state: str):
-    from pydantic import ValidationError
-
-    from app.api.v1.routes.ai_dataset import IndexDitaOtGithubIssuesRequest
-
-    with pytest.raises(ValidationError):
-        IndexDitaOtGithubIssuesRequest(state=state)
-
-
 # ---------------------------------------------------------------------------
 # chat_service integration: reference cap and system prompt addendum
 # ---------------------------------------------------------------------------

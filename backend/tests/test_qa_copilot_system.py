@@ -413,17 +413,11 @@ def test_empty_response_guardrail_has_no_fake_jira_keys() -> None:
     assert grounding.hallucination_prevention_triggered is True
 
 
-def test_api_v1_chat_empty_grounded_response(client, auth_headers, monkeypatch) -> None:
-    monkeypatch.setattr("app.agents.planner_agent.is_llm_available", lambda: False)
-    monkeypatch.setattr("app.rag.semantic_search.semantic_search_jira_qa", lambda *args, **kwargs: [])
+def test_api_v1_chat_route_is_not_exposed(client, auth_headers) -> None:
+    """The QA copilot chat endpoint belonged to the retired web application; former routes must return 404."""
     response = client.post(
         "/api/v1/chat",
         json={"message": "Cisco ke conref related old bugs aur automation scenarios batao"},
         headers=auth_headers,
     )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["entities"]["customer"] == "Cisco"
-    assert payload["retrieved_issues"] == []
-    assert payload["grounding"]["hallucination_prevention_triggered"] is True
-    assert "No matching grounded historical issues found." in payload["final_response"]
+    assert response.status_code == 404

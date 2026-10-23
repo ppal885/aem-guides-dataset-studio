@@ -80,6 +80,9 @@ def _source_builder(source_name):
 
 
 def _install_successful_sources(monkeypatch):
+    # The rebuild's memory gate reads ru_maxrss, the peak of the whole pytest process, which the chat and
+    # embedding test modules push past the default. These tests check promotion logic, not the memory budget.
+    monkeypatch.setenv("EVIDENCE_GRAPH_REBUILD_MAX_MEMORY_MB", "65536")
     jira = _source_builder("jira")
     docs = _source_builder("docs")
     dita = _source_builder("dita")
