@@ -102,15 +102,26 @@ def last_ac_change(issue: dict, field_id: str) -> str:
     return latest
 
 
+# A comment the Vision agent posted through a person's account: "[Vision] PR created — xmleditor · via Copilot".
+# Its fix or PR still makes the UAC stale, but QE should see that it is an automated proposal, not a developer's word.
+VISION_COMMENT = re.compile(r"^\s*(?:h\d\.\s*)?\[?\s*vision\b", re.I)
+
+
+def _reporter(author: str, body: str) -> str:
+    """Who to name in the alert: the Vision agent when the comment carries its tag, else the author."""
+    return f"the Vision agent (posted by {author})" if VISION_COMMENT.match(body or "") else author
+
+
 def fix_comments_after(issue: dict, since: str, own_name: str = "") -> list[dict]:
     comments = ((issue.get("fields") or {}).get("comment") or {}).get("comments") or []
     found = []
     for comment in comments:
         author = str((comment.get("author") or {}).get("name") or "")
         created = str(comment.get("created") or "")
-        if since and _after(created, since) and not _automation(author, own_name) \
-                and FIX_SIGNAL.search(comment.get("body") or ""):
-            found.append({"id": str(comment.get("id")), "author": author, "created": created})
+        body = comment.get("body") or ""
+        if since and _after(created, since) and not _automation(author, own_name) and FIX_SIGNAL.search(body):
+            found.append({"id": str(comment.get("id")), "author": author, "created": created,
+                          "reporter": _reporter(author, body)})
     return found
 
 
@@ -250,7 +261,8 @@ def stale_lines(config: dict, jira, logger, keys: list[str], state: dict, own_na
         for comment in fix_comments_after(issue, since, own_name):
             if comment["id"] in seen:
                 continue
-            lines.append(f"{key}: a root cause or fix was reported by {comment['author']} on {comment['created'][:10]}, "
+            lines.append(f"{key}: a root cause or fix was reported by {comment.get('reporter') or comment['author']} "
+                         f"on {comment['created'][:10]}, "
                          f"after the Acceptance Criteria were last changed on {since[:10]}; review the UAC")
             seen.add(comment["id"])
         for item in new_evidence_after(issue, since, own_name, hosts):

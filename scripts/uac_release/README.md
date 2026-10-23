@@ -472,6 +472,17 @@ introduced" line scopes nothing by itself, and a criterion that rests only on th
 ticket or on behaviour the hotfix does not change fails unless it carries a TBD. The clones named in
 the file must exist on the VM.
 
+## Downstream consumers (Vision)
+
+The posted UAC is an input to other agents. Vision reads the Acceptance Criteria field directly from Jira
+(no API call to this backend): it finds tickets with `labels = QEVision_UAC_DONE AND "Acceptance Criteria"
+is not EMPTY` and takes the criterion statements only. The field grammar, the states a consumer must
+handle (`UAC_Not_Required`, text without the posted label, QE edits after posting) and the loop-prevention
+rule (Vision comments keep the `[Vision]` prefix, which this runner treats as a bot notice) are in
+`docs/vision_uac_contract.md`. `uac_field_parser.py` is the one place for that grammar:
+`ac_texts_only(field_text)` is the view Vision needs, and the runner's own `UAC.md` checks use the same
+module. Vision never writes the Acceptance Criteria field or this automation's labels.
+
 ## Files per ticket (`<output_dir>/<KEY>/`)
 
 `UAC.md`, `test-plan.md`, `field-body.txt` (exact text written into the field),

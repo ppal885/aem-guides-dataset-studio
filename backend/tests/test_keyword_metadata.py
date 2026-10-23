@@ -111,7 +111,10 @@ class TestKeywordMetadataGeneration:
         assert 'keyref="kw-1"' in content or 'keyref="kw-1"' in content.replace('"', '"')
     
     def test_custom_id_prefix(self, sample_config):
-        """Test custom ID prefix."""
+        """A custom id_prefix never changes an id that is already a valid DITA id.
+
+        ``make_dita_id`` prepends the prefix only when the id would otherwise start with an invalid character;
+        ``topic_keyword_1`` is valid as is, so the prefix does not appear."""
         files = generate_keyword_metadata_dataset(sample_config, "test_base", id_prefix="meta", num_keywords=2)
         
         keyword_path = "test_base/aem_guides_keyword_metadata/topics/metadata/keyword_1.dita"
@@ -120,7 +123,7 @@ class TestKeywordMetadataGeneration:
         root = ET.fromstring(files[keyword_path].decode("utf-8").split("\n", 1)[1])
         topic_id = root.get("id", "")
         
-        assert topic_id.startswith("meta")
+        assert topic_id == "topic_keyword_1"
     
     def test_xml_well_formed(self, sample_config):
         """Test that all XML is well-formed."""
