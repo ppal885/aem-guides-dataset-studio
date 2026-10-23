@@ -36,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
+import uac_request_queue  # noqa: E402
 import uac_field_parser  # noqa: E402
 import linked_docs  # noqa: E402
 
@@ -1756,6 +1757,50 @@ def check_dir(ticket_dir: Path, own_name: str = "") -> int:
     return 1 if problems else 0
 
 
+def requests_dir(config: dict) -> Path:
+    """Where the backend API drops UAC requests (``UAC_REQUESTS_DIR`` on the backend must match)."""
+    return Path(config.get("requests_dir") or Path(config["output_dir"]) / "requests")
+
+
+def process_requests(config: dict, jira, logger, run_id: str, dry_run: bool) -> tuple[dict[str, str], dict[str, str]]:
+    """On-demand mode: take queued requests from the API, run the normal ticket flow, record the outcome.
+
+    One ticket at a time, oldest request first, at most ``on_demand_max_tickets`` per run (default 3) so a
+    burst of requests cannot starve the nightly run. The ticket flow is process_ticket unchanged: same
+    generation, same checks, same Jira writes; only the selection and the reporting differ."""
+    queue = uac_request_queue.UacRequestQueue(requests_dir(config))
+    stale_after = int(config.get("lock_max_age_minutes", 720)) * 60
+    for request_id in queue.requeue_stale_running(max_age_seconds=stale_after):
+        logger.warning("request %s was left running by an earlier run; queued again", request_id)
+    picked = queue.queued(limit=int(config.get("on_demand_max_tickets", 3)))
+    logger.info("requests: %s", ", ".join(f"{r['jira_key']} ({r['request_id']})" for r in picked) or "none")
+    results: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    out = Path(config["output_dir"])
+    for request in picked:
+        request_id, key = request["request_id"], request["jira_key"]
+        if queue.mark_running(request_id, run_id=run_id) is None:
+            continue  # taken by another run between listing and marking
+        try:
+            result = process_ticket(key, config, jira, logger, dry_run)
+        except Exception as exc:  # noqa: BLE001 - one request must not stop the others
+            logger.exception("%s: request %s failed", key, request_id)
+            result, errors[key] = "ERROR", f"{type(exc).__name__}: {exc}"
+        results[key] = result
+        status = common.read_status(out / key)
+        state = str(status.get("state") or result)
+        if result == "ERROR":
+            state = "ERROR"  # status.json may still hold an earlier attempt's state
+        elif result == "SKIPPED" and state == "POSTED":
+            state = "SKIPPED"  # a UAC was posted earlier; the caller reads that one
+        uac_path = out / key / common.UAC_FILE
+        ac_count = uac_field_parser.ac_count_md(uac_path.read_text(encoding="utf-8")) if uac_path.is_file() else None
+        queue.finish(request_id, runner_state=state, problems=status.get("problems") or [],
+                     ac_count=ac_count, error=errors.get(key, ""))
+        logger.info("%s: request %s -> %s", key, request_id, queue.get(request_id)["status"])
+    return results, errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check-dir", type=Path,
@@ -1765,6 +1810,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env-file", type=Path, default=common.REPO_ROOT / "backend" / ".env")
     parser.add_argument("--ticket", action="append", help="process only these keys (repeatable)")
     parser.add_argument("--dry-run", action="store_true", help="generate and check, but write nothing to Jira")
+    parser.add_argument("--on-demand", action="store_true",
+                        help="process queued UAC requests from the backend API (requests_dir) instead of the JQL")
     args = parser.parse_args(argv)
     if args.check_dir:
         return check_dir(args.check_dir, args.own_name)
@@ -1789,7 +1836,9 @@ def main(argv: list[str] | None = None) -> int:
             health_problems = health(config, jira, logger)
             for p in health_problems:
                 logger.error("health: %s", p)
-            if not health_problems:
+            if not health_problems and args.on_demand:
+                results, errors = process_requests(config, jira, logger, run_id, args.dry_run)
+            elif not health_problems:
                 keys = args.ticket or config.get("tickets") or jira.search_keys(
                     config["jql"], int(config.get("max_tickets", 100)))
                 logger.info("tickets: %s", ", ".join(keys) or "none")

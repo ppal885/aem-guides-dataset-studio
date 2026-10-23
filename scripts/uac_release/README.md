@@ -472,6 +472,20 @@ introduced" line scopes nothing by itself, and a criterion that rests only on th
 ticket or on behaviour the hotfix does not change fails unless it carries a TBD. The clones named in
 the file must exist on the VM.
 
+## On-demand requests (REST and MCP)
+
+Besides the nightly JQL, a UAC can be requested for one ticket through the backend:
+`POST /api/v1/uac-requests {"jira_key": "GUIDES-60001"}` or the MCP tool `request_uac`. The backend only
+writes a request file into `requests_dir` (config; default `<output_dir>/requests`; the backend's
+`UAC_REQUESTS_DIR` must point at the same directory). `uac_release_runner.py --on-demand` (cron every
+2 minutes, see `uac-release.cron`) takes the oldest queued requests, at most `on_demand_max_tickets` per
+run (default 3), and runs the normal `process_ticket` flow: same generation, same checks, same Jira writes,
+same `QEVision_UAC_DONE` label. The outcome is recorded on the request (`posted`, `failed` with the check
+problems, or `skipped` with `FIELD_KEPT` / `NOT_REQUIRED` / `CLOSURE_ASKED` / `ALREADY_POSTED`) and read
+back through `GET /api/v1/uac-requests/{id}` or the MCP tool `request_uac_status`. The run lock keeps the
+nightly and on-demand runs from overlapping; a request left `running` by a run that died is queued again
+after `lock_max_age_minutes`. Grammar and examples for callers: `docs/vision_uac_contract.md`, section 8.
+
 ## Downstream consumers (Vision)
 
 The posted UAC is an input to other agents. Vision reads the Acceptance Criteria field directly from Jira
