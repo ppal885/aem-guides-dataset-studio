@@ -1116,7 +1116,7 @@
       },
       "implied_dimension": {
         "axis": "OUTPUT_PRESET",
-        "candidate_template": "site or HTML navigation follows DITA-OT map processing: query the DITA spec and DITA-OT HTML5 processing docs for each construct the change touches (navtitle with locktitle yes and no, topichead, topicgroup with and without a title, toc no, processing-role resource-only, collection-type, chunk); add a parity criterion that generates the same map as the DITA-OT based output (old AEM Site or HTML5) and compares the navigation labels, order and links; a difference is a TBD for the product owner, never a guessed expected result; the DITA-OT based output stays out of scope for change"
+        "candidate_template": "site or HTML navigation follows DITA-OT map processing: query the DITA spec and DITA-OT HTML5 processing docs for each construct the change touches (navtitle with locktitle yes and no, from the navtitle attribute and from the topicmeta navtitle element - check both sources, topichead, topicgroup with and without a title, toc no, processing-role resource-only, collection-type, chunk); add a parity criterion that generates the same map as the DITA-OT based output (old AEM Site or HTML5) and compares the navigation labels, order and links; a difference is a TBD for the product owner, never a guessed expected result; the DITA-OT based output stays out of scope for change"
       },
       "provenance": {
         "source": "HUMAN",

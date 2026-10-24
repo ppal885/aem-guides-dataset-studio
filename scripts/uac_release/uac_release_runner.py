@@ -1692,19 +1692,24 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     research = research_store_summary(ticket_dir)
     status["runtime_research"] = research
     status["runtime_result"] = runtime_result_summary(ticket_dir)
-    review_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
-                    + unreadable_video_notes(ticket_dir, source, own_name)
-                    + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research)
-                    + vocabulary_notes(ticket_dir)
-                    + [f"moved to the test plan, not a product check: {text.splitlines()[0][:110]}" for text in moved_acs])
+    base_notes = (orphan_ac_problems(ticket_dir) + comment_notes + attachment_fact_notes(ticket_dir, source, own_name)
+                  + unreadable_video_notes(ticket_dir, source, own_name)
+                  + researcher_run_notes(ticket_dir, prompt, source, own_name) + research_store_notes(research)
+                  + vocabulary_notes(ticket_dir)
+                  + [f"moved to the test plan, not a product check: {text.splitlines()[0][:110]}" for text in moved_acs])
+    # Coverage and wording nudges from the skill's completeness check that do not stop the UAC (four or five
+    # screens in one statement, the other side of a new check, an on/off sweep no record names).
+    completeness_notes = common.import_skill_module("uac_completeness_check").advisory_notes_by_check(ticket_dir)
+    review_notes = base_notes + [f"check {name}: {note}" for name, found in completeness_notes.items() for note in found]
     status["review_notes"] = review_notes
     fallback = runtime_fallback_gates(ticket_dir)
     if fallback is not None:
         status["runtime_fallback"] = fallback
         logger.warning("%s: written by the runtime fallback; gates not passed: %s",
                        key, "; ".join(fallback) or "not recorded")
-    log_check_firing(config, key, groups, {"orphan_acs": review_notes[:len(review_notes) - len(comment_notes)],
-                                           "unmapped_comments": comment_notes, "decisions": warnings})
+    log_check_firing(config, key, groups, {"orphan_acs": base_notes[:len(base_notes) - len(comment_notes)],
+                                           "unmapped_comments": comment_notes, "decisions": warnings,
+                                           **{f"evidence.{name}": found for name, found in completeness_notes.items()}})
     for warning in warnings + review_notes:
         logger.warning("%s: %s", key, warning)
     if dry_run:

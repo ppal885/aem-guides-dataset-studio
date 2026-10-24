@@ -1,17 +1,89 @@
 {
-  "note": "Skill fixes for QE correction patterns, with the time each fix reached the VM checkout (from the VM git reflog). The release page counts a pattern as repeated only from tickets posted after its fix; corrections on UACs posted before the fix show what the fix was for.",
+  "note": "Skill fixes for QE correction patterns, with the time each fix reached the VM checkout (from the VM git reflog where recorded; entries that say 'merge time' use the merge commit's committer time on main instead, which is earlier than or equal to the VM deploy). The release page counts a pattern as repeated only from tickets posted after its fix; corrections on UACs posted before the fix show what the fix was for. An entry's optional \"pending\" block names a further fix on a branch with deployed_at PENDING_MERGE: the page shows it as written but not yet deployed and does not count from it.",
   "fixes": {
-    "hard-to-read": {"fix": "PR #153 plain statement rule", "deployed_at": "2026-10-08T10:37:05+00:00"},
-    "stale-after-rca": {"fix": "PR #182 staleness watch on every posted ticket", "deployed_at": "2026-10-11T06:17:22+00:00"},
-    "missing-placements": {"fix": "PR #187 SAME_ITEM places", "deployed_at": "2026-10-11T07:01:49+00:00"},
-    "setting-toggle-noise": {"fix": "PR #204 ticket-named settings are AC or TBD; at most three code-found toggles (after PR #188 reads_at repeated on 3 tickets)", "deployed_at": "2026-10-14T06:56:07+00:00"},
-    "vague-expected-result": {"fix": "PR #199 scenario.acs sees: a CUSTOMER criterion states what QE sees (after commit 5401d3376 repeated on 2 tickets)", "deployed_at": "2026-10-13T09:47:42+00:00"},
-    "missing-setting": {"fix": "PR #199 action_reads: the setting the ticket's action reads is a config switch", "deployed_at": "2026-10-13T09:47:42+00:00"},
-    "tbd-answerable": {"fix": "PR #199 tbd_checks: code, tests and every recording or document searched before a TBD", "deployed_at": "2026-10-13T09:47:42+00:00"},
-    "missing-after-state": {"fix": "PR #199 after_state: bulk action end result, what is still possible after a task closes", "deployed_at": "2026-10-13T09:47:42+00:00"},
-    "screen-name": {"fix": "PR #199 reporter screen in the CUSTOMER criterion + two vocabulary blocks", "deployed_at": "2026-10-13T09:47:42+00:00"},
-    "guessed-decision": {"fix": "PR #201 decisions: a handling choice needs who decided it, otherwise a TBD", "deployed_at": "2026-10-13T11:17:00+00:00"},
-    "wrong-mechanism": {"fix": "PR #193 feature_design: how a feature is built and where it happens", "deployed_at": "2026-10-11T08:13:39+00:00"},
-    "route-list-noise": {"fix": "PR #128 at most five research-found places per AC (watching: QE kept 2 of 5 on the three tickets before it)", "deployed_at": "2026-10-04T17:54:19+00:00"}
+    "hard-to-read": {
+      "fix": "PR #153 plain statement rule",
+      "deployed_at": "2026-10-08T10:37:05+00:00",
+      "pending": {
+        "fix": "fix/qe-correction-patterns: code_token_problems fails a camelCase or snake_case field, dotted key, HTTP verb with a path or repository path in a criterion statement",
+        "deployed_at": "PENDING_MERGE"
+      }
+    },
+    "stale-after-rca": {
+      "fix": "PR #182 staleness watch on every posted ticket",
+      "deployed_at": "2026-10-11T06:17:22+00:00"
+    },
+    "missing-placements": {
+      "fix": "PR #187 SAME_ITEM places (VM reflog 2026-10-11T07:01:49+00:00); PR #210 construct_family_problems (every DITA table type); PR #211 a screen a linked ticket names is an AC or a TBD (merge time on main, not the VM reflog)",
+      "deployed_at": "2026-10-20T23:40:29+00:00",
+      "pending": {
+        "fix": "fix/qe-correction-patterns: every screen that lists the same object is enumerated, the statement names the reporter's screen and the others are sub-points or test plan lines; construct families for key-reference text elements (keyword, ph, term) and reference types in a created or renamed topic (conref, conkeyref, xref, image); translation UACs cover each project type the change runs through plus a target-folder permission case",
+        "deployed_at": "PENDING_MERGE"
+      }
+    },
+    "setting-toggle-noise": {
+      "fix": "PR #204 ticket-named settings are AC or TBD; at most three code-found toggles (after PR #188 reads_at repeated on 3 tickets)",
+      "deployed_at": "2026-10-14T06:56:07+00:00",
+      "pending": {
+        "fix": "fix/qe-correction-patterns: toggle_sweep_notes flags an on/off sweep no config_switches entry names (advisory); a sweep of other inputs is a case only when the changed output or action reads it",
+        "deployed_at": "PENDING_MERGE"
+      }
+    },
+    "vague-expected-result": {
+      "fix": "PR #199 scenario.acs sees: a CUSTOMER criterion states what QE sees (after commit 5401d3376 repeated on 2 tickets)",
+      "deployed_at": "2026-10-13T09:47:42+00:00"
+    },
+    "missing-setting": {
+      "fix": "PR #199 action_reads: the setting the ticket's action reads is a config switch",
+      "deployed_at": "2026-10-13T09:47:42+00:00"
+    },
+    "tbd-answerable": {
+      "fix": "PR #199 tbd_checks: code, tests and every recording or document searched before a TBD",
+      "deployed_at": "2026-10-13T09:47:42+00:00"
+    },
+    "missing-after-state": {
+      "fix": "PR #199 after_state: bulk action end result, what is still possible after a task closes",
+      "deployed_at": "2026-10-13T09:47:42+00:00"
+    },
+    "screen-name": {
+      "fix": "PR #199 reporter screen in the CUSTOMER criterion + two vocabulary blocks",
+      "deployed_at": "2026-10-13T09:47:42+00:00"
+    },
+    "guessed-decision": {
+      "fix": "PR #201 decisions: a handling choice needs who decided it, otherwise a TBD",
+      "deployed_at": "2026-10-13T11:17:00+00:00"
+    },
+    "wrong-mechanism": {
+      "fix": "PR #193 feature_design: how a feature is built and where it happens",
+      "deployed_at": "2026-10-11T08:13:39+00:00"
+    },
+    "route-list-noise": {
+      "fix": "PR #128 at most five research-found places per AC (watching: QE kept 2 of 5 on the three tickets before it)",
+      "deployed_at": "2026-10-04T17:54:19+00:00",
+      "pending": {
+        "fix": "fix/qe-correction-patterns: route_list_problems fails six or more screens in one statement and notes four or five; the SAME_ITEM rule now says the statement names the reporter's screen and the other places are sub-points or test plan lines",
+        "deployed_at": "PENDING_MERGE"
+      }
+    },
+    "doc-fact-dropped": {
+      "fix": "PR #211 linked tickets count as referenced and a flavour case needs the stored data it depends on; PR #212 site and HTML navigation follow DITA-OT map processing (merge time on main, not the VM reflog)",
+      "deployed_at": "2026-10-21T00:10:11+00:00",
+      "pending": {
+        "fix": "fix/qe-correction-patterns: a linked ticket that conflicts is a TBD; one criterion carries the TBDs for an undecided mechanism (decision_only_problems); an Editor screenshot shows setup, not where an output change is checked; navtitle attribute and topicmeta navtitle both checked (MP-030); a race fix covers the failing side and runs started together",
+        "deployed_at": "PENDING_MERGE"
+      }
+    },
+    "missing-other-side": {
+      "fix": "fix/qe-correction-patterns: a new validation also needs the valid side (other_side_notes: what must still pass, what a loosened check must still block) and a race fix covers its failing side; the shared ticket's linked-ticket and flavour lessons were fixed by PR #211 (2026-10-20T23:40:29+00:00, merge time)",
+      "deployed_at": "PENDING_MERGE"
+    },
+    "untestable-ac": {
+      "fix": "PR #210 untestable_problems: connections, threads, caches and loops are not QE checks; a case that needs an unattached schema is a TBD (merge time on main, not the VM reflog)",
+      "deployed_at": "2026-10-19T22:06:15+00:00",
+      "pending": {
+        "fix": "fix/qe-correction-patterns: Map Editor reference insertion and edit contract in references/component-authoring.md (repository browse dialog, right panel Link path field, editing gets its own criterion, no flavour case)",
+        "deployed_at": "PENDING_MERGE"
+      }
+    }
   }
 }

@@ -18414,6 +18414,91 @@ def test_repeated_qe_correction_gates() -> None:
     print("test_repeated_qe_correction_gates: OK")
 
 
+def test_repeated_correction_pattern_gates_v2() -> None:
+    """route-list-noise, hard-to-read, doc-fact-dropped (decision-only criteria), missing-other-side,
+    setting-toggle-noise and missing-placements (construct families with a when gate)."""
+    uc = uac_completeness_check_mod
+    # route-list-noise: six or more screens in one statement fail; four or five are a note; three pass.
+    six = ("- Acceptance Criteria 01: The Finished status shows in the Map console Output history, the Map dashboard, "
+           "the Review Dashboard, the Publish Dashboard, Generated Outputs and the Reports panel.\n  **Source:** ticket.\n")
+    check("six screens in one statement fail", any("names 7 screens" in p or "names 6 screens" in p
+                                                   for p in uc.route_list_problems(six)))
+    five = six.replace(", the Publish Dashboard, Generated Outputs", "")
+    check("five screens in one statement are a note, not a failure",
+          uc.route_list_problems(five) == [] and any("names 5 screens" in n for n in uc.route_list_notes(five)))
+    three = ("- Acceptance Criteria 01: The Finished status shows in the Map console Output history.\n"
+             "  - The same run in the Map dashboard and on the Review Dashboard.\n  **Source:** ticket.\n")
+    check("the reporter's screen in the statement and other places as sub-points pass",
+          uc.route_list_problems(three) == [] and uc.route_list_notes(three) == [])
+    # hard-to-read: code in a statement fails; the same value in a sub-point or in quotes passes.
+    api = ("- Acceptance Criteria 01: The POST /api/guides/translate call returns jobId and asOnDate.\n"
+           "  **Source:** ticket.\n")
+    found = " ".join(uc.code_token_problems(api))
+    check("an HTTP verb with a path and camelCase fields in a statement fail",
+          all(token in found for token in ("POST /api/guides/translate", "jobId", "asOnDate")))
+    plain = ("- Acceptance Criteria 01: The translation job for the map starts and its status shows in the Translation "
+             "panel.\n  - Send the request with asOnDate in the past and read jobId from the response.\n"
+             "- Acceptance Criteria 02: A conref with a keyref shows its content in the Editor, verified on "
+             "2026.11.0.2451.\n  - A conref with href=\"file.dita#topicID/elementID\" works.\n"
+             "- Acceptance Criteria 03: Validate accepts an https Site URL on a my.salesforce.com domain.\n"
+             "  **Source:** ticket.\n")
+    check("plain statements with the values in sub-points, DITA names, versions and web addresses pass",
+          uc.code_token_problems(plain) == [])
+    # doc-fact-dropped: two criteria that only defer to a decision fail; one does not.
+    decisions = ("- Acceptance Criteria 01: The Breadcrumb shows the topichead label.\n  **Source:** ticket.\n"
+                 "- Acceptance Criteria 02: The step that applies the change follows the decision in the TBD.\n"
+                 "  **TBD:** which step?\n"
+                 "- Acceptance Criteria 03: The templates follow the decision in the TBD.\n  **TBD:** which templates?\n")
+    check("two decision-only criteria fail", any("02, 03" in p for p in uc.decision_only_problems(decisions)))
+    check("one criterion that carries the TBDs passes",
+          uc.decision_only_problems(decisions.split("- Acceptance Criteria 03")[0]) == [])
+    # missing-other-side (advisory): a new error needs the input that still passes; a loosened check what it still blocks.
+    error = ("- Acceptance Criteria 01: A row with more cells than the table has columns shows a table error.\n"
+             "  **Source:** ticket.\n")
+    check("a new error with no passing side is noted", any("still pass" in n for n in uc.other_side_notes(error)))
+    check("the passing side in a sub-point clears the note",
+          uc.other_side_notes(error + "  - A row with fewer cells and a spanned cell shows no error.\n") == [])
+    check("the passing side in the test plan clears the note",
+          uc.other_side_notes(error, "Regression: a row with fewer cells shows no error.") == [])
+    loosened = "- Acceptance Criteria 01: A topic with a nested table is now allowed in the paste.\n  **Source:** ticket.\n"
+    check("a loosened check with nothing still blocked is noted",
+          any("still be blocked" in n for n in uc.other_side_notes(loosened)))
+    check("a criterion without a check is not noted",
+          uc.other_side_notes("- Acceptance Criteria 01: The Breadcrumb shows the topichead label.\n") == [])
+    # setting-toggle-noise (advisory): an on/off sweep no config_switches entry names.
+    sweep = ("- Acceptance Criteria 01: The PDF shows the chapter titles.\n"
+             "  - Try Enable DITA-OT preprocessing toggled on, then off.\n  **Source:** ticket.\n")
+    check("a sweep with no record is noted", any("no config_switches entry" in n for n in uc.toggle_sweep_notes({}, sweep)))
+    recorded = {"action_variants": {"config_switches": [{"name": "Enable DITA-OT preprocessing", "basis": "CODE",
+                                                          "disposition": "AC", "reads_at": ["a/b.java:10"]}]}}
+    check("a sweep its config_switches entry names passes", uc.toggle_sweep_notes(recorded, sweep) == [])
+    flavour = ("- Acceptance Criteria 01: The Document State list shows the new state.\n"
+               "  - Try it on Cloud with the DB flavour, and again with the JCR flavour.\n")
+    check("a flavour case is not a toggle sweep", uc.toggle_sweep_notes({}, flavour) == [])
+    # missing-placements: construct families with a when gate.
+    keys = "- Acceptance Criteria 01: A keyword with a keyref shows the key text.\n  **Source:** ticket.\n"
+    check("a keyword-only key check asks for ph and term",
+          any("ph, term" in p for p in uc.construct_family_problems(keys)))
+    check("the family in sub-points passes",
+          uc.construct_family_problems(keys + "  - The same key on a ph and on a term.\n") == [])
+    check("a search term with no key reference is not asked for keyword and ph",
+          uc.construct_family_problems("- Acceptance Criteria 01: The search term shows in the results.\n") == [])
+    links = ("- Acceptance Criteria 01: A conref in the new topics shows its content and the GUID file names are kept.\n"
+             "  **Source:** ticket.\n")
+    check("one link type in a created topic asks for the others",
+          any("conkeyref, xref, image reference" in p for p in uc.construct_family_problems(links)))
+    check("a plain conref fix is not asked for xref and images",
+          uc.construct_family_problems("- Acceptance Criteria 01: A conref shows its content.\n") == [])
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        (folder / uc.UAC_FILE).write_text(five + error.replace("01", "02"), encoding="utf-8")
+        notes = uc.advisory_notes_by_check(folder)
+        check("advisory notes are grouped by check and never fail",
+              set(notes) == {"route_list", "other_side", "toggle_sweep"} and notes["route_list"] and notes["other_side"]
+              and notes["toggle_sweep"] == [] and uc.advisory_notes(folder) == notes["route_list"] + notes["other_side"])
+    print("test_repeated_correction_pattern_gates_v2: OK")
+
+
 def test_guessed_decision_gate() -> None:
     """guessed-decision: a handling choice in a new-behaviour criterion needs the basis that decided it."""
     uc = uac_completeness_check_mod
@@ -18549,6 +18634,7 @@ def main() -> int:
     test_action_variants()
     test_repeated_qe_correction_gates()
     test_guessed_decision_gate()
+    test_repeated_correction_pattern_gates_v2()
     test_named_settings_and_research_switch_cap()
     test_gate_false_positives_from_questions_and_side_sections()
     test_output_route_entry_points()

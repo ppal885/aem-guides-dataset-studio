@@ -30,6 +30,11 @@ configured or documented result that follows it.
 - A visual observation cannot establish desired product behavior. Only Jira, a direct
   user decision, or an accepted product source can promote a state to AC coverage or
   scope it out.
+- A screenshot of where the item is set up is not the place the change is checked. An
+  Editor screenshot attached to an output ticket (the map, a topichead, the Content
+  properties) shows the test data to prepare; the criterion checks the generated output,
+  and the Editor Map panel or Content properties get no criterion of their own unless the
+  ticket asks for a change there.
 - A comparison-product visual is a UI fact/retrieval lead, not a parity requirement.
   Ask an Open Question when its desired behavior has not been accepted.
 

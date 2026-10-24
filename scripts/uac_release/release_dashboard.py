@@ -199,15 +199,30 @@ def annotate_patterns(patterns: list[dict], fixes: dict[str, dict], posted_at: d
     for p in patterns:
         fix = fixes.get(str(p.get("pattern")))
         deployed = _parse_time(fix.get("deployed_at")) if fix else None
+        pending = pending_fix(fix)
         if not fix or deployed is None:
-            out.append(p)
+            out.append({**p, "pending_fix": pending} if pending else p)
             continue
         after = [k for k in p.get("tickets") or []
                  if (_parse_time(posted_at.get(k, "")) or deployed) > deployed]
         before = [k for k in p.get("tickets") or [] if k not in after]
         out.append({**p, "fix": str(fix.get("fix") or ""), "deployed_at": deployed.strftime("%Y-%m-%d %H:%M UTC"),
-                    "tickets_after": after, "tickets_before": before, "repeated": len(after) >= 2})
+                    "tickets_after": after, "tickets_before": before, "repeated": len(after) >= 2,
+                    **({"pending_fix": pending} if pending else {})})
     return sorted(out, key=lambda r: (not r.get("repeated"), "fix" in r, -len(r.get("tickets") or []), r.get("pattern", "")))
+
+
+def pending_fix(fix: dict | None) -> str:
+    """The fix written but not yet on the VM: the entry's own fix when its deployed_at is not a time (PENDING_MERGE),
+    or its optional "pending" block. Such a fix never counts tickets; the page only says it exists."""
+    if not isinstance(fix, dict):
+        return ""
+    if str(fix.get("deployed_at") or "").strip() and _parse_time(fix.get("deployed_at")) is None:
+        return str(fix.get("fix") or "")
+    block = fix.get("pending")
+    if isinstance(block, dict) and _parse_time(block.get("deployed_at")) is None:
+        return str(block.get("fix") or "")
+    return ""
 
 
 def latest_report(out: Path) -> tuple[str, str]:
@@ -712,6 +727,9 @@ def _pattern_rows(patterns: list[dict], jira_url: str) -> list[str]:
                     f'{len(p.get("tickets_before") or [])} ticket(s) before the fix, {after} after.')
         else:
             flag = '<span class="flag">Repeated: pick for a skill fix</span>' if p.get("repeated") else "Seen once"
+        if p.get("pending_fix"):
+            flag += (f'<br><span class="hint">Fix written, not yet on the VM (pending merge): {_e(p["pending_fix"])}. '
+                     "Tickets are not counted from it.</span>")
         rows.append(f"<tr><td><b>{_e(p.get('pattern'))}</b><br><span class=\"hint\">{_e(p.get('description') or '')}"
                     f"</span></td><td>{tickets}</td><td>{flag}</td><td>{lessons}</td></tr>")
     return rows

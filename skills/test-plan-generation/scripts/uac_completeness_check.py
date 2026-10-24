@@ -559,6 +559,9 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "untestable": untestable_problems(uac),
         "construct_family": construct_family_problems(uac, plan),
         "storage_flavour": storage_flavour_problems(evidence, uac),
+        "route_list": route_list_problems(uac),
+        "decision_only": decision_only_problems(uac),
+        "code_tokens": code_token_problems(uac),
         "native_pdf_routes": native_pdf_route_problems(uac, source),
         "action_settings": action_setting_problems(evidence, source),
         "named_settings": named_setting_problems(evidence, source),
@@ -568,6 +571,31 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "observable_result": observable_result_problems(evidence, uac),
         "decisions": decision_problems(evidence, uac, source),
     }
+
+
+def advisory_notes_by_check(folder: Path) -> dict[str, list[str]]:
+    """Review notes by check name: wording and coverage nudges that do not stop the UAC (the runner lists them
+    as review notes and logs them as advisory.<name>)."""
+    try:
+        evidence = _load(folder / EVIDENCE_FILE) if (folder / EVIDENCE_FILE).is_file() else {}
+    except ValueError:
+        evidence = {}
+    evidence = evidence if isinstance(evidence, dict) else {}
+    uac = (folder / UAC_FILE).read_text(encoding="utf-8") if (folder / UAC_FILE).is_file() else ""
+    plan = (folder / PLAN_FILE).read_text(encoding="utf-8") if (folder / PLAN_FILE).is_file() else ""
+    try:
+        source = _load(folder / JIRA_SOURCE_FILE) if (folder / JIRA_SOURCE_FILE).is_file() else None
+    except ValueError:
+        source = None
+    return {
+        "route_list": route_list_notes(uac),
+        "other_side": other_side_notes(uac, plan),
+        "toggle_sweep": toggle_sweep_notes(evidence, uac, source),
+    }
+
+
+def advisory_notes(folder: Path) -> list[str]:
+    return [note for found in advisory_notes_by_check(folder).values() for note in found]
 
 
 def evidence_problems(folder: Path) -> list[str]:
@@ -888,6 +916,10 @@ def untestable_problems(uac_text: str) -> list[str]:
 # When a criterion covers one DITA table type whose cells hold text, the change reaches the others too. A
 # partial-tag paste UAC covered simpletable and choicetable; QE added the properties table ("cover every DITA table
 # type with cells, not only the ones the reporter named"). The others go in the UAC or in the full test plan.
+# A family may carry a "when" pattern: it is checked only when the criteria are about that family (a key used as
+# text, a topic whose references must survive being created, copied or renamed), so a plain conref fix is not asked
+# to cover xref and images. QE added ph and term to a keyword-only key check, and every link type (conref, xref,
+# image, conkeyref) to a new-topic check (missing-placements).
 CONSTRUCT_FAMILIES = {
     "DITA table types with cells": {
         "simpletable": re.compile(r"\bsimple ?tables?\b|\bstentry\b|\bstrow\b", re.I),
@@ -895,13 +927,32 @@ CONSTRUCT_FAMILIES = {
         "properties table": re.compile(r"\bproperties (?:tables?|elements?)\b|\bpropvalue\b|\bpropdesc\b|\bproptype\b",
                                        re.I),
     },
+    "text elements that take a key reference": {
+        "when": re.compile(r"\bkeyrefs?\b|\bkey references?\b|\bkeys? (?:on|in|for|as) (?:a |the |an )?(?:text|inline|element)", re.I),
+        "keyword": re.compile(r"\bkeywords?\b", re.I),
+        "ph": re.compile(r"\bph\b", re.I),
+        "term": re.compile(r"\bterms?\b(?! (?:of|for|in|used|that|is|are))", re.I),
+    },
+    "reference types inside a topic": {
+        "when": re.compile(r"\b(?:new|created|generated|converted|imported|copied|moved|renamed|uploaded|duplicated) "
+                           r"(?:topics?|files?|maps?)\b|\b(?:GUID|UUID) file ?names?\b", re.I),
+        "conref": re.compile(r"\bconrefs?\b", re.I),
+        "conkeyref": re.compile(r"\bconkeyrefs?\b", re.I),
+        "xref": re.compile(r"\bxrefs?\b|\bcross[- ]references?\b", re.I),
+        "image reference": re.compile(r"\bimage (?:references?|hrefs?|links?)\b|\breferenced images?\b"
+                                      r"|\bimages? (?:in|inside) (?:the|a|each)\b", re.I),
+    },
 }
 
 
 def construct_family_problems(uac_text: str, plan_text: str = "") -> list[str]:
     criteria = " ".join(text for _ac, _statement, text in _criterion_lines(uac_text))
     problems = []
-    for family, members in CONSTRUCT_FAMILIES.items():
+    for family, entry in CONSTRUCT_FAMILIES.items():
+        members = {name: pattern for name, pattern in entry.items() if name != "when"}
+        when = entry.get("when")
+        if when is not None and not when.search(criteria):
+            continue
         named = [name for name, pattern in members.items() if pattern.search(criteria)]
         missing = [name for name, pattern in members.items()
                    if name not in named and not pattern.search(plan_text or "")]
@@ -935,6 +986,169 @@ def storage_flavour_problems(evidence: dict, uac_text: str) -> list[str]:
             "\"storage_flavour\" record with \"data\" (what this change reads or writes that the two flavours store "
             "differently) and \"source\" (the code or documentation that shows it); add the record, or remove the "
             "flavour case when the change does not touch stored data"]
+
+
+# --- too many routes or screens in one criterion -------------------------------------------------------
+# One criterion that checks the same thing on every screen that reaches the object (a Finished status on five
+# screens; the same PDF opened from every output list) was the route-list-noise correction. Every place is still
+# covered, but the statement names the reporter's screen; the other places that show the same item are case
+# sub-points (at most five) and the rest are regression lines in the full test plan. The pattern is defined as
+# six or more, so six screens in a statement fail and four or five are a review note.
+MAX_SCREENS_PER_STATEMENT = 5
+ADVISE_SCREENS_PER_STATEMENT = 3
+_SCREEN_PHRASE = re.compile(
+    r"\b(?:[A-Z][\w-]*(?: (?:[A-Z][\w-]*|of|and|the)){0,3}) "
+    r"(?:panel|dashboard|console|dialog|tab|view|page|wizard|editor|history|properties)s?\b"
+    r"|\bGenerated Outputs\b|\bView Output\b")
+
+
+def _screens_named(text: str) -> list[str]:
+    """Distinct screens or routes a line names: canonical screen terms first, then capitalised phrases that end
+    in a screen word (Review Dashboard, Asset Properties page, Output history)."""
+    norm = _normalize(text)
+    found: list[str] = []
+    for screen in _canonical_screens():
+        if re.search(rf"\b{re.escape(screen)}\b", norm):
+            found.append(screen)
+            norm = re.sub(rf"\b{re.escape(screen)}\b", " ", norm)
+    for match in _SCREEN_PHRASE.finditer(text):
+        name = _normalize(match.group(0))
+        if name and name not in found and not any(name in f or f in name for f in found):
+            found.append(name)
+    return found
+
+
+def _route_lists(uac_text: str, low: int, high: int) -> list[str]:
+    out = []
+    for ac, statement, text in _criterion_lines(uac_text):
+        if not statement:
+            continue
+        screens = _screens_named(text)
+        if low < len(screens) <= high:
+            out.append(f"Acceptance Criteria {ac:02d} names {len(screens)} screens or routes in one statement "
+                       f"({', '.join(screens[:6])}): keep the reporter's screen in the statement, list the other places "
+                       "that show the same item as case sub-points (at most five), and put the rest in the full test "
+                       f"plan ({PLAN_FILE}) as regression lines")
+    return out
+
+
+def route_list_problems(uac_text: str) -> list[str]:
+    """Six or more screens or routes in one criterion statement (the release page's route-list-noise definition)."""
+    return _route_lists(uac_text, MAX_SCREENS_PER_STATEMENT, 10 ** 6)
+
+
+def route_list_notes(uac_text: str) -> list[str]:
+    """Four or five screens in one statement: a review note, not a failure."""
+    return _route_lists(uac_text, ADVISE_SCREENS_PER_STATEMENT, MAX_SCREENS_PER_STATEMENT)
+
+
+# --- the other side of a new check ---------------------------------------------------------------------
+# A new validation or block needs its other side: the input it is not meant for still passes with no error (rows
+# with fewer cells and spanned cells show no table error), and a loosened check still blocks what it should.
+# Missing the valid side was the missing-other-side correction. Advisory: the wording of a check varies too much
+# to fail on it.
+_NEW_CHECK = re.compile(
+    r"\b(?:shows?|displays?|gives?|raises?|reports?|gets?|sees?)\b[^.;]{0,40}\b(?:an? |the )?(?:validation |schematron )?"
+    r"(?:errors?|warnings?)\b|\bis (?:rejected|blocked|refused|prevented|not allowed|not saved|not inserted)\b"
+    r"|\bcannot be (?:saved|inserted|pasted|published|moved|uploaded|created)\b|\bvalidation (?:fails|errors?|messages?)\b"
+    r"|\bfails? (?:the )?validation\b|\b(?:blocks?|rejects?|refuses?) the\b", re.I)
+_LOOSENED = re.compile(r"\bno longer (?:shows?|blocks?|rejects?|refuses?|fails?)\b"
+                       r"|\bnow (?:allowed|accepted|saves?|opens?|inserts?|passes)\b", re.I)
+_STILL_PASSES = re.compile(
+    r"\bno (?:validation )?(?:error|warning)s?\b|\bshows? no\b|\bwithout (?:an? )?(?:error|warning)s?\b"
+    r"|\bstill (?:saves?|opens?|works?|allowed|passes|inserts?|publish\w*|pastes?|loads?|accepted|valid)\b"
+    r"|\b(?:is|are) (?:still )?(?:accepted|allowed|saved|inserted|pasted|published)\b|\bas before\b|\bunchanged\b", re.I)
+_STILL_BLOCKED = re.compile(
+    r"\bstill (?:blocked|rejected|refused|fails?|not allowed|cannot|shows? (?:an? |the )?(?:error|warning))\b"
+    r"|\bremains? (?:blocked|rejected)\b|\bis still not\b", re.I)
+
+
+def other_side_notes(uac_text: str, plan_text: str = "") -> list[str]:
+    criteria = " ".join(text for _ac, _statement, text in _criterion_lines(uac_text))
+    everywhere = f"{criteria} {plan_text or ''}"
+    notes = []
+    check = _NEW_CHECK.search(criteria)
+    if check and not _STILL_PASSES.search(everywhere):
+        notes.append(f"the criteria add a check that rejects or warns (\"{check.group(0)[:60]}\") but none says what must "
+                     "still pass: add a case where the input the check is not meant for shows no error (the valid side "
+                     f"of a new validation), in the UAC or in the full test plan ({PLAN_FILE})")
+    loosened = _LOOSENED.search(criteria)
+    if loosened and not _STILL_BLOCKED.search(everywhere):
+        notes.append(f"the criteria loosen a check (\"{loosened.group(0)[:60]}\") but none says what must still be "
+                     f"blocked: add the case the check still rejects, in the UAC or in the full test plan ({PLAN_FILE})")
+    return notes
+
+
+# --- several criteria that only ask for a decision ----------------------------------------------------
+# A feature whose mechanism is undecided (the update step, the setting, the templates) gets one criterion that
+# carries the TBDs; three criteria that each only asked for a decision were a QE correction (doc-fact-dropped).
+_DECISION_ONLY = re.compile(
+    r"\bfollows? the decision\b|\bas decided\b|\bonce (?:it is |that is |this is )?decided\b|\bto be decided\b"
+    r"|\bper the TBD\b|\baccording to the (?:TBD|decision)\b|\bwhichever (?:way|option|value) is decided\b"
+    r"|\bthe decided (?:option|value|step|setting|template|behaviou?r)\b|\bwaits? for (?:a|the) (?:product )?decision\b"
+    r"|\bdepends on the (?:TBD|decision)\b", re.I)
+
+
+def decision_only_problems(uac_text: str) -> list[str]:
+    """Two or more criteria whose statement only defers to a decision: merge them into one criterion with the TBDs."""
+    acs = sorted({ac for ac, statement, text in _criterion_lines(uac_text) if statement and _DECISION_ONLY.search(text)})
+    if len(acs) < 2:
+        return []
+    return [f"Acceptance Criteria {', '.join(f'{ac:02d}' for ac in acs)} each only ask for a decision: one criterion "
+            "carries the TBDs for the undecided parts (the step, the setting, the templates); the others are written "
+            f"once decided or go to the full test plan ({PLAN_FILE})"]
+
+
+# --- an on/off sweep nobody asked for ------------------------------------------------------------------
+# A criterion that toggles a setting on and off when no config_switches entry names it: a setting the ticket does
+# not name is a case only when the changed action's code reads it (reads_at) and its state changes what QE sees;
+# otherwise the sweep is a test plan regression line (setting-toggle-noise). Advisory: the record may name the
+# setting in other words.
+_SWEEP = re.compile(
+    r"\btoggled? (?:on|off)\b|\b(?:on|off),? (?:then|and) (?:again )?(?:on|off)\b|\b(?:enabled|on) and (?:disabled|off)\b"
+    r"|\b(?:disabled|off) and (?:enabled|on)\b|\bturn(?:ed|s)? (?:it )?(?:on|off),? (?:then|and)\b"
+    r"|\b(?:enabled|disabled),? (?:then|and again) (?:enabled|disabled)\b", re.I)
+
+
+def toggle_sweep_notes(evidence: dict, uac_text: str, source: dict | None = None) -> list[str]:
+    variants = evidence.get("action_variants") if isinstance(evidence, dict) else None
+    switches = [e for e in (variants or {}).get("config_switches") or [] if isinstance(e, dict)] \
+        if isinstance(variants, dict) else []
+    notes = []
+    for ac, _statement, text in _criterion_lines(uac_text):
+        if not _SWEEP.search(text) or _DEPLOYMENT_FLAVOUR.search(text) or _FLAVOUR.search(text):
+            continue
+        norm = _normalize(text)
+        if any(any(re.search(rf"\b{re.escape(w)}", norm) for w in _name_words(e.get("name"))) for e in switches):
+            continue
+        notes.append(f"Acceptance Criteria {ac:02d} sweeps a setting on and off (\"{text[:70]}\") that no config_switches "
+                     "entry names: a setting the ticket does not name is a case only when the changed action's code "
+                     "reads it (reads_at) and its state changes what QE sees; otherwise the sweep is a regression line "
+                     f"in the full test plan ({PLAN_FILE})")
+    return notes
+
+
+# --- code in a criterion statement ----------------------------------------------------------------------
+# The statement is plain words with on-screen names; a camelCase or snake_case field, a dotted configuration key,
+# an HTTP verb with a path or a repository path belongs in a sub-point or the test plan. QE rewrote the same API
+# and setting checks "in plain words" on five tickets after the plain-statement rule (hard-to-read).
+_HTTP_CALL = re.compile(r"\b(?:GET|POST|PUT|PATCH|DELETE|HEAD)\s+/\S+|(?<![\w/])/(?:bin|api|content|libs|apps|conf|etc|var|mnt)/[\w./-]+")
+
+
+def code_token_problems(uac_text: str) -> list[str]:
+    problems = []
+    for ac, statement, text in _criterion_lines(uac_text):
+        if not statement:
+            continue
+        clean = _QUOTED.sub(" ", text)
+        tokens = [m.group(0) for pattern in (_HTTP_CALL, _INTERNAL_NAME, _KEY_NAME) for m in pattern.finditer(clean)
+                  if m.group(0) not in _INTERNAL_ALLOWED and not _WEB_ADDRESS.search(m.group(0))]
+        if tokens:
+            problems.append(f"Acceptance Criteria {ac:02d} has code in its statement ({', '.join(dict.fromkeys(tokens))}): "
+                            "say what QE does and sees in plain words, naming the screen or tab (or the request as QE "
+                            "sends it), and put the exact field, path or key in a case sub-point or the full test plan "
+                            f"({PLAN_FILE})")
+    return problems
 
 
 # --- root cause or fix known ---------------------------------------------------------------------------
@@ -1892,6 +2106,8 @@ def main(argv: list[str] | None = None) -> int:
     problems = check(Path(args[0]))
     for problem in problems:
         print(f"FAIL: {problem}")
+    for note in advisory_notes(Path(args[0])):
+        print(f"NOTE: {note}")
     print("PASS: every evidence step left a record" if not problems else f"{len(problems)} problem(s)")
     return 1 if problems else 0
 

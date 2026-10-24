@@ -13,6 +13,15 @@ Activate when current evidence names `condAttrList.csv`, a conditional-attribute
 - Require live updates only when accepted evidence defines them. Otherwise expose the supported refresh/reopen/restart boundary as an Open Question.
 - Treat a hardcoded product allowlist as a code-review and runtime-canary risk. Promote only the observable configuration-driven contract authorized by current accepted evidence.
 
+## Map Editor Reference Insertion and Edit Contract
+
+Activate when current evidence names inserting or editing a topic, map or key reference in the Map Editor (Insert Element, the Link path field).
+
+- Inserting a reference through Insert Element opens the repository browse dialog to pick the file; there is no separate Select Path step, and pressing Enter in the Insert Element list is not a confirmed way to insert unless current evidence shows it. Write the steps QE actually take.
+- Editing an existing reference is done in the right panel Link path field, not through Insert Element. When the ticket names insert and edit, editing gets its own criterion with the field QE change and what the map shows afterwards.
+- A case that needs a schema, DTD or sample document the ticket does not attach (a customer document-link specialization) is a TBD asking for it, not a plain criterion.
+- An insertion or edit in the Map Editor touches no data the Cloud DB and JCR flavours store differently: no flavour case unless the evidence names such data.
+
 ## Asset-Browser Thumbnail Contract
 
 Activate only when current accepted scope names thumbnail rendering or a verified current implementation/design shows that change surface.
