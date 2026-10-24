@@ -12,6 +12,7 @@ from app.core.schemas_canonical_test_plan_runtime import (
 
 
 class TestPlanPipelineRequest(BaseModel):
+    __test__ = False  # the name starts with "Test"; keep pytest from collecting the model
     model_config = ConfigDict(extra="forbid")
 
     jira_key: str

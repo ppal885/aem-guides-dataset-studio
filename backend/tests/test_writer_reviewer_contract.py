@@ -159,14 +159,15 @@ class TestEvidenceCommentaryDetection:
         )
 
 
+@pytest.fixture(scope="module")
+def result():
+    from tests import test_canonical_test_plan_runtime_contracts as contracts
+
+    return contracts._canonical_result()
+
+
 class TestRenderedPlanContract:
     """End-to-end: what the tester actually receives."""
-
-    @pytest.fixture(scope="class")
-    def result(self):
-        from tests import test_canonical_test_plan_runtime_contracts as contracts
-
-        return contracts._canonical_result()
 
     def test_acceptance_contract_is_a_flat_numbered_ac_list(self, result):
         rendered = result.rendered_output
