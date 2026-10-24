@@ -104,6 +104,11 @@ act on without opening the ticket, not as a list of nouns.
   template only refers to it.
 - Write what QE checks instead of "resolve": the link opens the topic, the conref shows the content, the
   reference points to the new topic. Write "the new topic made from a topic template", not "copied topic template".
+- The statement has no code: a camelCase or snake_case field, a dotted configuration key, an HTTP verb with a
+  path or a repository path fails `uac_completeness_check.code_token_problems`. Say what QE do and see ("the
+  translation job for the map starts and its status shows in the Translation panel"); the exact request, field
+  or key goes in a case sub-point or the test plan. QE rewrote the same API and setting checks in plain words,
+  naming the tab each setting is on, on five tickets.
 - Name a setting by its on-screen label ("Enable DITA-OT preprocessing" on the General tab). An internal
   feature flag, code constant or configuration key (a dotted key, an ALL_CAPS name, a camelCase key, a .json
   file) has no screen QE can open: it goes to the test plan, never into a criterion or case line.

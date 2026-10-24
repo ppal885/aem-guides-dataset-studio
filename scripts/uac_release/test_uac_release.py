@@ -3018,6 +3018,29 @@ class ClaudeRewriteTests(unittest.TestCase):
                       dashboard.render([], [], [], 0, "", "now", patterns=[again]))
         self.assertIn("hard-to-read", dashboard.load_pattern_fixes(), "the checked-in fix list loads")
 
+    def test_a_pending_fix_is_shown_but_counts_no_tickets(self) -> None:
+        patterns = [{"pattern": "missing-other-side", "tickets": ["PROJ-1", "PROJ-2"], "lessons": [], "repeated": True},
+                    {"pattern": "hard-to-read", "tickets": ["PROJ-1", "PROJ-2"], "lessons": [], "repeated": True}]
+        fixes = {"missing-other-side": {"fix": "branch: other side", "deployed_at": "PENDING_MERGE"},
+                 "hard-to-read": {"fix": "PR #1", "deployed_at": "2026-10-08T10:37:05+00:00",
+                                  "pending": {"fix": "branch: code tokens", "deployed_at": "PENDING_MERGE"}}}
+        posted = {"PROJ-1": "2026-10-09T02:05:06+0000", "PROJ-2": "2026-10-10T01:00:00+0000"}
+        rows = {p["pattern"]: p for p in dashboard.annotate_patterns(patterns, fixes, posted)}
+        self.assertNotIn("fix", rows["missing-other-side"], "a PENDING_MERGE time is not a deployed fix")
+        self.assertEqual(rows["missing-other-side"]["pending_fix"], "branch: other side")
+        self.assertTrue(rows["missing-other-side"]["repeated"], "the pattern still counts as repeated")
+        self.assertEqual((rows["hard-to-read"]["tickets_after"], rows["hard-to-read"]["pending_fix"]),
+                         (["PROJ-1", "PROJ-2"], "branch: code tokens"))
+        page = dashboard.render([], [], [], 0, "", "now", patterns=list(rows.values()), fixes=fixes)
+        self.assertIn("Fix written, not yet on the VM (pending merge): branch: other side", page)
+        self.assertIn("Fix written, not yet on the VM (pending merge): branch: code tokens", page)
+        self.assertIn("Repeated after the fix: 2 ticket(s)", page)
+        self.assertEqual(dashboard.pending_fix({"fix": "PR #1", "deployed_at": "2026-10-08T10:37:05+00:00"}), "")
+        checked_in = dashboard.load_pattern_fixes()
+        for name, fix in checked_in.items():
+            self.assertTrue(dashboard._parse_time(fix.get("deployed_at")) or dashboard.pending_fix(fix),
+                            f"{name}: deployed_at is a time or the fix is pending")
+
     def test_posted_table_shows_each_verdict_and_the_waiting_list_oldest_first(self) -> None:
         now = datetime.datetime(2026, 10, 11, 12, 0, tzinfo=datetime.timezone.utc)
         posted = [{"key": "PROJ-1", "summary": "a", "where": "AC field", "criteria": 4, "updated": "2026-10-09T08:00:00+0000"},

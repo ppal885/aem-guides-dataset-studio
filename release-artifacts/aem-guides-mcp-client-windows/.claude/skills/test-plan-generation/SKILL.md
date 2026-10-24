@@ -674,7 +674,14 @@ that reads the item through the same path (`SAME_ITEM`, with a `<file>:<line>` r
 requested behaviour too, so it is a sub-point of the AC that covers the ticket's own screen, with the same
 expected result. It is not a new AC, and it is not a TBD. A place that only looks related stays a "still
 works" check, a TBD or TEST_PLAN, and one AC names at most five research-found places. Missed places of the
-same item were the most repeated QE correction (missing-placements on five tickets). A criterion on a scenario the reporter did not hit
+same item were the most repeated QE correction (missing-placements on five tickets). Every screen that lists the
+same object is enumerated before writing (a Document State list in the Editor right panel, on the Asset
+Properties page and under Reports; a review task on the Review Dashboard, in AEM Projects and in the Editor
+Review panel; every link type and the file names in a topic the change creates or renames
+(`construct_family_problems`)). Placements and route lists do not fight: every place is covered somewhere, but
+one statement names one screen - the reporter's - and the other places are case sub-points (at most five) or
+regression lines in the full test plan, never six in one statement (`uac_completeness_check.route_list_problems`;
+one Finished status checked on five screens in one criterion was the route-list-noise correction). A criterion on a scenario the reporter did not hit
 (ADJACENT) is a research check: an AC only when it matters, and never in place of the reporter's own
 scenario. The reporter's own action done another way is not a different scenario - see "Every way to do
 the ticket's action" below.
@@ -729,10 +736,15 @@ reason (for example a fix that restores documented output). On such a ticket, ex
 the outcome, rarely how it is built or where exactly it happens. Before writing its criteria, list the ways it
 could be built - search the documentation and code for an existing option or extension point that could do it
 (a preset option, an output template field, a post-generation workflow, a ui config) - and what QE would see with
-each. When the ticket or a decision does not say which, ask in a TBD, and give every criterion whose outcome
-holds only for some of them its own TBD. Then check every place the ticket names: who does it there (an author
+each. When the ticket or a decision does not say which, one criterion carries the TBDs for the undecided parts
+(the step that applies it, the setting, the templates) and states what QE sees once each is decided; never one
+criterion per decision - three criteria that each only asked for a decision were a QE correction
+(`uac_completeness_check.decision_only_problems`). Then check every place the ticket names: who does it there (an author
 in AEM, a reader on the published site) and whether that place exists today. A place that does not exist is a
-TBD, and one criterion never mixes places with different users. A Native PDF feature request asked for a
+TBD, and one criterion never mixes places with different users. An attached Editor screenshot shows how the
+item is set up (the map, the topichead, the setting), not where the change is checked: an output change is
+checked in the generated output, so the Editor Map panel and Content properties are setup for its test data,
+not criteria of their own (`references/attachment-visual-reference-coverage.md`). A Native PDF feature request asked for a
 placeholder "replaced by user name and time when it was downloaded ... from AEM/AEMSites": the posted criterion asserted a
 per-reader stamp, but a post-generation workflow fills the PDF once with the person who generated it, and
 Native PDF has no download link on AEM Sites today. A case that changes who checks or when (another user, after
@@ -889,7 +901,10 @@ Out of scope:                                          (optional, when a decisio
 - Plain statement: each criterion says one thing a QE can check, in at most two clauses, with only on-screen
   names; exact technical values (API paths and fields, setting values, status codes, file names) go in its
   sub-points or the test plan. Reviewers found the delivered UACs too technical to understand
-  (`references/plain-language-ac-writing.md`). Shortening never merges, drops or renames a named product item
+  (`references/plain-language-ac-writing.md`); a camelCase or snake_case field, a dotted key, an HTTP verb with
+  a path or a repository path in a statement fails (`uac_completeness_check.code_token_problems`). A new check
+  is written with its other side: the input it is not meant for still shows no error, and a loosened check
+  still blocks what it should (`other_side_notes`). Shortening never merges, drops or renames a named product item
   (a map template and a topic template stay distinct); shorten by moving detail to sub-points. A rewrite
   re-reads the ticket's description, comments and attachments and keeps each criterion on the screen and
   behaviour its sources name; a documentation answer marked not verified can only be a TBD.
@@ -899,9 +914,16 @@ Out of scope:                                          (optional, when a decisio
   case that needs a customer schema, DTD or sample the ticket does not attach is a TBD asking for it. A
   criterion on one DITA table type with text cells covers the other types too, as case sub-points or in the
   test plan (`construct_family_problems`). A ticket the description or comments refer to is mapped in source
-  coverage as "referenced:<key>" (linked tickets included); a screen it names is an AC or a TBD. A Cloud DB and
+  coverage as "referenced:<key>" (linked tickets included); a screen it names is an AC or a TBD, and when what
+  it asks for conflicts with this ticket (a linked request adds pages for groups this ticket gives no pages),
+  the criterion carries a TBD that names both, never a guess. A Cloud DB and
   JCR flavour case needs a `storage_flavour` record naming the stored data the change reads or writes and its
-  source (`storage_flavour_problems`); a change that touches no stored data has no flavour case.
+  source (`storage_flavour_problems`); a change that touches no stored data has no flavour case, and a sweep of
+  other inputs (page names, a baseline, an on/off setting) is a case only when the changed output or action
+  reads that input (`toggle_sweep_notes`); otherwise it is a regression line in the test plan. A fix for a race
+  or a stuck state covers the failing side too: a step that fails must not leave the item in the in-between
+  state, and runs started together must each finish. The same check is covered for every element of a family
+  (keys on keyword, ph and term; conref, conkeyref, xref and image references in a created or renamed topic).
 - The label is spelled out as `Acceptance Criteria 01`, never `AC-01`, because Jira auto-links and strikes
   through issue-key shapes. `AC-##` stays internal in the record, mappings and extracted JSON.
 - No `[Proposed]`/`[Confirmed]` tags, spheres, Given/When/Then, pipes, or Starting point/Action/Expected

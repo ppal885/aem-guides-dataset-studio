@@ -120,7 +120,18 @@ must enumerate the complete supported project-type set:
 - `newScopingTranslationProject`
 
 The set may be covered in one matrix-backed AC or distributed across several mapped
-ACs. Do not make one project type the only supported case.
+ACs. Do not make one project type the only supported case. The translation code branches
+by project type (a new multi-lingual project, a new project, XLIFF, add to an existing
+project), so a translation UAC covers each type the changed code runs through, as cases
+of the criterion with the same outcome; a type the change cannot reach is NOT_APPLICABLE
+with the code reference that shows it.
+
+### Target folder permission
+
+A dialog or action that changes files in other language folders needs a permission case:
+an author without write access on one target folder. The criterion states what that
+author sees (the folder is skipped with a message, or the action is refused) and that the
+folders they may write to are still changed; a handling nobody decided is a TBD.
 
 ## Boundaries
 
