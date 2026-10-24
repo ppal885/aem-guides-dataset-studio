@@ -9,6 +9,7 @@ Tests:
 5. IDs are DTD-safe (start with letters)
 """
 
+import re
 import sys
 import os
 import xml.etree.ElementTree as ET
@@ -70,7 +71,7 @@ def validate_dtd_safe_id(id_str: str) -> bool:
     return id_str[0].isalpha() or id_str[0] == '_'
 
 
-def test_insurance_incremental_basic():
+def _run_insurance_incremental_basic():
     """Test insurance_incremental with small dataset for quick validation."""
     print("\n" + "="*60)
     print("Testing: insurance_incremental (basic)")
@@ -100,7 +101,10 @@ def test_insurance_incremental_basic():
         # Analyze results
         dita_files = [f for f in files.keys() if f.endswith('.dita')]
         map_files = [f for f in files.keys() if f.endswith('.ditamap')]
-        dtd_files = [f for f in files.keys() if 'dtd' in f and f.endswith('.dtd')]
+        # The recipe's own stubs live under its output root; the job also writes a dataset-level
+        # technicalContent/dtd/ pair for every dataset (ensure_dataset_dtd_resolution), which is not
+        # what include_local_dtd_stubs controls.
+        dtd_files = [f for f in files.keys() if f.endswith('.dtd') and '/test_insurance/' in f]
         
         issues = []
         
@@ -116,11 +120,16 @@ def test_insurance_incremental_basic():
         if len(dtd_files) != 2:
             issues.append(f"Expected 2 DTD stub files, but found {len(dtd_files)}")
         
-        # Validate map topicref counts
+        # Validate map topicref counts: the file name carries the size (map_ins_50.ditamap), so match on
+        # it rather than on a lexical sort, which would put map_ins_100 before map_ins_50.
         expected_map_counts = [10, 50, 100]
-        sorted_maps = sorted(map_files)
+        maps_by_size = {int(re.search(r"map_ins_(\d+)", f).group(1)): f for f in map_files}
         
-        for map_file, expected_count in zip(sorted_maps, expected_map_counts):
+        for expected_count in expected_map_counts:
+            map_file = maps_by_size.get(expected_count)
+            if map_file is None:
+                issues.append(f"Map for {expected_count} topicrefs not generated")
+                continue
             map_content = files[map_file]
             actual_count = count_topicrefs_in_map(map_content)
             
@@ -190,7 +199,7 @@ def test_insurance_incremental_basic():
         return False, error_msg
 
 
-def test_insurance_incremental_no_dtd():
+def _run_insurance_incremental_no_dtd():
     """Test insurance_incremental without DTD stubs."""
     print("\n" + "="*60)
     print("Testing: insurance_incremental (no DTD stubs)")
@@ -217,7 +226,9 @@ def test_insurance_incremental_no_dtd():
         job_id = "test-insurance-no-dtd"
         files = run_generate_dataset(config_dict, job_id)
         
-        dtd_files = [f for f in files.keys() if 'dtd' in f and f.endswith('.dtd')]
+        # Only the recipe's own stubs must be absent; the dataset-level technicalContent/dtd/ pair is
+        # always written so SYSTEM ids resolve.
+        dtd_files = [f for f in files.keys() if f.endswith('.dtd') and '/test_insurance_no_dtd/' in f]
         
         if len(dtd_files) > 0:
             error_msg = f"Expected no DTD files, but found {len(dtd_files)}"
@@ -235,6 +246,16 @@ def test_insurance_incremental_no_dtd():
         return False, error_msg
 
 
+def test_insurance_incremental_basic():
+    ok, message = _run_insurance_incremental_basic()
+    assert ok, message
+
+
+def test_insurance_incremental_no_dtd():
+    ok, message = _run_insurance_incremental_no_dtd()
+    assert ok, message
+
+
 def main():
     """Run all insurance_incremental tests."""
     print("\n" + "="*60)
@@ -242,8 +263,8 @@ def main():
     print("="*60)
     
     test_cases = [
-        ("insurance_incremental_basic", test_insurance_incremental_basic),
-        ("insurance_incremental_no_dtd", test_insurance_incremental_no_dtd),
+        ("insurance_incremental_basic", _run_insurance_incremental_basic),
+        ("insurance_incremental_no_dtd", _run_insurance_incremental_no_dtd),
     ]
     
     results = {}

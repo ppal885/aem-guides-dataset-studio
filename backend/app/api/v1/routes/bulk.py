@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Union
 from app.core.auth import UserIdentity, CurrentUser
 from app.db.session import Session, db_session
@@ -25,11 +25,9 @@ def _run_job(job_id: str, config: dict) -> None:
 
 class FlexibleJobRequest(BaseModel):
     """Flexible job request that accepts dict config."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     config: dict
-    
-    class Config:
-        """Pydantic config to allow arbitrary types."""
-        arbitrary_types_allowed = True
 
 class BulkJobRequest(BaseModel):
     jobs: List[FlexibleJobRequest]

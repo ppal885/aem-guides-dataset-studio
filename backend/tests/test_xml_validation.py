@@ -70,7 +70,7 @@ def validate_xml_content(xml_content: bytes) -> tuple[bool, list]:
         return False, issues
 
 
-def test_task_topics_xml_validation():
+def _run_task_topics_xml_validation():
     """Test that task topics generate valid XML."""
     print("\nTesting task_topics XML validation...")
     
@@ -117,7 +117,7 @@ def test_task_topics_xml_validation():
         return False, [str(e)]
 
 
-def test_insurance_incremental_xml_validation():
+def _run_insurance_incremental_xml_validation():
     """Test that insurance_incremental generates valid XML."""
     print("\nTesting insurance_incremental XML validation...")
     
@@ -164,7 +164,7 @@ def test_insurance_incremental_xml_validation():
         return False, [str(e)]
 
 
-def test_xml_with_special_characters():
+def _run_xml_with_special_characters():
     """Test XML generation with special characters that commonly cause issues."""
     print("\nTesting XML with special characters...")
     
@@ -208,6 +208,20 @@ def test_xml_with_special_characters():
     return True
 
 
+def test_task_topics_xml_validation():
+    ok, issues = _run_task_topics_xml_validation()
+    assert ok, issues
+
+
+def test_insurance_incremental_xml_validation():
+    ok, issues = _run_insurance_incremental_xml_validation()
+    assert ok, issues
+
+
+def test_xml_with_special_characters():
+    assert _run_xml_with_special_characters()
+
+
 def main():
     """Run all XML validation tests."""
     print("="*60)
@@ -217,11 +231,11 @@ def main():
     results = {}
     
     # Test escaping functions
-    results["special_chars"] = test_xml_with_special_characters()
+    results["special_chars"] = _run_xml_with_special_characters()
     
     # Test generated XML
-    results["task_topics"] = test_task_topics_xml_validation()[0]
-    results["insurance_incremental"] = test_insurance_incremental_xml_validation()[0]
+    results["task_topics"] = _run_task_topics_xml_validation()[0]
+    results["insurance_incremental"] = _run_insurance_incremental_xml_validation()[0]
     
     # Summary
     print("\n" + "="*60)
