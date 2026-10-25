@@ -72,6 +72,8 @@ class EvidenceGatewayService:
             top_k=request.top_k,
             mode=request.retrieval_mode,
             settings=self.settings,
+            source_versions=request.source_versions,
+            source_types=request.source_types,
         )
         return SearchKnowledgeResponse(correlation_id=cid, results=results)
 

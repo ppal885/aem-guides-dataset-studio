@@ -1,7 +1,6 @@
 """DITA spec index service - fetch OASIS pages and index into DB."""
 import os
 import re
-import uuid
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -93,7 +92,7 @@ def index_chunk(session: Session, chunk_dict: dict) -> DitaSpecChunk:
     """Upsert a chunk into DB."""
     import json as _json
 
-    chunk_id = str(uuid.uuid4())
+    chunk_id = _chunk_identity(chunk_dict)
     chunk = DitaSpecChunk(
         id=chunk_id,
         element_name=chunk_dict.get("element_name"),
@@ -129,8 +128,23 @@ def index_chunk(session: Session, chunk_dict: dict) -> DitaSpecChunk:
             }
             chunk.attributes = _json.dumps(attrs)
 
-    session.add(chunk)
+    # ``merge`` writes the row under its deterministic id: a rerun updates the chunk in place
+    # instead of adding a duplicate that the lexical fallback would return k times over.
+    chunk = session.merge(chunk)
     return chunk
+
+
+def _chunk_identity(chunk_dict: dict) -> str:
+    """Stable id for a spec chunk: the same source, element and text always map to one row."""
+    import hashlib
+
+    parts = [
+        str(chunk_dict.get("source_url") or ""),
+        str(chunk_dict.get("element_name") or ""),
+        str(chunk_dict.get("content_type") or ""),
+        str(chunk_dict.get("text_content") or "")[:2000],
+    ]
+    return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:32]
 
 
 def index_oasis_spec(session: Session, urls: Optional[list[str]] = None) -> dict:

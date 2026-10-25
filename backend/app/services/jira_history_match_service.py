@@ -15,7 +15,22 @@ from app.services.evidence_graph_contract import (
 
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9_.-]{2,}", re.I)
 _DITA_RE = re.compile(r"(?:<\s*([a-z][\w.-]*)\b|@([a-z][\w.-]*))", re.I)
-_GENERIC_TOKENS = frozenset(
+_STOPWORDS = frozenset(
+    {
+        "about", "after", "again", "all", "also", "and", "any", "are", "because", "been", "before",
+        "being", "between", "both", "but", "can", "cannot", "could", "did", "does", "doing", "done",
+        "during", "each", "either", "else", "even", "ever", "every", "few", "for", "from", "further",
+        "get", "gets", "getting", "got", "had", "has", "have", "having", "her", "here", "him", "his",
+        "how", "however", "into", "its", "just", "let", "like", "may", "might", "more", "most",
+        "much", "must", "neither", "never", "nor", "not", "now", "off", "once", "one", "only",
+        "onto", "other", "our", "out", "over", "own", "per", "same", "see", "seen", "shall", "she",
+        "should", "since", "some", "still", "such", "than", "that", "the", "their", "them", "then",
+        "there", "these", "they", "this", "those", "though", "through", "thus", "too", "under",
+        "until", "upon", "use", "used", "using", "very", "via", "was", "were", "what", "where",
+        "whether", "which", "while", "who", "whom", "why", "will", "would", "yet", "you", "your",
+    }
+)
+_GENERIC_TOKENS = _STOPWORDS | frozenset(
     {
         "actual",
         "aem",

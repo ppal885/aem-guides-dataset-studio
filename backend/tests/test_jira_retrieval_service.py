@@ -755,15 +755,30 @@ def test_retrieve_similar_jiras_max_two_per_customer(mock_chroma, mock_emb, mock
         domain=None,
         dita_entities=["glossstatus"],
         affected_outputs=["native_pdf"],
-        customer_names=["Cisco"],
+        customer_names=[],
         limit=5,
         retrieval_debug_sink=sink,
         recent_jira_keys=[],
     )
 
-    assert len(out) == 2
-    assert all(row.matching_customers == ["Cisco"] for row in out)
+    assert len(out) == 2, "an open query keeps two tickets per customer for diversity"
     assert any(d.get("reason") == "max_similar_per_customer" for d in sink["dropped_candidates"])
+
+    # When the caller asked for this customer's history, the cap would only truncate the answer.
+    scoped_sink: dict = {}
+    scoped = retrieve_similar_jiras(
+        "Cisco glossStatus native pdf",
+        domain=None,
+        dita_entities=["glossstatus"],
+        affected_outputs=["native_pdf"],
+        customer_names=["Cisco"],
+        limit=5,
+        retrieval_debug_sink=scoped_sink,
+        recent_jira_keys=[],
+    )
+    assert len(scoped) == 4
+    assert all(row.matching_customers == ["Cisco"] for row in scoped)
+    assert not any(d.get("reason") == "max_similar_per_customer" for d in scoped_sink["dropped_candidates"])
 
 
 @patch("app.services.jira_retrieval_service.query_collection")

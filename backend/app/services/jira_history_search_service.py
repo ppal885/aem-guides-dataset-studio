@@ -33,6 +33,20 @@ def _customer_identity(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
 
 
+def _customer_matches(requested: str, candidate: str) -> bool:
+    """Whole-name customer match, the rule retrieval itself applies.
+
+    Identity equality first (``Ciena`` == ``ciena``); otherwise the shorter name must be a whole
+    word of the longer one and at least four characters (``Ciena`` in ``Ciena Corporation``), so
+    the post-filter never discards every hit that retrieval's alias matching accepted.
+    """
+    if _customer_identity(requested) == _customer_identity(candidate):
+        return True
+    from app.services.jira_retrieval_service import customer_names_match
+
+    return customer_names_match(requested, candidate)
+
+
 def search_jira_history_evidence(
     query: str,
     *,
@@ -115,9 +129,9 @@ def search_jira_history_evidence(
         returned_customers = list(
             dict.fromkeys([*scalar_customer, *clean_customers])
         )
-        if customer_filter and _customer_identity(customer_filter) not in {
-            _customer_identity(value) for value in returned_customers
-        }:
+        if customer_filter and not any(
+            _customer_matches(customer_filter, value) for value in returned_customers
+        ):
             continue
         candidates.append(
             {

@@ -22,5 +22,6 @@ class SemanticJiraSearch:
             dita_entities=[],
             affected_outputs=affected_outputs,
             customer_names=[x for x in customer_names if x],
+            exclude_jira_key=criteria.source_jira_key or None,
         )
 

@@ -201,6 +201,24 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in text.split() if len(t) >= 2]
 
 
+_RERANK_STOPWORDS = frozenset(
+    {
+        "and", "are", "but", "can", "does", "for", "from", "has", "have", "how", "into", "its",
+        "not", "that", "the", "their", "then", "there", "these", "they", "this", "use", "used",
+        "using", "was", "were", "what", "when", "where", "which", "while", "will", "with", "you",
+        "your", "dita", "element", "elements", "attribute", "attributes",
+    }
+)
+
+
+def _rerank_tokens(text: str) -> list[str]:
+    """Distinct query terms worth matching lexically: three or more characters, no stop words."""
+    return [
+        t for t in dict.fromkeys(_tokenize(text))
+        if len(t) >= 3 and t not in _RERANK_STOPWORDS
+    ]
+
+
 def _load_seed() -> list[dict]:
     """Load seed corpus from JSON."""
     if not SEED_PATH.exists():
@@ -410,16 +428,22 @@ def retrieve_dita_knowledge(
             if (sh.get("text_content") or "")[:120] not in seen_texts:
                 merged.append(sh)
         if USE_DITA_HYBRID_SEARCH and merged:
-            tokens = _tokenize(query_text)
+            tokens = _rerank_tokens(query_text)
             if tokens:
+                total_weight = sum(DITA_BOOST_TERMS.get(t, 1.0) for t in tokens)
                 scored = []
                 for i, chunk in enumerate(merged):
                     text = (chunk.get("text_content") or "") + " " + (chunk.get("element_name") or "")
                     text_lower = text.lower()
-                    lexical_boost = 0.0
-                    for t in tokens:
-                        if t in text_lower:
-                            lexical_boost += DITA_BOOST_TERMS.get(t, 1.0)
+                    # Whole-word matches of the query's distinct terms, as a share of the query's
+                    # term weight: the lexical term then lives on the same 0..1 scale as the
+                    # embedding rank instead of growing with chunk length and stop-word substrings.
+                    matched_weight = sum(
+                        DITA_BOOST_TERMS.get(t, 1.0)
+                        for t in tokens
+                        if re.search(r"(?<!\w)" + re.escape(t) + r"(?!\w)", text_lower)
+                    )
+                    lexical_boost = matched_weight / total_weight if total_weight else 0.0
                     is_seed = chunk.get("content_type") not in ("spec",)
                     seed_bonus = 0.3 if is_seed else 0.0
                     embedding_rank = 1.0 / (1.0 + i)

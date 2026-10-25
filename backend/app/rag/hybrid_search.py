@@ -39,6 +39,7 @@ class HybridJiraSearch:
             if matches_metadata(criteria, hit.get("metadata") or {}, str(hit.get("document") or ""))
         ]
         fallback_used = False
+        metadata_filter_used = True
         selected = strict
         fallback_reason = ""
         if not selected and candidates:
@@ -59,7 +60,13 @@ class HybridJiraSearch:
                 hit
                 for hit in candidates
                 if matches_metadata(relaxed, hit.get("metadata") or {}, str(hit.get("document") or ""))
-            ] or candidates
+            ]
+            if not selected:
+                # Even the customer-relaxed filter matched nothing: the unfiltered candidates are
+                # returned, and the output says so instead of claiming the filter was applied.
+                selected = candidates
+                metadata_filter_used = False
+                fallback_reason = "all_metadata_filters_relaxed"
         if not selected and not candidates:
             fallback_reason = "no_semantic_candidates"
 
@@ -67,7 +74,7 @@ class HybridJiraSearch:
         return HybridSearchOutput(
             hits=ranked,
             semantic_fallback_used=fallback_used,
-            metadata_filter_used=True,
+            metadata_filter_used=metadata_filter_used,
             debug={
                 "query": query,
                 "candidate_count": len(candidates),

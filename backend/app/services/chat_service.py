@@ -6658,12 +6658,26 @@ def _format_dita_chunk(chunk: dict, index: int, max_text_chars: int = 1000) -> s
     return "\n".join(lines)
 
 
+def _cap_retrieval_query(query: str, max_chars: int) -> str:
+    """Cap a query for the embedding retrievers while keeping its head and its tail.
+
+    A pasted description or stack trace usually comes first and the actual question last; a
+    head-only cut embedded the preamble and dropped the question.
+    """
+    text = str(query or "")
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    head = max_chars // 2
+    tail = max_chars - head
+    return text[:head] + text[-tail:]
+
+
 def _build_rag_context(query: str, tenant_id: str = "kone") -> str:
     """Retrieve RAG chunks and format for system prompt. Uses more chunks for better retrieval."""
     if not query or not str(query).strip():
         return ""
 
-    capped_query = query[:RAG_QUERY_MAX_CHARS]
+    capped_query = _cap_retrieval_query(query, RAG_QUERY_MAX_CHARS)
     parts = []
     routing_query = strip_humanized_chat_prefix(capped_query) or capped_query
 

@@ -84,10 +84,16 @@ def _save_registry(payload: dict) -> None:
 
 
 def _file_hash(path: Path) -> str:
+    """Content hash of the whole file.
+
+    Hashing only a prefix made two PDFs with the same front matter share one identity, so the
+    second was reported as already indexed or overwrote the first one's chunks.
+    """
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        digest.update(handle.read(512 * 1024))
-    return digest.hexdigest()[:16]
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()[:24]
 
 
 def list_indexed_docs(tenant_id: str) -> list[dict]:
@@ -96,9 +102,19 @@ def list_indexed_docs(tenant_id: str) -> list[dict]:
     return sorted(docs, key=lambda item: item.get("indexed_at", ""), reverse=True)
 
 
+def _legacy_file_hash(path: Path) -> str:
+    """The pre-change identity (first 512 KB, 16 hex chars), so existing registry entries still resolve."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        digest.update(handle.read(512 * 1024))
+    return digest.hexdigest()[:16]
+
+
 def is_already_indexed(pdf_path: Path, tenant_id: str) -> dict | None:
     registry = _load_registry()
-    return registry.get(f"{tenant_id}:{_file_hash(pdf_path)}")
+    return registry.get(f"{tenant_id}:{_file_hash(pdf_path)}") or registry.get(
+        f"{tenant_id}:{_legacy_file_hash(pdf_path)}"
+    )
 
 
 def remove_from_index(tenant_id: str, file_hash: str) -> bool:
@@ -248,8 +264,9 @@ def _chunk_pages(pages: list[dict], doc_meta: dict) -> list[dict]:
             continue
 
         heading = _detect_heading(clean_text)
-        if heading and buffer:
-            flush_buffer()
+        if heading:
+            if buffer:
+                flush_buffer()
             current_section = heading
 
         buffer = f"{buffer}\n\n{clean_text}".strip() if buffer else clean_text
@@ -257,11 +274,19 @@ def _chunk_pages(pages: list[dict], doc_meta: dict) -> list[dict]:
 
         while len(buffer) > CHUNK_SIZE * 4:
             split_pos = CHUNK_SIZE * 3
+            found_separator = False
             for separator in [". ", ".\n", "\n\n", "\n"]:
                 pos = buffer.find(separator, split_pos)
                 if 0 < pos < CHUNK_SIZE * 5:
                     split_pos = pos + len(separator)
+                    found_separator = True
                     break
+            if not found_separator:
+                # No sentence or line break near the target: cut at the last whitespace before it
+                # rather than in the middle of a word.
+                space = buffer.rfind(" ", CHUNK_SIZE * 2, split_pos)
+                if space > 0:
+                    split_pos = space + 1
             chunk_text = buffer[:split_pos].strip()
             if len(chunk_text) >= MIN_CHUNK_CHARS:
                 chunks.append(

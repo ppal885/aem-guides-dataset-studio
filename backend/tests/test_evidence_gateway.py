@@ -46,7 +46,7 @@ def test_search_knowledge_enforces_authorized_corpora(monkeypatch):
     settings.default_corpora = ("aem_guides",)
     user = UserIdentity(id="writer", roles=["writer"], allowed_tenants=["*"])
 
-    def fake_search(query, corpus_ids, top_k, mode, settings):
+    def fake_search(query, corpus_ids, top_k, mode, settings, **_filters):
         return [
             KnowledgeResult(
                 chunk_id="aem_1",

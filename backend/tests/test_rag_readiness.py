@@ -63,10 +63,11 @@ def test_build_rag_context_truncates_query(mock_docs, _dita, _tenant, _ex, _clau
 
     cap = 200
     with patch.object(cs, "RAG_QUERY_MAX_CHARS", cap):
-        long_q = "z" * (cap + 500)
+        long_q = "z" * (cap + 500) + " how do I enable baseline v2"
         out = cs._build_rag_context(long_q, tenant_id="kone")
     assert isinstance(out, str)
     mock_docs.assert_called_once()
     passed = mock_docs.call_args[0][0]
     assert len(passed) == cap
-    assert passed == "z" * cap
+    assert passed.startswith("z" * (cap // 2))
+    assert passed.endswith("how do I enable baseline v2"), "the question at the tail survives the cap"
