@@ -1131,6 +1131,43 @@
       "counterexamples_checked": true,
       "equivalence_key": "site-navigation-dita-ot-oracle",
       "status": "ACTIVE"
+    },
+    {
+      "probe_id": "MP-031",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "language variable",
+          "per-language",
+          "per language",
+          "localized string",
+          "localised string",
+          "enabled language",
+          "language group",
+          "each language",
+          "every language",
+          "all languages"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "LOCALIZATION",
+        "candidate_template": "a new per-language item that is added, imported or created (a language variable, a localized string): before writing its criteria, research where the list of enabled languages comes from (for example the feature's documentation page, Language groups on the Translation tab, or the panel's own language list) and how the other languages get their value (translation, a copy of the source value, or empty); then say which languages receive the item (every enabled language, only the current one, a language enabled later) and what each one shows; what another button or screen does today decides nothing for the new action, so a gap is a TBD"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261025-PER-LANGUAGE-ITEM-01"
+        ],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Proposed from one human-edited UAC; not reviewed or approved by QE, so it stays SHADOW. A generated criterion for importing new language variables said the other languages show a copy of the imported value, the same way as a variable added with the + button. The human edit instead said new variables go to the enabled languages and their translation is mapped. The source of the enabled languages and the translation mapping could have been researched before writing. Before promotion, QE should check counterexamples, for example a ticket that only reads or renders existing per-language values with no new item.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "per-language-item-propagation",
+      "status": "SHADOW"
     }
   ]
 }

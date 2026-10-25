@@ -571,7 +571,9 @@ NOT_APPLICABLE with a one-line reason — the gate fails closed if any is missin
   behaviour only an engine establishes, or a product doc for semantics only the spec
   establishes.
 - Error / negative / boundary paths, performance/scale (when any workload signal exists),
-  security, localization (regional vs generic locale), and upgrade/migration.
+  security, localization (regional vs generic locale; for a new per-language item, where the
+  enabled languages come from and how the other languages get their value - probe MP-031,
+  advisory until promoted), and upgrade/migration.
 - Reviewer comments: every imperative check a reviewer raised must be dispositioned.
 - Evidence: run RAG at least 3× on the feature's real behaviour and the indexed Jira
   history for the component; record both. Thin/absent history is a recorded gap, not silence.
@@ -846,7 +848,8 @@ or three tickets:
   `{"ac", "question", "searched": [{"where": "code" | "tests" | "attachment:<file name>" | "documentation",
   "found": "<file:line, test name, what the recording shows, or nothing: <search terms>>"}], "open_because":
   "<who has to decide and why none of these answers it>"}` for each criterion with a TBD line. When one of them
-  answers it, write a criterion instead.
+  answers it, write a criterion instead. A test or the code of another button or screen shows only what that
+  entry point does today; it answers nothing about a new action, so that TBD stays.
 - **The state after the action** (missing-after-state, `after_state`). When the ticket's action is a bulk
   action (Replace all, bulk, Select all), check its end result: the report or list of changed and unchanged
   items and the final status (END_RESULT). When it completes or closes a task, review, project or workflow,

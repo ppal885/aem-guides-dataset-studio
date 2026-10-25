@@ -273,7 +273,8 @@ When finished, write these files:
    document shows, or nothing: <search terms>>"}}], "open_because": "<who has to decide and why none of these
    answers it>"}}] - before leaving a TBD, look for the answer in the code, the existing automated tests and
    every recording or document attached to the ticket (a meeting recording often decides what the comments left
-   open); when one answers it, write a criterion instead.
+   open); when one answers it, write a criterion instead; what another button or screen does today does not
+   answer a question about this action.
    When the ticket's action is a bulk action (Replace all, bulk, Select all) or completes or closes a task,
    review, project or workflow, also "after_state": [{{"kind": "END_RESULT" (what the user sees when the bulk
    action finishes: the report of changed and unchanged items, the final status) | "STILL_POSSIBLE" (what the
