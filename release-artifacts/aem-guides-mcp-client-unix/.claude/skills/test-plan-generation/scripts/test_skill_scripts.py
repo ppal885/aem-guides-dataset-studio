@@ -7966,6 +7966,20 @@ def test_fix_basis_and_no_suggested_checks() -> None:
               for p in uc.fix_basis_problems(known, note + body, explained)))
     handled = dict(source, comments=[{"id": "4", "author": "dev", "body": "This is already handled at update."}])
     check("a developer's 'already handled' comment is a fix signal", uc.fix_signals(handled) != [])
+    isolated = dict(source, description=step + "\nSupport isolated the following stylesheet rule as the likely "
+                    "cause:\n{code}table { word-break: break-all; }{code}")
+    check("support isolating the likely cause is a cause signal, not a fix signal",
+          uc.cause_signals(isolated) != [] and uc.fix_signals(isolated) == [])
+    check("unconfirmed while the ticket explains the cause asks for CAUSE_KNOWN",
+          any("CAUSE_KNOWN" in p for p in uc.fix_basis_problems(unconfirmed, note + body, isolated)))
+    check("unconfirmed with a reason for the explained cause passes",
+          uc.fix_basis_problems(reasoned, note + body, isolated) == [])
+    check("cause-known over an isolated cause passes", uc.fix_basis_problems(
+        {"scenario": scenario, "fix_basis": {"status": "CAUSE_KNOWN", "signal": "Support isolated the following "
+                                             "stylesheet rule as the likely cause:"}},
+        uc.CAUSE_KNOWN_NOTE + "\n\n" + body, isolated) == [])
+    check("a hedged guess is not a cause signal",
+          uc.cause_signals(dict(source, description="It could be a caching issue.")) == [])
     flags = ("- Acceptance Criteria 01: Links still open the same topics.\n"
              "  - Try enablePublishApiMigration toggled on, then toggled off.\n"
              "  - Toggle dxml.use.split on, then off.\n"
@@ -8045,6 +8059,41 @@ def test_fix_basis_and_no_suggested_checks() -> None:
     check("the Jira field drops a legacy suggested section",
           "Suggested" not in field and "*Acceptance Criteria 02:*" in field)
     check("a UAC without suggested checks renders none", jst.suggested_checks_body(body) == "")
+
+
+def test_excluded_ticket_problems() -> None:
+    uc = uac_completeness_check_mod
+    source = {"key": "PROJ-500", "summary": "Table words split mid-word",
+              "description": "Related table tickets were reviewed, including PROJ-100, but that ticket concerns "
+                             "column widths after copy and paste and is not the same defect. See also PROJ-200.",
+              "comments": [{"id": "1", "author": "dev", "body": "PROJ-300 is a different issue."}]}
+    uac = ("- Acceptance Criteria 01: Table words wrap at spaces.\n"
+           "  **Source:** PROJ-500 description; PROJ-200.\n"
+           "- Acceptance Criteria 02: Column widths still match after copy and paste.\n"
+           "  **Source:** PROJ-500 description; PROJ-100.\n"
+           "- Acceptance Criteria 03: Text stays the same.\n"
+           "  **Source:** PROJ-300.\n")
+    problems = uc.excluded_ticket_problems(uac, source)
+    check("a criterion resting on a ticket the description rules out fails",
+          any("Acceptance Criteria 02" in p and "PROJ-100" in p for p in problems))
+    check("a ticket a comment calls a different issue is ruled out too",
+          any("Acceptance Criteria 03" in p and "PROJ-300" in p for p in problems))
+    check("a related ticket that is not ruled out, and the ticket's own key, are allowed",
+          not any("Acceptance Criteria 01" in p for p in problems))
+    check("no ruled-out ticket means no problem", uc.excluded_ticket_problems(uac, dict(
+        source, description="See PROJ-100.", comments=[])) == [])
+    regression = {"scenario": {"acs": [{"ac": 2, "scenario": "REGRESSION"}, {"ac": 3, "scenario": "REGRESSION"}]},
+                  "ruled_out_tickets": [{"ticket": "PROJ-100", "ac": 2,
+                                         "shared_path": "table cell CSS in the New Markup Editor"}]}
+    kept = uc.excluded_ticket_problems(uac, source, regression)
+    check("a still-works regression check from a ruled-out ticket with a shared path is kept",
+          not any("Acceptance Criteria 02" in p for p in kept))
+    check("a regression check from a ruled-out ticket without a shared path asks for one",
+          any("Acceptance Criteria 03" in p and "shared_path" in p for p in kept))
+    new_behaviour = uac.replace("Column widths still match", "Column widths match")
+    check("a ruled-out ticket never sets new behaviour, even with a shared path",
+          any("Acceptance Criteria 02" in p and "new behaviour" in p
+              for p in uc.excluded_ticket_problems(new_behaviour, source, regression)))
 
 
 def test_human_uac_shape() -> None:
@@ -18628,6 +18677,7 @@ def main() -> int:
     test_uac_completeness_check()
     test_scenario_and_failure_path()
     test_fix_basis_and_no_suggested_checks()
+    test_excluded_ticket_problems()
     test_gate_firing_log()
     test_human_uac_shape()
     test_uac_size_and_pre_existing_items()

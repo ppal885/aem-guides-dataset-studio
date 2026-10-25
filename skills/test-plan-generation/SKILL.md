@@ -879,6 +879,16 @@ or three tickets:
   commit)}`. Code on an unmerged branch, a similar ticket or our own reasoning decides nothing: write a TBD.
   When a criterion's TBD asks which way it goes, the criterion says it follows the decision in the TBD and does
   not pick a side (a Select All count asserted as 150 while its TBD asked 150 or 180).
+- **The cause the ticket explains** (wrong-note, `fix_basis`). When the description or a comment explains the
+  cause without a fix - support isolated a rule as the likely cause, a developer traced the culprit - record
+  fix_basis CAUSE_KNOWN with that sentence and start with the cause-known Note, not "not confirmed". Keep
+  UNCONFIRMED only with a reason why that text is not the cause.
+- **A ticket the ticket rules out** (excluded-ticket, `excluded_tickets`). A related ticket the description or a
+  comment calls "not the same defect", "a different issue" or "unrelated" never sets new expected behaviour.
+  It is still a regression risk: when the change goes through the same code, screen or workflow, keep a
+  REGRESSION criterion that its behaviour still works as before, and record the shared path in
+  `UAC_EVIDENCE.json` "ruled_out_tickets" (`{"ticket", "ac", "shared_path"}`). With no shared path, check it in
+  the full test plan. "Not the same defect" is never by itself a reason to drop a regression check.
 
 **Delivered format - chat and the Jira Acceptance Criteria field.** A list of criteria with optional short
 case sub-points; no ticket title line, no Open Questions section, and at most one short sentence of
