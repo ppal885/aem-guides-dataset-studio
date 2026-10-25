@@ -110,13 +110,28 @@ def metadata_contains(value: str | None, meta: dict[str, Any], document: str = "
     for item in haystacks:
         norm = normalize_token(item)
         compact = normalize_compact(item)
-        if target and norm and (target == norm or target in norm or norm in target):
+        # The requested value must be contained in the metadata value, never the reverse: a short
+        # label such as "ID" or "Org" in the haystack would otherwise satisfy any customer or
+        # environment filter.
+        if target and norm and _contains_value(target, norm):
             return True
-        if target_compact and compact and (
-            target_compact == compact or target_compact in compact or compact in target_compact
-        ):
+        if target_compact and compact and _contains_value(target_compact, compact):
             return True
     return False
+
+
+def _contains_value(needle: str, haystack: str) -> bool:
+    """``needle`` equals ``haystack`` or appears in it as a whole word.
+
+    Short values (under four characters, such as ``EY`` or ``GM``) must match a whole word so that
+    ``ey`` never matches ``keyref``; longer values may also match inside a compact token
+    (``experienceleague`` in ``experienceleaguecloud``).
+    """
+    if needle == haystack:
+        return True
+    if len(needle) < 4:
+        return re.search(r"(?<![a-z0-9])" + re.escape(needle) + r"(?![a-z0-9])", haystack) is not None
+    return needle in haystack
 
 
 def metadata_has_escalation(meta: dict[str, Any], document: str = "") -> bool:

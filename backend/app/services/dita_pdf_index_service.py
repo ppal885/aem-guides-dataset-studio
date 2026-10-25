@@ -77,6 +77,20 @@ def _get_pdf_path_for_url(url: str) -> Path:
     return base / filename
 
 
+def _page_label(page) -> str:
+    """The ``#page=N`` anchor value for a loader page index.
+
+    PyPDFLoader's ``page`` is a 0-based index while viewers count from 1, so index 0 is page
+    ``"1"`` (it used to lose its anchor) and every other index is shifted by one.
+    """
+    if isinstance(page, bool):
+        return ""
+    if isinstance(page, int):
+        return str(page + 1) if page >= 0 else ""
+    text = str(page or "").strip()
+    return text
+
+
 def _id_prefix_for_url(url: str) -> str:
     """Short id prefix for ChromaDB ids (e.g. dita12, dita13)."""
     if "v1.2" in url or "DITA1.2" in url:
@@ -167,12 +181,11 @@ def index_dita_pdf(
         prefix = _id_prefix_for_url(pdf_url)
         for i, chunk in enumerate(chunks):
             metadata = chunk.metadata or {}
-            page = metadata.get("page", "")
             all_records.append({
                 "id": f"{prefix}_{id_offset + i}",
                 "content": chunk.page_content[:MAX_CONTENT_CHARS],
                 "source_url": pdf_url,
-                "page": str(page) if page else "",
+                "page": _page_label(metadata.get("page", "")),
             })
         id_offset += len(chunks)
         stats["sources_indexed"].append(pdf_url)

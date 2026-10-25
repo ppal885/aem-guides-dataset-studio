@@ -693,6 +693,32 @@ def _build_summary(
     }
 
 
+_CANDIDATE_SOURCE_RANK = {
+    "tenant_context": 0,
+    "tenant_examples": 1,
+    "aem_guides": 2,
+    "dita_spec": 3,
+    "dita_graph": 4,
+    "claude_setup": 5,
+    "tavily": 6,
+}
+MAX_RESULT_CANDIDATES = 16
+
+
+def _prioritised_candidates(candidates: list[RetrievalCandidate]) -> list[RetrievalCandidate]:
+    """Cap the result without dropping the most authoritative sources.
+
+    Candidates arrive in retrieval order (docs, DITA, tenant, examples); a plain ``[:8]`` cut
+    removed every tenant chunk and approved example whenever docs alone filled eight slots.
+    The evidence pack reranks and caps again, so this is a stable sort by source authority.
+    """
+    ordered = sorted(
+        candidates,
+        key=lambda candidate: _CANDIDATE_SOURCE_RANK.get(candidate.source, len(_CANDIDATE_SOURCE_RANK)),
+    )
+    return ordered[:MAX_RESULT_CANDIDATES]
+
+
 def _is_better_assessment(
     candidate_assessment: RetrievalAssessment,
     current_assessment: RetrievalAssessment,
@@ -740,7 +766,10 @@ async def _run_corrective_rag(
                 seed_variants.append(llm_variant)
         for variant in seed_variants[1:]:
             candidate_set = _retrieve_mode_candidates(variant, tenant_id=tenant_id, mode=mode, category=category)
-            assessment = _grade_candidates(variant, candidate_set, issue=issue)
+            # Grade against the query the user asked, not the variant: variants append domain terms
+            # ("AEM Guides", "DITA") that nearly every chunk contains, which inflated their own
+            # term coverage and made the "correction" win by construction.
+            assessment = _grade_candidates(seed_query, candidate_set, issue=issue)
             if _is_better_assessment(
                 assessment,
                 best_seed_assessment,
@@ -835,7 +864,7 @@ async def _run_corrective_rag(
         corrected_query=best_query if correction_applied else "",
         correction_applied=correction_applied,
         assessment=best_assessment,
-        candidates=best_candidates[:8],
+        candidates=_prioritised_candidates(best_candidates),
         sources_used=summary["sources_used"],
         retrieval_summary=summary,
     )

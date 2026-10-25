@@ -989,19 +989,25 @@ def retrieve_relevant_docs_with_diagnostics(
                 if lexical_supplements:
                     result.extend(lexical_supplements)
                 ranked = _filter_and_rank_docs(query, result, k=k, allowed_host_suffixes=allowed_hosts)
-                logger.info_structured(
-                    "AEM Guides docs from ChromaDB (Experience League)",
-                    extra_fields={
-                        "source": "chromadb",
-                        "count": len(ranked),
-                        "lexical_supplements": len(lexical_supplements),
-                        "allowed_hosts": list(allowed_hosts),
-                    },
+                if ranked or not allowed_hosts:
+                    logger.info_structured(
+                        "AEM Guides docs from ChromaDB (Experience League)",
+                        extra_fields={
+                            "source": "chromadb",
+                            "count": len(ranked),
+                            "lexical_supplements": len(lexical_supplements),
+                            "allowed_hosts": list(allowed_hosts),
+                        },
+                    )
+                    payload["results"] = ranked
+                    payload["count"] = len(ranked)
+                    payload["retrieval_mode"] = "chromadb_semantic_plus_lexical" if lexical_supplements else "chromadb_semantic"
+                    return payload
+                # The nearest neighbours were all on other hosts; the JSON and lexical paths below
+                # search the whole corpus, so an empty semantic page is not the answer yet.
+                semantic_issue = semantic_issue or (
+                    "Semantic candidates were all outside the allowed hosts; fell back to the corpus scan."
                 )
-                payload["results"] = ranked
-                payload["count"] = len(ranked)
-                payload["retrieval_mode"] = "chromadb_semantic_plus_lexical" if lexical_supplements else "chromadb_semantic"
-                return payload
 
     chunks = _load_chunks()
     indexed_chunk_count = 0

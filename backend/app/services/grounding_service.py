@@ -58,12 +58,20 @@ _INTERNAL_WORKSPACE_REF_RE = re.compile(
     re.IGNORECASE,
 )
 
+# DITA-OT error questions are answered from OT guidance even when the index holds no evidence.
+_OT_ERROR_RE = re.compile(
+    r"\b(DOT[XJAF]\w+|NullPointerException|OutOfMemoryError|"
+    r"build\s+fail|transform\s+fail|fop.*error|xsl.*error|"
+    r"unresolved\s+(key\w*|conref\w*|xref\w*)|missing\s+(image|topic|file|map))\b",
+    re.IGNORECASE,
+)
+
 _SOURCE_AUTHORITY = {
     "tenant_context": ("tenant_approved", 1.0),
     "tenant_examples": ("approved_example", 0.95),
     "aem_guides": ("platform_doc", 0.78),
-    "dita_spec": ("standards_doc", 0.72),
-    "dita_graph": ("standards_doc", 0.7),
+    "dita_spec": ("standards_doc", 0.76),
+    "dita_graph": ("standards_doc", 0.75),
     "claude_setup": ("operational_note", 0.45),
     "tavily": ("web_result", 0.2),
     "unknown": ("unknown", 0.1),
@@ -1388,6 +1396,17 @@ async def verify_grounded_answer(
                     confidence_override=max(0.74, evidence_pack.decision.confidence),
                     thin_evidence_override=False,
                 )
+            if not evidence_pack.chunks and not structured_tool_answer and not _OT_ERROR_RE.search(question):
+                # Nothing was retrieved at all. A fluent draft is not evidence; say so instead of
+                # labelling it "partial" with an empty citation list.
+                return GroundedAnswer(
+                    answer=build_abstention_answer(question, evidence_pack, evidence_pack.tenant_id),
+                    citation_ids=[],
+                    unsupported_points=[],
+                    grounding_status="abstain",
+                    reason=evidence_pack.decision.reason or "No indexed evidence matched this query.",
+                    thin_evidence_override=False,
+                )
             if draft_answer.strip():
                 # If the LLM produced a substantive answer (>120 chars, not a retrieval summary,
                 # no unsafe XML), return it directly — the system prompt carries skill guidance
@@ -1399,8 +1418,8 @@ async def verify_grounded_answer(
                 )
                 if (
                     evidence_pack.decision.status != "conflict"
-                    and
-                    len(draft_clean) > 25
+                    and evidence_pack.chunks
+                    and len(draft_clean) > 25
                     and not _looks_like_retrieval_summary(draft_clean)
                     and not _unsafe_xml
                 ):
@@ -1443,13 +1462,6 @@ async def verify_grounded_answer(
                     grounding_status="partial",
                     reason="The answer was rewritten into a clearer plain-language summary because the evidence was thin or conflicting.",
                 )
-            import re as _re2
-            _OT_ERROR_RE = _re2.compile(
-                r"\b(DOT[XJAF]\w+|NullPointerException|OutOfMemoryError|"
-                r"build\s+fail|transform\s+fail|fop.*error|xsl.*error|"
-                r"unresolved\s+(key\w*|conref\w*|xref\w*)|missing\s+(image|topic|file|map))\b",
-                _re2.IGNORECASE,
-            )
             if _OT_ERROR_RE.search(question):
                 answer_text = _build_thin_evidence_answer(
                     question=question,

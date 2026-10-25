@@ -71,9 +71,22 @@ def collection_status(settings: EvidenceGatewaySettings) -> dict[str, int | None
     return status
 
 
-def search_knowledge(query: str, corpus_ids: list[str], top_k: int, mode: str, settings: EvidenceGatewaySettings) -> list[KnowledgeResult]:
+def search_knowledge(
+    query: str,
+    corpus_ids: list[str],
+    top_k: int,
+    mode: str,
+    settings: EvidenceGatewaySettings,
+    *,
+    source_versions: list[str] | None = None,
+    source_types: list[str] | None = None,
+) -> list[KnowledgeResult]:
     if not is_chroma_available():
         return []
+    wanted_versions = {str(v).strip() for v in (source_versions or []) if str(v).strip()}
+    wanted_types = {str(t).strip() for t in (source_types or []) if str(t).strip()}
+    if wanted_types:
+        corpus_ids = [cid for cid in corpus_ids if settings.corpora[cid].source_type in wanted_types]
     results: list[KnowledgeResult] = []
     query_embedding = None
     if mode in {"auto", "semantic"} and is_embedding_available():
@@ -94,6 +107,8 @@ def search_knowledge(query: str, corpus_ids: list[str], top_k: int, mode: str, s
             if not chunk_id or chunk_id in seen:
                 continue
             seen.add(chunk_id)
+            if wanted_versions and (_version(row.get("metadata") or {}) or "") not in wanted_versions:
+                continue
             distance = float(row.get("distance") or 0.0)
             exact_score = _exact_score(query, str(row.get("document") or ""), row.get("metadata") or {})
             score = max(exact_score, 1.0 - distance if query_embedding else 0.0)
@@ -101,10 +116,12 @@ def search_knowledge(query: str, corpus_ids: list[str], top_k: int, mode: str, s
             results.append(_row_to_result(corpus_id, row, score, method, settings))
 
     results.sort(key=lambda item: (-item.relevance_score, item.corpus, item.chunk_id))
+    # One result per chunk. Chunks of one PDF or one page share a canonical URI, so deduping on
+    # the URI collapsed a whole document to its single best chunk.
     deduped: list[KnowledgeResult] = []
     seen_keys: set[tuple[str, str]] = set()
     for item in results:
-        key = (item.corpus, item.canonical_uri)
+        key = (item.corpus, item.chunk_id)
         if key in seen_keys:
             continue
         seen_keys.add(key)
@@ -148,7 +165,8 @@ def _exact_score(query: str, document: str, meta: dict[str, Any]) -> float:
 
 
 def fetch_chunks(chunk_ids: list[str], neighbor_window: int, authorized_corpora: set[str], settings: EvidenceGatewaySettings) -> tuple[list[EvidenceChunk], list[str]]:
-    found: list[EvidenceChunk] = []
+    selected_rows: list[EvidenceChunk] = []
+    neighbor_rows: list[EvidenceChunk] = []
     missing: list[str] = []
     for chunk_id in chunk_ids:
         located = _locate_chunk(chunk_id, authorized_corpora, settings)
@@ -156,16 +174,18 @@ def fetch_chunks(chunk_ids: list[str], neighbor_window: int, authorized_corpora:
             missing.append(chunk_id)
             continue
         corpus, row = located
-        found.append(_row_to_chunk(corpus, row, selected=True, neighbor_of=None, settings=settings))
+        selected_rows.append(_row_to_chunk(corpus, row, selected=True, neighbor_of=None, settings=settings))
         for neighbor_id in _neighbor_ids(chunk_id, neighbor_window):
             if neighbor_id == chunk_id:
                 continue
             neighbor = _locate_chunk(neighbor_id, {corpus}, settings)
             if neighbor:
-                found.append(_row_to_chunk(corpus, neighbor[1], selected=False, neighbor_of=chunk_id, settings=settings))
+                neighbor_rows.append(_row_to_chunk(corpus, neighbor[1], selected=False, neighbor_of=chunk_id, settings=settings))
+    # Requested chunks win over their neighbour copies: a chunk asked for and also adjacent to an
+    # earlier one must come back as selected, not as a mere neighbour.
     seen: set[str] = set()
     deduped: list[EvidenceChunk] = []
-    for item in found:
+    for item in selected_rows + neighbor_rows:
         if item.chunk_id in seen:
             continue
         seen.add(item.chunk_id)

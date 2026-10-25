@@ -357,6 +357,25 @@ def _parse_json_list_preserve(raw: str | None) -> list[str]:
         return []
 
 
+def customer_names_match(left: str, right: str) -> bool:
+    """True when two normalised customer names denote the same customer.
+
+    Equal names match. A shorter name matches a longer one only as a whole word of it
+    (``ciena`` in ``ciena corporation``) and only when it has four or more characters, so
+    ``ey`` never matches ``honeywell`` and ``gm`` never matches ``pgm``.
+    """
+    a = str(left or "").strip().lower()
+    b = str(right or "").strip().lower()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    if len(short) < 4:
+        return False
+    return re.search(r"(?<![a-z0-9])" + re.escape(short) + r"(?![a-z0-9])", long_) is not None
+
+
 def _overlap_boost(meta: dict[str, Any], base_labels: set[str], base_components: set[str]) -> float:
     boost = 0.0
     labels = set(_parse_json_list(str(meta.get("labels") or "")))
@@ -524,7 +543,7 @@ def _metadata_match_details(
     if cust_q and cust_meta:
         for cq in cust_q:
             for cm in cust_meta:
-                if cq == cm or cq in cm or cm in cq:
+                if customer_names_match(cq, cm):
                     customer_overlap_norm.add(cq)
                     break
 
@@ -911,7 +930,10 @@ def _generic_overlap_only(query_tokens: set[str], doc_tokens: set[str], gate_sig
 
 
 def _recent_penalty(jira_key: str, recent_jira_keys: list[str] | None) -> float:
-    recent = recent_jira_keys if recent_jira_keys is not None else list(_RECENT_RETURNED_JIRA_KEYS)
+    # Only a caller-supplied list penalises repeats. The process-wide deque is kept for diagnostics
+    # but never scores: it is shared by every request, so using it made the same query return
+    # different scores depending on what unrelated callers had retrieved before.
+    recent = recent_jira_keys or []
     recent_norm = {str(k).strip().upper() for k in recent if str(k).strip()}
     return JIRA_RECENT_REPEAT_PENALTY if jira_key.strip().upper() in recent_norm else 0.0
 
@@ -1436,7 +1458,7 @@ def retrieve_similar_jiras(
                     for cm in cust_m:
                         if not cq or not cm:
                             continue
-                        if cq == cm or cq in cm or cm in cq:
+                        if customer_names_match(cq, cm):
                             has_structural = True
                             break
                     if has_structural:
@@ -1669,10 +1691,13 @@ def retrieve_similar_jiras(
             )
     broad = _is_broad_query(query_text, domain, dita_entities or [], affected_outputs or [])
     div_drops: list[dict[str, Any]] | None = [] if sink is not None else None
+    cust_requested = any(str(x).strip() for x in (customer_names or []))
+    # The per-customer cap is a diversity rule for open queries. When the caller asked for one
+    # customer's history, every ticket is that customer's and the cap would truncate the answer.
     result = _apply_enterprise_diversity(
         ranked,
         limit=limit,
-        max_per_customer=JIRA_MAX_SIMILAR_PER_CUSTOMER,
+        max_per_customer=0 if cust_requested else JIRA_MAX_SIMILAR_PER_CUSTOMER,
         diversity_drops=div_drops,
     )
     if recent_jira_keys is None:
