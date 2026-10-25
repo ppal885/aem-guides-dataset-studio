@@ -14277,6 +14277,32 @@ def test_miss_probe_library() -> None:
         and asset_candidate.get("status") == "INVESTIGATION_CANDIDATE",
     )
 
+    # A new per-language item probe stays advisory until QE promotes it.
+    per_language_probe = next((p for p in library if p.get("probe_id") == "MP-031"), None)
+    check(
+        "per-language item probe is present, unapproved and SHADOW on the LOCALIZATION axis",
+        per_language_probe is not None
+        and per_language_probe["provenance"]["promotion_state"] == "VALIDATING"
+        and mpl.effective_status(per_language_probe)[0] == "SHADOW"
+        and per_language_probe["implied_dimension"]["axis"] == "LOCALIZATION",
+    )
+    per_language_candidate = next(
+        (
+            c for c in mpl.candidates_for(
+                [("E-LANG", "Import adds new language variables to the Language variables panel.")]
+            )
+            if c.get("probe_id") == "MP-031"
+        ),
+        None,
+    )
+    check(
+        "new language variable evidence emits the non-authoritative per-language candidate",
+        per_language_candidate is not None
+        and per_language_candidate.get("dimension") == "LOCALIZATION"
+        and per_language_candidate.get("status") == "INVESTIGATION_CANDIDATE"
+        and per_language_candidate.get("non_authoritative") is True,
+    )
+
     # No match -> no learned candidate.
     check("no learned candidate without a match", mpl.candidates_for([("E9", "unrelated text")]) == [])
 
