@@ -549,7 +549,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "scenario": scenario_problems(evidence, uac, source), "failure_path": failure_path_problems(evidence, uac, source),
         "similar_uacs": similar_uac_problems(evidence, uac, plan), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
-        "excluded_tickets": excluded_ticket_problems(uac, source),
+        "excluded_tickets": excluded_ticket_problems(uac, source, evidence),
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac, source),
         "action_variants": action_variant_problems(evidence, uac, source, plan),
         "output_setting": output_setting_problems(evidence, uac, source),
@@ -1267,14 +1267,39 @@ _TICKET_KEY = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
 _RULED_OUT = re.compile(
     r"\bnot (?:the same|a duplicate|related)\b|\bdifferent (?:defect|issue|bug|problem)\b|\bunrelated\b"
     r"|\bnot (?:an? )?(?:exact )?duplicate\b", re.IGNORECASE)
+# "Still <verb>" also states existing behaviour ("column widths still match"), beyond the _AS_BEFORE forms.
+_STILL = re.compile(r"\bstill\b", re.IGNORECASE)
 
 
-def excluded_ticket_problems(uac_text: str, source: dict | None) -> list[str]:
-    """A criterion never rests on a ticket the description or a comment rules out as a different defect.
+def _shared_paths(evidence: dict | None) -> dict[tuple[int, str], str]:
+    """UAC_EVIDENCE.json "ruled_out_tickets": [{"ticket", "ac", "shared_path"}] - the code, screen or workflow
+    a ruled-out ticket shares with this ticket's change, which makes it a regression risk."""
+    found: dict[tuple[int, str], str] = {}
+    for entry in (evidence or {}).get("ruled_out_tickets") or []:
+        if not isinstance(entry, dict):
+            continue
+        shared = str(entry.get("shared_path") or "").strip()
+        try:
+            number = int(entry.get("ac"))
+        except (TypeError, ValueError):
+            continue
+        if shared and entry.get("ticket"):
+            found[(number, str(entry["ticket"]))] = shared
+    return found
 
-    A related ticket the ticket itself calls "not the same defect" is context, not scope: a criterion built
-    from it (table copy/paste column widths from such a ticket on a word-wrapping ticket) was a QE correction."""
+
+def excluded_ticket_problems(uac_text: str, source: dict | None, evidence: dict | None = None) -> list[str]:
+    """A ruled-out ticket never adds new behaviour to the criteria, but may back a regression check.
+
+    A related ticket the ticket itself calls "not the same defect" is not this ticket's defect, so it cannot
+    define new expected behaviour (table copy/paste column widths on a word-wrapping ticket was a QE correction).
+    It is still a regression risk when the change goes through the same code, screen or workflow: a REGRESSION
+    criterion that checks its behaviour still works as before is kept when "ruled_out_tickets" names the shared
+    path. Dropping such checks would weaken the UAC."""
     own = str((source or {}).get("key") or "")
+    kinds = {e.get("ac"): e.get("scenario") for e in ((evidence or {}).get("scenario") or {}).get("acs") or []
+             if isinstance(e, dict)}
+    shared = _shared_paths(evidence)
     ruled_out: dict[str, str] = {}
     for sentence in _ticket_sentences(source):
         if _RULED_OUT.search(sentence):
@@ -1284,9 +1309,23 @@ def excluded_ticket_problems(uac_text: str, source: dict | None) -> list[str]:
     problems = []
     for number, body in sorted((int(n), b) for n, b in _AC_BLOCK.findall(uac_text or "")):
         for key, sentence in ruled_out.items():
-            if re.search(rf"\b{re.escape(key)}\b", body):
-                problems.append(f"Acceptance Criteria {number:02d} rests on {key}, which the ticket rules out "
-                                f"(\"{sentence[:80]}\"); drop it or check it in the full test plan ({PLAN_FILE})")
+            if not re.search(rf"\b{re.escape(key)}\b", body):
+                continue
+            regression = kinds.get(number) == "REGRESSION" and (_AS_BEFORE.search(body) or _STILL.search(body))
+            if regression and (number, key) in shared:
+                continue
+            if regression:
+                problems.append(f"Acceptance Criteria {number:02d} is a regression check from {key}, which the "
+                                f"ticket rules out as the same defect (\"{sentence[:80]}\"); name the code, screen "
+                                "or workflow it shares with this change in UAC_EVIDENCE.json \"ruled_out_tickets\" "
+                                f"({{\"ticket\", \"ac\", \"shared_path\"}}), or check it in the full test plan "
+                                f"({PLAN_FILE})")
+            else:
+                problems.append(f"Acceptance Criteria {number:02d} takes new behaviour from {key}, which the "
+                                f"ticket rules out (\"{sentence[:80]}\"); a different defect cannot set expected "
+                                "behaviour. If the change shares its code, screen or workflow, make it a REGRESSION "
+                                "check that it still works as before and record the shared path in "
+                                f"\"ruled_out_tickets\"; otherwise check it in the full test plan ({PLAN_FILE})")
     return problems
 
 

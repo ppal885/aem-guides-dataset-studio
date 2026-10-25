@@ -8082,6 +8082,18 @@ def test_excluded_ticket_problems() -> None:
           not any("Acceptance Criteria 01" in p for p in problems))
     check("no ruled-out ticket means no problem", uc.excluded_ticket_problems(uac, dict(
         source, description="See PROJ-100.", comments=[])) == [])
+    regression = {"scenario": {"acs": [{"ac": 2, "scenario": "REGRESSION"}, {"ac": 3, "scenario": "REGRESSION"}]},
+                  "ruled_out_tickets": [{"ticket": "PROJ-100", "ac": 2,
+                                         "shared_path": "table cell CSS in the New Markup Editor"}]}
+    kept = uc.excluded_ticket_problems(uac, source, regression)
+    check("a still-works regression check from a ruled-out ticket with a shared path is kept",
+          not any("Acceptance Criteria 02" in p for p in kept))
+    check("a regression check from a ruled-out ticket without a shared path asks for one",
+          any("Acceptance Criteria 03" in p and "shared_path" in p for p in kept))
+    new_behaviour = uac.replace("Column widths still match", "Column widths match")
+    check("a ruled-out ticket never sets new behaviour, even with a shared path",
+          any("Acceptance Criteria 02" in p and "new behaviour" in p
+              for p in uc.excluded_ticket_problems(new_behaviour, source, regression)))
 
 
 def test_human_uac_shape() -> None:

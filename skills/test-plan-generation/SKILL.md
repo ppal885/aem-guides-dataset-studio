@@ -884,8 +884,11 @@ or three tickets:
   fix_basis CAUSE_KNOWN with that sentence and start with the cause-known Note, not "not confirmed". Keep
   UNCONFIRMED only with a reason why that text is not the cause.
 - **A ticket the ticket rules out** (excluded-ticket, `excluded_tickets`). A related ticket the description or a
-  comment calls "not the same defect", "a different issue" or "unrelated" is context, never the Source of a
-  criterion. Its check goes to the full test plan or is dropped.
+  comment calls "not the same defect", "a different issue" or "unrelated" never sets new expected behaviour.
+  It is still a regression risk: when the change goes through the same code, screen or workflow, keep a
+  REGRESSION criterion that its behaviour still works as before, and record the shared path in
+  `UAC_EVIDENCE.json` "ruled_out_tickets" (`{"ticket", "ac", "shared_path"}`). With no shared path, check it in
+  the full test plan. "Not the same defect" is never by itself a reason to drop a regression check.
 
 **Delivered format - chat and the Jira Acceptance Criteria field.** A list of criteria with optional short
 case sub-points; no ticket title line, no Open Questions section, and at most one short sentence of
