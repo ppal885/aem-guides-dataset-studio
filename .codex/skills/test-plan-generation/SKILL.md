@@ -879,6 +879,13 @@ or three tickets:
   commit)}`. Code on an unmerged branch, a similar ticket or our own reasoning decides nothing: write a TBD.
   When a criterion's TBD asks which way it goes, the criterion says it follows the decision in the TBD and does
   not pick a side (a Select All count asserted as 150 while its TBD asked 150 or 180).
+- **The cause the ticket explains** (wrong-note, `fix_basis`). When the description or a comment explains the
+  cause without a fix - support isolated a rule as the likely cause, a developer traced the culprit - record
+  fix_basis CAUSE_KNOWN with that sentence and start with the cause-known Note, not "not confirmed". Keep
+  UNCONFIRMED only with a reason why that text is not the cause.
+- **A ticket the ticket rules out** (excluded-ticket, `excluded_tickets`). A related ticket the description or a
+  comment calls "not the same defect", "a different issue" or "unrelated" is context, never the Source of a
+  criterion. Its check goes to the full test plan or is dropped.
 
 **Delivered format - chat and the Jira Acceptance Criteria field.** A list of criteria with optional short
 case sub-points; no ticket title line, no Open Questions section, and at most one short sentence of

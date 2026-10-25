@@ -549,6 +549,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "scenario": scenario_problems(evidence, uac, source), "failure_path": failure_path_problems(evidence, uac, source),
         "similar_uacs": similar_uac_problems(evidence, uac, plan), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
+        "excluded_tickets": excluded_ticket_problems(uac, source),
         "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac, source),
         "action_variants": action_variant_problems(evidence, uac, source, plan),
         "output_setting": output_setting_problems(evidence, uac, source),
@@ -1157,6 +1158,11 @@ FIX_SIGNAL = re.compile(
     r"\broot[\s-]*cause\b|\bRCA\b|\bcaused by\b|\bfix(?:ed)? in\b|\bthe fix\b|/pull/\d+|\bpull request\b"
     r"|\bPR\s*#?\d+|\bmerged\b|\bcherry[\s-]*pick"
     r"|\balready (?:handled|fixed|taken care of)\b|\bverified (?:on|in) (?:build )?\d", re.IGNORECASE)
+# Ticket text that explains the cause without a fix: support isolating a rule as the likely cause, a traced
+# culprit. A UAC that still says "not confirmed" over such text was a QE correction (the Note was wrong).
+CAUSE_SIGNAL = re.compile(
+    r"\b(?:likely|probable|actual|underlying)\s+cause\b|\bculprit\b"
+    r"|\b(?:isolated|identified|traced|pinpointed|narrowed down)\b[^.\n]{0,100}\bcause\b", re.IGNORECASE)
 FIX_STATES = ("CONFIRMED", "PROPOSED", "CAUSE_KNOWN", "UNCONFIRMED", "NOT_A_DEFECT")
 CAUSE_KNOWN_NOTE = ("Note: The root cause is explained in the ticket, but the fix is not decided yet. These criteria "
                     "cover what the customer reported and will be checked again when the fix is known.")
@@ -1171,18 +1177,22 @@ _NON_CODE_SOURCE = ("jira", "ticket", "description", "comment", "attachment", "s
                     "experience league", "experienceleague", "doc:", "product decision")
 
 
-def fix_signals(source: dict | None) -> list[str]:
-    """Sentences of the ticket description and comments that report a root cause, a fix or a pull request."""
+def _ticket_sentences(source: dict | None) -> list[str]:
     if not source:
         return []
     texts = [source.get("description") or ""] + [c.get("body") or "" for c in source.get("comments") or []
                                                  if isinstance(c, dict)]
-    found: list[str] = []
-    for text in texts:
-        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
-            if FIX_SIGNAL.search(sentence) and sentence.strip() not in found:
-                found.append(sentence.strip())
-    return found
+    return [s.strip() for text in texts for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
+
+
+def fix_signals(source: dict | None) -> list[str]:
+    """Sentences of the ticket description and comments that report a root cause, a fix or a pull request."""
+    return list(dict.fromkeys(s for s in _ticket_sentences(source) if FIX_SIGNAL.search(s)))
+
+
+def cause_signals(source: dict | None) -> list[str]:
+    """Sentences of the ticket description and comments that explain the cause without reporting a fix."""
+    return list(dict.fromkeys(s for s in _ticket_sentences(source) if CAUSE_SIGNAL.search(s)))
 
 
 def _code_only(body: str) -> bool:
@@ -1228,9 +1238,13 @@ def fix_basis_problems(evidence: dict, uac_text: str, source: dict | None) -> li
             problems.append("the ticket asks for a new capability, so UAC.md has no root-cause Note line")
         return problems + _code_only_problems(evidence, text)
     signals = fix_signals(source)
+    causes = cause_signals(source)
     if signals and not _reason_ok(block.get("reason")):
         problems.append(f"the ticket reports a root cause or fix (\"{signals[0][:80]}\"); record fix_basis "
                         "CONFIRMED with that text, or give a reason why it is not the fix")
+    elif causes and not _reason_ok(block.get("reason")):
+        problems.append(f"the ticket explains the cause (\"{causes[0][:80]}\"); record fix_basis CAUSE_KNOWN with "
+                        f"that text and start UAC.md with: {CAUSE_KNOWN_NOTE} Or give a reason why it is not the cause")
     if not re.search(r"^Note:.*not confirmed", head, re.M | re.I):
         problems.append(f"the root cause is not confirmed, so UAC.md must start with: {UNCONFIRMED_NOTE}")
     return problems + _code_only_problems(evidence, text)
@@ -1245,6 +1259,34 @@ def _code_only_problems(evidence: dict, text: str) -> list[str]:
             problems.append(f"Acceptance Criteria {number:02d} rests only on code while the root cause is not "
                             "confirmed; tie it to what the customer reported, make it a REGRESSION check that it "
                             f"still works as before, or move it to the full test plan ({PLAN_FILE})")
+    return problems
+
+
+# --- tickets the ticket rules out -------------------------------------------------------------------
+_TICKET_KEY = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
+_RULED_OUT = re.compile(
+    r"\bnot (?:the same|a duplicate|related)\b|\bdifferent (?:defect|issue|bug|problem)\b|\bunrelated\b"
+    r"|\bnot (?:an? )?(?:exact )?duplicate\b", re.IGNORECASE)
+
+
+def excluded_ticket_problems(uac_text: str, source: dict | None) -> list[str]:
+    """A criterion never rests on a ticket the description or a comment rules out as a different defect.
+
+    A related ticket the ticket itself calls "not the same defect" is context, not scope: a criterion built
+    from it (table copy/paste column widths from such a ticket on a word-wrapping ticket) was a QE correction."""
+    own = str((source or {}).get("key") or "")
+    ruled_out: dict[str, str] = {}
+    for sentence in _ticket_sentences(source):
+        if _RULED_OUT.search(sentence):
+            for key in _TICKET_KEY.findall(sentence):
+                if key != own:
+                    ruled_out.setdefault(key, sentence)
+    problems = []
+    for number, body in sorted((int(n), b) for n, b in _AC_BLOCK.findall(uac_text or "")):
+        for key, sentence in ruled_out.items():
+            if re.search(rf"\b{re.escape(key)}\b", body):
+                problems.append(f"Acceptance Criteria {number:02d} rests on {key}, which the ticket rules out "
+                                f"(\"{sentence[:80]}\"); drop it or check it in the full test plan ({PLAN_FILE})")
     return problems
 
 
