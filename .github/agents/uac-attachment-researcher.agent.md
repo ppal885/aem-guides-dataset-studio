@@ -93,8 +93,10 @@ attachment it contains either `path` (the downloaded local file) or
   or requirement spoken in the meeting is a customer or product statement,
   recorded with who said it when the transcript makes that clear; it is
   never restated as accepted behavior. When `frames_error` or
-  `transcript_error` is present, that exact reason goes in `limitations`;
-  when both are missing, the video is SOURCE_UNAVAILABLE for content claims.
+  `transcript_error` is present, that exact reason goes in `limitations` and
+  the other channel is still researched. The video is SOURCE_UNAVAILABLE for
+  content claims only when it has neither usable frames nor a usable
+  transcript.
 - When only `error` is present, that attachment is SOURCE_UNAVAILABLE for
   content claims: include the exact error in `limitations` and never
   pretend it was researched.
