@@ -275,6 +275,9 @@ When finished, write these files:
    every recording or document attached to the ticket (a meeting recording often decides what the comments left
    open); when one answers it, write a criterion instead; what another button or screen does today does not
    answer a question about this action.
+   When the output points an image or asset to a rendition, a Dynamic Media URL or the source asset, find the
+   setting or mapping that picks the rendition and write the criterion on it: with two or more renditions, the
+   output uses the one it picks.
    When the ticket's action is a bulk action (Replace all, bulk, Select all) or completes or closes a task,
    review, project or workflow, also "after_state": [{{"kind": "END_RESULT" (what the user sees when the bulk
    action finishes: the report of changed and unchanged items, the final status) | "STILL_POSSIBLE" (what the

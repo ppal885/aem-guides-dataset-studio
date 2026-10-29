@@ -1,0 +1,72 @@
+{
+  "jira_key": "GUIDES-53648",
+  "summary": "New AEM Sites - Image component mapping updating rendition path rather than actual source",
+  "evaluated_at": "2026-10-29",
+  "source": "Jira changelog of Acceptance Criteria (customfield_13400), read-only",
+  "versions": {
+    "generated": {
+      "at": "2026-10-04T06:07:48Z",
+      "by": "automation (release runner)",
+      "ac_count": 6,
+      "sha256_prefix": "3545304600d29493",
+      "matches_attachment": "GUIDES-53648-test-plan.md"
+    },
+    "user_rewrite": {
+      "at": "2026-10-04T08:15:06Z",
+      "by": "prashantp (own edit before QE review; excluded from scoring)",
+      "ac_count": 6,
+      "sha256_prefix": "7a9f17d8604cd95a",
+      "pattern": "missing-placements"
+    },
+    "qe_final": {
+      "at": "2026-10-29T07:08:29Z",
+      "by": "aakakumar (QE Assignee)",
+      "ac_count": 3,
+      "sha256_prefix": "2fa9ba72cd45702f",
+      "uac_done_label_at": "2026-10-29T12:41:56Z"
+    }
+  },
+  "qe_edit": {
+    "compared": "user_rewrite -> qe_final",
+    "kept": [
+      "CRXDE Properties shows fileReference as the source DAM asset path, without a rendition suffix, for generated Core Images.",
+      "Images in other placements also render with the source asset path (table, figure, key reference, SVG, width and height set)."
+    ],
+    "removed": [
+      "Images render in generated AEM Sites pages from the Map console using the supplied Folder Profiles mapping, by default.",
+      "Generated Core Images match the customer's working AEM Sites image behaviour under the same Dynamic Media configuration (3 DM modes) + TBD on comparison target.",
+      "Folder Profiles, User Preferences and the Map console still use the saved component mapping (decorative setting, text-component images).",
+      "Existing topics, maps and AEM Sites presets keep their saved content and settings + TBD on migration."
+    ],
+    "edited": [],
+    "added": [
+      "Validate with different renditions and correct ones being picked on the basis of renditionmap."
+    ],
+    "removal_reason_in_comments": null,
+    "counts": {
+      "before_acs": 6,
+      "final_acs": 3,
+      "kept": 2,
+      "edited": 0,
+      "removed": 4,
+      "added": 1
+    }
+  },
+  "lessons_for_skill": [
+    "Replace an open Dynamic Media comparison matrix with the concrete rule that decides the output: which rendition is picked from the renditionmap.",
+    "Other placements of the image (MP-020, already ACTIVE) were not in the skill post; the user added them before QE review."
+  ],
+  "excluded": [
+    "The 2026-10-04 08:15 field change by prashantp (added the other-placements AC, dropped the Baseline AC) is the user's own edit, not QE feedback, so it is not scored."
+  ],
+  "staging_dashboard": {
+    "synced_at": "2026-10-29T13:05:59Z",
+    "skill_acs": 6,
+    "kept": 0,
+    "edited": 1,
+    "removed": 5,
+    "added": 2,
+    "final_by": "prashantp",
+    "note": "Computed by guides-ai-dashboard from the skill post vs the field at UAC_Done; it cannot exclude the user rewrite."
+  }
+}

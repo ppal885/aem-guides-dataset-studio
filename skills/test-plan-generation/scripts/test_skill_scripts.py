@@ -14353,6 +14353,32 @@ def test_miss_probe_library() -> None:
         and per_language_candidate.get("non_authoritative") is True,
     )
 
+    # An asset rendition selection probe stays advisory until QE promotes it.
+    rendition_probe = next((p for p in library if p.get("probe_id") == "MP-032"), None)
+    check(
+        "rendition selection probe is present, unapproved and SHADOW on the CONFIG_BRANCH axis",
+        rendition_probe is not None
+        and rendition_probe["provenance"]["promotion_state"] == "VALIDATING"
+        and mpl.effective_status(rendition_probe)[0] == "SHADOW"
+        and rendition_probe["implied_dimension"]["axis"] == "CONFIG_BRANCH",
+    )
+    rendition_candidate = next(
+        (
+            c for c in mpl.candidates_for(
+                [("E-REND", "The generated AEM Sites page stores a rendition path in fileReference.")]
+            )
+            if c.get("probe_id") == "MP-032"
+        ),
+        None,
+    )
+    check(
+        "rendition path evidence emits the non-authoritative rendition selection candidate",
+        rendition_candidate is not None
+        and rendition_candidate.get("dimension") == "CONFIG_BRANCH"
+        and rendition_candidate.get("status") == "INVESTIGATION_CANDIDATE"
+        and rendition_candidate.get("non_authoritative") is True,
+    )
+
     # No match -> no learned candidate.
     check("no learned candidate without a match", mpl.candidates_for([("E9", "unrelated text")]) == [])
 

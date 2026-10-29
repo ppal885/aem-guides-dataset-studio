@@ -574,6 +574,10 @@ NOT_APPLICABLE with a one-line reason — the gate fails closed if any is missin
   security, localization (regional vs generic locale; for a new per-language item, where the
   enabled languages come from and how the other languages get their value - probe MP-031,
   advisory until promoted), and upgrade/migration.
+- Asset renditions: when the output points an image or asset to a rendition, a Dynamic Media URL or the
+  source asset, research the setting or mapping that picks the rendition and write the criterion on that
+  rule (with two or more renditions, the output uses the one the rule picks) - probe MP-032, advisory until
+  promoted. A comparison with a customer site or a Dynamic Media mode sweep with no decided target is a TBD.
 - Reviewer comments: every imperative check a reviewer raised must be dispositioned.
 - Evidence: run RAG at least 3× on the feature's real behaviour and the indexed Jira
   history for the component; record both. Thin/absent history is a recorded gap, not silence.
