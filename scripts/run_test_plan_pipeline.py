@@ -9,8 +9,10 @@ import os
 import sys
 from pathlib import Path
 
-# Allow running from repo root without installing the package.
-_BACKEND = Path(__file__).resolve().parents[1] / "backend"
+# Allow running from repo root without installing the package.  The runtime is
+# under backend/ here and directly under uac-service/ in guides-qe-ai.
+_REPO = Path(__file__).resolve().parents[1]
+_BACKEND = _REPO / "backend" if (_REPO / "backend" / "app").is_dir() else _REPO
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
