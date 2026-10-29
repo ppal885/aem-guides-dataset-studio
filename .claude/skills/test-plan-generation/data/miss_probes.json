@@ -1168,6 +1168,40 @@
       "counterexamples_checked": false,
       "equivalence_key": "per-language-item-propagation",
       "status": "SHADOW"
+    },
+    {
+      "probe_id": "MP-032",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "rendition",
+          "dynamic media",
+          "scene7",
+          "image component mapping",
+          "core image",
+          "delivery url",
+          "smart crop"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CONFIG_BRANCH",
+        "candidate_template": "when the output points an image or other asset to a rendition, a Dynamic Media URL or the source asset: before writing its criteria, research the setting or mapping that decides which rendition the output uses (in the code, the output preset, the component mapping and the documentation), then write the criterion on that rule: with two or more renditions of the asset, the output uses the one the rule picks; a comparison with a customer site or a sweep of Dynamic Media modes with no decided target is a TBD, not the criterion"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261029-RENDITION-SELECTION-01"
+        ],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Proposed from one human-edited UAC; not reviewed or approved by QE, so it stays SHADOW. On an AEM Sites image-mapping bug the generated UAC checked the source asset path and compared the output with the customer's site under three Dynamic Media modes. The QE Assignee removed the mode comparison and added a check that different renditions exist and the correct one is picked on the basis of the rendition map. The rule that picks the rendition could have been researched before writing. Before promotion, QE should check counterexamples, for example a ticket that only changes an image's alt text or size with no rendition involved.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "asset-rendition-selection",
+      "status": "SHADOW"
     }
   ]
 }
