@@ -4,12 +4,30 @@
   "evaluated_at": "2026-10-29",
   "source": "Jira changelog of Acceptance Criteria (customfield_13400), read-only",
   "versions": {
-    "generated": {"at": "2026-10-04T06:07:48Z", "by": "automation (release runner)", "ac_count": 6, "sha256_prefix": "3545304600d29493", "matches_attachment": "GUIDES-53648-test-plan.md"},
-    "claude_rewrite": {"at": "2026-10-04T08:15:06Z", "by": "Claude rewrite (user-directed), recorded in issue property uac-manual-rewrite", "ac_count": 6, "sha256_prefix": "7a9f17d8604cd95a", "pattern": "missing-placements"},
-    "qe_final": {"at": "2026-10-29T07:08:29Z", "by": "aakakumar (QE Assignee)", "ac_count": 3, "sha256_prefix": "2fa9ba72cd45702f", "uac_done_label_at": "2026-10-29T12:41:56Z"}
+    "generated": {
+      "at": "2026-10-04T06:07:48Z",
+      "by": "automation (release runner)",
+      "ac_count": 6,
+      "sha256_prefix": "3545304600d29493",
+      "matches_attachment": "GUIDES-53648-test-plan.md"
+    },
+    "user_rewrite": {
+      "at": "2026-10-04T08:15:06Z",
+      "by": "prashantp (own edit before QE review; excluded from scoring)",
+      "ac_count": 6,
+      "sha256_prefix": "7a9f17d8604cd95a",
+      "pattern": "missing-placements"
+    },
+    "qe_final": {
+      "at": "2026-10-29T07:08:29Z",
+      "by": "aakakumar (QE Assignee)",
+      "ac_count": 3,
+      "sha256_prefix": "2fa9ba72cd45702f",
+      "uac_done_label_at": "2026-10-29T12:41:56Z"
+    }
   },
   "qe_edit": {
-    "compared": "claude_rewrite -> qe_final",
+    "compared": "user_rewrite -> qe_final",
     "kept": [
       "CRXDE Properties shows fileReference as the source DAM asset path, without a rendition suffix, for generated Core Images.",
       "Images in other placements also render with the source asset path (table, figure, key reference, SVG, width and height set)."
@@ -24,27 +42,31 @@
     "added": [
       "Validate with different renditions and correct ones being picked on the basis of renditionmap."
     ],
-    "removal_reason_in_comments": null
-  },
-  "vs_generated": {
-    "compared": "generated -> qe_final",
-    "skill_acs": 6,
-    "final_acs": 3,
-    "kept": 1,
-    "edited": 0,
-    "removed": 5,
-    "added": 2,
-    "notes": [
-      "Kept: AC02 CRXDE fileReference; only wording 'current-version' -> 'generated' changed, by the Claude rewrite.",
-      "Removed by the Claude rewrite: AC06 Baseline / Map Collection image version.",
-      "Removed by QE: AC01 render by default, AC03 Dynamic Media matrix, AC04 mapping regression, AC05 saved-content regression.",
-      "Added by the Claude rewrite (kept by QE): other placements. Added by QE: rendition selection by renditionmap."
-    ]
+    "removal_reason_in_comments": null,
+    "counts": {
+      "before_acs": 6,
+      "final_acs": 3,
+      "kept": 2,
+      "edited": 0,
+      "removed": 4,
+      "added": 1
+    }
   },
   "lessons_for_skill": [
-    "Assert the technical fix point (fileReference = source asset) and its placements; drop a separate 'images render' AC that only restates it.",
     "Replace an open Dynamic Media comparison matrix with the concrete rule that decides the output: which rendition is picked from the renditionmap.",
-    "Generic 'still works' regression ACs (mapping, saved content, Baseline) belong in the full test plan, not the UAC.",
-    "Do not raise TBDs QE will not answer (comparison sub-site, migration) as UAC items."
-  ]
+    "Other placements of the image (MP-020, already ACTIVE) were not in the skill post; the user added them before QE review."
+  ],
+  "excluded": [
+    "The 2026-10-04 08:15 field change by prashantp (added the other-placements AC, dropped the Baseline AC) is the user's own edit, not QE feedback, so it is not scored."
+  ],
+  "staging_dashboard": {
+    "synced_at": "2026-10-29T13:05:59Z",
+    "skill_acs": 6,
+    "kept": 0,
+    "edited": 1,
+    "removed": 5,
+    "added": 2,
+    "final_by": "prashantp",
+    "note": "Computed by guides-ai-dashboard from the skill post vs the field at UAC_Done; it cannot exclude the user rewrite."
+  }
 }
