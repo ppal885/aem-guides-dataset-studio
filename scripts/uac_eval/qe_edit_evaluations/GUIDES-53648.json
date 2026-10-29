@@ -34,23 +34,27 @@
     ],
     "removed": [
       "Images render in generated AEM Sites pages from the Map console using the supplied Folder Profiles mapping, by default.",
-      "Generated Core Images match the customer's working AEM Sites image behaviour under the same Dynamic Media configuration (3 DM modes) + TBD on comparison target.",
       "Folder Profiles, User Preferences and the Map console still use the saved component mapping (decorative setting, text-component images).",
       "Existing topics, maps and AEM Sites presets keep their saved content and settings + TBD on migration."
     ],
-    "edited": [],
-    "added": [
-      "Validate with different renditions and correct ones being picked on the basis of renditionmap."
+    "edited": [
+      {
+        "before": "Generated Core Images match the customer's working AEM Sites image behaviour under the same Dynamic Media configuration (3 DM modes) + TBD on comparison target.",
+        "after": "Validate with different renditions and correct ones being picked on the basis of renditionmap.",
+        "change": "scope and expected result: Dynamic Media mode comparison replaced by a rendition-selection check"
+      }
     ],
+    "added": [],
     "removal_reason_in_comments": null,
     "counts": {
       "before_acs": 6,
       "final_acs": 3,
       "kept": 2,
-      "edited": 0,
-      "removed": 4,
-      "added": 1
-    }
+      "edited": 1,
+      "removed": 3,
+      "added": 0
+    },
+    "counted_by": "user (prashantp), 2026-10-29"
   },
   "lessons_for_skill": [
     "Replace an open Dynamic Media comparison matrix with the concrete rule that decides the output: which rendition is picked from the renditionmap.",
@@ -67,6 +71,6 @@
     "removed": 5,
     "added": 2,
     "final_by": "prashantp",
-    "note": "Computed by guides-ai-dashboard from the skill post vs the field at UAC_Done; it cannot exclude the user rewrite."
+    "note": "Computed by guides-ai-dashboard from the skill post vs the field at UAC_Done; it counts the user rewrite as QE changes and the Dynamic Media AC edit as remove + add."
   }
 }
