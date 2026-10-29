@@ -314,15 +314,29 @@ def feature_design_problems(evidence: dict, uac_text: str, source: dict | None) 
     if not isinstance(mechanism, dict) or not isinstance(mechanism.get("decided"), bool):
         problems.append("feature_design.mechanism needs \"decided\": true or false")
     elif mechanism["decided"]:
+        # Checked against the authority it names, as decision_problems does: only a ticket or developer-comment
+        # decision is text of the ticket; an attachment or product decision lives outside it.
         quote = _normalize(mechanism.get("quote"))
-        if mechanism.get("basis") not in FEATURE_DECIDED_BASES:
+        basis = mechanism.get("basis")
+        ref = str(mechanism.get("ref") or "").strip()
+        attachments = {str(a.get("filename") or "").lower() for a in (source or {}).get("attachments") or []
+                       if isinstance(a, dict)}
+        if basis not in FEATURE_DECIDED_BASES:
             problems.append("feature_design.mechanism is decided only by "
                             f"{', '.join(FEATURE_DECIDED_BASES)}; otherwise list the candidates and ask in a TBD")
         elif not quote:
             problems.append("feature_design.mechanism is decided without \"quote\": copy the sentence that decided it")
-        elif source and quote not in _ticket_text(source):
-            problems.append("feature_design.mechanism.quote is not text from the ticket; copy the sentence that "
-                            "decided how it is built")
+        elif basis in _QUOTED_BASES:
+            if source and quote not in _ticket_text(source):
+                problems.append("feature_design.mechanism.quote is not text from the ticket; copy the sentence that "
+                                "decided how it is built")
+        elif basis == "ATTACHMENT":
+            if source and ref.lower() not in attachments:
+                problems.append("feature_design.mechanism: ref must name the attachment (a recording or document) "
+                                "that decided how it is built")
+        elif len(ref.split()) < 3:
+            problems.append("feature_design.mechanism: ref must say who decided how it is built and where (for "
+                            "example a product decision in chat)")
     else:
         candidates = [c for c in mechanism.get("candidates") or [] if isinstance(c, dict)]
         if len(candidates) < MIN_MECHANISM_CANDIDATES:
@@ -386,6 +400,10 @@ def feature_design_problems(evidence: dict, uac_text: str, source: dict | None) 
         if not isinstance(ac, int) or ac not in blocks:
             problems.append(f"feature_design place \"{name}\": Acceptance Criteria {ac!r} does not exist")
             continue
+        # A place that does not exist yet still has its user: one criterion never mixes an author in AEM with a
+        # reader on a proposed download surface, TBD or not.
+        if actor:
+            actors_by_ac.setdefault(ac, set()).add(actor)
         if disposition == "TBD" or exists == "NO":
             if "TBD:" not in blocks[ac]:
                 problems.append(f"feature_design place \"{name}\" does not exist today or is not decided; Acceptance "
@@ -394,8 +412,6 @@ def feature_design_problems(evidence: dict, uac_text: str, source: dict | None) 
         words = _name_words(name)
         if words and not any(re.search(rf"\b{re.escape(w)}", _normalize(blocks[ac])) for w in words):
             problems.append(f"feature_design place \"{name}\": Acceptance Criteria {ac:02d} does not name it")
-        if actor:
-            actors_by_ac.setdefault(ac, set()).add(actor)
     for ac, actors in sorted(actors_by_ac.items()):
         if len(actors) > 1:
             problems.append(f"Acceptance Criteria {ac:02d} covers places with different users "
@@ -857,7 +873,7 @@ def internal_setting_problems(uac_text: str) -> list[str]:
         head = re.match(r"^- Acceptance Criteria (\d+):", line)
         if head:
             ac = int(head.group(1))
-        elif not re.match(r"^\s+- ", line):
+        elif not _CASE_MARK.match(line):
             continue
         text = _QUOTED.sub(" ", line)
         found = list(_INTERNAL_NAME.finditer(text))
@@ -872,6 +888,10 @@ def internal_setting_problems(uac_text: str) -> list[str]:
     return problems
 
 
+# An indented case sub-point, with the same markers jira_safe_text.py accepts and delivers (-, + or a single *).
+_CASE_MARK = re.compile(r"^[ \t]+(?:[-+]|\*(?!\*))\s+")
+
+
 def _criterion_lines(uac_text: str):
     """(criterion number, is the statement line, text) for each statement and case sub-point; Source and TBD
     lines are left out. Accepts the chat form (- Acceptance Criteria 01: / indented - case) and the Jira field
@@ -883,7 +903,7 @@ def _criterion_lines(uac_text: str):
             ac = int(head.group(1))
             yield ac, True, head.group(2)
             continue
-        case = re.match(r"^(?:\s+-|\*\*)\s+(.*)$", line)
+        case = re.match(r"^(?:[ \t]+(?:[-+]|\*(?!\*))|\*\*)\s+(.*)$", line)
         if ac and case and not re.match(r"\**\s*(?:Source|TBD)\s*:", case.group(1), re.I):
             yield ac, False, case.group(1)
 
@@ -1288,6 +1308,25 @@ def _shared_paths(evidence: dict | None) -> dict[tuple[int, str], str]:
     return found
 
 
+_CLAUSE_BREAK = re.compile(r"[,;:()]|\s(?:but|while|whereas|unlike|although)\s", re.IGNORECASE)
+
+
+def _ruled_out_keys(sentence: str, own: str) -> list[str]:
+    """The tickets a sentence rules out. With one other ticket in the sentence it is that ticket. With several,
+    only those in the clause that carries the exclusion: "Unlike unrelated PROJ-100, PROJ-200 reproduces this
+    exact defect." rules out PROJ-100 alone. A sentence that cannot be resolved rules out nothing."""
+    if not _RULED_OUT.search(sentence):
+        return []
+    keys = [k for k in dict.fromkeys(_TICKET_KEY.findall(sentence)) if k != own]
+    if len(keys) <= 1:
+        return keys
+    found: list[str] = []
+    for clause in _CLAUSE_BREAK.split(sentence):
+        if _RULED_OUT.search(clause):
+            found += [k for k in _TICKET_KEY.findall(clause) if k != own and k not in found]
+    return found
+
+
 def excluded_ticket_problems(uac_text: str, source: dict | None, evidence: dict | None = None) -> list[str]:
     """A ruled-out ticket never adds new behaviour to the criteria, but may back a regression check.
 
@@ -1302,10 +1341,8 @@ def excluded_ticket_problems(uac_text: str, source: dict | None, evidence: dict 
     shared = _shared_paths(evidence)
     ruled_out: dict[str, str] = {}
     for sentence in _ticket_sentences(source):
-        if _RULED_OUT.search(sentence):
-            for key in _TICKET_KEY.findall(sentence):
-                if key != own:
-                    ruled_out.setdefault(key, sentence)
+        for key in _ruled_out_keys(sentence, own):
+            ruled_out.setdefault(key, sentence)
     problems = []
     for number, body in sorted((int(n), b) for n, b in _AC_BLOCK.findall(uac_text or "")):
         for key, sentence in ruled_out.items():
@@ -1363,7 +1400,7 @@ def size_problems(uac_text: str) -> list[str]:
             if count > MAX_STATEMENT_WORDS:
                 problems.append(f"the statement of {current} has {count} words; say the one checkable outcome in at "
                                 f"most {MAX_STATEMENT_WORDS} words and move the conditions to case sub-points")
-        elif re.match(r"^\s+- ", line):
+        elif _CASE_MARK.match(line):
             count = len(stripped[2:].split())
             if count > MAX_CASE_WORDS:
                 problems.append(f"a case sub-point of {current} has {count} words; keep it to one plain sentence of at "
@@ -1614,7 +1651,14 @@ def output_route_problems(entry_points, source: dict | None) -> list[str]:
 # controller: pdfGenerator "ditaot", validation knows "fmps"); it has no Native PDF generator. Our Native PDF
 # UACs kept listing it as a generation route, and QE corrected it.
 NATIVE_PDF_SIGNAL = re.compile(r"\bnative\s+pdf\b", re.IGNORECASE)
-MAP_DASHBOARD = re.compile(r"\bmap\s+dashboard\b", re.IGNORECASE)
+# Only a line that makes the Map Dashboard the place output is generated: "Generate from the Map Dashboard",
+# "the Map Dashboard publishes the PDF". Viewing or listing there ("the Map Dashboard still lists previously
+# generated output") is an ordinary regression check.
+_GENERATE = r"(?:generat|publish|produc|creat|export|run|build)\w*"
+_MAP_DASHBOARD_GENERATES = re.compile(
+    rf"\b{_GENERATE}\b.*\b(?:from|in|on|using|via|through)\s+(?:the\s+)?map\s+dashboard\b"
+    r"|\bmap\s+dashboard\b.*\b(?:generates|publishes|produces|creates|exports|runs|builds)\b",
+    re.IGNORECASE)
 NON_NATIVE_ENGINE = re.compile(r"\b(?:dita[\s-]?ot|fmps|framemaker|aem\s+sites?|html5)\b|\bno\s+native\s+pdf\b",
                                re.IGNORECASE)
 
@@ -1630,9 +1674,9 @@ def native_pdf_route_problems(uac_text: str, source: dict | None) -> list[str]:
         head = re.match(r"^- Acceptance Criteria (\d+):", line)
         if head:
             ac = int(head.group(1))
-        elif not re.match(r"^\s+- ", line):
+        elif not _CASE_MARK.match(line):
             continue
-        if MAP_DASHBOARD.search(line) and not NON_NATIVE_ENGINE.search(line):
+        if _MAP_DASHBOARD_GENERATES.search(line) and not NON_NATIVE_ENGINE.search(line):
             problems.append(f"Acceptance Criteria {ac:02d} names the Map Dashboard on a Native PDF ticket: the Map "
                             "Dashboard generates DITA-OT, FMPS and AEM Sites output only, never Native PDF - use the "
                             "Map console output preset, Map Collection, a baseline or Download as PDF")
@@ -2086,6 +2130,20 @@ _VAGUE_WORDS = {"works", "work", "working", "expected", "correctly", "correct", 
                 "should", "must", "issue", "issues", "error", "errors", "fixed", "same", "only", "change", "changes"}
 
 
+# Exact short results that _name_words drops (shorter than four letters): a quoted value ("0", "OK"), a number or
+# status code (404, 12.5%), an acronym (PDF, ZIP).
+_SHORT_VALUE = re.compile(r"\"([^\"]{1,40})\"|(?<![\w.])(\d+(?:\.\d+)?%?)(?![\w.])|\b([A-Z][A-Z0-9]{1,3})\b")
+
+
+def _short_values(sees) -> list[str]:
+    values = []
+    for match in _SHORT_VALUE.finditer(str(sees or "")):
+        value = _normalize(next(group for group in match.groups() if group is not None))
+        if value and value not in _VAGUE_WORDS and value not in values:
+            values.append(value)
+    return values
+
+
 def observable_result_problems(evidence: dict, uac_text: str) -> list[str]:
     """A criterion that follows the reporter's scenario records what QE sees ("sees": the value, status, message,
     list or output content) and names it - never only "works as expected" or "only permitted changes"."""
@@ -2097,13 +2155,14 @@ def observable_result_problems(evidence: dict, uac_text: str) -> list[str]:
             continue
         ac = entry["ac"]
         words = [w for w in _name_words(entry.get("sees")) if w not in _VAGUE_WORDS]
+        words += [v for v in _short_values(entry.get("sees")) if v not in words]
         if not words:
             problems.append(f"Acceptance Criteria {ac:02d}: scenario.acs \"sees\" must name what QE sees when it works - "
                             "the value, status, message, list or output content from the ticket or an attachment - "
                             "not only \"works as expected\" or \"only permitted changes\"")
             continue
         text = _normalize(blocks[ac])
-        shown = [w for w in words if re.search(rf"\b{re.escape(w)}", text)]
+        shown = [w for w in words if re.search(rf"(?<![a-z0-9]){re.escape(w)}", text)]
         if len(shown) * 2 < len(words):
             problems.append(f"Acceptance Criteria {ac:02d} does not state what QE sees (\"{str(entry.get('sees'))[:70]}\"): "
                             "put that value, status or message in the statement or a sub-point")
@@ -2130,6 +2189,20 @@ def _handling_lines(body: str) -> list[str]:
             if line.strip() and not _LABEL_OR_TBD.match(line) and HANDLING_SIGNAL.search(line)]
 
 
+def _decision_covers(choice: str, line: str) -> bool:
+    """A recorded decision covers a handling line when it names the same handling (wait, skip, count ...) or two of
+    the line's words. One decision no longer covers every choice in its criterion: "a second export waits" decides
+    nothing about "locked files are skipped"."""
+    choice_text = _normalize(choice)
+    if not choice_text:
+        return False
+    for signal in HANDLING_SIGNAL.finditer(line):
+        stem = re.sub(r"(?:ing|ed|es|s|ies|y)$", "", signal.group(0).lower()) or signal.group(0).lower()
+        if re.search(rf"\b{re.escape(stem[:5])}", choice_text):
+            return True
+    return len(set(_name_words(line)) & set(_name_words(choice))) >= 2
+
+
 def decision_problems(evidence: dict, uac_text: str, source: dict | None) -> list[str]:
     """A handling choice in a new-behaviour criterion (wait or fail, skip or block, a count, a precedence) needs the
     basis that decided it; one nobody decided is a TBD. (A word-overlap check against the criterion's own TBD was
@@ -2150,11 +2223,12 @@ def decision_problems(evidence: dict, uac_text: str, source: dict | None) -> lis
     for ac, body in sorted(blocks.items()):
         if kinds.get(ac) not in _NEW_BEHAVIOUR:
             continue
-        lines = _handling_lines(body)
-        if lines and ac not in by_ac:
-            problems.append(f"Acceptance Criteria {ac:02d} states a handling choice (\"{lines[0][:70]}\"): record in "
-                            "decisions who decided it (ticket, attachment, developer comment, product decision or "
-                            "the merged fix), or make it a TBD")
+        choices = [str(e.get("choice") or "") for e in by_ac.get(ac, [])]
+        for line in _handling_lines(body):
+            if not any(_decision_covers(choice, line) for choice in choices):
+                problems.append(f"Acceptance Criteria {ac:02d} states a handling choice (\"{line[:70]}\"): record in "
+                                "decisions who decided it (ticket, attachment, developer comment, product decision "
+                                "or the merged fix), or make it a TBD")
     for index, entry in enumerate(entries, 1):
         choice = str(entry.get("choice") or "").strip()
         label = f"decisions {index} \"{choice[:60]}\""

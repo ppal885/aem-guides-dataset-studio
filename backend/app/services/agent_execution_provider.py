@@ -102,6 +102,32 @@ def agent_research_store() -> Path:
     return Path(__file__).resolve().parents[2] / "storage" / "agent_research"
 
 
+_SKILL_LAYOUTS = (
+    Path("skills") / "test-plan-generation",
+    Path("test-plan-generation"),
+)
+
+
+def _skill_locations() -> list[tuple[Path, Path]]:
+    """Candidate (repository root, Skill directory) pairs, nearest first.
+
+    ``TEST_PLAN_SKILL_ROOT`` names the Skill directory explicitly (a container
+    image that installs the Skill elsewhere).  Otherwise the Skill is found
+    next to an ancestor of this file, at skills/test-plan-generation (this
+    repository) or directly at test-plan-generation (guides-qe-ai).
+    """
+
+    override = os.environ.get("TEST_PLAN_SKILL_ROOT", "").strip()
+    if override:
+        skill = Path(override).expanduser().resolve()
+        return [(skill.parent, skill)]
+    return [
+        (ancestor, ancestor / layout)
+        for ancestor in Path(__file__).resolve().parents
+        for layout in _SKILL_LAYOUTS
+    ]
+
+
 def load_role_contract(role: ResearchWorkerRole) -> tuple[str, str, str]:
     """Load the canonical Skill role contract for a worker role.
 
@@ -111,11 +137,8 @@ def load_role_contract(role: ResearchWorkerRole) -> tuple[str, str, str]:
     """
 
     filename = _ROLE_CONTRACT_FILES[role]
-    current = Path(__file__).resolve()
-    for ancestor in current.parents:
-        candidate = (
-            ancestor / "skills" / "test-plan-generation" / "agents" / filename
-        )
+    for _root, skill in _skill_locations():
+        candidate = skill / "agents" / filename
         if candidate.exists():
             text = candidate.read_text(encoding="utf-8")
             version = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
@@ -157,12 +180,11 @@ def _documentation_roots() -> list[str]:
     Skill's curated reference packs and product vocabulary plus the
     repository docs directory."""
 
-    current = Path(__file__).resolve()
-    for ancestor in current.parents:
-        refs = ancestor / "skills" / "test-plan-generation" / "references"
+    for ancestor, skill in _skill_locations():
+        refs = skill / "references"
         if refs.is_dir():
             roots = [str(refs)]
-            data = ancestor / "skills" / "test-plan-generation" / "data"
+            data = skill / "data"
             if data.is_dir():
                 roots.append(str(data))
             docs = ancestor / "docs"
@@ -189,15 +211,8 @@ _QUERY_STOPWORDS = frozenset(
 def _load_guides_vocabulary() -> dict:
     import json as _json
 
-    current = Path(__file__).resolve()
-    for ancestor in current.parents:
-        candidate = (
-            ancestor
-            / "skills"
-            / "test-plan-generation"
-            / "data"
-            / "guides_vocabulary.json"
-        )
+    for _root, skill in _skill_locations():
+        candidate = skill / "data" / "guides_vocabulary.json"
         if candidate.exists():
             try:
                 return _json.loads(candidate.read_text(encoding="utf-8-sig"))
@@ -209,15 +224,8 @@ def _load_guides_vocabulary() -> dict:
 def _load_doc_query_expansions() -> list[dict]:
     import json as _json
 
-    current = Path(__file__).resolve()
-    for ancestor in current.parents:
-        candidate = (
-            ancestor
-            / "skills"
-            / "test-plan-generation"
-            / "data"
-            / "doc_query_expansions.json"
-        )
+    for _root, skill in _skill_locations():
+        candidate = skill / "data" / "doc_query_expansions.json"
         if candidate.exists():
             try:
                 data = _json.loads(candidate.read_text(encoding="utf-8-sig"))

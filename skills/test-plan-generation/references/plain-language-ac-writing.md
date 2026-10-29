@@ -125,7 +125,8 @@ keep DITA element names, file extensions and code words for sub-points or the So
 | topic reference | topicref, `<topicref>` element, href to a topic |
 | map reference | mapref, submap reference, `<mapref>` element |
 | direct reference / indirect reference | reltable link (an indirect reference is a link through a relationship table) |
-| forward reference / backward reference | incoming links, where-used, referencing files, dependents |
+| backward reference | incoming links, where-used, referencing files, dependents |
+| forward reference | outgoing links, referenced targets, dependencies |
 | conref, conkeyref, keyref | content reuse attribute, key-based reuse, key resolution |
 | DITA map, bookmap | ditamap file, map XML, bookmap XML |
 | topic | DITA topic file, topic XML, .dita file |

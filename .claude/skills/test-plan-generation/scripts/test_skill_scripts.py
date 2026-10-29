@@ -8014,6 +8014,23 @@ def test_fix_basis_and_no_suggested_checks() -> None:
     check("a Map Dashboard line that names its DITA-OT engine passes on a Native PDF ticket",
           uc.native_pdf_route_problems("- Acceptance Criteria 01: Native PDF keeps the pages.\n"
                                        "  - The Map Dashboard DITA-OT PDF preset is unchanged.\n", npdf) == [])
+    check("a Map Dashboard check that generates nothing passes on a Native PDF ticket",
+          uc.native_pdf_route_problems("- Acceptance Criteria 01: Native PDF keeps the pages.\n"
+                                       "  - The Map Dashboard still lists previously generated output.\n", npdf) == [])
+    for marker in ("*", "+"):
+        check(f"a Map Dashboard route written as an indented {marker} case is refused too",
+              any("Map Dashboard" in p for p in uc.native_pdf_route_problems(
+                  dash.replace("  - Generate", f"  {marker} Generate"), npdf)))
+        check(f"an internal setting in an indented {marker} case is refused too",
+              uc.internal_setting_problems(
+                  "- Acceptance Criteria 01: The output keeps the pages.\n  - Set dita.ot.keep.pages to true.\n")
+              and uc.internal_setting_problems(
+                  f"- Acceptance Criteria 01: The output keeps the pages.\n  {marker} Set dita.ot.keep.pages to true.\n")
+              == uc.internal_setting_problems(
+                  "- Acceptance Criteria 01: The output keeps the pages.\n  - Set dita.ot.keep.pages to true.\n"))
+        check(f"an indented {marker} case is a criterion line like a - case",
+              list(uc._criterion_lines(f"- Acceptance Criteria 01: Keeps pages.\n  {marker} With a bookmap.\n"))
+              == [(1, True, "Keeps pages."), (1, False, "With a bookmap.")])
 
     suggested = body + (
         "\nSuggested checks (QE decide):\n"
@@ -8082,6 +8099,12 @@ def test_excluded_ticket_problems() -> None:
           not any("Acceptance Criteria 01" in p for p in problems))
     check("no ruled-out ticket means no problem", uc.excluded_ticket_problems(uac, dict(
         source, description="See PROJ-100.", comments=[])) == [])
+    compared = dict(source, description="Unlike unrelated PROJ-100, PROJ-200 reproduces this exact defect.",
+                    comments=[])
+    compared_problems = uc.excluded_ticket_problems(uac, compared)
+    check("a sentence that compares tickets rules out only the one the exclusion names",
+          any("PROJ-100" in p for p in compared_problems)
+          and not any("Acceptance Criteria 01" in p for p in compared_problems))
     regression = {"scenario": {"acs": [{"ac": 2, "scenario": "REGRESSION"}, {"ac": 3, "scenario": "REGRESSION"}]},
                   "ruled_out_tickets": [{"ticket": "PROJ-100", "ac": 2,
                                          "shared_path": "table cell CSS in the New Markup Editor"}]}
@@ -8359,9 +8382,36 @@ def test_feature_design_mechanism_and_places() -> None:
     check("a decided mechanism quoted from the ticket passes", uc.feature_design_problems(
         design(mechanism={"decided": True, "basis": "TICKET", "quote": "publish content to secured website"}),
         uac, source) == [])
+    with_recording = dict(source, attachments=[{"filename": "design-call.mp4"}])
+    check("a mechanism decided in an attachment is checked against the attachment, not the ticket text",
+          uc.feature_design_problems(design(mechanism={
+              "decided": True, "basis": "ATTACHMENT", "ref": "design-call.mp4",
+              "quote": "we fill it with a post-generation workflow"}), uac, with_recording) == [])
+    check("an attachment decision must name an attachment of the ticket", any(
+        "must name the attachment" in p for p in uc.feature_design_problems(design(mechanism={
+            "decided": True, "basis": "ATTACHMENT", "ref": "other.mp4",
+            "quote": "we fill it with a post-generation workflow"}), uac, with_recording)))
+    check("a product decision outside the ticket passes with who decided it and where",
+          uc.feature_design_problems(design(mechanism={
+              "decided": True, "basis": "PRODUCT_DECISION", "ref": "PM decision in Slack thread",
+              "quote": "use the post-generation workflow"}), uac, source) == [])
+    check("a product decision without who and where fails", any(
+        "who decided how it is built" in p for p in uc.feature_design_problems(design(mechanism={
+            "decided": True, "basis": "PRODUCT_DECISION", "ref": "PM",
+            "quote": "use the post-generation workflow"}), uac, source)))
     missing_place = [dict(places[0], exists_today="NO")]
     check("a place that does not exist today needs a TBD", any("needs a TBD line" in p for p in
           uc.feature_design_problems(design(places=missing_place), uac, source)))
+    uac_with_tbd = uac.replace("shows the user's name.\n",
+                               "shows the user's name.\n  **TBD:** Does AEM Sites get a Native PDF download link?\n")
+    mixed_with_missing = [
+        {"place": "AEM", "actor": "author", "exists_today": "YES", "evidence": ["output history"],
+         "disposition": "AC", "ac": 3},
+        {"place": "AEM Sites download", "actor": "website reader", "exists_today": "NO",
+         "evidence": ["no Native PDF download link on AEM Sites"], "disposition": "TBD", "ac": 3}]
+    check("a place that does not exist yet still counts for different users in one criterion", any(
+        "different users" in p for p in uc.feature_design_problems(
+            design(places=mixed_with_missing), uac_with_tbd, source)))
     mixed = [{"place": "AEM", "actor": "author", "exists_today": "YES", "evidence": ["output history"],
               "disposition": "AC", "ac": 3},
              {"place": "AEM Sites", "actor": "website reader", "exists_today": "PARTIAL",
@@ -18486,6 +18536,13 @@ def test_repeated_qe_correction_gates() -> None:
     absent["scenario"]["acs"][0]["sees"] = "orange warning status in Generated Outputs"
     check("a sees the criterion does not state fails",
           any("does not state what QE sees" in p for p in uc.observable_result_problems(absent, uac)))
+    short_uac = ("- Acceptance Criteria 01: The not-replaced count shows 0.\n"
+                 "- Acceptance Criteria 02: The request returns 404.\n")
+    for value, expected in (('"0"', True), ("404", True), ("OK", False)):
+        short = {"scenario": {"acs": [{"ac": 1 if value == '"0"' else 2, "scenario": "CUSTOMER", "sees": value}]}}
+        problems = uc.observable_result_problems(short, short_uac)
+        check(f"a short exact result {value} {'stated in' if expected else 'missing from'} the criterion "
+              f"{'passes' if expected else 'fails'}", (problems == []) == expected)
     print("test_repeated_qe_correction_gates: OK")
 
 
@@ -18611,6 +18668,12 @@ def test_guessed_decision_gate() -> None:
     recording = dict(scenario, decisions=[decided["decisions"][0],
                                           {"ac": 2, "choice": "waits", "basis": "ATTACHMENT", "ref": "meeting.mp4"}])
     check("an attached recording can decide", uc.decision_problems(recording, uac, source) == [])
+    two_choices = uac.replace("waits and then uses the new versions.\n",
+                              "waits and then uses the new versions.\n  - Locked files are skipped.\n")
+    partly = uc.decision_problems(decided, two_choices, source)
+    check("one decision does not cover a second, undecided choice in the same criterion",
+          any("Acceptance Criteria 02" in p and "Locked files are skipped" in p for p in partly)
+          and not any("waits and then" in p for p in partly))
     regression = {"scenario": {"acs": [{"ac": n, "scenario": "REGRESSION"} for n in (1, 2, 3)]}}
     check("a regression criterion needs no decisions record", uc.decision_problems(regression, uac, source) == [])
     print("test_guessed_decision_gate: OK")

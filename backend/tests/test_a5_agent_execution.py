@@ -129,6 +129,26 @@ def test_role_contracts_load_for_all_three_roles() -> None:
         assert name and version and "must NOT" in text
 
 
+def test_role_contracts_load_from_an_explicit_skill_root(tmp_path, monkeypatch) -> None:
+    """A deployment that installs the Skill outside this repository (the
+    guides-qe-ai top-level layout or a container path) names it explicitly."""
+
+    from app.services import agent_execution_provider as provider
+
+    skill = tmp_path / "test-plan-generation"
+    (skill / "agents").mkdir(parents=True)
+    (skill / "references").mkdir()
+    (skill / "agents" / "uac-doc-researcher.md").write_text(
+        "Doc researcher contract; it must NOT decide acceptance.", encoding="utf-8"
+    )
+    monkeypatch.setenv("TEST_PLAN_SKILL_ROOT", str(skill))
+
+    name, _version, text = load_role_contract(ResearchWorkerRole.DOC_RESEARCHER)
+    assert name == "uac-doc-researcher"
+    assert text.startswith("Doc researcher contract")
+    assert provider._documentation_roots()[0] == str(skill / "references")
+
+
 def test_copilot_registration_parity() -> None:
     import subprocess
     import sys
