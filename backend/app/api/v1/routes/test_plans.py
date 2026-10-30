@@ -75,6 +75,9 @@ async def run_test_plan_pipeline_route(
             user,
             entry_point="backend_api",
         )
+    except HTTPException:
+        # A tenant the caller may not use is a 403, not a pipeline failure.
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
