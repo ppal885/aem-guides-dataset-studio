@@ -144,6 +144,41 @@ def test_rag_status_route_rejects_unauthorized_tenant_header(client, monkeypatch
     assert "tenant" in response.text.lower()
 
 
+def test_test_plan_pipeline_route_rejects_unauthorized_tenant(client, monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("ALLOW_DEV_AUTH_BYPASS", "false")
+    monkeypatch.setenv(
+        "AUTH_TOKENS_JSON",
+        json.dumps(
+            {
+                "writer-token": {
+                    "id": "writer-1",
+                    "email": "writer@example.com",
+                    "roles": ["writer"],
+                    "allowed_tenants": ["kone"],
+                }
+            }
+        ),
+    )
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("pipeline ran for a tenant the caller may not use")
+
+    monkeypatch.setattr(
+        "app.services.test_plan_pipeline_service.run_test_plan_pipeline",
+        _must_not_run,
+    )
+
+    response = client.post(
+        "/api/v1/test-plans/pipeline",
+        headers={"Authorization": "Bearer writer-token"},
+        json={"jira_key": "PROJ-100", "tenant_id": "acme"},
+    )
+
+    assert response.status_code == 403
+    assert "tenant" in response.text.lower()
+
+
 def test_tenant_token_is_persisted_encrypted(monkeypatch):
     monkeypatch.setenv("TENANT_SECRET_KEY", "unit-test-tenant-secret")
     monkeypatch.setenv("ALLOW_PLAINTEXT_TENANT_SECRETS", "false")
