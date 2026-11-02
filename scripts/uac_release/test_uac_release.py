@@ -2056,6 +2056,88 @@ class LearningHarvesterTests(unittest.TestCase):
         report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
         self.assertIn("| (no evidence record) | 3 | 1 | 33% |", report)
 
+    def test_source_lines_say_whether_the_ticket_asked_for_a_criterion(self) -> None:
+        cases = {
+            "Ticket description; {{ReportServlet.java}} line 10.": ["ticket", "code"],
+            "GUIDES-1 comment 58244293.": ["comment"],
+            "GUIDES-1": ["ticket"],
+            "GUIDES-55887 Request to Engineering.": ["ticket", "other ticket"],
+            "Experience League report page.": ["documentation"],
+            "QE reasoning: nothing in the ticket defines this.": ["QE reasoning"],
+            "ticket.": ["ticket"],
+            "Similar ticket GUIDES-42 UAC.": ["similar UAC", "other ticket"],
+            "Design document Metadata columns; fix version 2611.": ["design document"],
+            "": [harvester.NO_SOURCE],
+        }
+        for source, bases in cases.items():
+            self.assertEqual(harvester.source_bases(source, "GUIDES-1"), bases, source)
+        self.assertEqual(harvester.basis_group(["documentation", "code"]), "research or reasoning only")
+        self.assertEqual(harvester.basis_group(["code", "comment"]), "asked on the ticket")
+        self.assertEqual(harvester.basis_group([harvester.NO_SOURCE]), "no Source line")
+
+    def test_research_kinds_come_from_the_surface_inventory_and_evidence(self) -> None:
+        evidence = {
+            "scenario": {"acs": [{"ac": 4, "scenario": "ADJACENT"}]},
+            "action_variants": {"config_switches": [
+                {"name": "DB flavour and JCR flavour", "disposition": "AC", "acs": [2]},
+                {"name": "Use UUID based system filenames", "disposition": "AC", "acs": [3]}]},
+            "shared_consumers": {"consumers": [{"name": "Reports", "disposition": "AC", "ac": 3}]},
+            "doc_findings": [{"finding": 1, "disposition": "AC", "ac": [1]}, {"finding": 2, "disposition": "TEST_PLAN"}],
+            "similar_uacs": {"status": "compared", "uacs": [
+                {"key": "GUIDES-9", "dimensions": [{"dimension": "sorting", "disposition": "AC", "ac": 4}]}]},
+            "output_setting": {"disposition": "TBD", "ac": 5},
+            "after_state": [{"kind": "END_RESULT", "disposition": "AC", "ac": 5}],
+            "feature_design": {"places": [{"place": "site", "disposition": "OUT_OF_SCOPE"}]},
+        }
+        inventory = [{"surface": "Asset Properties", "authority": "DOCUMENTATION", "disposition": "AC", "ac": 1},
+                     {"surface": "Recent files", "authority": "SAME_ITEM", "disposition": "AC", "ac": 1},
+                     {"surface": "Browse dialog", "authority": "CODE_REUSE", "disposition": "TEST_PLAN"}]
+        self.assertEqual(harvester.criterion_kinds(evidence, inventory), {
+            1: ["research-found screen", "same item elsewhere", "documentation finding"],
+            2: ["DB and JCR flavour"],
+            3: ["switch state", "shared consumer"],
+            4: ["adjacent research check", "similar UAC dimension"],
+            5: ["output setting", "after state"]})
+        self.assertEqual(harvester.criterion_kinds(None, inventory)[1], ["research-found screen", "same item elsewhere"])
+
+    def test_rule_outcomes_split_qe_verdicts_by_why_we_wrote_each_criterion(self) -> None:
+        (self.out / "PROJ-1" / "UAC_EVIDENCE.json").write_text(json.dumps({
+            "scenario": {"acs": [{"ac": 1, "scenario": "CUSTOMER"}, {"ac": 2, "scenario": "CUSTOMER"}]}}),
+            encoding="utf-8")
+        jira = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
+        [record] = harvester.harvest(self.config, jira, self.log, "uac.bot")
+        by_number = {e["number"]: e for e in record["criteria"] if e.get("number")}
+        self.assertEqual(by_number[1]["bases"], ["ticket", "code"])
+        self.assertEqual((by_number[2]["has_tbd"], by_number[3]["bases"]), (True, ["QE reasoning"]))
+        # A surface inventory written after the harvest still counts: the run folder is read again.
+        (self.out / "PROJ-1" / common.SURFACE_INVENTORY_FILE).write_text(json.dumps([
+            {"surface": "Export", "authority": "CODE_REUSE", "disposition": "AC", "ac": 3}]), encoding="utf-8")
+        report = harvester.write_rule_outcomes(self.config).read_text(encoding="utf-8")
+        data = json.loads((self.out / "learning" / harvester.RULE_OUTCOMES_FILE).read_text(encoding="utf-8"))
+        self.assertEqual((data["tickets"], data["criteria"]), (1, 3))
+        groups = {r["label"]: r for r in data["by_group"]}
+        self.assertEqual((groups["asked on the ticket"]["posted"], groups["asked on the ticket"]["removed"]), (2, 0))
+        research = groups["research or reasoning only"]
+        self.assertEqual((research["posted"], research["removed"], research["removed_rate"]), (1, 1, 1.0))
+        self.assertEqual(research["examples"], [{"key": "PROJ-1", "text": "Verify that the export button still "
+                                                                          "downloads a CSV file."}])
+        kinds = {r["label"]: r for r in data["by_kind"]}
+        self.assertEqual((kinds["research-found screen"]["posted"], kinds["research-found screen"]["removed"]), (1, 1))
+        self.assertEqual((kinds["reporter step"]["accepted"], kinds["reporter step"]["edited"]), (1, 1))
+        tbd = {r["label"]: r["posted"] for r in data["by_tbd"]}
+        self.assertEqual(tbd, {"with a TBD line": 1, "without a TBD line": 2})
+        self.assertIn("| research or reasoning only | 1 | 0 | 0 | 1 | 100% |", report)
+        self.assertIn("| asked on the ticket | 2 | 1 | 1 | 0 | 0% |", report)
+
+    def test_rule_outcomes_use_only_the_newest_qe_verdict_per_ticket(self) -> None:
+        older = {"key": "PROJ-9", "posted_text": POSTED_FIELD, "criteria": [
+            {"kind": "removed", "old": "a", "number": 1}, {"kind": "removed", "old": "b", "number": 2}]}
+        newer = {**older, "criteria": [{"kind": "accepted", "old": "a", "number": 1}]}
+        rewrite = {**older, "edit_origin": "CLAUDE_REWRITE"}
+        data = harvester.rule_outcomes([older, newer, rewrite])
+        self.assertEqual((data["tickets"], data["criteria"]), (1, 1))
+        self.assertEqual(data["by_group"][0]["accepted"], 1)
+
     def test_monthly_report_lists_what_we_overwrote_and_missed(self) -> None:
         human = self.jira_with(_issue(HUMAN_FIELD, "UAT", [("2026-01-05T09:30:00.000+0000", "qe.lead")]))
         [record] = harvester.harvest(self.config, human, self.log, "uac.bot")
@@ -2334,6 +2416,25 @@ class ReleaseDashboardTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
+
+    def test_rule_outcomes_show_which_rules_qe_removes(self) -> None:
+        self.assertIsNone(dashboard.collect_rule_outcomes(self.out))
+        self.assertIn("No judged criteria yet", dashboard.render([], [], [], 0, "", "now"))
+        (self.out / "learning").mkdir()
+        (self.out / "learning" / "rule-outcomes.json").write_text(json.dumps({
+            "tickets": 2, "criteria": 12,
+            "by_group": [{"label": "research or reasoning only", "posted": 6, "accepted": 1, "edited": 1, "removed": 4,
+                          "removed_rate": 0.6667, "examples": [{"key": "PROJ-1", "text": "Try it with the <JCR> flavour"}]},
+                         {"label": "asked on the ticket", "posted": 6, "accepted": 5, "edited": 1, "removed": 0,
+                          "removed_rate": 0.0, "examples": []}],
+            "by_kind": [{"label": "DB and JCR flavour", "posted": 2, "accepted": 0, "edited": 0, "removed": 2,
+                         "removed_rate": 1.0, "examples": []}], "by_basis": [], "by_tbd": []}), encoding="utf-8")
+        page = dashboard.render([], [], [], 0, "", "now", rules=dashboard.collect_rule_outcomes(self.out))
+        self.assertIn('href="#rules"', page)
+        self.assertIn("12 criteria on 2 tickets", page)
+        self.assertIn('<td class="num flag">67%</td>', page, "6 posted and 67% removed is flagged")
+        self.assertIn('<td class="num">100%</td>', page, "2 posted is too few to flag")
+        self.assertIn("PROJ-1: Try it with the &lt;JCR&gt; flavour", page)
 
     def ticket(self, key: str, status: dict, summary: str = "", body: str = "") -> None:
         folder = self.out / key

@@ -425,6 +425,18 @@ hand-posted backfills, with the share of criteria QE kept and which runtime gate
 a fallback UAC that QE fixes more often is the signal to fix that gate. The harvester only reads Jira; it never
 writes to it.
 
+**Rule outcomes (all time).** Every harvest also writes `learning/rule-outcomes.json` and
+`learning/rule-report.md` (or run `uac_learning_harvester.py --config ... --rule-report`, no Jira call). Over the
+newest QE verdict per ticket, it counts how many posted criteria QE kept as is, edited or removed, split four
+ways: **where it came from** (asked on the ticket - description, comment, attachment, design document or fix -
+or research and reasoning only, read from each criterion's Source line, so hand-posted and older UACs count
+too), **each source** the Source line names, **why we wrote it** (the kinds above plus research-found screen,
+same item elsewhere, shared consumer, documentation finding, similar UAC dimension, DB and JCR flavour, output
+setting, after state, feature place and adjacent research check, from `UAC_EVIDENCE.json` and
+`SURFACE_INVENTORY.json`, read again from the run folder) and **TBD line** or not, with up to five removed
+criteria per row. The release page shows it under "Why QE removes our criteria" and flags a row with 30% or
+more removed on at least five criteria. Change or drop the rule behind a flagged row before adding a new one.
+
 ### Backfill hand-posted UACs
 
 A UAC posted by hand (by a Claude session with the automation's account, not by the runner) has no
