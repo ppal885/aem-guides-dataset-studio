@@ -1137,3 +1137,52 @@ def test_superseded_row_must_stay_visible_to_pass_projection() -> None:
     visible = {row.disposition_id: [object()] for row in proposed}
     _records, shown = _writer_projection_completeness(proposed, [], visible, ids)
     assert not shown
+
+
+def test_unanswered_raw_gap_question_ships_as_a_decision_quality_tbd() -> None:
+    """Production: research for the planner's raw-gap question ends NOT_FOUND on
+    a release ticket with an empty Acceptance Criteria field, convergence writes
+    no decision, and the raw question used to reach the criteria, so
+    FinalQEPlanRenderer refused delivery (~16 VM tickets, November 2026).  The
+    unanswered decision now ships as a short decision-quality TBD."""
+    from app.services.canonical_test_plan_reasoning_service import (
+        _RAW_GAP_QUESTION_PREFIX,
+        _acceptance_presentation_failures,
+        _decision_quality_gap_question,
+    )
+
+    facts = _facts()
+    scope = ScopeResolution()
+    question = _question(_RAW_GAP_QUESTION, fact_ids=(facts.facts[0].fact_id,))
+    research = _research_record(question, status=ResearchStatus.NOT_FOUND)
+    dispositions = CANONICAL_REASONING_SERVICE.classify_coverage(
+        facts, [], [], [], scope, [question], [research],
+    )
+    assert any(
+        row.disposition == CoverageDisposition.ACCEPTANCE_TBD for row in dispositions
+    )
+    resolution = CANONICAL_REASONING_SERVICE.resolve_acceptance_contract_with_trace(
+        facts, dispositions, [question], research_records=[research],
+    )
+    written = CANONICAL_REASONING_SERVICE.write_acceptance_criteria(
+        resolution.candidates, [], facts, dispositions, None, [question]
+    )
+    texts = [c.outcome for c in written] + [
+        sub.text for c in written for sub in c.sub_points
+    ]
+    expected = _decision_quality_gap_question(_RAW_GAP_QUESTION)
+    assert expected == (
+        'For the reported problem "you are not getting the traffic lights in the new '
+        'editor and...", what should QE see once it is fixed?'
+    )
+    assert any(expected in text for text in texts), texts
+    assert not any(_RAW_GAP_QUESTION_PREFIX in text for text in texts), texts
+    statements = [
+        "\n".join([c.outcome, *(f"- {sub.text}" for sub in c.sub_points)])
+        for c in written
+    ]
+    failures = _acceptance_presentation_failures(
+        statements, {s: "Jira GUIDES-99222." for s in statements}
+    )
+    assert not any("unanswered raw problem question" in row for row in failures)
+    assert _decision_quality_gap_question("Which behavior is the acceptance contract?") is None
