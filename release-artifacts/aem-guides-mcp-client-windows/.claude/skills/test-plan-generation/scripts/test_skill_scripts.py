@@ -14379,6 +14379,78 @@ def test_miss_probe_library() -> None:
         and rendition_candidate.get("non_authoritative") is True,
     )
 
+    # A QE-correction safeguard sibling places probe stays advisory until QE promotes it.
+    mp_033_probe = next((p for p in library if p.get("probe_id") == "MP-033"), None)
+    check(
+        "safeguard sibling places probe is present, unapproved and SHADOW on the STATE_PARTITION axis",
+        mp_033_probe is not None
+        and mp_033_probe["provenance"]["promotion_state"] == "VALIDATING"
+        and mpl.effective_status(mp_033_probe)[0] == "SHADOW"
+        and mp_033_probe["implied_dimension"]["axis"] == "STATE_PARTITION",
+    )
+    mp_033_candidate = next(
+        (
+            c for c in mpl.candidates_for([("E-X", "Show a warning when the file may have been moved or deleted")])
+            if c.get("probe_id") == "MP-033"
+        ),
+        None,
+    )
+    check(
+        "safeguard sibling places evidence emits the non-authoritative MP-033 candidate",
+        mp_033_candidate is not None
+        and mp_033_candidate.get("dimension") == "STATE_PARTITION"
+        and mp_033_candidate.get("status") == "INVESTIGATION_CANDIDATE"
+        and mp_033_candidate.get("non_authoritative") is True,
+    )
+
+    # A QE-correction second user and duplicated tab probe stays advisory until QE promotes it.
+    mp_034_probe = next((p for p in library if p.get("probe_id") == "MP-034"), None)
+    check(
+        "second user and duplicated tab probe is present, unapproved and SHADOW on the REPRO_DIMENSION axis",
+        mp_034_probe is not None
+        and mp_034_probe["provenance"]["promotion_state"] == "VALIDATING"
+        and mpl.effective_status(mp_034_probe)[0] == "SHADOW"
+        and mp_034_probe["implied_dimension"]["axis"] == "REPRO_DIMENSION",
+    )
+    mp_034_candidate = next(
+        (
+            c for c in mpl.candidates_for([("E-X", "Reproduced with two browser tabs as two users")])
+            if c.get("probe_id") == "MP-034"
+        ),
+        None,
+    )
+    check(
+        "second user and duplicated tab evidence emits the non-authoritative MP-034 candidate",
+        mp_034_candidate is not None
+        and mp_034_candidate.get("dimension") == "REPRO_DIMENSION"
+        and mp_034_candidate.get("status") == "INVESTIGATION_CANDIDATE"
+        and mp_034_candidate.get("non_authoritative") is True,
+    )
+
+    # A QE-correction new file list columns probe stays advisory until QE promotes it.
+    mp_035_probe = next((p for p in library if p.get("probe_id") == "MP-035"), None)
+    check(
+        "new file list columns probe is present, unapproved and SHADOW on the CODE_PATH_CONSUMER axis",
+        mp_035_probe is not None
+        and mp_035_probe["provenance"]["promotion_state"] == "VALIDATING"
+        and mpl.effective_status(mp_035_probe)[0] == "SHADOW"
+        and mp_035_probe["implied_dimension"]["axis"] == "CODE_PATH_CONSUMER",
+    )
+    mp_035_candidate = next(
+        (
+            c for c in mpl.candidates_for([("E-X", "Show custom metadata columns in Recent files and Repository")])
+            if c.get("probe_id") == "MP-035"
+        ),
+        None,
+    )
+    check(
+        "new file list columns evidence emits the non-authoritative MP-035 candidate",
+        mp_035_candidate is not None
+        and mp_035_candidate.get("dimension") == "CODE_PATH_CONSUMER"
+        and mp_035_candidate.get("status") == "INVESTIGATION_CANDIDATE"
+        and mp_035_candidate.get("non_authoritative") is True,
+    )
+
     # No match -> no learned candidate.
     check("no learned candidate without a match", mpl.candidates_for([("E9", "unrelated text")]) == [])
 

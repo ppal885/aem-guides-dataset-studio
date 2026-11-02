@@ -1193,6 +1193,61 @@ class RunnerTests(unittest.TestCase):
                      "Steps: open the map and press Esc"):
             self.assertFalse(staleness.DECISION_SIGNAL.search(text), text)
 
+    def test_staleness_alerts_a_requirement_or_wider_scope_after_the_uac(self) -> None:
+        # GUIDES-57869: after the UAC was posted, a comment widened the scope to drops from other panels and asked for
+        # an alert instead of a broken reference. No signal matched it, so no alert was sent and the UAC missed it.
+        requirement = ("This issue might occur when dragging and dropping from other panels too - like Collections, "
+                       "Map panel, Explorer, Reusable content, Find and Replace. So let's look at it holistically. "
+                       "Ideally, we should not allow such drops (if the path doesn't exist) and let the user know with "
+                       "an alert that the file may have been moved or deleted.")
+        issue = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
+                                              "items": [{"field": "Acceptance Criteria"}]}]},
+                 "fields": {"comment": {"comments": [
+                     {"id": "1", "author": {"name": "pm"}, "created": "2026-01-12T09:00:00.000+0000",
+                      "body": requirement},
+                     {"id": "2", "author": {"name": "qa"}, "created": "2026-01-12T10:00:00.000+0000",
+                      "body": "Can you share the server url to do UAT please"},
+                     {"id": "3", "author": {"name": "dev"}, "created": "2026-01-12T11:00:00.000+0000",
+                      "body": "The drop should be blocked."},
+                     {"id": "4", "author": {"name": "pm"}, "created": "2026-01-09T09:00:00.000+0000",
+                      "body": requirement}]}}}
+        found = staleness.new_evidence_after(issue, "2026-01-10T10:00:00.000+0000", "uac.bot")
+        self.assertEqual([f["id"] for f in found], ["1"],
+                         "a status ping, a short remark and the same comment before the UAC are not alerts")
+        self.assertIn("a requirement or a wider scope", found[0]["what"],
+                      "the fix, contract and decision signals do not catch this comment")
+        jira = FakeJira()
+        jira._json = mock.Mock(return_value=issue)
+        state: dict = {}
+        lines = staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], state, "uac.bot")
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("PROJ-1: pm added a requirement or a wider scope", lines[0])
+        self.assertIn("on 2026-01-12, after the Acceptance Criteria were last changed on 2026-01-10", lines[0])
+        self.assertEqual(staleness.stale_lines(self.config, jira, self.log, ["PROJ-1"], state, "uac.bot"), [],
+                         "the comment is alerted once")
+        self.assertEqual(jira.calls, [], "the watcher never writes to the ticket")
+        for text in ("Let the user know with an alert that the file may have moved",
+                     "The same issue happens when dragging from the Collections panel",
+                     "It happens with a drop from the Explorer too.",
+                     "It reproduces from the Map panel as well",
+                     "This also happens in Reusable content and in Find and Replace",
+                     "Check the same drop from other panels",
+                     "We need to look at it holistically, not only the Map panel",
+                     "Ideally, the drop is refused and nothing is inserted",
+                     "The drop should be blocked when the path no longer exists",
+                     "Authors should not be able to drop a file that another user moved",
+                     "Expected behaviour: the drop shows a warning and inserts nothing"):
+            self.assertTrue(staleness.REQUIREMENT_SIGNAL.search(text), text)
+        for text in ("Can you share the server url to do UAT please", "Is this fixed in 2026.10?",
+                     "Steps: open the map and press Esc", "Will move to bucket 3",
+                     "[~piraj] Run with Vision and see. [~prashantp] define UAC",
+                     "This should be fixed in the next build, please retest",
+                     "It happens too often on the stage server",
+                     "This must be tested on cloud as well",
+                     "QA should verify this on cloud and on-premise",
+                     "Root cause found; the response body now has the job id. PR #812"):
+            self.assertFalse(staleness.REQUIREMENT_SIGNAL.search(text), text)
+
     def test_staleness_run_record_says_whether_the_alert_reached_anyone(self) -> None:
         issue = {"changelog": {"histories": [{"created": "2026-01-10T10:00:00.000+0000",
                                               "items": [{"field": "Acceptance Criteria"}]}]},

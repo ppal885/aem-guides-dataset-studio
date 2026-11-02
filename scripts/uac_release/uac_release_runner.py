@@ -278,6 +278,13 @@ When finished, write these files:
    When the output points an image or asset to a rendition, a Dynamic Media URL or the source asset, find the
    setting or mapping that picks the rendition and write the criterion on it: with two or more renditions, the
    output uses the one it picks.
+   When the fix adds a safeguard (a warning, check or block) in one place, also check each sibling place that
+   opens, saves or moves the same item, and write a criterion or TBD for each one the safeguard should cover.
+   When the reporter reproduced with two browser tabs as two users, test with a real second user and also with
+   a duplicated tab of the same user; write a criterion for each the ticket covers.
+   When the fix adds new columns to a file list, cover every item type the list shows (folders, images,
+   multimedia, PDF), a field with multiple values shown comma-separated, no repeated Title or File name column,
+   the column order and sorting; a dialog that only chooses a file (browse dialog) is TBD or Out of scope.
    When the ticket's action is a bulk action (Replace all, bulk, Select all) or completes or closes a task,
    review, project or workflow, also "after_state": [{{"kind": "END_RESULT" (what the user sees when the bulk
    action finishes: the report of changed and unchanged items, the final status) | "STILL_POSSIBLE" (what the

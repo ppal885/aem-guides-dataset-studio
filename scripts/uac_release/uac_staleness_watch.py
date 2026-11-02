@@ -12,7 +12,9 @@ For each ticket in scope that carries the posted label:
      cause or a fix, comments that link a wiki page (a design document or specification), comments that
      give an API contract or design in their text (an HTTP method with a path, a request/response body,
      status codes, an API spec), comments that decide what to build (a numbered list of steps, "let's
-     create ...", a scope decision), and attachments (an API contract, a design, a screenshot);
+     create ...", a scope decision), comments that state a requirement or widen the scope ("we should not
+     allow ...", "let the user know with an alert", the same issue from other panels too), and attachments
+     (an API contract, a design, a screenshot);
   3. find merged commits in the product repositories (config "staleness_repos", else STARLING_REPO_PATH and
      XML_EDITOR_REPO_PATH) whose subject names the ticket and whose pull request number or hash the
      Acceptance Criteria do not cite - a fix can be merged with no Jira comment at all;
@@ -58,6 +60,27 @@ DECISION_SIGNAL = re.compile(
     r"|\b(?:out\s+of\s+scope|in\s+scope|scope\s+is|we\s+(?:have\s+)?decided|decision\s+is|agreed\s+to|we\s+will\s+not"
     r"|won'?t\s+(?:support|fix|implement))\b", re.IGNORECASE)
 DECISION_MIN_WORDS = 8
+# A requirement or a wider scope, written after the UAC: how the product should behave ("we should not allow such
+# drops", "let the user know with an alert", "expected behaviour: ...") or other places with the same issue ("from
+# other panels too", "the same issue happens in ...", "look at it holistically"). GUIDES-57869 got such a comment
+# after its UAC was posted - the same drop from other panels, and an alert instead of a broken reference - and none
+# of the signals above matched it, so no alert was sent and the UAC missed those points. "too" counts only at the
+# end of a clause, so "it happens too often" is not a match. Like a decision, the comment needs DECISION_MIN_WORDS
+# words.
+REQUIREMENT_SIGNAL = re.compile(
+    r"\b(?:should|must|needs?\s+to)\s+(?:not\s+|never\s+)?(?:be\s+)?"
+    r"(?:allow(?:ed)?|disallow(?:ed)?|block(?:ed)?|prevent(?:ed)?|stop(?:ped)?|show(?:n)?|display(?:ed)?"
+    r"|warn(?:ed)?|alert(?:ed)?|notif(?:y|ied)|inform(?:ed)?|validated?|support(?:ed)?|restrict(?:ed)?"
+    r"|disabled?|reject(?:ed)?|refresh(?:ed)?)\b"
+    r"|\b(?:users?|authors?|reviewers?)\s+(?:should|must)\s+(?:not\s+)?be\s+able\s+to\b"
+    r"|\blet\s+(?:the\s+)?(?:users?|authors?)\s+know\b|\b(?:inform|notify|warn|alert|tell)\s+(?:the\s+)?(?:users?|authors?)\b"
+    r"|\bideally\b|\bexpected\s+(?:behaviou?r|result|outcome)\b"
+    r"|\b(?:happen|occur|reproduce|appl(?:y|ie)|exist)s?\b[^.?!\n]{0,80}?"
+    r"(?:\btoo\b(?=[ \t]*(?:[-.,;:!?)\n]|$))|\bas\s+well\b)"
+    r"|\balso\s+(?:happens?|occurs?|reproduc(?:es?|ible)|appl(?:y|ies)|seen|exists?|affects?)\b"
+    r"|\bsame\s+(?:issue|problem|bug|behaviou?r|error)\s+(?:is\s+)?(?:also\s+)?"
+    r"(?:seen|happens?|occurs?|exists?|in|on|with|from|when)\b"
+    r"|\bholistic(?:ally)?\b|\bother\s+(?:panels|screens|entry\s+points|surfaces|editors|dialogs)\b", re.IGNORECASE)
 AC_FIELD_NAME = "Acceptance Criteria"
 
 
@@ -127,8 +150,8 @@ def fix_comments_after(issue: dict, since: str, own_name: str = "") -> list[dict
 
 def new_evidence_after(issue: dict, since: str, own_name: str = "",
                        hosts: tuple[str, ...] = linked_docs.DEFAULT_HOSTS) -> list[dict]:
-    """Attachments, and comments that link a wiki page or give an API contract, added by people after the UAC
-    last changed."""
+    """Attachments, and comments that link a wiki page, give an API contract, decide what to build, or state a
+    requirement or a wider scope, added by people after the UAC last changed."""
     fields = issue.get("fields") or {}
     found = []
     for comment in (fields.get("comment") or {}).get("comments") or []:
@@ -146,6 +169,10 @@ def new_evidence_after(issue: dict, since: str, own_name: str = "",
         elif DECISION_SIGNAL.search(body) and len(body.split()) >= DECISION_MIN_WORDS:
             found.append({"id": str(comment.get("id")), "author": author, "created": created,
                           "what": "a decision on what to build (a list of steps or a scope decision) in a comment"})
+        elif REQUIREMENT_SIGNAL.search(body) and len(body.split()) >= DECISION_MIN_WORDS:
+            found.append({"id": str(comment.get("id")), "author": author, "created": created,
+                          "what": "a requirement or a wider scope (how it should behave, or other places with the "
+                                  "same issue) in a comment"})
     for attachment in fields.get("attachment") or []:
         author = str((attachment.get("author") or {}).get("name") or "")
         created = str(attachment.get("created") or "")
