@@ -27,6 +27,14 @@ Monthly (--report YYYY-MM):
   before the change, failure path - read from the run's UAC_EVIDENCE.json), how often QE removed it,
   and how many criteria per ticket we posted against how many QE left.
 
+Rule outcomes (every nightly harvest, or --rule-report):
+  <output_dir>/learning/rule-report.md and rule-outcomes.json (read by the release page): over the newest
+  QE verdict per ticket, how many posted criteria QE kept as is, edited or removed, split by why we wrote
+  them - asked on the ticket or research and reasoning only (read from each criterion's Source line, so
+  hand-posted and older UACs count too), each source the Source line names, each kind from the run's
+  evidence record and surface inventory (research-found screen, DB and JCR flavour, similar UAC dimension,
+  ...), and whether it carries a TBD. A rule whose criteria QE keeps removing is the one to change.
+
 Backfill (--backfill KEY ...):
   For UACs posted by hand rather than by this automation, the posted text is not on disk. The
   backfill reads it from the ticket's Jira history instead: the last Acceptance Criteria change made
@@ -335,14 +343,20 @@ def compare(posted: list[dict], current: list[dict]) -> list[dict]:
 
 # Why each posted criterion was written, read from the run's UAC_EVIDENCE.json. The monthly report counts
 # how often QE removes each kind, so rules on size and variants follow QE's edits instead of guesses.
-_SCENARIO_KINDS = {"CUSTOMER": "reporter step", "REGRESSION": "regression check", "VARIANT": "variant"}
-_VARIANT_KINDS = (("entry_points", "entry point"), ("config_switches", "switch state"),
-                  ("input_sources", "input source"))
+_SCENARIO_KINDS = {"CUSTOMER": "reporter step", "REGRESSION": "regression check", "VARIANT": "variant",
+                   "ADJACENT": "adjacent research check"}
+_VARIANT_KINDS = (("entry_points", "entry point"), ("input_sources", "input source"))
 _MECHANISM_KINDS = (("reverse_action", "reverse action"), ("item_origin", "item history"),
                     ("value_shapes", "value forms"))
-KIND_ORDER = ("reporter step", "regression check", "variant", "entry point", "switch state", "input source",
-              "item type", "reverse action", "item history", "value forms", "items made before the change",
-              "failure path")
+_FLAVOUR_SWITCH = re.compile(r"\bflavou?r\b", re.IGNORECASE)
+_INVENTORY_KINDS = {"DOCUMENTATION": "research-found screen", "CODE_REUSE": "research-found screen",
+                    "SAME_ITEM": "same item elsewhere"}
+KIND_ORDER = ("reporter step", "regression check", "variant", "adjacent research check", "entry point",
+              "switch state", "DB and JCR flavour", "input source", "item type", "reverse action", "item history",
+              "value forms", "items made before the change", "failure path", "research-found screen",
+              "same item elsewhere", "shared consumer", "documentation finding", "similar UAC dimension",
+              "output setting", "after state", "feature place")
+_JUDGED_KINDS = ("accepted", "changed", "rewritten", "removed")
 
 
 def _ac_numbers(entry) -> list[int]:
@@ -353,11 +367,15 @@ def _ac_numbers(entry) -> list[int]:
     return [v for v in values if isinstance(v, int) and not isinstance(v, bool)]
 
 
-def criterion_kinds(evidence: dict) -> dict[int, list[str]]:
-    """Criterion number -> the kinds of reason it was written for (a criterion can have several)."""
+def criterion_kinds(evidence: dict, inventory: list | None = None) -> dict[int, list[str]]:
+    """Criterion number -> the kinds of reason it was written for (a criterion can have several).
+
+    `inventory` is the run's SURFACE_INVENTORY.json: a place found only by research (DOCUMENTATION,
+    CODE_REUSE) or the same item on another screen (SAME_ITEM) is its own kind, so the release page shows
+    how often QE keeps what the surface sweep adds."""
     kinds: dict[int, set[str]] = defaultdict(set)
     if not isinstance(evidence, dict):
-        return {}
+        evidence = {}
     scenario = evidence.get("scenario") if isinstance(evidence.get("scenario"), dict) else {}
     for entry in scenario.get("acs") or []:
         if isinstance(entry, dict) and isinstance(entry.get("ac"), int) and entry.get("scenario") in _SCENARIO_KINDS:
@@ -367,6 +385,10 @@ def criterion_kinds(evidence: dict) -> dict[int, list[str]]:
         for entry in variants.get(field) or []:
             for ac in _ac_numbers(entry):
                 kinds[ac].add(kind)
+    for entry in variants.get("config_switches") or []:
+        kind = "DB and JCR flavour" if _FLAVOUR_SWITCH.search(str((entry or {}).get("name") or "")) else "switch state"
+        for ac in _ac_numbers(entry):
+            kinds[ac].add(kind)
     mechanism = variants.get("mechanism") if isinstance(variants.get("mechanism"), dict) else {}
     for entry in mechanism.get("variants") or []:
         for ac in _ac_numbers(entry):
@@ -380,7 +402,85 @@ def criterion_kinds(evidence: dict) -> dict[int, list[str]]:
     for entry in failure.values():
         for ac in _ac_numbers(entry):
             kinds[ac].add("failure path")
+    for entry in inventory or []:
+        kind = _INVENTORY_KINDS.get(str((entry or {}).get("authority") or "")) if isinstance(entry, dict) else None
+        if kind and entry.get("disposition") == "AC":
+            for ac in _ac_numbers(entry):
+                kinds[ac].add(kind)
+    consumers = evidence.get("shared_consumers") if isinstance(evidence.get("shared_consumers"), dict) else {}
+    for entry in consumers.get("consumers") or []:
+        for ac in _ac_numbers(entry):
+            kinds[ac].add("shared consumer")
+    for entry in evidence.get("doc_findings") or []:
+        for ac in _ac_numbers(entry):
+            kinds[ac].add("documentation finding")
+    similar = evidence.get("similar_uacs") if isinstance(evidence.get("similar_uacs"), dict) else {}
+    for uac in similar.get("uacs") or []:
+        for entry in uac.get("dimensions") or [] if isinstance(uac, dict) else []:
+            for ac in _ac_numbers(entry):
+                kinds[ac].add("similar UAC dimension")
+    for ac in _ac_numbers(evidence.get("output_setting")):
+        kinds[ac].add("output setting")
+    for entry in evidence.get("after_state") or []:
+        for ac in _ac_numbers(entry):
+            kinds[ac].add("after state")
+    design = evidence.get("feature_design") if isinstance(evidence.get("feature_design"), dict) else {}
+    for entry in design.get("places") or []:
+        for ac in _ac_numbers(entry):
+            kinds[ac].add("feature place")
     return {ac: sorted(found, key=KIND_ORDER.index) for ac, found in kinds.items()}
+
+
+# Where a posted criterion came from, read from its own Source line. Unlike the kinds above this needs no
+# evidence record, so it also covers hand-posted UACs and UACs posted before the evidence record existed.
+# A criterion the ticket, a comment, an attachment, a design document or the fix asked for is "asked";
+# one whose Source names only documentation, code, another ticket or our own reasoning is research-only.
+_ASKED_BASES = ("ticket", "comment", "attachment", "design document", "fix or pull request")
+_SOURCE_BASES = (
+    ("comment", re.compile(r"\bcomments?\b", re.IGNORECASE)),
+    ("attachment", re.compile(r"\battach|\bscreenshots?\b|\brecordings?\b|\bvideos?\b|"
+                              r"\.(?:png|jpe?g|gif|mp4|mov|webm|docx?|pptx?|xlsx?|zip|log)\b", re.IGNORECASE)),
+    ("design document", re.compile(r"\bdesign\b|\bspec(?:ification)?s?\b|\bwiki\b|\bconfluence\b", re.IGNORECASE)),
+    ("fix or pull request", re.compile(r"\bpull requests?\b|\bPRs?\b|\bcommits?\b|\bfix(?:ed)?\b(?!\s+version)|"
+                                       r"\b[\w-]+#\d+", re.IGNORECASE)),
+    ("documentation", re.compile(r"experience league|\bdocumentation\b|\bdocs?\b|\bhelp page\b|\buser guide\b",
+                                 re.IGNORECASE)),
+    ("code", re.compile(r"\bcode\b|\b\w+\.(?:java|jsx?|tsx?|py|xsl|scss)\b|\bservlet\b|\bline \d+", re.IGNORECASE)),
+    ("similar UAC", re.compile(r"\bsimilar\b|\bparent ticket\b|\bhuman UACs?\b", re.IGNORECASE)),
+    ("QE reasoning", re.compile(r"\breasoning\b|\binferred\b|\bparity\b|\bregression\b", re.IGNORECASE)),
+)
+_TICKET_WORDS = re.compile(r"^\W*ticket\b|\bdescription\b|\bsummary\b|\bsteps to reproduce\b|\breporter\b|"
+                           r"\bexpected (?:result|behaviou?r)\b|\brequest to engineering\b", re.IGNORECASE)
+_JIRA_KEY = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
+NO_SOURCE = "(no Source line)"
+BASIS_GROUPS = ("asked on the ticket", "research or reasoning only", "no Source line")
+
+
+def source_bases(source: str, key: str = "") -> list[str]:
+    """Where a criterion's Source line says it came from (several when it names several)."""
+    text = source or ""
+    if not text.strip():
+        return [NO_SOURCE]
+    found = [name for name, pattern in _SOURCE_BASES if pattern.search(text)]
+    keys = set(_JIRA_KEY.findall(text))
+    if _TICKET_WORDS.search(text) or (key in keys and not found):
+        found.insert(0, "ticket")
+    if key and keys - {key}:
+        found.append("other ticket")
+    return found or ["(unrecognised)"]
+
+
+def basis_group(bases: list[str]) -> str:
+    if NO_SOURCE in bases:
+        return "no Source line"
+    return "asked on the ticket" if any(b in _ASKED_BASES for b in bases) else "research or reasoning only"
+
+
+def criterion_sources(posted_criteria: list[dict], key: str) -> dict[int, dict]:
+    """Posted criterion number (as compare() numbers it) -> its Source bases and whether it carries a TBD."""
+    return {(c.get("number") or i + 1): {"bases": source_bases(c.get("source") or "", key),
+                                         "has_tbd": bool(str(c.get("tbd") or "").strip())}
+            for i, c in enumerate(posted_criteria)}
 
 
 def ac_field_changes(issue: dict, field_id: str) -> list[dict]:
@@ -431,9 +531,12 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
     state[key] = version
     posted_criteria, current_criteria = parse_criteria(posted_text), parse_criteria(current_text)
     entries = pair_rewrites(mark_promoted(compare(posted_criteria, current_criteria), suggested or []))
+    sources = criterion_sources(posted_criteria, key)
     for entry in entries:
         if kinds and entry.get("number") in kinds:
             entry["kinds"] = kinds[entry["number"]]
+        if entry.get("kind") in _JUDGED_KINDS and entry.get("number") in sources:
+            entry.update(sources[entry["number"]])
     record = {
         "harvested_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "key": key, "summary": str(fields.get("summary") or ""), "components": components,
@@ -629,7 +732,23 @@ def harvest_ticket(key: str, ticket_dir: Path, config: dict, jira, own_name, sta
     origin = {"uac_origin": "RUNTIME_FALLBACK" if fallback is not None else "CANONICAL",
               "runtime_fallback_gates": list(fallback or [])}
     return _record(key, fields, config, posted_text, current_text, human, state, origin,
-                   suggested=status.get("suggested") or [], kinds=criterion_kinds(evidence))
+                   suggested=status.get("suggested") or [], kinds=ticket_kinds(ticket_dir, evidence))
+
+
+def _read_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig")) if path.is_file() else None
+    except (OSError, ValueError):
+        return None
+
+
+def ticket_kinds(ticket_dir: Path, evidence: dict | None = None) -> dict[int, list[str]]:
+    """The kinds of every criterion of a run folder, from its evidence record and surface inventory."""
+    if evidence is None:
+        evidence = _read_json(ticket_dir / common.EVIDENCE_FILE)
+    inventory = _read_json(ticket_dir / common.SURFACE_INVENTORY_FILE)
+    return criterion_kinds(evidence if isinstance(evidence, dict) else {},
+                           inventory if isinstance(inventory, list) else None)
 
 
 REWRITE_PROPERTY = "uac-manual-rewrite"
@@ -847,6 +966,121 @@ def kind_report_lines(records: list[dict]) -> list[str]:
     return lines + [""]
 
 
+RULE_OUTCOMES_FILE = "rule-outcomes.json"
+RULE_REPORT_FILE = "rule-report.md"
+RULE_EXAMPLES = 5
+RULE_DIMENSIONS = (("by_group", "Where it came from"), ("by_basis", "Source line names"),
+                   ("by_kind", "Why we wrote it (evidence record)"), ("by_tbd", "TBD line"))
+
+
+def _latest_judged(records: list[dict]) -> list[dict]:
+    """The newest record per ticket (records.jsonl is in harvest order); Claude rewrites are not QE's verdict."""
+    latest: dict[str, dict] = {}
+    for record in records:
+        if record.get("key") and record.get("edit_origin") != "CLAUDE_REWRITE":
+            latest[str(record["key"])] = record
+    return list(latest.values())
+
+
+def rule_outcomes(records: list[dict], out: Path | None = None) -> dict:
+    """What QE did with each posted criterion, split by why we wrote it, over the newest record per ticket.
+
+    Four splits: where the Source line says it came from (asked on the ticket, or research and reasoning only),
+    each source the Source line names, each kind from the run's evidence record and surface inventory (read
+    again from `out`/<KEY> when the run folder exists, so records harvested before a kind existed are counted
+    too), and whether it carries a TBD. A split whose removed share is high is a rule that writes what QE does
+    not want: change or drop that rule rather than adding a new one."""
+    tables: dict[str, dict[str, dict]] = {dim: {} for dim, _ in RULE_DIMENSIONS}
+    examples: dict[str, dict[str, list]] = {dim: defaultdict(list) for dim, _ in RULE_DIMENSIONS}
+    judged = _latest_judged(records)
+    for record in judged:
+        key = str(record["key"])
+        sources = criterion_sources(parse_criteria(record.get("posted_text") or ""), key)
+        run_dir = out / key if out else None
+        kinds = ticket_kinds(run_dir) if run_dir and run_dir.is_dir() else {}
+        for entry in pair_rewrites(record.get("criteria") or []):
+            outcome = entry.get("kind")
+            if outcome not in _JUDGED_KINDS:
+                continue
+            number = entry.get("number")
+            meta = sources.get(number) or {"bases": entry.get("bases") or ["(unrecognised)"],
+                                           "has_tbd": bool(entry.get("has_tbd"))}
+            labels = {"by_group": [basis_group(meta["bases"])], "by_basis": meta["bases"],
+                      "by_kind": kinds.get(number) or entry.get("kinds") or ["(no evidence record)"],
+                      "by_tbd": ["with a TBD line" if meta["has_tbd"] else "without a TBD line"]}
+            text = entry.get("old") or ""
+            if entry.get("reason"):
+                text += f" (QE: {entry['reason']})"
+            for dim, names in labels.items():
+                for name in names:
+                    row = tables[dim].setdefault(name, {"label": name, "posted": 0, "accepted": 0, "edited": 0,
+                                                        "removed": 0})
+                    row["posted"] += 1
+                    row["edited" if outcome in ("changed", "rewritten") else outcome] += 1
+                    if outcome == "removed" and len(examples[dim][name]) < RULE_EXAMPLES:
+                        examples[dim][name].append({"key": key, "text": text})
+    result: dict = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "tickets": len(judged)}
+    for dim, _ in RULE_DIMENSIONS:
+        rows = []
+        for row in tables[dim].values():
+            row["removed_rate"] = round(row["removed"] / row["posted"], 4)
+            row["kept_as_is_rate"] = round(row["accepted"] / row["posted"], 4)
+            row["examples"] = examples[dim].get(row["label"], [])
+            rows.append(row)
+        result[dim] = sorted(rows, key=lambda r: (-r["removed"], -r["posted"], r["label"]))
+    result["criteria"] = sum(r["posted"] for r in result["by_group"])
+    return result
+
+
+def _pct(value: float) -> str:
+    return f"{round(100 * value)}%"
+
+
+def rule_table_lines(rows: list[dict], heading: str) -> list[str]:
+    lines = [f"| {heading} | Posted | Kept as is | Edited | Removed | Removed % |", "|---|---|---|---|---|---|"]
+    return lines + [f"| {r['label']} | {r['posted']} | {r['accepted']} | {r['edited']} | {r['removed']} | "
+                    f"{_pct(r['removed_rate'])} |" for r in rows]
+
+
+def rule_report_lines(data: dict, title: str = "## Removed by why we wrote it") -> list[str]:
+    lines = [title, "",
+             f"{data['criteria']} judged criteria on {data['tickets']} tickets (newest QE verdict per ticket). "
+             "Edited = QE kept the check but changed or reworded it. A row with many posted criteria and a high "
+             "Removed % is a rule that writes what QE does not want: change or drop that rule before adding one.", ""]
+    if not data["criteria"]:
+        return lines + ["No judged criteria yet.", ""]
+    for dim, heading in RULE_DIMENSIONS:
+        lines += rule_table_lines(data[dim], heading) + [""]
+    shown = [r for r in data["by_group"] + data["by_kind"] if r["examples"]][:8]
+    if shown:
+        lines += ["### What QE removed, by why we wrote it", ""]
+        for row in shown:
+            lines += [f"**{row['label']}** ({row['removed']} of {row['posted']} removed)", ""]
+            lines += [f"- {e['key']}: {e['text']}" for e in row["examples"]] + [""]
+    return lines
+
+
+def write_rule_outcomes(config: dict) -> Path:
+    """Write learning/rule-outcomes.json (read by the release page) and learning/rule-report.md, all time."""
+    out = Path(config["output_dir"])
+    learning = out / LEARNING_DIR
+    records = []
+    path = learning / RECORDS_FILE
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                records.append(json.loads(line))
+            except ValueError:
+                continue
+    data = rule_outcomes(records, out)
+    learning.mkdir(parents=True, exist_ok=True)
+    (learning / RULE_OUTCOMES_FILE).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    report = learning / RULE_REPORT_FILE
+    report.write_text("\n".join(["# UAC rule outcomes (all time)", ""] + rule_report_lines(data, "## Summary"))
+                      + "\n", encoding="utf-8")
+    return report
+
+
 def relabel(config: dict, jira, logger) -> int:
     """Label already-harvested CHANGED records that a Claude session wrote. Returns how many labels changed.
 
@@ -1016,9 +1250,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="with --backfill: print the records, write nothing")
     parser.add_argument("--relabel", action="store_true",
                         help="label already-harvested edits that a Claude session wrote (record_manual_rewrite.py)")
+    parser.add_argument("--rule-report", action="store_true",
+                        help="write learning/rule-report.md and rule-outcomes.json from every harvested record "
+                             "(no Jira call)")
     args = parser.parse_args(argv)
     common.load_env_file(args.env_file)
     config = common.load_config(args.config)
+    if args.rule_report:
+        print(write_rule_outcomes(config))
+        return 0
     if args.report:
         month = args.report
         if month == "last":
@@ -1045,6 +1285,10 @@ def main(argv: list[str] | None = None) -> int:
     # The release page shows the newest report; refresh this month's every night so it is never weeks old.
     report = monthly_report(config, time.strftime("%Y-%m", time.gmtime()))
     logger.info("month-to-date report: %s", report)
+    try:
+        logger.info("rule outcomes: %s", write_rule_outcomes(config))
+    except Exception:  # noqa: BLE001 - the rule report never fails the harvest
+        logger.exception("could not write the rule outcomes")
     return 0
 
 

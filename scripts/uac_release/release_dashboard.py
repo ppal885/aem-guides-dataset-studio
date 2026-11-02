@@ -327,6 +327,45 @@ def collect_verdicts(out: Path) -> dict[str, dict]:
 
 
 STALENESS_TOOL = "uac-staleness"
+
+
+RULES_MIN_POSTED = 5  # a row with fewer posted criteria is shown gray: too few to act on
+
+
+def collect_rule_outcomes(out: Path) -> dict | None:
+    """The harvester's learning/rule-outcomes.json: QE's verdicts split by why each criterion was written."""
+    data = _read_json(out / "learning" / "rule-outcomes.json")
+    return data if isinstance(data, dict) and data.get("by_group") is not None else None
+
+
+def _rule_rows(rows: list[dict]) -> list[str]:
+    html_rows = []
+    for r in rows:
+        rate = round(100 * float(r.get("removed_rate") or 0))
+        flag = ' class="num flag"' if rate >= 30 and int(r.get("posted") or 0) >= RULES_MIN_POSTED else ' class="num"'
+        examples = "".join(f"<li>{_e(e.get('key'))}: {_e(e.get('text'))}</li>" for e in r.get("examples") or [])
+        label = (f"<details><summary>{_e(r['label'])}</summary><ul>{examples}</ul></details>" if examples
+                 else _e(r["label"]))
+        html_rows.append(f"<tr><td>{label}</td><td class=\"num\">{_e(r.get('posted', 0))}</td>"
+                         f"<td class=\"num\">{_e(r.get('accepted', 0))}</td><td class=\"num\">{_e(r.get('edited', 0))}</td>"
+                         f"<td class=\"num\">{_e(r.get('removed', 0))}</td><td{flag}>{rate}%</td></tr>")
+    return html_rows
+
+
+def _rules_section(rules: dict | None) -> str:
+    head = ('<h2 id="rules">Why QE removes our criteria</h2>\n<p class="hint">Every judged criterion (newest QE verdict '
+            'per ticket), split by why we wrote it. A red Removed % (30% or more on at least '
+            f'{RULES_MIN_POSTED} criteria) is a rule that writes what QE does not want: change or drop that rule before '
+            'adding a new one. Click a row to see what QE removed.</p>')
+    if not rules or not rules.get("criteria"):
+        return head + '\n<p class="empty">No judged criteria yet; the harvester writes learning/rule-outcomes.json.</p>'
+    headers = ["", "Posted", "Kept as is", "Edited", "Removed", "Removed %"]
+    parts = [head, f'<p class="hint">{_e(rules["criteria"])} criteria on {_e(rules["tickets"])} tickets.</p>']
+    for key, title in (("by_group", "Where it came from (Source line)"), ("by_kind", "Why we wrote it (evidence record)"),
+                       ("by_basis", "Every source a Source line names"), ("by_tbd", "TBD line")):
+        parts.append(f"<h3>{_e(title)}</h3>" + _table([title] + headers[1:], _rule_rows(rules.get(key) or []),
+                                                       "No criteria."))
+    return "\n".join(parts)
 ALERT_DELIVERED = ("POSTED", "SUPPRESSED", "NONE")
 
 
@@ -740,7 +779,7 @@ def render(posted: list[dict], not_posted: list[dict], edits: list[dict], accept
            report: tuple[str, str] = ("", ""), impact: dict | None = None,
            verdicts: dict[str, dict] | None = None, now: datetime.datetime | None = None,
            fixes: dict[str, dict] | None = None, hand_posted: list[dict] | None = None,
-           recent_days: int = RECENT_DAYS, staleness: dict | None = None) -> str:
+           recent_days: int = RECENT_DAYS, staleness: dict | None = None, rules: dict | None = None) -> str:
     patterns = patterns or []
     stale_count = len((staleness or {}).get("alerts") or [])
     staleness_html = _staleness_section(staleness, jira_url)
@@ -919,7 +958,7 @@ pre.report {{ white-space:pre-wrap; background:var(--panel); border:1px solid va
 <body>
 <nav class="top" aria-label="Sections"><div><b>UAC release</b>
 <a href="#recent-added">Recently added</a><a href="#recent-edited">Recently edited</a>
-<a href="#stale">To review</a><a href="#impact">Impact</a><a href="#posted">Posted</a><a href="#waiting">Waiting for QE</a><a href="#not-posted">Not posted</a>
+<a href="#stale">To review</a><a href="#impact">Impact</a><a href="#rules">Why removed</a><a href="#posted">Posted</a><a href="#waiting">Waiting for QE</a><a href="#not-posted">Not posted</a>
 <a href="#patterns">Patterns</a><a href="#edits">QE edits</a><a href="#corrections">Corrections</a><a href="#report">Report</a></div></nav>
 <main>
 <h1>UAC release automation</h1>
@@ -943,6 +982,8 @@ decision on what to build, a requirement or a wider scope, an attachment or a me
 was written.</p>
 {staleness_html}
 {impact_html}
+
+{_rules_section(rules)}
 
 <h2 id="posted">UAC posted</h2>
 <p class="hint">Tickets where the UAC passed every check and was posted. Criteria is the number posted; "9 &rarr; 7 (edited)"
@@ -1059,7 +1100,8 @@ def main(argv: list[str] | None = None) -> int:
                   time.strftime("%Y-%m-%d %H:%M %Z"), bool(config.get("learning_shared_account")),
                   patterns, report, impact, verdicts, fixes=load_pattern_fixes(), hand_posted=hand_posted,
                   recent_days=int(config.get("recent_days") or RECENT_DAYS),
-                  staleness=collect_staleness(out) if out.is_dir() else None)
+                  staleness=collect_staleness(out) if out.is_dir() else None,
+                  rules=collect_rule_outcomes(out) if out.is_dir() else None)
     write_atomic(args.out, page)
     print(f"wrote {args.out}: {len(posted)} posted, {len(hand_posted)} hand-posted, {len(not_posted)} not posted, "
           f"{len(edits)} edited")
