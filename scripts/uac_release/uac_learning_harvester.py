@@ -282,24 +282,27 @@ def posted_tbds(posted_text: str) -> list[str]:
 
 
 # A line QE adds after deciding what one of our TBDs asked ("Upsert language variable will be only supported" for
-# "Should a new imported variable appear in every language?") is the answer to our question, not a criterion we
-# missed. GUIDES-15177: all three lines QE added answered the posted TBDs.
-_DECISION = re.compile(r"\b(?:will|shall|only|supported|should|must|decided|agreed|no need|out of scope|"
-                       r"not required)\b", re.IGNORECASE)
+# "Should a new imported variable appear in every language?") may be the answer to our question rather than a
+# criterion we missed. Word overlap cannot tell the two apart reliably: on the VM (November 2026) a looser match
+# paired 40 of 45 added lines with a TBD and about half were real misses that only shared the ticket's topic words
+# (Global Profile, baseline). So a pairing is a lead to review, never subtracted from what QE added.
+_DECISION = re.compile(r"\b(?:will|shall|supported|should|must|decided|agreed|no need|out of scope|not required)\b",
+                       re.IGNORECASE)
+_DECISION_WORDS = {"will", "shall", "supported", "should", "must", "decided", "agreed", "need", "scope", "required"}
 
 
 def answered_tbd(added_text: str, tbds: list[str]) -> str:
-    """The posted TBD a QE-added line most likely answers, or "" when it answers none. Likely, not certain: it
-    shares two content words with the TBD, or one when the line states a decision."""
-    words = _content_words(added_text)
+    """The posted TBD a QE-added line may answer, or "": the line states a decision and shares at least two
+    content words (decision words not counted) with the TBD. A lead to review, not a verdict."""
+    if not _DECISION.search(added_text or ""):
+        return ""
+    words = _content_words(added_text) - _DECISION_WORDS
     best, best_shared = "", 0
     for tbd in tbds:
         shared = len(words & _content_words(tbd))
         if shared > best_shared:
             best, best_shared = tbd, shared
-    if best_shared >= 2 or (best_shared == 1 and _DECISION.search(added_text or "")):
-        return best
-    return ""
+    return best if best_shared >= 2 else ""
 
 
 def mark_tbd_answers(entries: list[dict], tbds: list[str]) -> list[dict]:
@@ -1106,12 +1109,13 @@ def rule_report_lines(data: dict, title: str = "## Removed by why we wrote it") 
     for dim, heading in RULE_DIMENSIONS:
         lines += rule_table_lines(data[dim], heading) + [""]
     if data.get("added"):
-        missed = data["added"] - data.get("tbd_answered", 0)
         lines += ["### What QE added", "",
-                  f"QE added {data['added']} criteria: {missed} we missed, and {data.get('tbd_answered', 0)} that most "
-                  "likely answer one of our TBDs (a decision QE wrote down, not a miss).", ""]
-        lines += [f"- answered: {e['key']}: {e['text']} (our TBD: {e['tbd']})" for e in data.get("answered_examples") or []]
-        lines += [f"- missed: {e['key']}: {e['text']}" for e in data.get("missed_examples") or []] + [""]
+                  f"QE added {data['added']} criteria. {data.get('tbd_answered', 0)} of them state a decision and share "
+                  "words with one of our TBDs, so they may be QE's answer rather than a miss: review the pairs below. "
+                  "All are still counted as added.", ""]
+        lines += [f"- may answer a TBD: {e['key']}: {e['text']} (our TBD: {e['tbd']})"
+                  for e in data.get("answered_examples") or []]
+        lines += [f"- added: {e['key']}: {e['text']}" for e in data.get("missed_examples") or []] + [""]
     shown = [r for r in data["by_group"] + data["by_kind"] if r["examples"]][:8]
     if shown:
         lines += ["### What QE removed, by why we wrote it", ""]
@@ -1220,7 +1224,6 @@ def monthly_report(config: dict, month: str) -> Path:
                     continue  # the added side of a reworded criterion, counted once as changed
                 if entry["kind"] == "added" and entry.get("answers_tbd"):
                     bucket["answered"].append((record["key"], entry["new"], entry["answers_tbd"]))
-                    continue
                 if entry["kind"] in ("accepted", "changed", "rewritten"):
                     bucket["changed" if entry["kind"] == "rewritten" else entry["kind"]] += 1
                 else:
@@ -1237,8 +1240,9 @@ def monthly_report(config: dict, month: str) -> Path:
             bucket["notes"] += [(record["key"], note) for note in record.get("qe_notes") or []]
     lines = [f"# UAC learning report {month}", "",
              f"{len(records)} ticket version(s) harvested. Accepted = kept unchanged; changed = wording or "
-             "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it); TBD answered = "
-             "QE added a line that most likely answers one of our TBDs (a decision, not a miss); promoted = QE moved one "
+             "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it); may answer a "
+             "TBD = an added line that states a decision and shares words with one of our TBDs (a lead to review; still "
+             "counted as added); promoted = QE moved one "
              "of our suggested checks into the criteria (older UACs only; the UAC no longer has suggested checks). "
              "Missed screens = screens (panel, console, dashboard, app, ...) that a QE-added criterion names and our "
              "posted UAC never mentioned, counted so a recurring screen miss shows up in the data before any rule changes.",
@@ -1265,7 +1269,7 @@ def monthly_report(config: dict, month: str) -> Path:
         lines += [f"## {component}", "",
                   f"- Tickets: {len(b['tickets'])}",
                   f"- Criteria accepted {b['accepted']}, changed {b['changed']}, removed {len(b['removed'])}{asked}, "
-                  f"added {len(b['added'])}, TBD answered {len(b['answered'])}, promoted {len(b['promoted'])}, "
+                  f"added {len(b['added'])} ({len(b['answered'])} may answer a TBD), promoted {len(b['promoted'])}, "
                   f"missed screens {len(screens)}", ""]
         ours = [item for item in b["removed"] if item not in b["requested"]]
         if ours:
@@ -1279,7 +1283,7 @@ def monthly_report(config: dict, month: str) -> Path:
         if b["added"]:
             lines += ["What QE added that we missed:", ""] + [f"- {k}: {t}" for k, t in b["added"]] + [""]
         if b["answered"]:
-            lines += ["What QE added that most likely answers one of our TBDs (a decision, not a miss):", ""] + \
+            lines += ["Added lines that may answer one of our TBDs (review: a decision QE wrote down, or a miss?):", ""] + \
                 [f"- {k}: {t} (our TBD: {q})" for k, t, q in b["answered"]] + [""]
         if b["promoted"]:
             lines += ["Suggested checks QE moved into the criteria:", ""] + [f"- {k}: {t}" for k, t in b["promoted"]] + [""]
@@ -1292,7 +1296,7 @@ def monthly_report(config: dict, month: str) -> Path:
                       f"removed {totals['removed']}"
                       + (f" ({totals['requested']} asked for in a Jira comment)" if totals["requested"] else "")
                       + f"; QE added {totals['added']}"
-                      + (f", answered {totals['tbd_answered']} of our TBDs" if totals["tbd_answered"] else "")
+                      + (f" ({totals['tbd_answered']} may answer a TBD)" if totals["tbd_answered"] else "")
                       + (f", promoted {totals['promoted']} suggested" if totals["promoted"] else "")
                       + f" (missed screens "
                       f"{totals['missed_screens']}).", ""]
