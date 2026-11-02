@@ -162,6 +162,11 @@ _SUGGESTED_GONE = ("SUGGESTED is no longer an answer: a research check that matt
 MAX_STATEMENT_WORDS = 35
 MAX_CASE_WORDS = 30
 MAX_SOURCE_WORDS = 30
+# A whole criterion - statement and case sub-points, not Source or TBD lines - stays within the canonical
+# runtime's two-line limit (canonical_test_plan_reasoning_service._LINT_MAX_AC_WORDS). The runtime refused 48-58
+# word criteria on ~15 tickets, the runtime fallback then posted them through these checks, and QE removed the
+# 60-100 word ones (learning/rule-report.md, November 2026).
+MAX_CRITERION_WORDS = 45
 PRE_EXISTING_DISPOSITIONS = ("AC", "TBD", "NOT_APPLICABLE")
 # What an AC says about items made before the change. Human UACs usually say they stay as they are ("existing
 # presets remain unaffected"); two blind comparisons asserted new behaviour for them instead (a guessed upgrade
@@ -1331,13 +1336,15 @@ _LABEL_LINE = re.compile(r"^\s*(?:\*\*)?(?:Source|TBD):", re.I)
 
 
 def size_problems(uac_text: str) -> list[str]:
-    """No limit on the whole UAC; each statement, case sub-point and Source line stays one short sentence.
+    """No limit on the whole UAC; each statement, case sub-point and Source line stays one short sentence, and
+    one criterion (statement plus its cases) stays within MAX_CRITERION_WORDS.
 
     A word budget for the whole UAC made writers drop valid cases and squeeze sub-points into shorthand QE could
-    not follow, so only needlessly long single lines are refused."""
+    not follow, so only needlessly long lines and criteria are refused; extra cases go to the full test plan."""
     text = uac_text or ""
     problems = []
     current = "a criterion"
+    totals: dict[str, int] = {}
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.lower().startswith("note:"):
@@ -1357,14 +1364,22 @@ def size_problems(uac_text: str) -> list[str]:
             continue
         if label:
             count = len(stripped[label.end():].split())
+            totals[current] = totals.get(current, 0) + count
             if count > MAX_STATEMENT_WORDS:
                 problems.append(f"the statement of {current} has {count} words; say the one checkable outcome in at "
                                 f"most {MAX_STATEMENT_WORDS} words and move the conditions to case sub-points")
         elif _CASE_MARK.match(line):
             count = len(stripped[2:].split())
+            if current in totals:
+                totals[current] += count
             if count > MAX_CASE_WORDS:
                 problems.append(f"a case sub-point of {current} has {count} words; keep it to one plain sentence of at "
                                 f"most {MAX_CASE_WORDS} words: what to do, where, and what QE should see")
+    for name, count in totals.items():
+        if count > MAX_CRITERION_WORDS:
+            problems.append(f"{name} has {count} words in its statement and cases; keep the whole criterion within "
+                            f"{MAX_CRITERION_WORDS} words (at most three short cases) and move the other cases to the "
+                            "full test plan - QE removes the whole criterion when it bundles too much")
     return problems
 
 

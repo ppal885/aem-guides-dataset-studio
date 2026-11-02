@@ -729,7 +729,8 @@ removed most were 60 to 100 words long with five or six cases.
 **Length.** There is no word limit on the whole UAC: never drop a valid case or squeeze a sub-point into
 shorthand that QE cannot follow ("A p pasted into a dd") to save words. Keep each sentence short instead: a
 statement within 35 words, a case sub-point within 30 words that says what to do, where, and what QE should
-see, and no filler words. Keep each Source line within 30 words: name the ticket, comment, documentation page
+see, no filler words, and one whole criterion (statement and cases) within 45 words - the canonical runtime's
+two-line limit, which the runtime fallback must keep too. Keep each Source line within 30 words: name the ticket, comment, documentation page
 or commit, and keep file paths and line numbers in the full test plan record
 (`uac_completeness_check.size_problems`).
 

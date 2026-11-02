@@ -8166,9 +8166,13 @@ def test_uac_size_and_pre_existing_items() -> None:
           any("Source line of Acceptance Criteria 01" in p for p in problems))
     many = short + "".join(
         f"- Acceptance Criteria {n:02d}: Saving topic {n} stores its word count.\n"
-        + "".join(f"  - Copy topic {n} into folder {k} and save it again.\n" for k in range(5))
+        + "".join(f"  - Copy topic {n} into folder {k} and save it again.\n" for k in range(3))
         + "  **Source:** GUIDES-1 description.\n" for n in range(3, 11))
     check("a long UAC made of short sentences passes: there is no limit on the whole UAC", uc.size_problems(many) == [])
+    bundled = short.replace("  - a new topic\n", "".join(f"  - Copy the topic into folder {k} and save it again.\n"
+                                                         for k in range(5)))
+    check("a criterion bundling five cases past the runtime's 45-word limit fails",
+          any("Acceptance Criteria 01 has 57 words in its statement and cases" in p for p in uc.size_problems(bundled)))
     long_statement = short.replace("Saving a topic stores its word count.",
                                    "Saving a topic stores its word count " + "and more " * 20 + ".")
     check("a needlessly long statement fails", any("the statement of Acceptance Criteria 01 has" in p

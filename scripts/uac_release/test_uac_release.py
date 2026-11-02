@@ -3040,6 +3040,7 @@ class DeliveryCleanupTests(unittest.TestCase):
         self.assertIn("consumers are TEST_PLAN by default", prompt)
         self.assertIn("A dimension this ticket, a comment or an attachment does not ask for is TEST_PLAN", prompt)
         self.assertNotIn("that matters is also an Acceptance Criterion", prompt)
+        self.assertIn("one whole criterion (statement and cases) within 45 words", prompt)
 
     def test_prompt_asks_for_attachment_facts_and_an_observable_result(self) -> None:
         self.assertIn('"facts"', runner.PROMPT)

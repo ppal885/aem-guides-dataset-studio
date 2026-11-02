@@ -94,7 +94,8 @@ When finished, write these files:
    Editor, an older release), read that code to set the expected values (lists, defaults, who sees what)
    instead of asking a TBD.
    There is no word limit on the whole UAC: never drop a valid case or squeeze a sub-point into shorthand
-   to save words. Keep each sentence short instead - a statement within 35 words, a case sub-point within
+   to save words. Keep each sentence short instead - one whole criterion (statement and cases) within 45
+   words, a statement within 35 words, a case sub-point within
    30 words (what to do, where, and what QE should see), no filler words - and each Source line within
    30 words: name the ticket, comment, attachment, design document or documentation page title, or the fix
    pull request. Never a clone revision or commit hash, a file path, or a class, method or test name: those
