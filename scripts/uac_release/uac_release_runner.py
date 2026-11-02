@@ -56,11 +56,14 @@ When finished, write these files:
    each followed by an indented "**Source:** ..." line and, when a decision is open, a "**TBD:** ...?" line.
    Acceptance Criteria are what the ticket, an attachment, a product decision or the confirmed fix asks
    for, and QE regression checks around the reporter's scenario. A check your own research found
-   (documentation, code, a similar or parent ticket's UAC, an investigator's other scenario, parity) that
-   matters is also an Acceptance Criterion - usually a "still works as before" check, or a sub-point of the
-   criterion with the same outcome - and its Source line names the documentation page, code or ticket.
-   Research checks that do not matter enough go to the full test plan (file 2), not to the UAC. There is no
-   "Suggested checks" section. Keep at most ten criteria; an open product decision stays a TBD.
+   (documentation, code, a similar or parent ticket's UAC, a shared consumer, an investigator's other scenario,
+   parity) goes to the full test plan (file 2) by default; the UAC keeps at most ONE short "still works as
+   before" criterion for the research-found regression closest to the reporter's scenario, with a Source line
+   naming the documentation page, code or ticket. QE removed about half of the criteria written from shared
+   consumers, similar UACs and research-found screens. There is no "Suggested checks" section. Keep at most ten
+   criteria; an open product decision stays a TBD. One criterion is one statement and at most three short case
+   sub-points; never chain steps in a case ("select one language, then repeat with another") - QE removes the
+   whole criterion when one bundled case is wrong.
    List every setting the code of the ticket's action reads (configuration key, profile setting, feature
    flag) and answer each one: an AC case with the setting toggled on and off, a TBD, or not relevant with a
    reason. A setting the ticket does not name is an AC case only when the changed action's own code reads
@@ -75,7 +78,7 @@ When finished, write these files:
    data/guides_config_settings.json "action_reads" lists these with reads_at; the checker refuses a UAC that
    leaves out a setting the ticket's action reads. A setting the ticket or a comment names (for example PDF
    Engine v2) is an AC case or a TBD, never TEST_PLAN, even when the code calls it by an internal name. Settings
-   found only in the code or documentation get at most three on/off cases in the whole UAC - keep the ones the
+   found only in the code or documentation get at most one on/off case in the whole UAC - keep the one the
    reported behaviour depends on and put the rest in the test plan. A value seen in attached temporary files (a
    topic's Document State in merged.html) is not a case. Name each
    setting by its on-screen label (for example Enable DITA-OT preprocessing on the General tab); an internal
@@ -98,8 +101,10 @@ When finished, write these files:
    go in the test plan (the runner removes them from Source lines).
    State each criterion as the expected outcome in plain words (no "Verify that" prefix is needed): one thing
    a QE can check, in at most two clauses, using only names shown on screen. Exact technical values - API
-   paths and fields, setting values, status codes, file names - go in a sub-point, never in the statement
-   (statement "An invalid request is rejected and returns no results", sub-point "returns 400").
+   paths and fields, setting values, status codes, file names, CSS - go in the full test plan, and a sub-point
+   says what QE sees instead; only when the ticket itself is about an API, servlet or file format may a
+   sub-point name the value (statement "An invalid request is rejected and returns no results", sub-point
+   "returns 400").
    Say what the user does and sees, not the markup: "a topic reference to an external web page", not
    scope="external" format="html"; one outcome per criterion - inserting and editing are two criteria
    when the ticket names both. Name a setting by its on-screen label and its tab when the tab is known
@@ -170,7 +175,7 @@ When finished, write these files:
    sets up for the customer, monitoring. Put them in the test plan; when the ticket asks for one, its
    product outcome (the output generates, the move completes) is the criterion instead. Documentation is a
    criterion only when the ticket itself asks for documentation.
-   Under a criterion, list up to five short cases of the same outcome as indented "  - ..." lines when it
+   Under a criterion, list up to three short cases of the same outcome as indented "  - ..." lines when it
    has a construct or case matrix. A case is the condition that varies, in plain words (about twelve words
    or fewer), written as a short sentence that says what to set up or try ("A bookmap that has the same PDF
    two times: once as a chapter and once in the backmatter"), never a list of nouns ("PDF chapter and
@@ -344,8 +349,8 @@ When finished, write these files:
    sharing, after reopening) says what QE should see.
    Also "shared_consumers": {{"mechanism": "<what the change touches that other screens read>", "consumers":
    [{{"name": "<screen, e.g. outline panel>", "disposition": "AC" | "TEST_PLAN" | "NOT_APPLICABLE", "ac":
-   <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - list the AC consumers as sub-points of one
-   "still works as before" criterion.
+   <number>, "reason": "..."}}]}} (or "consumers": [] with "reason") - consumers are TEST_PLAN by default; at most
+   the one or two closest to the reporter's screen are sub-points of the single "still works as before" criterion.
    Also "fix_basis": {{"status": "CONFIRMED", "signal": "<the ticket text, copied, that reports the root
    cause, fix or merged pull request, or a developer comment that it is fixed or already handled, or a QE
    comment that verified it on a build>"}}, {{"status": "CAUSE_KNOWN", "signal": "<the ticket text, copied, that
@@ -368,7 +373,9 @@ When finished, write these files:
    Also "similar_uacs": run the skill's scripts/similar_uac_compare.py (--ticket-source the ticket's
    jira-source.json, --key, --component, --evidence this file; for a hotfix or backport add --also with its
    parent ticket) and answer every listed dimension of the
-   similar human UACs with "disposition": "AC" | "TBD" | "TEST_PLAN" | "NOT_APPLICABLE", "ac" and "reason".
+   similar human UACs with "disposition": "AC" | "TBD" | "TEST_PLAN" | "NOT_APPLICABLE", "ac" and "reason". A
+   dimension this ticket, a comment or an attachment does not ask for is TEST_PLAN: QE removed about half of
+   the criteria written from similar UAC dimensions.
 Canonical runtime research: your environment already sets AGENT_RESEARCH_MODE=copilot_host and
 AGENT_RESEARCH_STORE={research_store}. Run the canonical runtime locally with the backend's Python -
 {runtime_python} scripts/run_test_plan_pipeline.py {key} - and never with --http, which writes the research requests to the backend's own store where nobody
@@ -403,7 +410,7 @@ RESEARCH_AUTHORITIES = DISCOVERED_AUTHORITIES + (SAME_ITEM_AUTHORITY,)
 REQUESTED_AUTHORITIES = ("TICKET", "ATTACHMENT", "PRODUCT_DECISION")
 # A criterion listing six or more screens found only by research is the long route list QE review flags as
 # noise; up to five is a normal "still works as before" check.
-MAX_DISCOVERED_SURFACES_PER_AC = 5
+MAX_DISCOVERED_SURFACES_PER_AC = 3
 REGRESSION_MARKERS = ("still", "as before", "as they do today", "as it does today", "unchanged", "not changed",
                       "does not change", "keeps", "keep working")
 _CODE_REF = re.compile(r"^\S+\.[A-Za-z0-9]+:\d+(?:-\d+)?$")

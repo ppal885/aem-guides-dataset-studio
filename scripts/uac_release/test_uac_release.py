@@ -908,7 +908,7 @@ class RunnerTests(unittest.TestCase):
         entries = SURFACES[:3] + [{"surface": n, "evidence": [f"src/views/{i}.ts:1"], "authority": "SAME_ITEM",
                                    "disposition": "AC", "ac": 1} for i, n in enumerate(names)]
         (ticket / common.SURFACE_INVENTORY_FILE).write_text(json.dumps(entries), encoding="utf-8")
-        self.assertIn("Acceptance Criteria 1 lists 6 screens found only by research; keep at most 5 and move the "
+        self.assertIn("Acceptance Criteria 1 lists 6 screens found only by research; keep at most 3 and move the "
                       "rest to TEST_PLAN", runner.surface_inventory_problems(ticket))
 
     def test_discovered_surface_can_go_to_the_test_plan(self) -> None:
@@ -964,10 +964,10 @@ class RunnerTests(unittest.TestCase):
             return runner.surface_inventory_problems(ticket)
 
         extra = [dict(SURFACES[3], surface=name)
-                 for name in ("Baseline panel", "Review panel", "Map Collection", "Output history")]
+                 for name in ("Baseline panel", "Review panel")]
         self.assertEqual(problems(SURFACES + extra), [])
-        too_many = SURFACES + extra + [dict(SURFACES[3], surface="Translation panel")]
-        self.assertIn("Acceptance Criteria 3 lists 6 screens found only by research; keep at most 5 and move the "
+        too_many = SURFACES + extra + [dict(SURFACES[3], surface="Map Collection")]
+        self.assertIn("Acceptance Criteria 3 lists 4 screens found only by research; keep at most 3 and move the "
                       "rest to TEST_PLAN", problems(too_many))
 
     def test_attachment_screens_must_be_in_the_surface_inventory(self) -> None:
@@ -2964,12 +2964,22 @@ class DeliveryCleanupTests(unittest.TestCase):
             (ticket / common.SOURCE_COVERAGE_FILE).write_text(json.dumps(COVERAGE), encoding="utf-8")
             self.assertEqual(runner.attachment_fact_notes(ticket, SOURCE, "uac.bot"), [])
 
-    def test_prompt_asks_for_plain_statements_with_technical_values_in_sub_points(self) -> None:
+    def test_prompt_keeps_technical_values_out_of_the_uac(self) -> None:
         self.assertIn("in at most two clauses, using only names shown on screen", runner.PROMPT)
-        self.assertIn("status codes, file names - go in a sub-point, never in the statement", runner.PROMPT)
+        self.assertIn("status codes, file names, CSS - go in the full test plan", runner.PROMPT)
+        self.assertIn("only when the ticket itself is about an API, servlet or file format", runner.PROMPT)
         self.assertIn("Shortening never merges, drops or renames a named product item", runner.PROMPT)
         self.assertIn("a comment that names the screen decides which screen it is about", runner.PROMPT)
         self.assertIn("marked not verified, or one citing unrelated pages, can only be a TBD", runner.PROMPT)
+
+    def test_prompt_prunes_research_checks_and_bundled_cases(self) -> None:
+        prompt = " ".join(runner.PROMPT.split())
+        self.assertIn("goes to the full test plan (file 2) by default; the UAC keeps at most ONE short", prompt)
+        self.assertIn("at most three short case sub-points; never chain steps in a case", prompt)
+        self.assertIn("get at most one on/off case in the whole UAC", prompt)
+        self.assertIn("consumers are TEST_PLAN by default", prompt)
+        self.assertIn("A dimension this ticket, a comment or an attachment does not ask for is TEST_PLAN", prompt)
+        self.assertNotIn("that matters is also an Acceptance Criterion", prompt)
 
     def test_prompt_asks_for_attachment_facts_and_an_observable_result(self) -> None:
         self.assertIn('"facts"', runner.PROMPT)
