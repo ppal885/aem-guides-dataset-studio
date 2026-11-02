@@ -1150,6 +1150,9 @@ def _derive_tbd_question(statement: str) -> str | None:
     text = " ".join((statement or "").split()).strip()
     if not text:
         return None
+    rewritten = _decision_quality_gap_question(text)
+    if rewritten is not None:
+        return rewritten
     stripped = _TBD_LEAD_RE.sub("", text)
     if stripped == text and text.endswith("?"):
         # Already phrased as the open decision - a planner question reaches
@@ -4745,6 +4748,33 @@ _UNOBSERVABLE_QE_OUTCOME_RE = re.compile(
 _RAW_GAP_QUESTION_PREFIX = (
     "Which established product behavior or product decision addresses this gap:"
 )
+_RAW_GAP_ANCHOR_WORDS = 12
+
+
+def _decision_quality_gap_question(text: str) -> str | None:
+    """Rewrite the planner's raw-gap research question as a decision-quality TBD.
+
+    When research ends without an accepted decision and convergence writes no
+    decision line, the raw question used to reach the acceptance criteria and
+    FinalQEPlanRenderer refused delivery - on most release tickets, whose
+    Acceptance Criteria field is empty by selection, so the UAC always fell back
+    to Copilot authoring.  The decision QE owes is what it should see once the
+    reported problem is fixed; the ticket prose is cut to a short reference.
+    Returns None for any other question."""
+
+    clean = " ".join((text or "").split())
+    if not clean.casefold().startswith(_RAW_GAP_QUESTION_PREFIX.casefold()):
+        return None
+    anchor = clean[len(_RAW_GAP_QUESTION_PREFIX):].strip(" ?.:")
+    words = anchor.split()
+    if not words:
+        return "What should QE see once the reported problem is fixed?"
+    short = " ".join(words[:_RAW_GAP_ANCHOR_WORDS]).rstrip(",;:")
+    if len(words) > _RAW_GAP_ANCHOR_WORDS:
+        short += "..."
+    return f'For the reported problem "{short}", what should QE see once it is fixed?'
+
+
 _OUTSIDE_HUMAN_CONTRACT_REASON = (
     "Human Accepted AC exists; this candidate is not part of that accepted contract."
 )
@@ -10080,7 +10110,12 @@ class CanonicalTestPlanReasoningService:
                 question = questions_by_id.get(question_id)
                 if question is None:
                     continue
-                text = " ".join(question.question.split()).rstrip(" ?.")
+                text = " ".join(
+                    (
+                        _decision_quality_gap_question(question.question)
+                        or question.question
+                    ).split()
+                ).rstrip(" ?.")
                 if not text:
                     continue
                 owner = _DECISION_OWNER_BY_SUBJECT.get(question.authority_subject)
