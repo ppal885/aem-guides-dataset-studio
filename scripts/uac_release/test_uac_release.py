@@ -2129,21 +2129,33 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertIn("| research or reasoning only | 1 | 0 | 0 | 1 | 100% |", report)
         self.assertIn("| asked on the ticket | 2 | 1 | 1 | 0 | 0% |", report)
 
-    def test_lines_qe_adds_that_answer_our_tbds_are_not_misses(self) -> None:
+    def test_added_lines_that_state_a_decision_are_paired_with_a_tbd(self) -> None:
         # GUIDES-15177: every line QE added was the decision one of our TBDs asked for.
         tbds = ["Should a new imported variable appear in every language, and what initial value should other "
                 "languages show?",
                 "For duplicate names, missing names or values, oversized files and mixed valid/invalid entries, which "
                 "entries are saved and what error is shown?"]
         for line in ("Upsert language variable will be only supported",
-                     "Replicate new variables to the new respective languages to the guides platform in enabled language",
                      "Translation of the newly added language variable will mappled"):
             self.assertEqual(harvester.answered_tbd(line, tbds), tbds[0], line)
+        # A line with no decision word is not paired, even when it answers: a lead, not a verdict.
+        self.assertEqual(harvester.answered_tbd("Replicate new variables to the new respective languages to the "
+                                                "guides platform in enabled language", tbds), "")
+        # GUIDES-51870 and GUIDES-56739 on the VM: new criteria that only share the ticket's topic words.
+        profile_tbd = ["When Global Profile reads fail, should translation be blocked or retried, and what should "
+                       "users see instead of an apparently disabled setting?"]
+        self.assertEqual(harvester.answered_tbd("A user with only the Contributor role opening AEM Guides or the Web "
+                                                "Editor leaves the existing Global Profile unchanged.", profile_tbd), "")
+        # Known limit: a decision that shares the topic words is still paired, so pairs stay a review list.
+        self.assertEqual(harvester.answered_tbd("All values should be copied when creating a duplicate profile from "
+                                                "the Global profile.", profile_tbd), profile_tbd[0])
+        self.assertEqual(harvester.answered_tbd("Sanity check on Enable faster Baseline (v2). No impact or code changes "
+                                                "expected.", ["Is the script to find stuck baselines in the code?"]), "")
         self.assertEqual(harvester.answered_tbd("Verify that the report opens from the Map dashboard too.",
                                                 ["Which message text should be shown?"]), "")
         self.assertEqual(harvester.answered_tbd("Upsert language variable will be only supported", []), "")
 
-    def test_tbd_answers_are_counted_apart_from_misses(self) -> None:
+    def test_lines_that_may_answer_a_tbd_are_listed_but_still_counted_as_added(self) -> None:
         posted = ("*Acceptance Criteria 01:* Import adds new names to the Language variables panel.\n"
                   "** Source: GUIDES-15177 description.\n"
                   "** TBD: Should a new imported variable appear in every language?\n\n"
@@ -2161,15 +2173,15 @@ class LearningHarvesterTests(unittest.TestCase):
         self.assertEqual(data["answered_examples"][0]["text"], "Upsert language variable will be only supported")
         self.assertEqual([e["text"] for e in data["missed_examples"]],
                          ["The Output tab shows an Import button for administrators."])
-        self.assertIn("QE added 2 criteria: 1 we missed, and 1 that most likely answer one of our TBDs",
+        self.assertIn("QE added 2 criteria. 1 of them state a decision and share words with one of our TBDs",
                       "\n".join(harvester.rule_report_lines(data)))
         (self.out / "learning").mkdir(exist_ok=True)
         (self.out / "learning" / "records.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
         report = harvester.monthly_report(self.config, record["harvested_at"][:7]).read_text(encoding="utf-8")
-        self.assertIn("added 1, TBD answered 1", report)
+        self.assertIn("added 2 (1 may answer a TBD)", report)
         self.assertIn("- GUIDES-15177: Upsert language variable will be only supported (our TBD: Should a new "
                       "imported variable appear in every language?)", report)
-        self.assertIn("QE added 1, answered 1 of our TBDs", report)
+        self.assertIn("QE added 2 (1 may answer a TBD)", report)
 
     def test_rule_outcomes_use_only_the_newest_qe_verdict_per_ticket(self) -> None:
         older = {"key": "PROJ-9", "posted_text": POSTED_FIELD, "criteria": [
@@ -2481,7 +2493,7 @@ class ReleaseDashboardTests(unittest.TestCase):
         rules.update(added=5, tbd_answered=3, answered_examples=[{"key": "PROJ-2", "text": "Upsert only",
                                                                   "tbd": "Which import mode?"}])
         page = dashboard.render([], [], [], 0, "", "now", rules=rules)
-        self.assertIn("QE added 5 criteria: 2 we missed, and 3 that most likely answer one of our TBDs", page)
+        self.assertIn("QE added 5 criteria; 3 of them state a decision and share words with one of our TBDs", page)
         self.assertIn("PROJ-2: Upsert only", page)
 
     def ticket(self, key: str, status: dict, summary: str = "", body: str = "") -> None:

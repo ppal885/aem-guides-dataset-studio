@@ -365,10 +365,11 @@ def _rules_section(rules: dict | None) -> str:
         answered = int(rules.get("tbd_answered") or 0)
         items = "".join(f"<li>{_e(e.get('key'))}: {_e(e.get('text'))} <span class=\"hint\">(our TBD: {_e(e.get('tbd'))})</span></li>"
                         for e in rules.get("answered_examples") or [])
-        parts.append(f'<p class="hint">QE added {_e(rules["added"])} criteria: {_e(int(rules["added"]) - answered)} we '
-                     f'missed, and {answered} that most likely answer one of our TBDs (a decision, not a miss).</p>'
-                     + (f"<details><summary class=\"hint\">TBDs QE answered</summary><ul>{items}</ul></details>"
-                        if items else ""))
+        parts.append(f'<p class="hint">QE added {_e(rules["added"])} criteria; {answered} of them state a decision and '
+                     'share words with one of our TBDs, so they may be QE\'s answer rather than a miss (review the pairs; '
+                     'all are still counted as added).</p>'
+                     + (f"<details><summary class=\"hint\">Added lines that may answer a TBD</summary><ul>{items}</ul>"
+                        f"</details>" if items else ""))
     for key, title in (("by_group", "Where it came from (Source line)"), ("by_kind", "Why we wrote it (evidence record)"),
                        ("by_basis", "Every source a Source line names"), ("by_tbd", "TBD line")):
         parts.append(f"<h3>{_e(title)}</h3>" + _table([title] + headers[1:], _rule_rows(rules.get(key) or []),

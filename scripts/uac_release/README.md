@@ -437,13 +437,13 @@ setting, after state, feature place and adjacent research check, from `UAC_EVIDE
 criteria per row. The release page shows it under "Why QE removes our criteria" and flags a row with 30% or
 more removed on at least five criteria. Change or drop the rule behind a flagged row before adding a new one.
 
-**TBD answered is not a miss.** A line QE adds that most likely answers one of our posted TBDs (it shares two
-content words with the TBD, or one when it states a decision: will, only, supported, should, ...) is counted as
-"TBD answered", not as a criterion we missed: on GUIDES-15177 all three lines QE added ("Upsert language variable
-will be only supported", ...) answered the TBD "Should a new imported variable appear in every language?". The
-record's counts carry `tbd_answered`, the monthly report lists them apart with the TBD they answer, and the rule
-report and release page split "QE added" into missed and TBD answered. It is a word-overlap heuristic, so read
-the listed pairs before acting on the number.
+**Added lines that may answer a TBD.** A line QE adds that states a decision (will, shall, should, supported,
+...) and shares at least two other content words with one of our posted TBDs is listed as "may answer a TBD",
+with the TBD it may answer: on GUIDES-15177 QE wrote "Upsert language variable will be only supported" for our
+TBD "Should a new imported variable appear in every language?". It stays counted as added: word overlap cannot
+tell an answer from a new criterion that shares the ticket's topic words (a looser match paired 40 of 45 added
+lines on the VM, about half wrongly). The record's counts carry `tbd_answered` for these leads; the monthly report,
+the rule report and the release page list the pairs for review.
 
 ### Backfill hand-posted UACs
 
