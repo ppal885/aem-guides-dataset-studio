@@ -939,7 +939,8 @@ Counts are per criterion.</p>
 
 <h2 id="stale">UACs to review: new evidence after posting</h2>
 <p class="hint">From the staleness watch (weekdays 02:00 UTC): a root cause or fix, a design link, an API contract, a
-decision on what to build, an attachment or a merged commit that arrived after the UAC was written.</p>
+decision on what to build, a requirement or a wider scope, an attachment or a merged commit that arrived after the UAC
+was written.</p>
 {staleness_html}
 {impact_html}
 

@@ -456,7 +456,11 @@ ticket outside the release scope can still get its root cause after the UAC (GUI
 field last changed, someone other than the automation added a comment reporting a root cause, a fix, a pull
 request or a merge, a comment linking a wiki page (a design document or specification), a comment that gives an API
 contract or design in its text (an HTTP method with a path, a request/response body, status codes, an API
-spec), or an attachment (for example an API contract), it sends one alert on `alerts.ticket` listing the ticket. Each comment and
+spec), a comment that decides what to build (a numbered list of steps, "let's create ...", a scope decision), a
+comment that states a requirement or widens the scope (how the product should behave, "let the user know with an
+alert", the same issue from other panels too), or an attachment (for example an API contract), it sends one alert
+on `alerts.ticket` listing the ticket. A decision or requirement comment needs at least 8 words, so a short remark
+is not alerted. Each comment and
 attachment is alerted once
 (`<output_dir>/staleness-state.json`). It never comments on or edits the ticket or its UAC; QE decides
 whether to re-run the UAC. `--dry-run` only logs.

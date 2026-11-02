@@ -578,6 +578,14 @@ NOT_APPLICABLE with a one-line reason — the gate fails closed if any is missin
   source asset, research the setting or mapping that picks the rendition and write the criterion on that
   rule (with two or more renditions, the output uses the one the rule picks) - probe MP-032, advisory until
   promoted. A comparison with a customer site or a Dynamic Media mode sweep with no decided target is a TBD.
+- Safeguards and sibling places: when the ticket adds a guard, warning or error for one place, list the other
+  places that reach the same item (another panel, dialog or list) and say what each shows - probe MP-033,
+  advisory until promoted.
+- Two users: when the repro uses two browser tabs as two users, also cover a real second user and a
+  duplicated tab, each with what that user sees - probe MP-034, advisory until promoted.
+- New columns in a file list: cover every item type the list shows (folders, images, multimedia and PDF
+  files, not only DITA), a value with multiple entries, no repeated fixed column (Title, File name), the
+  column order and sorting - probe MP-035, advisory until promoted.
 - Reviewer comments: every imperative check a reviewer raised must be dispositioned.
 - Evidence: run RAG at least 3× on the feature's real behaviour and the indexed Jira
   history for the component; record both. Thin/absent history is a recorded gap, not silence.
@@ -679,7 +687,10 @@ another screen, in another content placement (table, figure, key reference, SVG)
 that reads the item through the same path (`SAME_ITEM`, with a `<file>:<line>` reference) must show the
 requested behaviour too, so it is a sub-point of the AC that covers the ticket's own screen, with the same
 expected result. It is not a new AC, and it is not a TBD. A place that only looks related stays a "still
-works" check, a TBD or TEST_PLAN, and one AC names at most five research-found places. Missed places of the
+works" check, a TBD or TEST_PLAN, and one AC names at most five research-found places. A place that reuses
+the same component only to choose a file (an Insert reference or Reusable content browse dialog) is not
+`SAME_ITEM` unless the ticket names it: it is a TBD, or Out of scope when decided, never new behaviour (QE put
+such dialogs out of scope on a list-columns ticket). Missed places of the
 same item were the most repeated QE correction (missing-placements on five tickets). Every screen that lists the
 same object is enumerated before writing (a Document State list in the Editor right panel, on the Asset
 Properties page and under Reports; a review task on the Review Dashboard, in AEM Projects and in the Editor
@@ -794,7 +805,9 @@ scenario VARIANT:
   DOCUMENTATION or CODE) is an AC case only when the changed action's own code reads it: give `reads_at`
   (`<file>:<line>`) and the switch's on-screen label. A setting read elsewhere in the product, or an internal
   flag or configuration key with no on-screen label, is TEST_PLAN or NOT_APPLICABLE, never an on/off sweep
-  in a criterion. Unrelated toggle sweeps were a repeated QE correction (setting-toggle-noise). The Cloud DB
+  in a criterion. Unrelated toggle sweeps were a repeated QE correction (setting-toggle-noise). The same holds
+  for nearby filters and permission checks the ticket does not name: they are TEST_PLAN, or one "still works"
+  line in the full test plan, not a criterion (QE removed both from a list-columns UAC). The Cloud DB
   flavour and JCR flavour are deployment variants, not a toggle QE flips: when the changed action reads or
   writes data AEM Guides keeps in its database on Cloud (Document State, metadata, references, versions,
   review data), add the switch "DB flavour and JCR flavour" with the case "Try it on Cloud with the DB
@@ -807,7 +820,8 @@ scenario VARIANT:
   target folder, never translated, made in an older release). On a move ticket the human UAC moved the item
   back and moved an item that was created in the target folder. And **value_shapes** - the forms of the
   value the change reads or shows: an empty value and a missing one (href="" and no href), special
-  characters, fragments, query strings, encoded characters, a very long value. An AC answer lists at least
+  characters, fragments, query strings, encoded characters, a very long value, and multiple values in one
+  field (shown comma-separated or as a list). An AC answer lists at least
   two forms in "shapes" and names each; usually they are sub-points of the AC they share an outcome with.
   Human UACs tested these on a blank-href ticket and a URL-as-title ticket where ours covered one value.
   A reverse action, item history or value form is an AC only when the ticket, an attachment or a decision

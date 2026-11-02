@@ -1202,6 +1202,128 @@
       "counterexamples_checked": false,
       "equivalence_key": "asset-rendition-selection",
       "status": "SHADOW"
+    },
+    {
+      "probe_id": "MP-033",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "other panels",
+          "holistic",
+          "moved or deleted",
+          "deleted or moved",
+          "renamed or deleted",
+          "deleted or renamed",
+          "no longer exists",
+          "may have been moved"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "STATE_PARTITION",
+        "candidate_template": "a new block, check or warning for an item at one place (for example a file dropped into one panel): before writing its criteria, list every sibling place where the same item can be dropped, inserted or opened (such as the other panels, Explorer, Collections, the Map panel, Reusable content, Find and Replace) and every way the item becomes invalid (moved, deleted, renamed, checked out by someone else, no read permission); each place and each way is a case sub-point of the criterion with the same result, or a TBD when nobody has decided it; also state the other side: a valid item at each place is not blocked and shows no warning"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261026-SAFEGUARD-SIBLING-PLACES-01"
+        ],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Proposed from one human-edited UAC; not reviewed or approved by QE, so it stays SHADOW. A generated UAC for a new warning on an item that may have been moved or deleted covered only the one panel the reporter used. A later reviewer comment asked for the same handling holistically across the other panels, and the human edit added those places and the other ways the item becomes invalid. Listing the sibling places and those ways before writing would have found both. Before promotion, QE should check counterexamples, for example a ticket whose scope explicitly names a single place.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "safeguard-sibling-places",
+      "status": "SHADOW"
+    },
+    {
+      "probe_id": "MP-034",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "two tabs",
+          "multiple tabs",
+          "browser tabs",
+          "another browser tab",
+          "second browser tab",
+          "duplicate tabs",
+          "duplicated tabs",
+          "duplicate browser tab",
+          "duplicated browser tab",
+          "tab is duplicated",
+          "duplicating the tab",
+          "another session",
+          "separate session",
+          "incognito",
+          "another user",
+          "second user",
+          "two users",
+          "multi-user",
+          "multi user"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "REPRO_DIMENSION",
+        "candidate_template": "a repro that uses two browser tabs as two users: also cover a real second user who signs in on another browser or machine, a duplicated tab of the same user, and the item checked out by the second user; for each case say what each user sees (for example a stale Explorer list after the other user moves or deletes the file) and what happens when the first user then acts on that file; when the expected result is not decided, it is a TBD"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261026-SECOND-USER-DUPLICATED-TAB-01"
+        ],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Proposed from one human-edited UAC; not reviewed or approved by QE, so it stays SHADOW. The reporter used two browser tabs as two users, and the generated UAC kept only that setup. The human edit added a duplicated tab and a real second user, each with what that user sees. Before promotion, QE should check counterexamples, for example a single-user display defect that no second user or tab can change.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "second-user-and-duplicated-tab",
+      "status": "SHADOW"
+    },
+    {
+      "probe_id": "MP-035",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "metadata column",
+          "metadata columns",
+          "custom metadata",
+          "new column",
+          "new columns",
+          "additional column",
+          "additional columns",
+          "customize columns",
+          "customise columns",
+          "list view column",
+          "show as a column",
+          "shown as a column",
+          "display as a column",
+          "displayed as columns"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "CODE_PATH_CONSUMER",
+        "candidate_template": "new or custom columns shown in a file list: check every item type the list shows (DITA topics and maps, and folders, images, multimedia and PDF files), a value with multiple entries (shown comma-separated or as a list) and an empty value, that a fixed column such as Title or File name is not shown twice, the column order (the order in the settings and in the Customize dialog), and sorting on the new columns; a place that reuses the same file list only to choose a file (a browse or insert dialog) is not changed unless the ticket names it, so it is a TBD or Out of scope, never new behaviour"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261102-LIST-NEW-COLUMNS-01"
+        ],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Proposed from one QE-rewritten UAC; not reviewed or approved by QE, so it stays SHADOW. The generated UAC covered the new columns on DITA files only. QE added non-DITA item types, multiple values, no repeated fixed columns, column order, sorting, and put the browse dialogs that reuse the list out of scope. Before promotion, QE should check counterexamples, for example a column change on a list that shows only one item type.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "list-new-columns",
+      "status": "SHADOW"
     }
   ]
 }
