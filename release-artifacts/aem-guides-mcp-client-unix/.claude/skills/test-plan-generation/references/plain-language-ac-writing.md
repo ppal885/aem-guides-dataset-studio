@@ -25,8 +25,9 @@ Write acceptance criteria that a tester can understand on the first read. Keep t
   settings as labelled). No colon or semicolon lists, and no internal terms such as rendition, propagation,
   transitive, payload, async, regression or variant in the statement - say what the user sees instead.
 - Exact technical values - API paths and fields, configuration keys and setting values, enum values, status
-  codes, file names - go in a sub-point of that criterion (or the full test plan), not in the statement.
-  Statement: "An invalid request is rejected as a whole and returns no results." Sub-point: "returns 400".
+  codes, file names, CSS - go in the full test plan, not in the UAC; a sub-point says what QE sees instead.
+  Only when the ticket itself is about an API, servlet or file format may a sub-point name the exact value
+  (statement "An invalid request is rejected as a whole and returns no results", sub-point "returns 400").
 - Shortening never changes meaning: never merge, drop or replace a named product item to save words. Keep
   each one by its own name - a map template and a topic template are different things, so "a topic created
   from a map template" is wrong; write "each new topic made from a topic template the map template refers

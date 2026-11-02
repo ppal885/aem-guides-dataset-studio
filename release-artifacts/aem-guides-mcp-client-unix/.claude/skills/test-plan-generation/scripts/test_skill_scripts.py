@@ -8105,18 +8105,6 @@ def test_excluded_ticket_problems() -> None:
     check("a sentence that compares tickets rules out only the one the exclusion names",
           any("PROJ-100" in p for p in compared_problems)
           and not any("Acceptance Criteria 01" in p for p in compared_problems))
-    regression = {"scenario": {"acs": [{"ac": 2, "scenario": "REGRESSION"}, {"ac": 3, "scenario": "REGRESSION"}]},
-                  "ruled_out_tickets": [{"ticket": "PROJ-100", "ac": 2,
-                                         "shared_path": "table cell CSS in the New Markup Editor"}]}
-    kept = uc.excluded_ticket_problems(uac, source, regression)
-    check("a still-works regression check from a ruled-out ticket with a shared path is kept",
-          not any("Acceptance Criteria 02" in p for p in kept))
-    check("a regression check from a ruled-out ticket without a shared path asks for one",
-          any("Acceptance Criteria 03" in p and "shared_path" in p for p in kept))
-    new_behaviour = uac.replace("Column widths still match", "Column widths match")
-    check("a ruled-out ticket never sets new behaviour, even with a shared path",
-          any("Acceptance Criteria 02" in p and "new behaviour" in p
-              for p in uc.excluded_ticket_problems(new_behaviour, source, regression)))
 
 
 def test_human_uac_shape() -> None:
@@ -18796,16 +18784,16 @@ def test_named_settings_and_research_switch_cap() -> None:
     def sweep(*names, basis="CODE"):
         return [{"name": n, "basis": basis, "disposition": "AC"} for n in names]
 
-    three = sweep("Enable JavaScript", "Create interactive PDF form", "Enable DITA-OT preprocessing")
-    check("three research-found toggles are allowed (QE kept three on one UAC)",
-          uc.research_switch_cap_problems(three, source) == [])
-    four = three + sweep("Enable the Usage of the Split Workflow")
-    check("four research-found toggles are the sweep QE removed",
-          any("Human UACs toggle at most 3" in p for p in uc.research_switch_cap_problems(four, source)))
-    exempt = three + sweep("DB flavour and JCR flavour") + sweep("PDF Engine v2", basis="CODE")
+    one = sweep("Enable DITA-OT preprocessing")
+    check("one research-found toggle is allowed",
+          uc.research_switch_cap_problems(one, source) == [])
+    two = one + sweep("Enable JavaScript")
+    check("two research-found toggles are a sweep QE removes",
+          any("Human UACs toggle at most 1" in p for p in uc.research_switch_cap_problems(two, source)))
+    exempt = one + sweep("DB flavour and JCR flavour") + sweep("PDF Engine v2", basis="CODE")
     check("the DB and JCR flavours and a ticket-named setting do not count",
           uc.research_switch_cap_problems(exempt, source) == [])
-    named = three + sweep("Retain temporary files", basis="ATTACHMENT")
+    named = one + sweep("Retain temporary files", basis="ATTACHMENT")
     check("a switch the ticket or an attachment asked for does not count",
           uc.research_switch_cap_problems(named, source) == [])
     print("test_named_settings_and_research_switch_cap: OK")

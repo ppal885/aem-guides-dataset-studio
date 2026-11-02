@@ -666,9 +666,12 @@ dropped silently:
    or PM decision, or the confirmed fix; or it is a QE regression check guarding the reporter's own
    scenario. When QE can state a testable outcome for such a behaviour, it is an AC, not an Open Question
    (`qe_completeness_coverage`, `reviewer_request_coverage`). A check our own research found - a
-   documentation page, the code, a similar or parent ticket's UAC, an investigator's other scenario, or
-   parity - that matters is an AC too: usually a "still works as before" AC, or a sub-point of the AC with
-   the same expected outcome. Its Source line names the documentation page, code or similar ticket.
+   documentation page, the code, a similar or parent ticket's UAC, a shared consumer, an investigator's other
+   scenario, or parity - goes to the full test plan by default. The UAC keeps at most ONE short "still works
+   as before" AC, for the research-found regression closest to the reporter's scenario; its Source line names
+   the documentation page, code or similar ticket. QE removed about half of the posted criteria written from
+   shared consumers, similar UAC dimensions and research-found screens, and the removed ones bundled five or
+   six "still works" checks into one criterion (learning/rule-report.md, November 2026).
 2. **TBD on the AC it governs** - a product decision is still open. In the full record it is also an
    `OQ-##` entry. Create a standalone AC for a TBD only when no AC governs it.
 3. **Full test plan or set aside** - a research finding that does not matter enough for the UAC is checked
@@ -679,15 +682,15 @@ There is no "Suggested checks" section: not in the delivered UAC, not in the Jir
 comment (`uac_completeness_check.suggested_problems` refuses one). The ten-AC cap still holds, so a
 research check that cannot fit as an AC or a sub-point goes to the full test plan.
 
-A surface found only in documentation or code gets at most a "still works as before" AC or a TBD
-(`uac_release_runner.surface_inventory_problems`). The exception is a place that shows, lists or prints the
+A surface found only in documentation or code is TEST_PLAN by default; at most it is the one "still works as
+before" AC above, or a TBD (`uac_release_runner.surface_inventory_problems`). The exception is a place that shows, lists or prints the
 SAME item the ticket changes through the same code path: the same list, value, task, image or title on
 another screen, in another content placement (table, figure, key reference, SVG) or in another output place
 (cover page, header, footer). List these places before writing ACs and read the code for each one. A place
 that reads the item through the same path (`SAME_ITEM`, with a `<file>:<line>` reference) must show the
 requested behaviour too, so it is a sub-point of the AC that covers the ticket's own screen, with the same
 expected result. It is not a new AC, and it is not a TBD. A place that only looks related stays a "still
-works" check, a TBD or TEST_PLAN, and one AC names at most five research-found places. A place that reuses
+works" check, a TBD or TEST_PLAN, and one AC names at most three research-found places. A place that reuses
 the same component only to choose a file (an Insert reference or Reusable content browse dialog) is not
 `SAME_ITEM` unless the ticket names it: it is a TBD, or Out of scope when decided, never new behaviour (QE put
 such dialogs out of scope on a list-columns ticket). Missed places of the
@@ -696,7 +699,7 @@ same object is enumerated before writing (a Document State list in the Editor ri
 Properties page and under Reports; a review task on the Review Dashboard, in AEM Projects and in the Editor
 Review panel; every link type and the file names in a topic the change creates or renames
 (`construct_family_problems`)). Placements and route lists do not fight: every place is covered somewhere, but
-one statement names one screen - the reporter's - and the other places are case sub-points (at most five) or
+one statement names one screen - the reporter's - and the other places are case sub-points (at most three) or
 regression lines in the full test plan, never six in one statement (`uac_completeness_check.route_list_problems`;
 one Finished status checked on five screens in one criterion was the route-list-noise correction). A criterion on a scenario the reporter did not hit
 (ADJACENT) is a research check: an AC only when it matters, and never in place of the reporter's own
@@ -718,7 +721,10 @@ the ticket, an attachment or a decision names stays in the UAC as an AC or a TBD
 short clause; split only when the required behaviour or outcome differs. Consolidation only reorganizes: every checkable point survives as an AC clause, a TBD, or
 in the full test plan record. Two ACs with content-word overlap of 0.6 or more are merged
 (`coverage_forcing._validate_ac_redundancy`, aligned with `scripts/uac_eval/precision.py`). Every AC adds a
-distinct product contract; no recap AC.
+distinct product contract; no recap AC. One criterion is one statement and at most three short case
+sub-points; the other cases are lines in the full test plan. Never chain steps in a case ("Select one language,
+then repeat with another") - QE removes the whole criterion when one bundled case is wrong, and the criteria QE
+removed most were 60 to 100 words long with five or six cases.
 
 **Length.** There is no word limit on the whole UAC: never drop a valid case or squeeze a sub-point into
 shorthand that QE cannot follow ("A p pasted into a dd") to save words. Keep each sentence short instead: a
@@ -727,12 +733,12 @@ see, and no filler words. Keep each Source line within 30 words: name the ticket
 or commit, and keep file paths and line numbers in the full test plan record
 (`uac_completeness_check.size_problems`).
 
-**Items made before the change.** Always say what happens to content, maps, presets, output, settings or
-projects that were created or generated before the change - for example "older files need re-processing to
-get the word count", "check with an old preset and a newly created preset", "existing output gets the
-property after the next full Generate". Record it in `UAC_EVIDENCE.json` "pre_existing_items" as the AC that
-covers it, a TBD, or NOT_APPLICABLE with a reason. 15% of human UACs cover it, and it was missed on tickets
-that never say "upgrade" or "migration" (`uac_completeness_check.pre_existing_problems`). Do not guess the
+**Items made before the change.** Say what happens to content, maps, presets, output, settings or projects
+that were created or generated before the change only when the ticket, a comment or the fix changes what is
+stored or generated for them, or names existing items (upgrade, migration, "existing", "old") - for example
+"older files need re-processing to get the word count", "check with an old preset and a newly created preset".
+Otherwise record `UAC_EVIDENCE.json` "pre_existing_items" as NOT_APPLICABLE with that reason. Only 15% of human
+UACs cover it, and QE removed half of the posted criteria written for it (`uac_completeness_check.pre_existing_problems`). Do not guess the
 outcome: human UACs usually say existing items stay as they are ("existing presets remain unaffected"; a new
 option is off for them). An AC records "outcome": UNCHANGED, or CHANGED only with the basis that decided it
 (TICKET, ATTACHMENT, PRODUCT_DECISION or DEVELOPER_COMMENT) and "quote": that sentence copied from the
@@ -886,12 +892,12 @@ or three tickets:
   `config_switches` cap). A setting the ticket or a comment names (`ticket_names` in
   `data/guides_config_settings.json`, for example PDF Engine v2) is a `config_switches` AC case or a TBD - never
   TEST_PLAN, even when the code calls it by an internal name. Settings found only in the code or documentation
-  get at most three on/off cases in one UAC: keep the ones the reported behaviour depends on (on a Native PDF
-  ticket human UACs keep Enable DITA-OT preprocessing and the microservice workflow) and move the rest to
-  TEST_PLAN, where they are still checked. A value seen in attached temporary files (a topic's Document State in
+  get at most one on/off case in one UAC: keep the one the reported behaviour depends on (on a Native PDF
+  ticket, Enable DITA-OT preprocessing) and move the rest to TEST_PLAN, where they are still checked. QE removed
+  half of the posted switch-state criteria. A value seen in attached temporary files (a topic's Document State in
   merged.html) is not a case; for a Native PDF layout bug, one sub-point that checks merged.html inside Retain
   temporary files is the check. Ticket-named settings, the action's own settings and the DB and JCR flavours do
-  not count toward the three.
+  not count toward the one.
 - **A decision nobody made** (guessed-decision, `decisions`). When a CUSTOMER or VARIANT criterion states a
   handling choice - the second action waits or fails, a file is skipped or blocked, a count, a precedence,
   something that cannot be done - record who decided it: `{"ac", "choice", "basis": "TICKET" |
@@ -905,11 +911,8 @@ or three tickets:
   fix_basis CAUSE_KNOWN with that sentence and start with the cause-known Note, not "not confirmed". Keep
   UNCONFIRMED only with a reason why that text is not the cause.
 - **A ticket the ticket rules out** (excluded-ticket, `excluded_tickets`). A related ticket the description or a
-  comment calls "not the same defect", "a different issue" or "unrelated" never sets new expected behaviour.
-  It is still a regression risk: when the change goes through the same code, screen or workflow, keep a
-  REGRESSION criterion that its behaviour still works as before, and record the shared path in
-  `UAC_EVIDENCE.json` "ruled_out_tickets" (`{"ticket", "ac", "shared_path"}`). With no shared path, check it in
-  the full test plan. "Not the same defect" is never by itself a reason to drop a regression check.
+  comment calls "not the same defect", "a different issue" or "unrelated" is context, never the Source of a
+  criterion. Its check goes to the full test plan or is dropped.
 
 **Delivered format - chat and the Jira Acceptance Criteria field.** A list of criteria with optional short
 case sub-points; no ticket title line, no Open Questions section, and at most one short sentence of
@@ -930,8 +933,9 @@ Out of scope:                                          (optional, when a decisio
 ```
 
 - Plain statement: each criterion says one thing a QE can check, in at most two clauses, with only on-screen
-  names; exact technical values (API paths and fields, setting values, status codes, file names) go in its
-  sub-points or the test plan. Reviewers found the delivered UACs too technical to understand
+  names; exact technical values (API paths and fields, setting values, status codes, file names, CSS) go in
+  the full test plan, and a sub-point says what QE sees instead (the request is rejected, no file is created).
+  Only when the ticket itself is about an API, servlet or file format may a sub-point name the exact value. Reviewers found the delivered UACs too technical to understand
   (`references/plain-language-ac-writing.md`); a camelCase or snake_case field, a dotted key, an HTTP verb with
   a path or a repository path in a statement fails (`uac_completeness_check.code_token_problems`). A new check
   is written with its other side: the input it is not meant for still shows no error, and a loosened check
