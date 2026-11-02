@@ -437,6 +437,14 @@ setting, after state, feature place and adjacent research check, from `UAC_EVIDE
 criteria per row. The release page shows it under "Why QE removes our criteria" and flags a row with 30% or
 more removed on at least five criteria. Change or drop the rule behind a flagged row before adding a new one.
 
+**TBD answered is not a miss.** A line QE adds that most likely answers one of our posted TBDs (it shares two
+content words with the TBD, or one when it states a decision: will, only, supported, should, ...) is counted as
+"TBD answered", not as a criterion we missed: on GUIDES-15177 all three lines QE added ("Upsert language variable
+will be only supported", ...) answered the TBD "Should a new imported variable appear in every language?". The
+record's counts carry `tbd_answered`, the monthly report lists them apart with the TBD they answer, and the rule
+report and release page split "QE added" into missed and TBD answered. It is a word-overlap heuristic, so read
+the listed pairs before acting on the number.
+
 ### Backfill hand-posted UACs
 
 A UAC posted by hand (by a Claude session with the automation's account, not by the runner) has no

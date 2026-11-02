@@ -276,6 +276,46 @@ def pair_rewrites(entries: list[dict]) -> list[dict]:
             for e in out]
 
 
+def posted_tbds(posted_text: str) -> list[str]:
+    """The TBD questions of the posted UAC, one per criterion that asked one."""
+    return [c["tbd"] for c in parse_criteria(posted_text) if str(c.get("tbd") or "").strip()]
+
+
+# A line QE adds after deciding what one of our TBDs asked ("Upsert language variable will be only supported" for
+# "Should a new imported variable appear in every language?") is the answer to our question, not a criterion we
+# missed. GUIDES-15177: all three lines QE added answered the posted TBDs.
+_DECISION = re.compile(r"\b(?:will|shall|only|supported|should|must|decided|agreed|no need|out of scope|"
+                       r"not required)\b", re.IGNORECASE)
+
+
+def answered_tbd(added_text: str, tbds: list[str]) -> str:
+    """The posted TBD a QE-added line most likely answers, or "" when it answers none. Likely, not certain: it
+    shares two content words with the TBD, or one when the line states a decision."""
+    words = _content_words(added_text)
+    best, best_shared = "", 0
+    for tbd in tbds:
+        shared = len(words & _content_words(tbd))
+        if shared > best_shared:
+            best, best_shared = tbd, shared
+    if best_shared >= 2 or (best_shared == 1 and _DECISION.search(added_text or "")):
+        return best
+    return ""
+
+
+def mark_tbd_answers(entries: list[dict], tbds: list[str]) -> list[dict]:
+    """Flag each QE-added criterion that answers one of our posted TBDs ("answers_tbd": the TBD text)."""
+    if not tbds:
+        return entries
+    for entry in entries:
+        if entry.get("kind") == "added":
+            tbd = answered_tbd(entry.get("new") or "", tbds)
+            if tbd:
+                entry["answers_tbd"] = tbd
+            else:
+                entry.pop("answers_tbd", None)
+    return entries
+
+
 def mark_promoted(entries: list[dict], suggested: list[str]) -> list[dict]:
     """An added criterion that matches one of our suggested checks was promoted by QE, not missed by us.
 
@@ -531,6 +571,7 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
     state[key] = version
     posted_criteria, current_criteria = parse_criteria(posted_text), parse_criteria(current_text)
     entries = pair_rewrites(mark_promoted(compare(posted_criteria, current_criteria), suggested or []))
+    mark_tbd_answers(entries, [c["tbd"] for c in posted_criteria if str(c.get("tbd") or "").strip()])
     sources = criterion_sources(posted_criteria, key)
     for entry in entries:
         if kinds and entry.get("number") in kinds:
@@ -543,8 +584,9 @@ def _record(key: str, fields: dict, config: dict, posted_text: str, current_text
         "ticket_status": ticket_status, "outcome": outcome, "editor": editor, "edited_at": edited_at,
         "posted_sha256": posted_sha, "current_sha256": current_sha,
         "posted_text": posted_text, "current_text": current_text,
-        "counts": {k: sum(1 for e in entries if e["kind"] == k)
-                   for k in ("accepted", "changed", "rewritten", "removed", "added", "promoted")},
+        "counts": {**{k: sum(1 for e in entries if e["kind"] == k)
+                      for k in ("accepted", "changed", "rewritten", "removed", "added", "promoted")},
+                   "tbd_answered": sum(1 for e in entries if e["kind"] == "added" and e.get("answers_tbd"))},
         "posted_count": len(posted_criteria),
         "kept_count": sum(1 for c in current_criteria if not c.get("struck")),
         "criteria": entries,
@@ -993,13 +1035,25 @@ def rule_outcomes(records: list[dict], out: Path | None = None) -> dict:
     tables: dict[str, dict[str, dict]] = {dim: {} for dim, _ in RULE_DIMENSIONS}
     examples: dict[str, dict[str, list]] = {dim: defaultdict(list) for dim, _ in RULE_DIMENSIONS}
     judged = _latest_judged(records)
+    added = {"added": 0, "tbd_answered": 0, "missed_examples": [], "answered_examples": []}
     for record in judged:
         key = str(record["key"])
         sources = criterion_sources(parse_criteria(record.get("posted_text") or ""), key)
         run_dir = out / key if out else None
         kinds = ticket_kinds(run_dir) if run_dir and run_dir.is_dir() else {}
-        for entry in pair_rewrites(record.get("criteria") or []):
+        entries = mark_tbd_answers(pair_rewrites(record.get("criteria") or []),
+                                   posted_tbds(record.get("posted_text") or ""))
+        for entry in entries:
             outcome = entry.get("kind")
+            if outcome == "added":
+                added["added"] += 1
+                if entry.get("answers_tbd"):
+                    added["tbd_answered"] += 1
+                    if len(added["answered_examples"]) < RULE_EXAMPLES * 2:
+                        added["answered_examples"].append({"key": key, "text": entry.get("new") or "",
+                                                           "tbd": entry["answers_tbd"]})
+                elif len(added["missed_examples"]) < RULE_EXAMPLES * 2:
+                    added["missed_examples"].append({"key": key, "text": entry.get("new") or ""})
             if outcome not in _JUDGED_KINDS:
                 continue
             number = entry.get("number")
@@ -1019,7 +1073,7 @@ def rule_outcomes(records: list[dict], out: Path | None = None) -> dict:
                     row["edited" if outcome in ("changed", "rewritten") else outcome] += 1
                     if outcome == "removed" and len(examples[dim][name]) < RULE_EXAMPLES:
                         examples[dim][name].append({"key": key, "text": text})
-    result: dict = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "tickets": len(judged)}
+    result: dict = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "tickets": len(judged), **added}
     for dim, _ in RULE_DIMENSIONS:
         rows = []
         for row in tables[dim].values():
@@ -1051,6 +1105,13 @@ def rule_report_lines(data: dict, title: str = "## Removed by why we wrote it") 
         return lines + ["No judged criteria yet.", ""]
     for dim, heading in RULE_DIMENSIONS:
         lines += rule_table_lines(data[dim], heading) + [""]
+    if data.get("added"):
+        missed = data["added"] - data.get("tbd_answered", 0)
+        lines += ["### What QE added", "",
+                  f"QE added {data['added']} criteria: {missed} we missed, and {data.get('tbd_answered', 0)} that most "
+                  "likely answer one of our TBDs (a decision QE wrote down, not a miss).", ""]
+        lines += [f"- answered: {e['key']}: {e['text']} (our TBD: {e['tbd']})" for e in data.get("answered_examples") or []]
+        lines += [f"- missed: {e['key']}: {e['text']}" for e in data.get("missed_examples") or []] + [""]
     shown = [r for r in data["by_group"] + data["by_kind"] if r["examples"]][:8]
     if shown:
         lines += ["### What QE removed, by why we wrote it", ""]
@@ -1147,14 +1208,19 @@ def monthly_report(config: dict, month: str) -> Path:
     records = [r for r in records if r.get("edit_origin") != "CLAUDE_REWRITE"]
     by_component: dict[str, dict] = defaultdict(lambda: {"tickets": set(), "accepted": 0, "changed": 0,
                                                           "removed": [], "added": [], "promoted": [], "screens": [],
-                                                          "requested": [], "notes": []})
+                                                          "requested": [], "notes": [], "answered": []})
     for record in records:
         for component in record.get("components") or ["(none)"]:
             bucket = by_component[component]
             bucket["tickets"].add(record["key"])
-            for entry in pair_rewrites(record.get("criteria") or []):
+            entries = mark_tbd_answers(pair_rewrites(record.get("criteria") or []),
+                                       posted_tbds(record.get("posted_text") or ""))
+            for entry in entries:
                 if entry["kind"] == "rewritten_into":
                     continue  # the added side of a reworded criterion, counted once as changed
+                if entry["kind"] == "added" and entry.get("answers_tbd"):
+                    bucket["answered"].append((record["key"], entry["new"], entry["answers_tbd"]))
+                    continue
                 if entry["kind"] in ("accepted", "changed", "rewritten"):
                     bucket["changed" if entry["kind"] == "rewritten" else entry["kind"]] += 1
                 else:
@@ -1171,7 +1237,8 @@ def monthly_report(config: dict, month: str) -> Path:
             bucket["notes"] += [(record["key"], note) for note in record.get("qe_notes") or []]
     lines = [f"# UAC learning report {month}", "",
              f"{len(records)} ticket version(s) harvested. Accepted = kept unchanged; changed = wording or "
-             "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it); promoted = QE moved one "
+             "expected result edited; removed = QE deleted it (we wrote too much); added = QE wrote it (we missed it); TBD answered = "
+             "QE added a line that most likely answers one of our TBDs (a decision, not a miss); promoted = QE moved one "
              "of our suggested checks into the criteria (older UACs only; the UAC no longer has suggested checks). "
              "Missed screens = screens (panel, console, dashboard, app, ...) that a QE-added criterion names and our "
              "posted UAC never mentioned, counted so a recurring screen miss shows up in the data before any rule changes.",
@@ -1181,7 +1248,8 @@ def monthly_report(config: dict, month: str) -> Path:
                   f"pattern\", not in the edit counts below): {len(rewrites)}"]
         lines += [f"- {r['key']}: {r.get('rewrite_reason') or 'no reason given'}" for r in rewrites]
         lines += [""]
-    totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "promoted", "missed_screens", "requested")}
+    totals = {k: 0 for k in ("accepted", "changed", "removed", "added", "promoted", "missed_screens", "requested",
+                             "tbd_answered")}
     for component in sorted(by_component):
         b = by_component[component]
         screens = b["screens"]
@@ -1190,13 +1258,15 @@ def monthly_report(config: dict, month: str) -> Path:
         totals["removed"] += len(b["removed"])
         totals["added"] += len(b["added"])
         totals["promoted"] += len(b["promoted"])
+        totals["tbd_answered"] += len(b["answered"])
         totals["missed_screens"] += len(screens)
         totals["requested"] += len(b["requested"])
         asked = f" ({len(b['requested'])} asked for in a Jira comment)" if b["requested"] else ""
         lines += [f"## {component}", "",
                   f"- Tickets: {len(b['tickets'])}",
                   f"- Criteria accepted {b['accepted']}, changed {b['changed']}, removed {len(b['removed'])}{asked}, "
-                  f"added {len(b['added'])}, promoted {len(b['promoted'])}, missed screens {len(screens)}", ""]
+                  f"added {len(b['added'])}, TBD answered {len(b['answered'])}, promoted {len(b['promoted'])}, "
+                  f"missed screens {len(screens)}", ""]
         ours = [item for item in b["removed"] if item not in b["requested"]]
         if ours:
             lines += ["What we wrote that QE removed:", ""] + [f"- {k}: {t}" for k, t in ours] + [""]
@@ -1208,6 +1278,9 @@ def monthly_report(config: dict, month: str) -> Path:
                 [f"- {k}: {t}" for k, t in b["notes"]] + [""]
         if b["added"]:
             lines += ["What QE added that we missed:", ""] + [f"- {k}: {t}" for k, t in b["added"]] + [""]
+        if b["answered"]:
+            lines += ["What QE added that most likely answers one of our TBDs (a decision, not a miss):", ""] + \
+                [f"- {k}: {t} (our TBD: {q})" for k, t, q in b["answered"]] + [""]
         if b["promoted"]:
             lines += ["Suggested checks QE moved into the criteria:", ""] + [f"- {k}: {t}" for k, t in b["promoted"]] + [""]
         if screens:
@@ -1219,6 +1292,7 @@ def monthly_report(config: dict, month: str) -> Path:
                       f"removed {totals['removed']}"
                       + (f" ({totals['requested']} asked for in a Jira comment)" if totals["requested"] else "")
                       + f"; QE added {totals['added']}"
+                      + (f", answered {totals['tbd_answered']} of our TBDs" if totals["tbd_answered"] else "")
                       + (f", promoted {totals['promoted']} suggested" if totals["promoted"] else "")
                       + f" (missed screens "
                       f"{totals['missed_screens']}).", ""]

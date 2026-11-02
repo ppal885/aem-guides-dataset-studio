@@ -361,6 +361,14 @@ def _rules_section(rules: dict | None) -> str:
         return head + '\n<p class="empty">No judged criteria yet; the harvester writes learning/rule-outcomes.json.</p>'
     headers = ["", "Posted", "Kept as is", "Edited", "Removed", "Removed %"]
     parts = [head, f'<p class="hint">{_e(rules["criteria"])} criteria on {_e(rules["tickets"])} tickets.</p>']
+    if rules.get("added"):
+        answered = int(rules.get("tbd_answered") or 0)
+        items = "".join(f"<li>{_e(e.get('key'))}: {_e(e.get('text'))} <span class=\"hint\">(our TBD: {_e(e.get('tbd'))})</span></li>"
+                        for e in rules.get("answered_examples") or [])
+        parts.append(f'<p class="hint">QE added {_e(rules["added"])} criteria: {_e(int(rules["added"]) - answered)} we '
+                     f'missed, and {answered} that most likely answer one of our TBDs (a decision, not a miss).</p>'
+                     + (f"<details><summary class=\"hint\">TBDs QE answered</summary><ul>{items}</ul></details>"
+                        if items else ""))
     for key, title in (("by_group", "Where it came from (Source line)"), ("by_kind", "Why we wrote it (evidence record)"),
                        ("by_basis", "Every source a Source line names"), ("by_tbd", "TBD line")):
         parts.append(f"<h3>{_e(title)}</h3>" + _table([title] + headers[1:], _rule_rows(rules.get(key) or []),
