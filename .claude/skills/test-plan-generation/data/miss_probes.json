@@ -1324,6 +1324,48 @@
       "counterexamples_checked": false,
       "equivalence_key": "list-new-columns",
       "status": "SHADOW"
+    },
+    {
+      "probe_id": "MP-036",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "drop is blocked",
+          "block the drop",
+          "blocked drop",
+          "drop should be blocked",
+          "insertion is blocked",
+          "insert is blocked",
+          "should not be inserted",
+          "must not be inserted",
+          "reject the drop",
+          "rejected drop",
+          "prevent the drop",
+          "prevent insertion",
+          "broken reference",
+          "stale reference",
+          "stale selection"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "NEGATIVE_BOUNDARY",
+        "candidate_template": "a new block on an insert or drop action: state the full blocked outcome, not only that nothing is added: (1) every target type the action can insert into (a map and a topic, and each reference kind such as a topic reference, an image or reused content); (2) each editor that offers the action (the old and the new editor, and each view such as Author or Layout), named exactly; (3) the open document is unchanged, including the user's unsaved edits; (4) undo, redo, autosave, save and reopen do not bring the blocked item back; (5) several items dropped at once when only some are invalid; (6) the check itself fails (network error, timeout, lost access) or the target changes while the check runs (the user switches or closes the document); (7) the blocking rule against the item's identity: say whether an item that still resolves by its ID (GUID) after a move is blocked or inserted, and whether a new item at the old location is blocked; also confirm each listed source place really offers the action before naming it; any of these nobody has decided is a TBD"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261103-BLOCKED-ACTION-OUTCOME-01"
+        ],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Proposed from one human review of a posted UAC; not approved by QE, so it stays SHADOW. A UAC for blocking an insert of an item that may have been moved or deleted said only that no reference is added. The review found it named one target type, left the editor ambiguous, did not protect unsaved edits, and was silent on undo or autosave, a multi-item drop with some invalid items, a failed or in-flight check, and whether an item still found by its ID is blocked. Before promotion, QE should check counterexamples, for example a block that is purely server-side with no editor state.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "blocked-action-outcome",
+      "status": "SHADOW"
     }
   ]
 }

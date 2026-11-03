@@ -14472,6 +14472,30 @@ def test_miss_probe_library() -> None:
         and mp_035_candidate.get("non_authoritative") is True,
     )
 
+    # A QE-review blocked-action outcome probe stays advisory until QE promotes it.
+    mp_036_probe = next((p for p in library if p.get("probe_id") == "MP-036"), None)
+    check(
+        "blocked action outcome probe is present, unapproved and SHADOW on the NEGATIVE_BOUNDARY axis",
+        mp_036_probe is not None
+        and mp_036_probe["provenance"]["promotion_state"] == "VALIDATING"
+        and mpl.effective_status(mp_036_probe)[0] == "SHADOW"
+        and mp_036_probe["implied_dimension"]["axis"] == "NEGATIVE_BOUNDARY",
+    )
+    mp_036_candidate = next(
+        (
+            c for c in mpl.candidates_for([("E-X", "The drop is blocked so no broken reference is added")])
+            if c.get("probe_id") == "MP-036"
+        ),
+        None,
+    )
+    check(
+        "blocked action evidence emits the non-authoritative MP-036 candidate",
+        mp_036_candidate is not None
+        and mp_036_candidate.get("dimension") == "NEGATIVE_BOUNDARY"
+        and mp_036_candidate.get("status") == "INVESTIGATION_CANDIDATE"
+        and mp_036_candidate.get("non_authoritative") is True,
+    )
+
     # No match -> no learned candidate.
     check("no learned candidate without a match", mpl.candidates_for([("E9", "unrelated text")]) == [])
 
