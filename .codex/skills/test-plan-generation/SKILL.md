@@ -671,7 +671,10 @@ dropped silently:
    as before" AC, for the research-found regression closest to the reporter's scenario; its Source line names
    the documentation page, code or similar ticket. QE removed about half of the posted criteria written from
    shared consumers, similar UAC dimensions and research-found screens, and the removed ones bundled five or
-   six "still works" checks into one criterion (learning/rule-report.md, November 2026).
+   six "still works" checks into one criterion (learning/rule-report.md, November 2026). The cap counts every
+   criterion whose statement checks existing behaviour and whose Source line names no ticket, comment,
+   attachment or decision, however short (`uac_completeness_check.research_regression_problems`): QE also
+   removed every short one when a UAC had two to four of them.
 2. **TBD on the AC it governs** - a product decision is still open. In the full record it is also an
    `OQ-##` entry. Create a standalone AC for a TBD only when no AC governs it.
 3. **Full test plan or set aside** - a research finding that does not matter enough for the UAC is checked
