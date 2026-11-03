@@ -571,7 +571,8 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "similar_uacs": similar_uac_problems(evidence, uac, plan), "suggested_checks": suggested_problems(uac),
         "fix_basis": fix_basis_problems(evidence, uac, source),
         "excluded_tickets": excluded_ticket_problems(uac, source),
-        "size": size_problems(uac), "pre_existing_items": pre_existing_problems(evidence, uac, source),
+        "size": size_problems(uac), "research_regressions": research_regression_problems(uac, source),
+        "pre_existing_items": pre_existing_problems(evidence, uac, source),
         "action_variants": action_variant_problems(evidence, uac, source, plan),
         "output_setting": output_setting_problems(evidence, uac, source),
         "feature_design": feature_design_problems(evidence, uac, source),
@@ -1381,6 +1382,45 @@ def size_problems(uac_text: str) -> list[str]:
                             f"{MAX_CRITERION_WORDS} words (at most three short cases) and move the other cases to the "
                             "full test plan - QE removes the whole criterion when it bundles too much")
     return problems
+
+
+# --- research-found "still works as before" criteria ------------------------------------------------
+# The UAC keeps at most one "still works as before" criterion that our own research found (documentation, code,
+# a similar ticket, a shared consumer); the others are regression lines in the full test plan. Short ones pass the
+# size check, so the rule needs its own gate: on three recent UACs with two to four such criteria (13-37 words each)
+# QE removed every one, and 65 of 72 human UACs in the learning corpus have no "still works" line at all.
+MAX_RESEARCH_REGRESSION_ACS = 1
+_REGRESSION_STATEMENT = re.compile(
+    r"\bas before\b|\bsame as before\b|\bstill (?:works?|\w+s)\b|\bunchanged\b|\b(?:does|do) not change\b"
+    r"|\bstays? the same\b|\bkeeps? (?:its|their) (?:saved|existing|stored|current)\b", re.I)
+_TICKET_SOURCE = re.compile(r"\b(?:ticket|description|summary|comments?|attachments?|reporter|customer|decision|"
+                            r"product owner|PM|accepted UAC)\b", re.I)
+_SOURCE_LINE = re.compile(r"^\s*(?:\*\*)?Source:(?:\*\*)?\s*(.*)$", re.I | re.M)
+
+
+def research_regression_problems(uac_text: str, source: dict | None = None) -> list[str]:
+    """At most MAX_RESEARCH_REGRESSION_ACS "still works as before" criteria rest on our own research.
+
+    A criterion counts when its statement checks existing behaviour and its Source line names neither the ticket
+    (its key, description, a comment or an attachment) nor a decision. One the ticket asks for is not capped."""
+    own = str((source or {}).get("key") or "")
+    research = []
+    for number, body in sorted((int(n), b) for n, b in _AC_BLOCK.findall(uac_text or "")):
+        statement = body.strip().splitlines()[0] if body.strip() else ""
+        if not _REGRESSION_STATEMENT.search(statement):
+            continue
+        cited = " ".join(_SOURCE_LINE.findall(body))
+        if _TICKET_SOURCE.search(cited) or (own and re.search(rf"\b{re.escape(own)}\b", cited)):
+            continue
+        research.append(number)
+    if len(research) <= MAX_RESEARCH_REGRESSION_ACS:
+        return []
+    names = ", ".join(f"{n:02d}" for n in research)
+    return [f"Acceptance Criteria {names} are \"still works as before\" checks that only our own research found (their "
+            "Source line names no ticket, comment, attachment or decision); keep at most "
+            f"{MAX_RESEARCH_REGRESSION_ACS}, the one closest to the reporter's scenario, and move the others to the "
+            f"full test plan ({PLAN_FILE}) as regression lines - QE removed such criteria from every UAC that had "
+            "two or more"]
 
 
 # --- items made before the change ------------------------------------------------------------------

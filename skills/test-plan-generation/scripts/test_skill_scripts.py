@@ -8181,6 +8181,35 @@ def test_uac_size_and_pre_existing_items() -> None:
     check("a needlessly long case sub-point fails", any("a case sub-point of Acceptance Criteria 01 has" in p
                                                         for p in uc.size_problems(long_case)))
 
+    # research-found "still works as before" criteria: at most one, however short each one is.
+    stills = ("- Acceptance Criteria 01: Arguments saved in the JSON preset are used when generating JSON output.\n"
+              "  **Source:** GUIDES-1 description.\n"
+              "- Acceptance Criteria 02: JSON preset General tab settings still work as before.\n"
+              "  **Source:** Experience League, Output presets for JSON.\n"
+              "- Acceptance Criteria 03: Output history and the Publishing panel still show the final status as before.\n"
+              "  **Source:** shared consumer in the publishing code.\n"
+              "- Acceptance Criteria 04: Existing presets keep their saved settings.\n"
+              "  **Source:** similar UAC GUIDES-2.\n")
+    found = uc.research_regression_problems(stills, {"key": "GUIDES-1"})
+    check("three short research-found still-works criteria fail and are named",
+          len(found) == 1 and "Acceptance Criteria 02, 03, 04" in found[0])
+    one = stills.split("- Acceptance Criteria 03:")[0]
+    check("one research-found still-works criterion passes", uc.research_regression_problems(one, {"key": "GUIDES-1"}) == [])
+    asked = (stills.replace("Experience League, Output presets for JSON.", "GUIDES-1 comment from the reporter.")
+                   .replace("shared consumer in the publishing code.", "GUIDES-1 attachment."))
+    check("still-works criteria the ticket, a comment or an attachment asks for are not capped",
+          uc.research_regression_problems(asked, {"key": "GUIDES-1"}) == [])
+    own_key = stills.replace("Experience League, Output presets for JSON.", "GUIDES-1.")
+    own_found = uc.research_regression_problems(own_key, {"key": "GUIDES-1"})
+    check("a Source line naming only the ticket's own key counts as the ticket",
+          len(own_found) == 1 and "Acceptance Criteria 03, 04 are" in own_found[0])
+    core = ("- Acceptance Criteria 01: In the New Editor Author view, pasted paragraph text keeps its paragraph context.\n"
+            "  **Source:** Experience League, Author view.\n"
+            "- Acceptance Criteria 02: Native PDF templates show mainbooktitle and booktitlealt separately.\n"
+            "  **Source:** documentation.\n")
+    check("new-behaviour criteria with research sources are not still-works checks",
+          uc.research_regression_problems(core) == [])
+
     check("a missing pre-existing answer fails", any("pre_existing_items is missing" in p for p in uc.pre_existing_problems({}, short)))
     check("an AC answer that names a real criterion passes",
           uc.pre_existing_problems({"pre_existing_items": {"disposition": "AC", "ac": 2, "outcome": "UNCHANGED"}},
