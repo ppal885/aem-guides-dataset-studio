@@ -1366,6 +1366,55 @@
       "counterexamples_checked": false,
       "equivalence_key": "blocked-action-outcome",
       "status": "SHADOW"
+    },
+    {
+      "probe_id": "MP-037",
+      "pattern_class": "DISCOVERY_PATTERN",
+      "signal_pattern": {
+        "evidence_kind": "CONTRACT",
+        "match": [
+          "new column",
+          "new columns",
+          "add a column",
+          "add columns",
+          "additional column",
+          "additional columns",
+          "custom column",
+          "custom columns",
+          "metadata column",
+          "metadata columns",
+          "extra column",
+          "extra columns",
+          "show the metadata",
+          "display the metadata",
+          "metadata to be displayed",
+          "metadata to be visible",
+          "metadata field be visible",
+          "metadata fields be visible",
+          "visible in the search view",
+          "in the list view",
+          "in the table view",
+          "columns in the"
+        ],
+        "component_scope": ""
+      },
+      "implied_dimension": {
+        "axis": "STATE_PARTITION",
+        "candidate_template": "a new column or field shown in a list, table or search-results view: before writing ACs, list the column decisions a product owner settles in the UAC meeting and raise each one nobody has decided as a TBD: (1) which item types show it (each file type, including non-DITA assets such as images, media and PDF, and folders) and what a type that has no value shows; (2) an item with several values (how they are joined) and an item with an empty or missing value; (3) a configured column that repeats one the view already shows (title, file name): shown twice or not; (4) the column order, and how it fits any existing column-customization setting (do new fields appear there, and where); (5) sorting and filtering on the new column, per view; (6) each view that lists the same items: name the views that get the column and the views that must not (browse or insert dialogs) as Out of scope; keep one outcome per criterion and leave steps such as which files to open to the full test plan"
+      },
+      "provenance": {
+        "source": "HUMAN",
+        "delta_ids": [
+          "QE-EVAL-20261105-NEW-LIST-COLUMN-DECISIONS-01"
+        ],
+        "promotion_state": "VALIDATING",
+        "independent_case_count": 1
+      },
+      "abstraction_note": "Proposed from one human review of a posted UAC; not approved by QE, so it stays SHADOW. A UAC for showing configured metadata as new columns in several list views was written before the UAC meeting. The QE-owned version replaced most of it with decisions the ticket did not state: which item types show the column (non-DITA assets yes, folders show a dash), multi-value display, no duplicate of an already shown column, column order against the existing customize setting, sorting only on one view, and dialogs that must not show it. The draft had asked only about the settings source and order. Before promotion, QE should check counterexamples, for example a column added to a single fixed report with no customization setting.",
+      "normative_invariant": false,
+      "counterexamples_checked": false,
+      "equivalence_key": "new-list-column-decisions",
+      "status": "SHADOW"
     }
   ]
 }

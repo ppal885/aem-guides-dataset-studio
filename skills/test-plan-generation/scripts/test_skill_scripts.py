@@ -8209,6 +8209,29 @@ def test_uac_size_and_pre_existing_items() -> None:
             "  **Source:** documentation.\n")
     check("new-behaviour criteria with research sources are not still-works checks",
           uc.research_regression_problems(core) == [])
+    # A Source line that names the ticket counts only when the ticket mentions what the criterion checks.
+    column_source = {"key": "PROJ-100", "summary": "Show custom metadata columns in the search view",
+                     "description": "Show configured custom metadata in the search view. Custom search filters exist.",
+                     "comments": [{"body": "Reuse the Metadata report and Version History support."}]}
+    column_uac = ("- Acceptance Criteria 01: The search view shows each configured custom metadata column.\n"
+                  "  **Source:** PROJ-100 description.\n"
+                  "- Acceptance Criteria 02: Custom metadata still works as before in the Metadata report and the "
+                  "Version History dialog.\n"
+                  "  **Source:** PROJ-100 comment; shared report implementation.\n"
+                  "- Acceptance Criteria 03: Existing access permissions still control which files users see.\n"
+                  "  **Source:** PROJ-100 description; Experience League, Workspace settings.\n"
+                  "- Acceptance Criteria 04: Existing custom search filters still return the same matching files.\n"
+                  "  **Source:** PROJ-100 description.\n\n"
+                  "Out of scope:\n- Changes to custom search filter logic.\n")
+    column_found = uc.research_regression_problems(column_uac, column_source)
+    check("a still-works criterion on something the ticket names (its comment's report) passes",
+          not any("Criteria 02" in p for p in column_found))
+    check("a still-works criterion citing the ticket on something it never mentions is refused",
+          any("Acceptance Criteria 03 is a" in p and "never mention" in p for p in column_found))
+    check("a still-works criterion on an Out of scope item is flagged as a repeat",
+          any("Acceptance Criteria 04 is a" in p and "Out of scope item" in p for p in column_found))
+    check("with no ticket text a Source line naming the ticket is still trusted",
+          not any("Criteria 03" in p for p in uc.research_regression_problems(column_uac, {"key": "PROJ-100"})))
 
     check("a missing pre-existing answer fails", any("pre_existing_items is missing" in p for p in uc.pre_existing_problems({}, short)))
     check("an AC answer that names a real criterion passes",
@@ -8831,7 +8854,8 @@ def test_uac_completeness_check() -> None:
         (folder / "UAC.md").write_text(uc.UNCONFIRMED_NOTE + "\n\n" + uac, encoding="utf-8")
         (folder / "DOC_RESEARCH.json").write_text(json.dumps(doc_research), encoding="utf-8")
         (folder / "UAC_EVIDENCE.json").write_text(json.dumps(evidence), encoding="utf-8")
-        (folder / "jira-source.json").write_text(json.dumps({"summary": "Fix the preview", "description": ""}),
+        (folder / "jira-source.json").write_text(json.dumps({"summary": "Fix the preview",
+                                                             "description": "Publishing uses the same client."}),
                                                  encoding="utf-8")
         check("a complete folder passes the whole check", uc.check(folder) == [])
         (folder / "jira-source.json").write_text(json.dumps({"summary": "[On-prem]HOTFIX : Add PKCE"}),
@@ -14494,6 +14518,30 @@ def test_miss_probe_library() -> None:
         and mp_036_candidate.get("dimension") == "NEGATIVE_BOUNDARY"
         and mp_036_candidate.get("status") == "INVESTIGATION_CANDIDATE"
         and mp_036_candidate.get("non_authoritative") is True,
+    )
+
+    # A QE-review new-list-column probe stays advisory until QE promotes it.
+    mp_037_probe = next((p for p in library if p.get("probe_id") == "MP-037"), None)
+    check(
+        "new list column probe is present, unapproved and SHADOW on the STATE_PARTITION axis",
+        mp_037_probe is not None
+        and mp_037_probe["provenance"]["promotion_state"] == "VALIDATING"
+        and mpl.effective_status(mp_037_probe)[0] == "SHADOW"
+        and mp_037_probe["implied_dimension"]["axis"] == "STATE_PARTITION",
+    )
+    mp_037_candidate = next(
+        (
+            c for c in mpl.candidates_for([("E-X", "Customer wants their custom metadata fields to be visible in the search view")])
+            if c.get("probe_id") == "MP-037"
+        ),
+        None,
+    )
+    check(
+        "new list column evidence emits the non-authoritative MP-037 candidate",
+        mp_037_candidate is not None
+        and mp_037_candidate.get("dimension") == "STATE_PARTITION"
+        and mp_037_candidate.get("status") == "INVESTIGATION_CANDIDATE"
+        and mp_037_candidate.get("non_authoritative") is True,
     )
 
     # No match -> no learned candidate.
