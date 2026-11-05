@@ -1385,42 +1385,90 @@ def size_problems(uac_text: str) -> list[str]:
 
 
 # --- research-found "still works as before" criteria ------------------------------------------------
-# The UAC keeps at most one "still works as before" criterion that our own research found (documentation, code,
-# a similar ticket, a shared consumer); the others are regression lines in the full test plan. Short ones pass the
-# size check, so the rule needs its own gate: on three recent UACs with two to four such criteria (13-37 words each)
-# QE removed every one, and 65 of 72 human UACs in the learning corpus have no "still works" line at all.
+# A "still works as before" criterion that only our own research found (documentation, code, a similar ticket, a
+# shared consumer) is a regression line in the full test plan; the UAC keeps at most one, the one closest to the
+# reporter's scenario. Short ones pass the size check, so the rule needs its own gate: on three recent UACs with two
+# to four such criteria (13-37 words each) QE removed every one, and 65 of 72 human UACs in the learning corpus have
+# no "still works" line at all. A Source line that names the ticket must be true: QE also removed criteria that
+# cited the ticket although it never mentioned what they checked (access permissions on a column change), and
+# criteria that re-checked what the UAC's own Out of scope list already excluded.
 MAX_RESEARCH_REGRESSION_ACS = 1
 _REGRESSION_STATEMENT = re.compile(
-    r"\bas before\b|\bsame as before\b|\bstill (?:works?|\w+s)\b|\bunchanged\b|\b(?:does|do) not change\b"
+    r"\bas before\b|\bsame as before\b|\bstill\b|\bunchanged\b|\b(?:does|do) not change\b"
     r"|\bstays? the same\b|\bkeeps? (?:its|their) (?:saved|existing|stored|current)\b", re.I)
 _TICKET_SOURCE = re.compile(r"\b(?:ticket|description|summary|comments?|attachments?|reporter|customer|decision|"
                             r"product owner|PM|accepted UAC)\b", re.I)
 _SOURCE_LINE = re.compile(r"^\s*(?:\*\*)?Source:(?:\*\*)?\s*(.*)$", re.I | re.M)
+# Words that say nothing about WHAT a regression criterion checks, so they never make it match the ticket.
+_SUBJECT_FILLER = frozenset(
+    "a an the and or of in on at to for from with by as is are be its their it this that these those which who "
+    "when what where same existing still work works working before after again remain remains stay stays keep "
+    "keeps unchanged change changes changed do does not no only also each every all any can user users verify "
+    "check confirm ensure".split())
+
+
+def _subject_terms(text: str) -> set[str]:
+    """Two-word phrases that name a thing ("access permission", "version history"), plural folded to singular."""
+    words = [w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+             for w in re.findall(r"[a-z0-9]+", str(text or "").lower())]
+    words = [w for w in words if w not in _SUBJECT_FILLER and len(w) > 1]
+    if len(words) == 1:
+        return set(words) if len(words[0]) > 5 else set()
+    return {f"{a} {b}" for a, b in zip(words, words[1:])}
+
+
+def _regression_subject(statement: str) -> str:
+    """The part of a "still works" statement that names what still works: the words before the first marker."""
+    marker = _REGRESSION_STATEMENT.search(statement)
+    head = statement[:marker.start()] if marker else statement
+    return head if _subject_terms(head) else statement
 
 
 def research_regression_problems(uac_text: str, source: dict | None = None) -> list[str]:
     """At most MAX_RESEARCH_REGRESSION_ACS "still works as before" criteria rest on our own research.
 
-    A criterion counts when its statement checks existing behaviour and its Source line names neither the ticket
-    (its key, description, a comment or an attachment) nor a decision. One the ticket asks for is not capped."""
+    A criterion counts as research when its statement checks existing behaviour and its Source line names neither
+    the ticket (its key, description, a comment or an attachment) nor a decision. One that names the ticket must be
+    true: when the ticket's text is known and never mentions what the criterion checks (no phrase of its subject
+    appears in the summary, description or comments), it is refused. A "still works" criterion about something the
+    UAC already lists as Out of scope repeats that limit and belongs in the full test plan."""
     own = str((source or {}).get("key") or "")
-    research = []
+    ticket_text = _ticket_text(source) if source else ""
+    ticket_terms = _subject_terms(ticket_text) | {term for line in ticket_text.split(".")
+                                                  for word in line.split() for term in _subject_terms(word)}
+    out_of_scope = [(item, _subject_terms(item)) for item in out_of_scope_items(uac_text)]
+    research, miscited, repeated = [], [], []
     for number, body in sorted((int(n), b) for n, b in _AC_BLOCK.findall(uac_text or "")):
         statement = body.strip().splitlines()[0] if body.strip() else ""
         if not _REGRESSION_STATEMENT.search(statement):
             continue
+        subject = _subject_terms(_regression_subject(statement))
+        overlap = next((item for item, terms in out_of_scope if terms & subject), None)
+        if overlap:
+            repeated.append((number, overlap))
+            continue
         cited = " ".join(_SOURCE_LINE.findall(body))
         if _TICKET_SOURCE.search(cited) or (own and re.search(rf"\b{re.escape(own)}\b", cited)):
+            if not ticket_terms or subject & ticket_terms:
+                continue
+            miscited.append(number)
             continue
         research.append(number)
-    if len(research) <= MAX_RESEARCH_REGRESSION_ACS:
-        return []
-    names = ", ".join(f"{n:02d}" for n in research)
-    return [f"Acceptance Criteria {names} are \"still works as before\" checks that only our own research found (their "
-            "Source line names no ticket, comment, attachment or decision); keep at most "
-            f"{MAX_RESEARCH_REGRESSION_ACS}, the one closest to the reporter's scenario, and move the others to the "
-            f"full test plan ({PLAN_FILE}) as regression lines - QE removed such criteria from every UAC that had "
-            "two or more"]
+    problems = [f"Acceptance Criteria {number:02d} is a \"still works as before\" check on what the Out of scope item "
+                f"\"{item}\" already covers; drop the criterion and keep it as a regression line in the full test plan "
+                f"({PLAN_FILE})" for number, item in repeated]
+    problems += [f"Acceptance Criteria {number:02d} is a \"still works as before\" check whose Source line names the "
+                 "ticket, but the ticket's summary, description and comments never mention what it checks; name the "
+                 "documentation, code or similar ticket it really comes from, or move it to the full test plan "
+                 f"({PLAN_FILE}) as a regression line" for number in miscited]
+    if len(research) > MAX_RESEARCH_REGRESSION_ACS:
+        names = ", ".join(f"{n:02d}" for n in research)
+        problems.append(f"Acceptance Criteria {names} are \"still works as before\" checks that only our own research "
+                        "found (their Source line names no ticket, comment, attachment or decision); keep at most "
+                        f"{MAX_RESEARCH_REGRESSION_ACS}, the one closest to the reporter's scenario, and move the others "
+                        f"to the full test plan ({PLAN_FILE}) as regression lines - QE removed such criteria from every "
+                        "UAC that had two or more")
+    return problems
 
 
 # --- items made before the change ------------------------------------------------------------------
