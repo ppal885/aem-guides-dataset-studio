@@ -8230,6 +8230,25 @@ def test_uac_size_and_pre_existing_items() -> None:
           any("Acceptance Criteria 03 is a" in p and "never mention" in p for p in column_found))
     check("a still-works criterion on an Out of scope item is flagged as a repeat",
           any("Acceptance Criteria 04 is a" in p and "Out of scope item" in p for p in column_found))
+    talos_source = {"key": "PROJ-200", "summary": "Fix Save action",
+                    "description": "Show custom metadata columns in the list.", "comments": []}
+    save_uac = ("- Acceptance Criteria 01: Save still works as before.\n  **Source:** PROJ-200 summary.\n")
+    check("a short ticket-named subject such as Save is supported by the ticket",
+          uc.research_regression_problems(save_uac, talos_source) == [])
+    dialog_uac = ("- Acceptance Criteria 01: Custom metadata still works as before in the Version History dialog.\n"
+                  "  **Source:** PROJ-200 description.\n")
+    check("a still-works check in a dialog the ticket never names is refused",
+          any("Acceptance Criteria 01 is a" in p and "never mention" in p
+              for p in uc.research_regression_problems(dialog_uac, talos_source)))
+    report_uac = ("- Acceptance Criteria 01: Custom metadata still works as before in the Metadata report.\n"
+                  "  **Source:** Experience League, Metadata report.\n\n"
+                  "Out of scope:\n- Changes to custom metadata filtering.\n")
+    check("one shared two-word phrase with an Out of scope item is not a repeat",
+          not any("Out of scope item" in p for p in uc.research_regression_problems(report_uac, talos_source)))
+    decided_uac = ("- Acceptance Criteria 01: Existing access permissions still control which files users see.\n"
+                   "  **Source:** Product owner decision, UAC meeting.\n")
+    check("a product owner decision needs no mention in the ticket's text",
+          uc.research_regression_problems(decided_uac, talos_source) == [])
     check("with no ticket text a Source line naming the ticket is still trusted",
           not any("Criteria 03" in p for p in uc.research_regression_problems(column_uac, {"key": "PROJ-100"})))
 
@@ -14520,29 +14539,12 @@ def test_miss_probe_library() -> None:
         and mp_036_candidate.get("non_authoritative") is True,
     )
 
-    # A QE-review new-list-column probe stays advisory until QE promotes it.
-    mp_037_probe = next((p for p in library if p.get("probe_id") == "MP-037"), None)
-    check(
-        "new list column probe is present, unapproved and SHADOW on the STATE_PARTITION axis",
-        mp_037_probe is not None
-        and mp_037_probe["provenance"]["promotion_state"] == "VALIDATING"
-        and mpl.effective_status(mp_037_probe)[0] == "SHADOW"
-        and mp_037_probe["implied_dimension"]["axis"] == "STATE_PARTITION",
-    )
-    mp_037_candidate = next(
-        (
-            c for c in mpl.candidates_for([("E-X", "Customer wants their custom metadata fields to be visible in the search view")])
-            if c.get("probe_id") == "MP-037"
-        ),
-        None,
-    )
-    check(
-        "new list column evidence emits the non-authoritative MP-037 candidate",
-        mp_037_candidate is not None
-        and mp_037_candidate.get("dimension") == "STATE_PARTITION"
-        and mp_037_candidate.get("status") == "INVESTIGATION_CANDIDATE"
-        and mp_037_candidate.get("non_authoritative") is True,
-    )
+    # The new-list-column probe (MP-035) also catches "visible in the search view" wording, and MP-037 is gone.
+    check("the duplicate new-list-column probe MP-037 is not in the library",
+          not any(p.get("probe_id") == "MP-037" for p in library))
+    mp_035_ids = [c.get("probe_id") for c in mpl.candidates_for(
+        [("E-X", "Customer wants their custom fields to be visible in the search view")])]
+    check("visible-in-the-search-view evidence emits MP-035 once", mp_035_ids.count("MP-035") == 1)
 
     # No match -> no learned candidate.
     check("no learned candidate without a match", mpl.candidates_for([("E9", "unrelated text")]) == [])

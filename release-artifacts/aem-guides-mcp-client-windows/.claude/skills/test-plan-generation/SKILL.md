@@ -676,9 +676,10 @@ dropped silently:
    attachment or decision, however short (`uac_completeness_check.research_regression_problems`): QE also
    removed every short one when a UAC had two to four of them. A Source line that names the ticket must be
    true: a "still works" criterion that cites the ticket although its summary, description and comments never
-   mention what it checks (access permissions on a ticket about new columns) is refused, and so is one that
-   re-checks what the UAC's own Out of scope list already excludes; both are regression lines in the full test
-   plan. A "still works" criterion the ticket does name (the report or dialog a comment says the solution
+   mention what it checks, or the report or dialog where it checks it (access permissions on a ticket about new
+   columns), is refused, and so is one that re-checks what the UAC's own Out of scope list already excludes; both
+   are regression lines in the full test plan. An attachment, a product decision or an accepted UAC is its own
+   authority and need not appear in the ticket's text. A "still works" criterion the ticket does name (the report or dialog a comment says the solution
    reuses) stays one line, with no step-by-step sub-points.
 2. **TBD on the AC it governs** - a product decision is still open. In the full record it is also an
    `OQ-##` entry. Create a standalone AC for a TBD only when no AC governs it.

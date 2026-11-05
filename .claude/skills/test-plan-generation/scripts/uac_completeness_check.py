@@ -1398,6 +1398,8 @@ _REGRESSION_STATEMENT = re.compile(
     r"|\bstays? the same\b|\bkeeps? (?:its|their) (?:saved|existing|stored|current)\b", re.I)
 _TICKET_SOURCE = re.compile(r"\b(?:ticket|description|summary|comments?|attachments?|reporter|customer|decision|"
                             r"product owner|PM|accepted UAC)\b", re.I)
+# Sources with their own authority: what they decide need not appear in the ticket's text.
+_AUTHORITY_SOURCE = re.compile(r"\b(?:attachments?|decision|product owner|PM|accepted UAC|UAC meeting)\b", re.I)
 _SOURCE_LINE = re.compile(r"^\s*(?:\*\*)?Source:(?:\*\*)?\s*(.*)$", re.I | re.M)
 # Words that say nothing about WHAT a regression criterion checks, so they never make it match the ticket.
 _SUBJECT_FILLER = frozenset(
@@ -1413,25 +1415,31 @@ def _subject_terms(text: str) -> set[str]:
              for w in re.findall(r"[a-z0-9]+", str(text or "").lower())]
     words = [w for w in words if w not in _SUBJECT_FILLER and len(w) > 1]
     if len(words) == 1:
-        return set(words) if len(words[0]) > 5 else set()
+        return set(words) if len(words[0]) > 2 else set()
     return {f"{a} {b}" for a, b in zip(words, words[1:])}
 
 
-def _regression_subject(statement: str) -> str:
-    """The part of a "still works" statement that names what still works: the words before the first marker."""
+def _regression_parts(statement: str) -> tuple[set[str], set[str]]:
+    """What still works (the words before the first marker) and where it is checked (the words after it).
+
+    "Custom metadata still works as before in the Version History dialog" checks custom metadata (head) in the
+    Version History dialog (tail); the ticket has to support both."""
     marker = _REGRESSION_STATEMENT.search(statement)
-    head = statement[:marker.start()] if marker else statement
-    return head if _subject_terms(head) else statement
+    if not marker:
+        return _subject_terms(statement), set()
+    head, tail = _subject_terms(statement[:marker.start()]), _subject_terms(statement[marker.end():])
+    return (head, tail) if head else (tail, set())
 
 
 def research_regression_problems(uac_text: str, source: dict | None = None) -> list[str]:
     """At most MAX_RESEARCH_REGRESSION_ACS "still works as before" criteria rest on our own research.
 
     A criterion counts as research when its statement checks existing behaviour and its Source line names neither
-    the ticket (its key, description, a comment or an attachment) nor a decision. One that names the ticket must be
-    true: when the ticket's text is known and never mentions what the criterion checks (no phrase of its subject
-    appears in the summary, description or comments), it is refused. A "still works" criterion about something the
-    UAC already lists as Out of scope repeats that limit and belongs in the full test plan."""
+    the ticket (its key, description, a comment or an attachment) nor a decision. One that cites the ticket's text
+    must be true: when that text is known and never mentions what the criterion checks, or where it checks it (the
+    report or dialog after "still works"), it is refused. An attachment, a decision or an accepted UAC is its own
+    authority and needs no mention in the ticket's text. A "still works" criterion that shares a three-word phrase
+    with an Out of scope item repeats that limit and belongs in the full test plan."""
     own = str((source or {}).get("key") or "")
     ticket_text = _ticket_text(source) if source else ""
     ticket_terms = _subject_terms(ticket_text) | {term for line in ticket_text.split(".")
@@ -1442,14 +1450,20 @@ def research_regression_problems(uac_text: str, source: dict | None = None) -> l
         statement = body.strip().splitlines()[0] if body.strip() else ""
         if not _REGRESSION_STATEMENT.search(statement):
             continue
-        subject = _subject_terms(_regression_subject(statement))
-        overlap = next((item for item, terms in out_of_scope if terms & subject), None)
+        head, tail = _regression_parts(statement)
+        # A repeat shares a three-word phrase with the excluded item (two of its two-word phrases), or the whole
+        # item when it has only one: "custom metadata" alone does not make a report check repeat "custom metadata
+        # filtering".
+        overlap = next((item for item, terms in out_of_scope
+                        if len(terms & (head | tail)) >= min(2, len(terms)) and terms & (head | tail)), None)
         if overlap:
             repeated.append((number, overlap))
             continue
         cited = " ".join(_SOURCE_LINE.findall(body))
+        if _AUTHORITY_SOURCE.search(cited):
+            continue
         if _TICKET_SOURCE.search(cited) or (own and re.search(rf"\b{re.escape(own)}\b", cited)):
-            if not ticket_terms or subject & ticket_terms:
+            if not ticket_terms or (head & ticket_terms and (not tail or tail & ticket_terms)):
                 continue
             miscited.append(number)
             continue
