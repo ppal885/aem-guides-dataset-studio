@@ -375,11 +375,27 @@ def build_learning_chunk_from_enriched(enriched: JiraEnrichedDocument) -> dict[s
     return {"chunk_type": LEARNING_CHUNK_TYPE, "chunk_text": document, **metadata}
 
 
+_CHUNK_HEADER_RE = re.compile(r"^\[(?:[^\]\n|]+ \| [^\]\n]+|Enrichment: [^\n]*)\]$")
+
+
 def _chunk_body(document: str) -> str:
+    """Strip the indexing header from a stored chunk document, keeping the whole body.
+
+    Smart rows are ``[KEY | type]\\n<embed prefix>\\n\\n<body>`` or ``[KEY | type]\\n\\n<body>``; legacy
+    rows are ``[Enrichment: ...]\\n\\n<body>`` or just ``<body>``. Only a recognised header block
+    is removed — a document without one is returned whole instead of losing its first paragraph.
+    """
     text = str(document or "").strip()
-    if "\n\n" in text:
-        return text.split("\n\n", 1)[1].strip()
-    return text
+    first_line = text.split("\n", 1)[0].strip()
+    if not _CHUNK_HEADER_RE.match(first_line):
+        return text
+    head, sep, body = text.partition("\n\n")
+    if not sep:
+        return text[len(first_line):].strip()
+    # The header block is the header line plus at most one single-line embed prefix.
+    if head.count("\n") > 1:
+        return text[len(first_line):].strip()
+    return body.strip()
 
 
 def _json_list(value: Any) -> list[str]:

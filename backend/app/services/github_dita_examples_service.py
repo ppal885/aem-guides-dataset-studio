@@ -311,23 +311,73 @@ def _iter_dita_files_from_zip(
     return dita_files
 
 
+def _markup_aware_cut(window: str) -> int:
+    """Best cut position in ``window`` (back half only): never inside a tag, preferring the end
+    of a closing tag on its own line, then any tag end at a line break, a blank line, a line break,
+    any tag end, and finally whitespace outside a tag. Returns -1 when none is found."""
+    floor = len(window) // 2
+    candidates: list[int] = []
+    closing = [m.end() for m in re.finditer(r"</[A-Za-z][\w:.-]*\s*>\s*\n", window) if m.end() > floor]
+    if closing:
+        candidates.append(closing[-1])
+    for pattern in (">\n", "\n\n", "\n", ">"):
+        pos = window.rfind(pattern, floor)
+        if pos > 0:
+            candidates.append(pos + len(pattern))
+            break
+    for cut in candidates:
+        if window.rfind("<", 0, cut) <= window.rfind(">", 0, cut):
+            return cut
+    for match in reversed(list(re.finditer(r"\s+", window))):
+        cut = match.end()
+        if cut <= floor:
+            break
+        if window.rfind("<", 0, cut) <= window.rfind(">", 0, cut):
+            return cut
+    return -1
+
+
 def _chunk_document(content: str) -> list[str]:
+    """Split a DITA file into chunks of at most ``CHUNK_SIZE`` chars at markup boundaries.
+
+    Cuts land between elements or lines, never inside a tag, and consecutive chunks overlap by
+    about ``CHUNK_OVERLAP`` chars. Progress is guaranteed even when ``GITHUB_DITA_CHUNK_OVERLAP``
+    is configured at or above ``GITHUB_DITA_CHUNK_SIZE`` (that used to loop forever).
+    """
     normalized = (content or "").strip()
     if not normalized:
         return []
-    if len(normalized) <= CHUNK_SIZE:
+    size = max(1, CHUNK_SIZE)
+    if len(normalized) <= size:
         return [normalized]
+    overlap = max(0, min(CHUNK_OVERLAP, size // 2))
     chunks: list[str] = []
     start = 0
     while start < len(normalized):
-        end = min(len(normalized), start + CHUNK_SIZE)
+        end = min(len(normalized), start + size)
+        if end < len(normalized):
+            cut = _markup_aware_cut(normalized[start:end])
+            if cut > 0:
+                end = start + cut
         chunk = normalized[start:end].strip()
         if chunk:
             chunks.append(chunk)
         if end >= len(normalized):
             break
-        start = max(0, end - CHUNK_OVERLAP)
+        next_start = max(end - overlap, start + 1)
+        # Begin the overlap at a tag or line start where one is close, not mid-token.
+        tag_start = normalized.find("<", next_start, end)
+        start = tag_start if tag_start != -1 else next_start
     return chunks
+
+
+def _with_chunk_context(chunk: str, *, path: str, title: str, index: int, total: int) -> str:
+    """Later chunks of a file start mid-document; label them with the file they belong to."""
+    if total <= 1 or index == 0:
+        return chunk
+    label = (title or "").strip() or path
+    label = label.replace("--", "-")
+    return f"<!-- {label} ({path}), part {index + 1} of {total} -->\n{chunk}"
 
 
 def _registry_key(tenant_id: str, source: GitHubTreeSource) -> str:
@@ -418,11 +468,18 @@ async def index_github_dita_examples(
 
     chunk_payloads: list[dict] = []
     for dita_file in dita_files:
-        for chunk_index, chunk in enumerate(_chunk_document(dita_file.content)):
+        file_chunks = _chunk_document(dita_file.content)
+        for chunk_index, chunk in enumerate(file_chunks):
             chunk_payloads.append(
                 {
                     "path": dita_file.path,
-                    "content": chunk,
+                    "content": _with_chunk_context(
+                        chunk,
+                        path=dita_file.path,
+                        title=dita_file.title,
+                        index=chunk_index,
+                        total=len(file_chunks),
+                    ),
                     "topic_type": dita_file.topic_type,
                     "title": dita_file.title,
                     "chunk_index": chunk_index,

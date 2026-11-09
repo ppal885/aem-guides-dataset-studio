@@ -49,6 +49,21 @@ SMART_JIRA_CHUNK_TYPES: frozenset[str] = frozenset(
 
 _MAX_CHUNK_CHARS = int(os.getenv("JIRA_SMART_CHUNK_MAX_CHARS", "4000"))
 _PROBLEM_SLICE = int(os.getenv("JIRA_SMART_PROBLEM_SLICE", "2800"))
+# Overlap between consecutive slices of one long field, so a sentence cut at a boundary is still
+# whole in one of the two chunks.
+_SLICE_OVERLAP = int(os.getenv("JIRA_SMART_SLICE_OVERLAP", "200"))
+# Safety cap on continuation parts per field; anything beyond is flagged ``chunk_truncated``.
+_MAX_PARTS_PER_FIELD = int(os.getenv("JIRA_SMART_MAX_PARTS_PER_FIELD", "24"))
+# Per-clause UAC chunk types get content-addressed ids so a re-index never re-points an id at a
+# different clause (saved evidence references chunk ids).
+_STABLE_ID_CHUNK_TYPES: frozenset[str] = frozenset(
+    {
+        "historical_uac_clause_chunk",
+        "historical_uac_out_of_scope_chunk",
+        "historical_uac_reference_chunk",
+        "historical_uac_context_chunk",
+    }
+)
 _COMMENT_MIN_LEN = 40
 _MEANINGFUL_HINTS = (
     "verified",
@@ -150,35 +165,101 @@ def _core_fields(enriched: JiraEnrichedDocument) -> dict[str, Any]:
     }
 
 
+def split_text_slices(text: str, limit: int, *, overlap: int = _SLICE_OVERLAP) -> list[str]:
+    """Split ``text`` into slices of at most ``limit`` chars that cover all of it.
+
+    Cuts prefer a paragraph break, then a line break, then a sentence end, then whitespace, in the
+    back half of the window; consecutive slices overlap by about ``overlap`` chars. Always makes
+    progress, whatever ``overlap`` is configured to.
+    """
+    text = (text or "").strip()
+    limit = max(1, int(limit))
+    if len(text) <= limit:
+        return [text] if text else []
+    overlap = max(0, min(int(overlap), limit // 2))
+    slices: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + limit)
+        if end < len(text):
+            window = text[start:end]
+            floor = len(window) // 2
+            cut = -1
+            for sep in ("\n\n", "\n", ". ", "? ", "! ", "; ", " "):
+                pos = window.rfind(sep, floor)
+                if pos > 0:
+                    cut = pos + len(sep)
+                    break
+            if cut > 0:
+                end = start + cut
+        piece = text[start:end].strip()
+        if piece:
+            slices.append(piece)
+        if end >= len(text):
+            break
+        next_start = max(end - overlap, start + 1)
+        # Start the overlap on a word boundary rather than mid-word.
+        space = text.find(" ", next_start, end)
+        start = space + 1 if 0 <= space < end - 1 else next_start
+    return slices
+
+
 def _append_chunk(
     out: list[dict[str, Any]],
     *,
     chunk_type: str,
     chunk_text: str,
     enriched: JiraEnrichedDocument,
-) -> None:
+) -> list[dict[str, Any]]:
+    """Append one chunk, or numbered continuation parts when the text exceeds the chunk limit.
+
+    Returns the appended rows (empty when the text is blank) so callers attach metadata to
+    exactly these rows rather than to ``out[-1]``, which would be a previous chunk after a skip.
+    """
     text = (chunk_text or "").strip()
     if not text:
-        return
-    row = {"chunk_type": chunk_type, "chunk_text": text[:_MAX_CHUNK_CHARS], **_core_fields(enriched)}
-    out.append(row)
+        return []
+    if len(text) <= _MAX_CHUNK_CHARS:
+        row = {"chunk_type": chunk_type, "chunk_text": text, **_core_fields(enriched)}
+        out.append(row)
+        return [row]
+    header_room = 24
+    parts = split_text_slices(text, _MAX_CHUNK_CHARS - header_room)
+    truncated = len(parts) > _MAX_PARTS_PER_FIELD
+    parts = parts[:_MAX_PARTS_PER_FIELD]
+    rows: list[dict[str, Any]] = []
+    for number, part in enumerate(parts, start=1):
+        row = {
+            "chunk_type": chunk_type,
+            "chunk_text": f"[part {number}/{len(parts)}]\n{part}",
+            **_core_fields(enriched),
+            "chunk_part": number,
+            "chunk_part_count": len(parts),
+            "chunk_truncated": truncated and number == len(parts),
+        }
+        out.append(row)
+        rows.append(row)
+    return rows
 
 
 def _extract_repro_from_description(description: str) -> str:
     d = description or ""
     m = re.search(
-        r"(?is)(?:steps?\s+to\s+reproduce|repro(?:duction)?\s+steps?)\s*[:.]?\s*(.+?)(?=(?:\n\n(?:expected|actual))|(?:\Z))",
+        r"(?is)\b(?:steps?\s+to\s+reproduce|repro(?:duction)?\s+steps?)\s*[:.]?\s*(.+?)"
+        # Stop at the next section heading on its own line, blank line before it or not.
+        r"(?=\n\s*(?:expected|actual|current|observed|result|environment|workaround|notes?|"
+        r"acceptance|root\s+cause|additional|attachments?)\b(?:[ \t]+\w+){0,2}[ \t]*(?::|\n|\Z)|\Z)",
         d,
     )
     if m:
-        return m.group(1).strip()[:3500]
+        return m.group(1).strip()
     # Numbered list heuristic
     lines = []
     for ln in d.splitlines():
         if re.match(r"^\s*\d+[\).\s]", ln):
             lines.append(ln.strip())
     if len(lines) >= 2:
-        return "\n".join(lines[:40])[:3500]
+        return "\n".join(lines)
     return ""
 
 
@@ -187,12 +268,18 @@ def _problem_body_without_expected_actual(description: str, enriched: JiraEnrich
     d = (description or "").strip()
     if not d:
         return ""
-    # Strip leading expected/actual paragraphs if duplicated in enriched fields
+    # Remove expected/actual text already surfaced in its own chunk: every occurrence, and
+    # tolerant of whitespace/line-break differences between the field and the description.
     for block in (enriched.expected_behavior, enriched.actual_behavior):
         b = (block or "").strip()
-        if len(b) > 30 and b in d:
-            d = d.replace(b, "", 1).strip()
-    d = re.sub(r"\s+", " ", d)
+        if len(b) <= 30:
+            continue
+        pattern = r"\s+".join(re.escape(token) for token in b.split())
+        d = re.sub(pattern, "", d).strip()
+    # Keep line structure (numbered steps, lists); only squeeze runs of spaces and blank lines.
+    d = re.sub(r"[ \t\f\v]+", " ", d)
+    d = re.sub(r" *\n *", "\n", d)
+    d = re.sub(r"\n{3,}", "\n\n", d)
     return d.strip()
 
 
@@ -231,22 +318,30 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
     if e.symptoms:
         prob_lines.append("Symptoms: " + "; ".join(s.strip() for s in e.symptoms[:8] if s.strip()))
     body = _problem_body_without_expected_actual(e.description, e)
-    if body:
-        first = body[:_PROBLEM_SLICE] + ("…" if len(body) > _PROBLEM_SLICE else "")
-        prob_lines.append(first)
+    # Overlapping slices over the whole description (previously only the first two slices were
+    # kept and the rest was dropped).
+    body_slices = split_text_slices(body, _PROBLEM_SLICE)
+    problem_truncated = len(body_slices) > _MAX_PARTS_PER_FIELD
+    body_slices = body_slices[:_MAX_PARTS_PER_FIELD]
+    if body_slices:
+        prob_lines.append(body_slices[0])
     if prob_lines:
         _append_chunk(out, chunk_type="problem_chunk", chunk_text="\n".join(prob_lines), enriched=e)
-    if body and len(body) > _PROBLEM_SLICE:
-        rest = body[_PROBLEM_SLICE : _PROBLEM_SLICE * 2].strip()
-        if rest:
-            _append_chunk(out, chunk_type="problem_chunk", chunk_text=rest, enriched=e)
+    for number, rest in enumerate(body_slices[1:], start=2):
+        for row in _append_chunk(
+            out,
+            chunk_type="problem_chunk",
+            chunk_text=f"Description continued ({number}/{len(body_slices)}):\n{rest}",
+            enriched=e,
+        ):
+            row["chunk_truncated"] = problem_truncated and number == len(body_slices)
 
     # 3) expected / actual
     ea_lines = []
     if (e.expected_behavior or "").strip():
-        ea_lines.append("Expected: " + e.expected_behavior.strip()[:2000])
+        ea_lines.append("Expected: " + e.expected_behavior.strip())
     if (e.actual_behavior or "").strip():
-        ea_lines.append("Actual: " + e.actual_behavior.strip()[:2000])
+        ea_lines.append("Actual: " + e.actual_behavior.strip())
     if ea_lines:
         _append_chunk(out, chunk_type="expected_actual_chunk", chunk_text="\n".join(ea_lines), enriched=e)
 
@@ -255,7 +350,7 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
         _append_chunk(
             out,
             chunk_type="comment_chunk",
-            chunk_text="Discussion:\n" + e.comments_digest.strip()[:_MAX_CHUNK_CHARS],
+            chunk_text="Discussion:\n" + e.comments_digest.strip(),
             enriched=e,
         )
 
@@ -275,12 +370,13 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
     if qa_bits:
         _append_chunk(out, chunk_type="qa_signal_chunk", chunk_text=" | ".join(qa_bits), enriched=e)
 
-    # 7) customer signal
-    if e.customer_names:
+    # 7) customer signal — cleaned tokens only, matching the ``enrich_customers`` metadata
+    customers = clean_customer_tokens(list(e.customer_names or []))
+    if customers:
         _append_chunk(
             out,
             chunk_type="customer_signal_chunk",
-            chunk_text="Customers: " + ", ".join(e.customer_names) + " | labels: " + ", ".join(e.labels[:20]),
+            chunk_text="Customers: " + ", ".join(customers) + " | labels: " + ", ".join(e.labels[:20]),
             enriched=e,
         )
 
@@ -307,13 +403,13 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
         comment_documents=[e.comments_digest],
     )
     if resolved_uac_text:
-        _append_chunk(
+        for row in _append_chunk(
             out,
             chunk_type="acceptance_criteria_chunk",
             chunk_text="Acceptance criteria:\n" + resolved_uac_text,
             enriched=e,
-        )
-        out[-1]["uac_source_origin"] = resolved_uac_source
+        ):
+            row["uac_source_origin"] = resolved_uac_source
         uac_root_cause, uac_root_cause_source = extract_explicit_root_cause_evidence(
             field_value=e.root_cause,
             comment_documents=[e.comments_digest],
@@ -341,19 +437,19 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
         )
         if uac_analysis is not None:
             for uac_chunk in build_historical_uac_chunks(uac_analysis):
-                _append_chunk(
+                uac_meta = {
+                    key: value for key, value in uac_chunk.items() if key not in {"chunk_type", "chunk_text"}
+                }
+                for row in _append_chunk(
                     out,
                     chunk_type=str(uac_chunk["chunk_type"]),
                     chunk_text=str(uac_chunk["chunk_text"]),
                     enriched=e,
-                )
-                out[-1].update(
-                    {
-                        key: value
-                        for key, value in uac_chunk.items()
-                        if key not in {"chunk_type", "chunk_text"}
-                    }
-                )
+                ):
+                    row.update(uac_meta)
+                    if row.get("chunk_truncated"):
+                        # The stored contract no longer holds every clause.
+                        row["uac_contract_complete"] = False
     elif resolved_uac_source == "jira_no_uac_sentinel" or (
         e.acceptance_criteria.strip() and is_no_uac_sentinel(e.acceptance_criteria)
     ):
@@ -405,13 +501,14 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
 
     learning = build_learning_chunk_from_enriched(e)
     if learning:
-        _append_chunk(
+        learning_meta = {key: value for key, value in learning.items() if key not in {"chunk_type", "chunk_text"}}
+        for row in _append_chunk(
             out,
             chunk_type=str(learning["chunk_type"]),
             chunk_text=str(learning["chunk_text"]),
             enriched=e,
-        )
-        out[-1].update({key: value for key, value in learning.items() if key not in {"chunk_type", "chunk_text"}})
+        ):
+            row.update(learning_meta)
 
     return out
 
@@ -462,6 +559,7 @@ def smart_chunks_to_chroma_rows(
 
     rows: list[dict[str, Any]] = []
     counts: dict[str, int] = {}
+    used_ids: set[str] = set()
     for sc in smart_chunks:
         ctype = str(sc.get("chunk_type") or "unknown").strip()
         body = str(sc.get("chunk_text") or "").strip()
@@ -469,6 +567,21 @@ def smart_chunks_to_chroma_rows(
             continue
         idx = counts.get(ctype, 0)
         counts[ctype] = idx + 1
+        id_suffix = str(idx)
+        stable_key = str(sc.get("uac_clause_stable_key") or "")
+        if ctype in _STABLE_ID_CHUNK_TYPES and stable_key:
+            # ``jira:KEY:uac:<digest>`` -> ``<digest>``; content-addressed, so inserting a clause
+            # does not shift the ids of the clauses after it.
+            id_suffix = stable_key.rsplit(":", 1)[-1]
+            if sc.get("chunk_part"):
+                id_suffix = f"{id_suffix}-p{int(sc['chunk_part'])}"
+        cid = f"{issue_key}::{ctype}::{id_suffix}"
+        if cid in used_ids:  # identical clause text twice in one UAC
+            dup = 2
+            while f"{cid}-{dup}" in used_ids:
+                dup += 1
+            cid = f"{cid}-{dup}"
+        used_ids.add(cid)
 
         doc_body = body[:12000]
         if embed_prefix:
@@ -556,7 +669,9 @@ def smart_chunks_to_chroma_rows(
         ):
             meta[key] = int(sc.get(key) or 0)
         meta["uac_dimensions"] = _json_meta(sc.get("uac_dimensions") or [])
-        cid = f"{issue_key}::{ctype}::{idx}"
+        meta["chunk_part"] = int(sc.get("chunk_part") or 0)
+        meta["chunk_part_count"] = int(sc.get("chunk_part_count") or 0)
+        meta["chunk_truncated"] = bool(sc.get("chunk_truncated") or False)
         rows.append({"chunk_id": cid, "document": doc, "metadata": meta})
     return rows
 

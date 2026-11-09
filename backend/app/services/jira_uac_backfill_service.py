@@ -91,10 +91,10 @@ def has_indexable_exact_uac_provenance(issue: JiraEnrichedIssue) -> bool:
 
 
 def _chunk_body(document: str) -> str:
-    text = str(document or "").strip()
-    if "\n\n" in text:
-        text = text.split("\n\n", 1)[1].strip()
-    return text
+    # Shared with the learning backfill: strips only a recognised ``[KEY | type]`` header block.
+    from app.services.jira_learning_chunk_service import _chunk_body as strip_chunk_header
+
+    return strip_chunk_header(document)
 
 
 def _acceptance_criteria_from_sql(
