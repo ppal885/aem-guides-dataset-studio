@@ -48,12 +48,18 @@ def build_retrieval_bundle(intent: IntentRecord, spec: RecipeSpec, user_text: st
 
     aem_queries: list[str] = []
     if intent.domain_signals.aem_guides or intent.domain_signals.web_editor:
-        aem_queries.extend(
-            [
-                "AEM Guides DITA table formatting",
-                "XML Documentation tables editor alignment",
-            ]
-        )
+        # The product-docs query follows the request. It used to be fixed to table formatting,
+        # so a keyref or publishing question pulled table documentation.
+        topic = " ".join(parts).strip() or (user_text or "").strip()[:300]
+        if topic:
+            aem_queries.append(f"AEM Guides {topic}"[:500])
+        if "table" in intent.required_dita_patterns or "table" in (spec.constructs or []):
+            aem_queries.extend(
+                [
+                    "AEM Guides DITA table formatting",
+                    "XML Documentation tables editor alignment",
+                ]
+            )
 
     element_focus = list(spec.retrieval_element_hints or [])
     for p in intent.required_dita_patterns:
@@ -132,6 +138,20 @@ def fetch_rag_context_for_bundle(
     )
 
 
+def drop_negative_term_docs(docs: list[dict], negative_terms: list[str], user_text: str = "") -> list[dict]:
+    """Remove docs about a bundle's negative terms, unless the user asked about that term."""
+    lower_user = (user_text or "").lower()
+    active = [t.lower() for t in (negative_terms or []) if t and t.lower() not in lower_user]
+    if not active:
+        return list(docs or [])
+    return [
+        d for d in (docs or [])
+        if not any(
+            t in f"{d.get('title') or ''} {d.get('snippet') or d.get('content') or ''}".lower() for t in active
+        )
+    ]
+
+
 def maybe_fetch_aem_docs(query_bundle: RetrievalQueryBundle, user_text: str) -> str:
     """Optional AEM Guides RAG block when domain signals warrant it."""
     if not query_bundle.aem_guides_queries:
@@ -145,7 +165,11 @@ def maybe_fetch_aem_docs(query_bundle: RetrievalQueryBundle, user_text: str) -> 
         from app.services.doc_retriever_service import retrieve_relevant_docs, format_docs_for_prompt
 
         q = " ".join(query_bundle.aem_guides_queries[:2])
-        docs = retrieve_relevant_docs(q[:2000], k=2, max_snippet_chars=400)
+        docs = drop_negative_term_docs(
+            retrieve_relevant_docs(q[:2000], k=4, max_snippet_chars=400),
+            query_bundle.negative_terms,
+            user_text,
+        )[:2]
         if docs:
             return "\n\nAEM GUIDES DOCS:\n" + format_docs_for_prompt(docs)
     except Exception as e:

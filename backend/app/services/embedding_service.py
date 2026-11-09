@@ -40,6 +40,42 @@ _USE_AZURE_EMBEDDING = os.getenv("USE_AZURE_EMBEDDING", "false").lower() in ("1"
 EMBED_DIM = 384  # all-MiniLM-L6-v2 output dimension; Azure ada-002 is 1536
 
 
+# ada-002 / text-embedding-3 accept 8191 tokens per input; ~3 chars/token keeps a safe margin.
+_AZURE_MAX_INPUT_CHARS = 24000
+_AZURE_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_AZURE_MAX_ATTEMPTS = 3
+_AZURE_MAX_BACKOFF_SECONDS = 10.0
+
+
+def _retry_delay_seconds(response, attempt: int) -> float:
+    headers = getattr(response, "headers", None)
+    getter = getattr(headers, "get", None)  # requests uses a case-insensitive mapping
+    retry_after = getter("Retry-After") if callable(getter) else None
+    try:
+        delay = float(retry_after) if retry_after is not None else 2.0 ** attempt
+    except (TypeError, ValueError):
+        delay = 2.0 ** attempt
+    return max(0.0, min(delay, _AZURE_MAX_BACKOFF_SECONDS))
+
+
+def _post_azure_with_retry(requests_module, url: str, batch: list[str]):
+    """POST one batch; retry only rate limits and transient server errors (bounded)."""
+    import time
+
+    response = None
+    for attempt in range(_AZURE_MAX_ATTEMPTS):
+        response = requests_module.post(
+            url, headers={"api-key": _AZURE_EMBED_KEY, "Content-Type": "application/json"},
+            json={"input": batch}, timeout=30, allow_redirects=False)
+        status = getattr(response, "status_code", None)
+        if response.ok or type(status) is not int or status not in _AZURE_RETRY_STATUSES:
+            return response
+        if attempt + 1 < _AZURE_MAX_ATTEMPTS:
+            logger.debug_structured("azure_embedding_retry", extra_fields={"status": status, "attempt": attempt + 1})
+            time.sleep(_retry_delay_seconds(response, attempt))
+    return response
+
+
 def _try_azure_embedding(texts: list) -> Optional[list]:
     """Call only the explicitly selected Azure provider; never a local fallback."""
     if not _azure_embedding_preferred():
@@ -49,9 +85,9 @@ def _try_azure_embedding(texts: list) -> Optional[list]:
         url = f"{_AZURE_EMBED_ENDPOINT}/openai/deployments/{_AZURE_EMBED_MODEL}/embeddings?api-version={_AZURE_EMBED_VERSION}"
         results = []
         for i in range(0, len(texts), 16):
-            batch = texts[i:i + 16]
-            r = requests.post(url, headers={"api-key": _AZURE_EMBED_KEY, "Content-Type": "application/json"},
-                              json={"input": batch}, timeout=30, allow_redirects=False)
+            # One over-long input made Azure reject the whole batch (and so the whole ingest).
+            batch = [str(t)[:_AZURE_MAX_INPUT_CHARS] for t in texts[i:i + 16]]
+            r = _post_azure_with_retry(requests, url, batch)
             if not r.ok:
                 return None
             data = r.json().get("data", [])

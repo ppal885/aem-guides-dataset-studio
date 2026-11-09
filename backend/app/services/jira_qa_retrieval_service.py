@@ -157,14 +157,48 @@ def _norm_customer_token(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
 
 
+# Aliases that are also ordinary words or short tokens ("pan", "swift", "crown", "abs").
+# They count only in the exact case written here, so "swift" or "pan" in ticket text is not a
+# customer, while "Swift", "PAN" and "EY" still are.
+_CASE_SENSITIVE_ALIAS_FORMS: dict[str, tuple[str, ...]] = {
+    "abs": ("ABS",),
+    "crown": ("Crown", "CROWN"),
+    "deluxe": ("Deluxe", "DELUXE"),
+    "dfs": ("DFS",),
+    "dow": ("Dow", "DOW"),
+    "erie": ("Erie", "ERIE"),
+    "ey": ("EY",),
+    "faa": ("FAA",),
+    "fidelity": ("Fidelity", "FIDELITY"),
+    "gm": ("GM",),
+    "intel": ("Intel", "INTEL"),
+    "pan": ("PAN",),
+    "rbs": ("RBS",),
+    "signify": ("Signify", "SIGNIFY"),
+    "swift": ("Swift", "SWIFT"),
+    "ttc": ("TTC",),
+    "ubs": ("UBS",),
+    "workday": ("Workday", "WORKDAY"),
+    "zebra": ("Zebra", "ZEBRA"),
+}
+
+
 def _customer_names_from_query(query_text: str) -> list[str]:
     normalized = re.sub(r"[^a-z0-9]+", " ", query_text.casefold()).strip()
     padded = f" {normalized} "
+    case_tokens = set(re.findall(r"[A-Za-z0-9]+", query_text))
+
+    def present(alias: str) -> bool:
+        if f" {alias} " not in padded:
+            return False
+        forms = _CASE_SENSITIVE_ALIAS_FORMS.get(alias)
+        return forms is None or any(form in case_tokens for form in forms)
+
     return list(
         dict.fromkeys(
             customer
             for alias, customer in _QUERY_CUSTOMER_ALIASES.items()
-            if f" {alias} " in padded
+            if present(alias)
         )
     )
 
@@ -282,18 +316,22 @@ def live_jira_snapshot_chunk(jira_key: str) -> dict[str, Any] | None:
     }
 
 
+def _signal_text_from_rows(rows: list[dict[str, Any]]) -> str:
+    """Signal chunks first; any indexed chunk text when no signal chunk exists; else ""."""
+    signal = [str(r.get("document") or "").strip() for r in rows if (r.get("chunk_type") or "") in _SIGNAL_TYPES]
+    parts = [doc for doc in signal if doc]
+    if not parts:
+        parts = [doc for doc in (str(r.get("document") or "").strip() for r in rows) if doc]
+    return "\n\n".join(parts)[:12000] if parts else ""
+
+
 def build_signal_text_for_issue(jira_key: str) -> str:
-    """Merge signal chunk documents for embedding as related-ticket query."""
-    parts: list[str] = []
-    for row in get_chunks_for_jira_key(jira_key):
-        ct = row.get("chunk_type") or ""
-        if ct in _SIGNAL_TYPES:
-            doc = (row.get("document") or "").strip()
-            if doc:
-                parts.append(doc)
-    if parts:
-        return "\n\n".join(parts)[:12000]
-    return jira_key
+    """Merge signal chunk documents for embedding as related-ticket query.
+
+    Returns the bare ``jira_key`` only when the issue has no indexed text at all; callers that
+    search with this text must check for that (see :func:`related_tickets_for_issue`).
+    """
+    return _signal_text_from_rows(get_chunks_for_jira_key(jira_key)) or jira_key
 
 
 def semantic_search_jira_qa(
@@ -379,7 +417,11 @@ def related_tickets_for_issue(
             labels = _parse_json_list(str(m.get("labels") or ""))
         if not components:
             components = _parse_json_list(str(m.get("components") or ""))
-    signal = build_signal_text_for_issue(base_jira_key)
+    signal = _signal_text_from_rows(base_meta_rows)
+    if not signal:
+        # No indexed text for this issue. Embedding the bare key ("GUIDES-12345") returns
+        # arbitrary neighbours that were presented as related tickets.
+        return [], base_jira_key
     rerank_base = build_rerank_base_from_issue_chunks(
         jira_key=base_jira_key,
         rows=base_meta_rows,
