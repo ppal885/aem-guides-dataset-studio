@@ -251,7 +251,12 @@ class QueryDiagnosticsTests(unittest.TestCase):
                     self.collection.query.return_value = result
                     self.logger.reset_mock()
                     self.assertEqual(self.query(), [])
-                    self.assert_warning(stage, error_type="ValueError", signal="AMBIGUOUS_TRUTH_VALUE")
+                    if key == "distances" and location == "element":
+                        # Distances are converted with float(), not truth-tested, so an
+                        # array-valued element fails as a TypeError at the same stage.
+                        self.assert_warning(stage, error_type="TypeError")
+                    else:
+                        self.assert_warning(stage, error_type="ValueError", signal="AMBIGUOUS_TRUTH_VALUE")
 
     def test_ambiguous_result_object_truth_stays_inside_original_catch(self):
         self.collection.query.return_value = AmbiguousTruth()
@@ -308,17 +313,29 @@ class QueryDiagnosticsTests(unittest.TestCase):
         self.collection.query.assert_not_called()
         self.assertEqual(self.logger.mock_calls, [])
 
-    def test_zero_missing_and_null_distances_retain_original_defaults(self):
-        for distances in (None, [], [[0, 0.0]], [[None, None]]):
+    def test_zero_distances_are_kept_as_exact_matches(self):
+        result = valid_result()
+        result["distances"] = [[0, 0.0]]
+        self.collection.query.return_value = result
+        rows = self.query()
+        self.assertEqual([row["distance"] for row in rows], [0.0, 0.0])
+        self.assertFalse(any(row.get("distance_missing") for row in rows))
+        self.assertEqual(self.logger.mock_calls, [])
+
+    def test_missing_and_null_distances_are_not_perfect_matches(self):
+        # A missing distance used to become 0.0, which callers read as similarity 1.0.
+        for distances in (None, [], [[None, None]], [[float("nan"), None]]):
             with self.subTest(distances=distances):
                 result = valid_result()
                 result["distances"] = distances
                 self.collection.query.return_value = result
-                self.assertEqual([row["distance"] for row in self.query()], [0.0, 0.0])
+                rows = self.query()
+                self.assertEqual([row["distance"] for row in rows], [1.0, 1.0])
+                self.assertTrue(all(row["distance_missing"] for row in rows))
         result = valid_result()
         del result["distances"]
         self.collection.query.return_value = result
-        self.assertEqual([row["distance"] for row in self.query()], [0.0, 0.0])
+        self.assertEqual([row["distance"] for row in self.query()], [1.0, 1.0])
         self.assertEqual(self.logger.mock_calls, [])
 
     def test_empty_or_null_documents_and_metadata_retain_original_defaults(self):

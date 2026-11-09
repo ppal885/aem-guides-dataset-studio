@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.rag.metadata_filtering import JiraMetadataCriteria, matches_metadata
+from app.rag.metadata_filtering import JiraMetadataCriteria, matches_metadata, metadata_customer_unknown
 from app.rag.reranker import EnterpriseQaReranker
 from app.rag.semantic_search import SemanticJiraSearch
 
@@ -56,17 +56,19 @@ class HybridJiraSearch:
                 source_jira_key=criteria.source_jira_key,
                 escalation_only=criteria.escalation_only,
             )
+            # Relaxing the customer only admits issues with no customer recorded. An issue
+            # explicitly tied to a different customer is never returned for this customer.
             selected = [
                 hit
                 for hit in candidates
-                if matches_metadata(relaxed, hit.get("metadata") or {}, str(hit.get("document") or ""))
+                if (not criteria.customer or metadata_customer_unknown(hit.get("metadata") or {}))
+                and matches_metadata(relaxed, hit.get("metadata") or {}, str(hit.get("document") or ""))
             ]
             if not selected:
-                # Even the customer-relaxed filter matched nothing: the unfiltered candidates are
-                # returned, and the output says so instead of claiming the filter was applied.
-                selected = candidates
-                metadata_filter_used = False
-                fallback_reason = "all_metadata_filters_relaxed"
+                # The hard filters (issue type, environment, escalation, time window) are never
+                # dropped: returning candidates that violate them presented unrelated or
+                # other-customer issues as matches. An empty result is the honest answer.
+                fallback_reason = "metadata_filters_matched_zero_candidates"
         if not selected and not candidates:
             fallback_reason = "no_semantic_candidates"
 

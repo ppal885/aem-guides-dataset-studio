@@ -14,12 +14,24 @@ from app.services.jira_qa_retrieval_service import get_chunks_for_jira_key, live
 _PATTERN_LEXICON: dict[str, tuple[str, ...]] = {
     "conref resolution failures": ("conref", "content reference", "broken reference"),
     "UUID mismatch": ("uuid", "guid", "identifier mismatch"),
-    "publishing regression": ("publish", "publishing", "pdf", "native pdf", "output"),
+    "publishing regression": ("publish", "published", "publishing", "pdf", "native pdf", "output generation"),
     "keyref/conkeyref failures": ("keyref", "conkeyref", "keydef"),
     "preview vs output mismatch": ("preview", "output mismatch", "rendered output"),
-    "stale references after rename or move": ("stale", "rename", "move", "moved topic"),
+    "stale references after rename or move": (
+        "stale", "rename", "renamed", "renaming", "move", "moved", "moving", "moved topic",
+    ),
     "editor synchronization issues": ("web editor", "sync", "synchronization", "save reopen"),
-    "DITAVAL filtering issues": ("ditaval", "conditional processing", "condition"),
+    "DITAVAL filtering issues": ("ditaval", "conditional processing", "condition", "conditions"),
+}
+
+# Needles match whole words only (an optional plural "s" is allowed). Plain substring matching
+# tagged nearly every ticket: "guid" is inside "Guides", "move" inside "remove", "sync" inside
+# "async", and "output" appears in most publishing and preview text.
+_PATTERN_REGEXES: dict[str, re.Pattern[str]] = {
+    pattern: re.compile(
+        r"(?<![a-z0-9])(?:" + "|".join(re.escape(needle) for needle in needles) + r")s?(?![a-z0-9])"
+    )
+    for pattern, needles in _PATTERN_LEXICON.items()
 }
 
 
@@ -45,6 +57,11 @@ def _line_after(label: str, text: str) -> str | None:
         if match:
             return _shorten(match.group("value"), 300)
     return None
+
+
+def _chunk_type(chunk: dict[str, Any]) -> str:
+    meta = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
+    return str(chunk.get("chunk_type") or meta.get("chunk_type") or "")
 
 
 def _metadata_list(meta: dict[str, Any], *keys: str) -> list[str]:
@@ -155,9 +172,14 @@ class QaCopilotRetrievalService:
     def _chunks_to_details(self, issue: JiraIssueSearchResult, chunks: list[dict[str, Any]]) -> JiraIssueDetails:
         docs_by_type: dict[str, list[str]] = {}
         all_meta: dict[str, Any] = dict(issue.metadata)
-        for chunk in chunks:
+        # Merge metadata with the live Jira snapshot applied last, so current status/issue type
+        # from Jira win over values captured at index time (the snapshot is listed first in
+        # ``chunks`` for document order, which made indexed chunks overwrite it).
+        for chunk in sorted(chunks, key=lambda c: _chunk_type(c) == "live_jira_snapshot"):
             meta = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
             all_meta.update({k: v for k, v in meta.items() if v not in (None, "", [], {})})
+        for chunk in chunks:
+            meta = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
             ctype = str(chunk.get("chunk_type") or meta.get("chunk_type") or "unknown")
             doc = str(chunk.get("document") or "").strip()
             if doc:
@@ -238,7 +260,7 @@ class QaCopilotRetrievalService:
     def _detect_patterns_in_text(self, text: str) -> list[str]:
         blob = (text or "").lower()
         patterns: list[str] = []
-        for pattern, needles in _PATTERN_LEXICON.items():
-            if any(needle in blob for needle in needles):
+        for pattern, regex in _PATTERN_REGEXES.items():
+            if regex.search(blob):
                 patterns.append(pattern)
         return patterns

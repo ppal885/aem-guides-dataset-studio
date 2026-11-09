@@ -5,6 +5,7 @@ Collections: aem_guides, dita_spec, recipes, jira_issues.
 """
 import hashlib
 import json
+import math
 import os
 import re
 from importlib.metadata import PackageNotFoundError, version
@@ -352,6 +353,9 @@ def _query_failure_diagnostic(stage, collection_name, query_vector_dimension, er
     return details
 
 
+_MISSING_DISTANCE = 1.0
+
+
 def query_collection(
     collection_name: str,
     query_embedding: list[float],
@@ -400,13 +404,23 @@ def query_collection(
             stage = "RESULT_METADATAS"
             meta = (result["metadatas"][0][i] or {}) if result["metadatas"] else {}
             stage = "RESULT_DISTANCES"
-            dist = (result["distances"][0][i] or 0.0) if result.get("distances") else 0.0
-            rows.append({
+            raw_dist = result["distances"][0][i] if result.get("distances") else None
+            # A missing distance is not a perfect match. Callers turn distance into similarity
+            # (1 - distance), so defaulting to 0.0 ranked broken rows first. 1.0 is cosine
+            # "no similarity" and keeps the row available for lexical/metadata scoring.
+            # float() is not guarded: a malformed (e.g. array-valued) distance still fails at
+            # RESULT_DISTANCES and is reported by the diagnostic below.
+            dist = None if raw_dist is None else float(raw_dist)
+            distance_missing = dist is None or not math.isfinite(dist)
+            row = {
                 "id": doc_id,
                 "document": doc,
                 "metadata": meta,
-                "distance": dist,
-            })
+                "distance": _MISSING_DISTANCE if distance_missing else dist,
+            }
+            if distance_missing:
+                row["distance_missing"] = True
+            rows.append(row)
             stage = "RESULT_IDS"
         return rows
     except Exception as e:
