@@ -284,7 +284,9 @@ def add_documents(
 def _collection_exists(client, collection_name: str) -> bool:
     """Check if collection exists without raising. Returns False if not found."""
     try:
-        names = [c.name for c in client.list_collections()]
+        # Chroma < 0.6 returns Collection objects; 0.6+ returns plain name strings. Reading
+        # ``.name`` on a string raised, was swallowed, and made every query return [].
+        names = [c if isinstance(c, str) else getattr(c, "name", "") for c in client.list_collections()]
         return collection_name in names
     except Exception:
         return False

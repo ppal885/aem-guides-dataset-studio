@@ -592,6 +592,20 @@ def _aem_intent_bonus(query: str, *, title: str, url: str, content: str) -> floa
     return bonus
 
 
+_SEMANTIC_RANK_WEIGHT = 0.35
+
+
+def _semantic_score_from_distance(distance) -> float:
+    """Cosine distance -> similarity in [0, 1]; a missing distance gives no semantic credit."""
+    try:
+        value = float(distance)
+    except (TypeError, ValueError):
+        return 0.0
+    if value != value:  # NaN
+        return 0.0
+    return max(0.0, min(1.0, 1.0 - value))
+
+
 def _document_relevance_score(
     query: str,
     *,
@@ -740,7 +754,10 @@ def _filter_and_rank_docs(
                     content=str(doc.get("snippet") or doc.get("content") or ""),
                     evidence_type=str(doc.get("evidence_type") or ""),
                     allowed_host_suffixes=allowed_host_suffixes,
-                ),
+                )
+                # Semantic similarity from the vector search used to be discarded here, so the
+                # final order was lexical only. Lexical supplements carry no semantic score.
+                + _SEMANTIC_RANK_WEIGHT * float(doc.get("semantic_score") or 0.0),
                 doc,
             )
             for doc in filtered
@@ -970,6 +987,7 @@ def retrieve_relevant_docs_with_diagnostics(
                     doc = row.get("document") or ""
                     snippet = doc[:max_snippet_chars]
                     result.append({
+                        "semantic_score": _semantic_score_from_distance(row.get("distance")),
                         "chunk_id": row.get("id", ""),
                         "url": meta.get("source_url") or meta.get("canonical_url") or meta.get("url", ""),
                         "source_url": meta.get("source_url") or meta.get("url", ""),
@@ -1024,13 +1042,18 @@ def retrieve_relevant_docs_with_diagnostics(
                     query_arr = np.array(query_emb)
                     emb_list = [x[2] for x in indexed]
                     chunk_arr = np.array(emb_list)
-                    scores = np.dot(chunk_arr, query_arr)
+                    # Cosine similarity: a raw dot product favoured long, unnormalised vectors.
+                    chunk_norms = np.linalg.norm(chunk_arr, axis=1)
+                    query_norm = float(np.linalg.norm(query_arr))
+                    denom = np.where(chunk_norms * query_norm > 0, chunk_norms * query_norm, 1.0)
+                    scores = np.dot(chunk_arr, query_arr) / denom
                     order = np.argsort(scores)[::-1][: max(k * 12, 50)]
                     result = []
                     for idx in order:
                         c = indexed[idx][1]
                         snippet = (c.get("content") or "")[:max_snippet_chars]
                         result.append({
+                            "semantic_score": max(0.0, min(1.0, float(scores[idx]))),
                             "chunk_id": c.get("id", ""),
                             "url": c.get("source_url") or c.get("canonical_url") or c.get("url", ""),
                             "source_url": c.get("source_url") or c.get("url", ""),

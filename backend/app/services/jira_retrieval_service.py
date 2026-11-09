@@ -1083,6 +1083,14 @@ def _metadata_where_plan(
     if component_tokens:
         for token in component_tokens:
             add("component_membership_filtered", {component_filter_field(token): True})
+        # Components stay a strict filter, but the customer's own issues inside those
+        # components get dedicated passes; otherwise they were never fetched preferentially.
+        component_clauses = [{component_filter_field(token): True} for token in component_tokens]
+        component_where = component_clauses[0] if len(component_clauses) == 1 else {"$or": component_clauses}
+        for customer in (customer_names or [])[:2]:
+            c = str(customer or "").strip()
+            if c:
+                add("component_customer_filtered", {"$and": [component_where, {"customer": c}]})
         return passes
 
     issue_f = str(issue_type or "").strip()
@@ -1344,7 +1352,7 @@ def retrieve_similar_jiras(
             ),
             "domain_policy": "soft_boost_only",
             "component_chroma_filter_applied": any(
-                str(plan.get("label") or "") == "component_membership_filtered"
+                str(plan.get("label") or "") in {"component_membership_filtered", "component_customer_filtered"}
                 for plan in metadata_query_plan
             ),
             "unfiltered_fallback_query": unfiltered_fallback,

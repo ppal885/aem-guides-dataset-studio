@@ -23,6 +23,7 @@ from app.core.schemas_dita_pipeline import (
 )
 from app.generator.recipe_manifest import RecipeSpec
 from app.services.rag_query_rewrite_service import (
+    drop_negative_term_docs,
     fetch_dita_spec_store_for_bundle,
     maybe_fetch_aem_docs,
 )
@@ -61,7 +62,20 @@ def _dedupe_docs(docs: list[dict]) -> list[dict]:
 
 
 def _rerank_docs_for_xml_examples(docs: list[dict]) -> list[dict]:
-    return sorted(docs, key=lambda d: -_xml_example_likeness(d.get("snippet") or ""))
+    """Prefer XML-like snippets without discarding retrieval relevance.
+
+    Sorting on XML-likeness alone let a long, unrelated XML chunk outrank the relevant
+    example. Each doc's retrieval rank (``_retrieval_rank``, 0 = best within its query) is
+    blended with a capped XML-likeness score, both scaled to [0, 1].
+    """
+
+    def key(doc: dict) -> float:
+        xml = min(_xml_example_likeness(doc.get("snippet") or ""), 10.0) / 10.0
+        rank = doc.get("_retrieval_rank")
+        relevance = 1.0 / (1.0 + float(rank)) if isinstance(rank, (int, float)) else 0.0
+        return -(0.5 * xml + 0.5 * relevance)
+
+    return sorted(docs, key=key)
 
 
 def format_recipe_store_block(selection: RecipeSelectionResult) -> str:
@@ -131,13 +145,14 @@ def fetch_gold_xml_examples_digest(
         q = (q or "").strip()
         if not q:
             continue
-        raw.extend(retrieve_relevant_docs(q, k=k_per_query, max_snippet_chars=1200))
+        for rank, doc in enumerate(retrieve_relevant_docs(q, k=k_per_query, max_snippet_chars=1200)):
+            raw.append({**doc, "_retrieval_rank": rank})
 
-    merged = _dedupe_docs(raw)
+    merged = drop_negative_term_docs(_dedupe_docs(raw), bundle.negative_terms, user_text)
     reranked = _rerank_docs_for_xml_examples(merged)[:max_snippets]
     if not reranked:
         return "", 0
-    text = format_docs_for_prompt(reranked)
+    text = format_docs_for_prompt([{k: v for k, v in d.items() if k != "_retrieval_rank"} for d in reranked])
     return text, len(reranked)
 
 
