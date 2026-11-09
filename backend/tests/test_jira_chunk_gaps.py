@@ -313,10 +313,15 @@ def test_fetch_issue_bundle_returns_attachment_text(monkeypatch):
                 "key": key,
                 "fields": {
                     "attachment": [
-                        {"filename": "old.log", "created": "2026-01-01T00:00:00.000+0000"},
-                        {"filename": "image.png", "created": "2026-01-04T00:00:00.000+0000"},
-                        {"filename": "huge.log", "created": "2026-01-03T00:00:00.000+0000"},
-                        {"filename": "new.log", "created": "2026-01-05T00:00:00.000+0000"},
+                        {"filename": "old.log", "created": "2026-01-01T00:00:00.000+0000", "content": "u/old"},
+                        {"filename": "image.png", "created": "2026-01-04T00:00:00.000+0000", "content": "u/img"},
+                        {
+                            "filename": "huge.log",
+                            "created": "2026-01-03T00:00:00.000+0000",
+                            "content": "u/huge",
+                            "size": 10**9,
+                        },
+                        {"filename": "new.log", "created": "2026-01-05T00:00:00.000+0000", "content": "u/new"},
                     ]
                 },
             }
@@ -340,3 +345,85 @@ def test_fetch_issue_bundle_attachment_text_can_be_disabled(monkeypatch):
             return []
 
     assert index_service.fetch_issue_bundle(_Client(), "G-1")["attachment_search_blobs"] == []
+
+
+# --- Talos review follow-ups ---------------------------------------------------------------
+
+
+def _bundle_client(attachments: list[dict[str, Any]]):
+    class _Client:
+        def get_issue(self, key, fields=None):
+            return {"key": key, "fields": {"attachment": attachments}}
+
+        def get_issue_comments(self, key):
+            return []
+
+    return _Client()
+
+
+def test_failed_attachment_downloads_count_against_the_attempt_limit(monkeypatch):
+    import app.services.jira_generate_resolve as resolve
+
+    calls: list[str] = []
+
+    def _failing_read(client, att):
+        calls.append(att["filename"])
+        return ""  # what _read_attachment_text returns after a download failure
+
+    monkeypatch.setattr(resolve, "_read_attachment_text", _failing_read)
+    monkeypatch.setattr(index_service, "_INDEX_ATTACHMENT_MAX", 3)
+    attachments = [
+        {"filename": f"log{i}.log", "created": f"2026-01-{i + 1:02d}", "content": f"u/{i}"} for i in range(10)
+    ]
+
+    bundle = index_service.fetch_issue_bundle(_bundle_client(attachments), "G-1")
+
+    assert bundle["attachment_search_blobs"] == []
+    assert calls == ["log9.log", "log8.log", "log7.log"]  # newest three only, not all ten
+
+
+def test_unsupported_oversized_and_urlless_attachments_skip_the_attempt_budget(monkeypatch):
+    import app.services.jira_generate_resolve as resolve
+
+    calls: list[str] = []
+    monkeypatch.setattr(resolve, "_read_attachment_text", lambda client, att: calls.append(att["filename"]) or "ok")
+    monkeypatch.setattr(index_service, "_INDEX_ATTACHMENT_MAX", 1)
+    attachments = [
+        {"filename": "shot.png", "created": "2026-01-09", "content": "u/png", "mimeType": "image/png"},
+        {"filename": "big.log", "created": "2026-01-08", "content": "u/big", "size": 10**9},
+        {"filename": "nourl.log", "created": "2026-01-07"},
+        {"filename": "real.log", "created": "2026-01-06", "content": "u/real"},
+    ]
+
+    bundle = index_service.fetch_issue_bundle(_bundle_client(attachments), "G-1")
+
+    assert calls == ["real.log"]
+    assert bundle["attachment_search_blobs"] == ["real.log:\nok"]
+
+
+def test_attachment_time_budget_stops_new_downloads(monkeypatch):
+    import app.services.jira_generate_resolve as resolve
+
+    calls: list[str] = []
+    monkeypatch.setattr(resolve, "_read_attachment_text", lambda client, att: calls.append(att["filename"]) or "")
+    monkeypatch.setattr(index_service, "_INDEX_ATTACHMENT_MAX", 5)
+    monkeypatch.setattr(index_service, "_INDEX_ATTACHMENT_BUDGET_SECONDS", 0)
+    attachments = [{"filename": f"l{i}.log", "created": f"2026-01-0{i + 1}", "content": "u"} for i in range(5)]
+
+    index_service.fetch_issue_bundle(_bundle_client(attachments), "G-1")
+
+    assert len(calls) == 1  # the first download always runs; none starts after the budget
+
+
+def test_prune_removes_stale_learning_continuation_parts(fake_chroma):
+    fake = fake_chroma(
+        {
+            "G-1::learning_behavior_chunk::0": {"jira_key": "G-1"},  # backfill slot: kept
+            "G-1::learning_behavior_chunk::1": {"jira_key": "G-1"},  # stale continuation part
+        }
+    )
+
+    index_service.prune_stale_jira_chunks([_row("G-1::summary_chunk::0", "G-1")])
+
+    assert fake.deleted == ["G-1::learning_behavior_chunk::1"]
+    assert "G-1::learning_behavior_chunk::0" in fake.stored

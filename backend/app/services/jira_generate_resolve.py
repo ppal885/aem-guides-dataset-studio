@@ -154,23 +154,32 @@ _MAX_ATTACHMENTS = int(os.getenv("JIRA_MAX_ATTACHMENTS", "5"))
 _MAX_COMMENTS = int(os.getenv("JIRA_MAX_COMMENTS", "30"))  # was hardcoded 20
 
 
-def _read_attachment_text(client: JiraClient, att: dict) -> str:
-    """Download a Jira attachment and return its text content (empty if binary/too large)."""
-    content_url = att.get("content") or att.get("url") or ""
+def _is_text_attachment(att: dict) -> bool:
+    """True when an attachment's extension or MIME type marks it as text-readable."""
     filename = (att.get("filename") or "").lower()
     mime = (att.get("mimeType") or att.get("mime_type") or "").lower()
-    size = int(att.get("size") or 0)
-
-    # Only read text-readable files; skip huge files
     ext = "." + filename.rsplit(".", 1)[-1] if "." in filename else ""
-    is_text = (
+    return (
         ext in _TEXT_ATTACHMENT_EXTENSIONS
         or mime.startswith("text/")
         or mime in ("application/json", "application/xml", "application/yaml", "application/x-yaml")
     )
-    if not is_text:
+
+
+def _attachment_too_large_to_inline(att: dict) -> bool:
+    """Attachments above this size are never downloaded; callers get a placeholder instead."""
+    return int(att.get("size") or 0) > _MAX_ATTACHMENT_BYTES * 2
+
+
+def _read_attachment_text(client: JiraClient, att: dict) -> str:
+    """Download a Jira attachment and return its text content (empty if binary/too large)."""
+    content_url = att.get("content") or att.get("url") or ""
+    size = int(att.get("size") or 0)
+
+    # Only read text-readable files; skip huge files
+    if not _is_text_attachment(att):
         return ""
-    if size > _MAX_ATTACHMENT_BYTES * 2:
+    if _attachment_too_large_to_inline(att):
         # Warn so operators know context was truncated — set JIRA_MAX_ATTACHMENT_BYTES to include it
         logger.warning_structured(
             "jira_attachment_skipped_too_large",
