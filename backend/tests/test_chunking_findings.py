@@ -508,3 +508,36 @@ def test_legacy_comments_keep_newest_within_document_budget(monkeypatch):
     assert "comment 43 " in doc
     assert "comment 0 " not in doc
     assert doc.rstrip().endswith("detail")  # the newest comment is whole, not cut
+
+
+def test_pdf_short_final_section_keeps_its_own_section_name():
+    # Talos: a short final "INTRO" section was merged into the previous section's chunk.
+    first = "1 Overview\n" + "Overview body sentence about publishing output. " * 4
+    chunks = pdf._chunk_pages(
+        [_page(1, first), _page(2, "INTRO\nThis section has a brief instruction.")], {}
+    )
+
+    assert [c["section"] for c in chunks] == ["1 Overview", "INTRO"]
+    assert chunks[-1]["text"] == "INTRO\nThis section has a brief instruction."
+    assert chunks[-1]["pages"] == [2]
+    assert "brief instruction" not in chunks[0]["text"]
+
+
+def test_pdf_short_mid_document_section_is_not_relabelled_as_the_next_one():
+    long_body = "Body sentence explaining configuration in detail. " * 4
+    pages = [_page(1, "1 Setup\n" + long_body + "\n2 Notes\nKeep backups.\n3 Publish\n" + long_body)]
+
+    chunks = pdf._chunk_pages(pages, {})
+    by_section = {c["section"]: c["text"] for c in chunks}
+
+    assert by_section["2 Notes"] == "2 Notes\nKeep backups."
+    assert "Keep backups." not in by_section["3 Publish"]
+
+
+def test_pdf_short_tail_of_same_section_still_merges():
+    body = "Same section body sentence with enough words to stand alone. " * 3
+    chunks = pdf._chunk_pages([_page(1, "1 Setup\n" + body), _page(2, "tail words only")], {})
+
+    assert len(chunks) == 1
+    assert chunks[0]["text"].endswith("tail words only")
+    assert chunks[0]["pages"] == [1, 2]

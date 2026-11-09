@@ -298,15 +298,17 @@ def _chunk_pages(pages: list[dict], doc_meta: dict) -> list[dict]:
         chunk_pages = pages_in(0, len(buffer))
         if len(text) >= MIN_CHUNK_CHARS:
             emit(text, chunk_pages, current_section)
-        elif chunks and (final or chunks[-1]["section"] == current_section):
-            # Too short to stand alone: keep it with the previous chunk instead of dropping it.
+        elif chunks and chunks[-1]["section"] == current_section:
+            # Too short to stand alone: keep it with the previous chunk of the same section.
             previous = chunks[-1]
             previous["text"] = f"{previous['text']}\n\n{text}"
             previous["pages"] = sorted(set(previous["pages"]) | set(chunk_pages))
-        elif final:
+        elif final or current_section:
+            # A short section of its own (e.g. a brief final "INTRO"): emit it separately so it
+            # keeps its own section name rather than being labelled as a neighbouring section.
             emit(text, chunk_pages, current_section)
         else:
-            return  # carry the short text into the next section's buffer
+            return  # short unnamed preamble: carry it into the next section's buffer
         buffer, spans = "", []
 
     def split_oversized() -> None:
