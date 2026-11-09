@@ -217,6 +217,8 @@ def build_jira_qa_chunks(
             issue_dict,
             enriched=en,
             comments=comments or [],
+            linked_issues=linked_issues or [],
+            attachment_search_blobs=attachment_search_blobs or [],
         )
 
     fields = issue_dict.get("fields") or {}
@@ -355,7 +357,8 @@ def build_jira_qa_chunks(
         created = str(c.get("created") or "").strip()
         if body:
             comm_texts.append(f"[{created}] {author}: {body[:2000]}")
-    add("comments_discussion", 0, "\n\n".join(comm_texts[:40]))
+    # Keep the newest 40: verification and final-fix comments usually come last.
+    add("comments_discussion", 0, "\n\n".join(comm_texts[-40:]))
 
     # qa_testing_scope — keyword-focused excerpt
     qa_hints = []

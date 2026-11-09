@@ -779,6 +779,29 @@ def iter_collection_records(
         )
 
 
+def get_document_ids_where(collection_name: str, where: dict) -> list[str] | None:
+    """Return every document id matching a metadata filter.
+
+    Returns ``[]`` when the collection is missing or nothing matches, and ``None`` when the lookup
+    itself failed, so callers can tell "nothing stored" apart from "could not check".
+    """
+    client = _get_client()
+    if not client:
+        return None
+    if not _collection_exists(client, collection_name):
+        return []
+    try:
+        coll = client.get_collection(name=collection_name)
+        result = coll.get(where=where, include=[])
+        return [str(doc_id) for doc_id in (result or {}).get("ids") or []]
+    except Exception as e:
+        logger.warning_structured(
+            "ChromaDB get_document_ids_where failed",
+            extra_fields={"collection": collection_name, "error": str(e), "where": str(where)[:500]},
+        )
+        return None
+
+
 def get_documents_where(
     collection_name: str,
     where: dict,

@@ -28,12 +28,16 @@ class JiraSmartChunkingService:
         issue_dict: dict[str, Any],
         enriched_doc: JiraEnrichedDocument,
         comments: list[dict[str, Any]] | None = None,
+        linked_issues: list[dict[str, Any]] | None = None,
+        attachment_search_blobs: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         return build_smart_chroma_chunks(
             issue_key,
             issue_dict,
             enriched=enriched_doc,
             comments=comments or [],
+            linked_issues=linked_issues or [],
+            attachment_search_blobs=attachment_search_blobs or [],
         )
 
 
