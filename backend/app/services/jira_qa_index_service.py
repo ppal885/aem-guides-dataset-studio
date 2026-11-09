@@ -34,6 +34,7 @@ from app.services.vector_store_service import (
     CHROMA_COLLECTION_JIRA_QA,
     add_documents,
     delete_documents,
+    get_document_ids_where,
     is_chroma_available,
 )
 
@@ -245,7 +246,52 @@ def fetch_issue_bundle(client: JiraClient, issue_key: str) -> dict[str, Any]:
                 )
             except Exception as exc:
                 logger.debug_structured("linked_issue_fetch_skipped", extra_fields={"key": lk, "error": str(exc)})
-    return {"issue": issue, "comments": comments, "linked_issues": linked_summaries}
+    return {
+        "issue": issue,
+        "comments": comments,
+        "linked_issues": linked_summaries,
+        "attachment_search_blobs": _attachment_text_blobs(client, fields if isinstance(fields, dict) else {}),
+    }
+
+
+_INDEX_ATTACHMENT_TEXT = os.getenv("JIRA_QA_INDEX_ATTACHMENT_TEXT", "true").strip().lower() in ("1", "true", "yes")
+_INDEX_ATTACHMENT_MAX = int(os.getenv("JIRA_QA_INDEX_ATTACHMENT_MAX", "3"))
+
+
+def _attachment_text_blobs(client: JiraClient, fields: dict[str, Any]) -> list[str]:
+    """Extracted text of the newest text-readable attachments (logs, DITA, XML), filename-prefixed.
+
+    Binary attachments are skipped by ``_read_attachment_text``; failures never fail the issue.
+    Disable with ``JIRA_QA_INDEX_ATTACHMENT_TEXT=false``.
+    """
+    if not _INDEX_ATTACHMENT_TEXT or _INDEX_ATTACHMENT_MAX <= 0:
+        return []
+    attachments = fields.get("attachment") or []
+    if not isinstance(attachments, list):
+        return []
+    from app.services.jira_generate_resolve import _read_attachment_text
+
+    newest_first = sorted(
+        (a for a in attachments if isinstance(a, dict)),
+        key=lambda a: str(a.get("created") or ""),
+        reverse=True,
+    )
+    blobs: list[str] = []
+    for att in newest_first:
+        if len(blobs) >= _INDEX_ATTACHMENT_MAX:
+            break
+        try:
+            text = _read_attachment_text(client, att).strip()
+        except Exception as exc:
+            logger.debug_structured(
+                "jira_qa_attachment_text_skipped",
+                extra_fields={"filename": att.get("filename"), "error": str(exc)},
+            )
+            continue
+        # Oversized files come back as a "[File too large ...]" placeholder, which is not evidence.
+        if text and not text.startswith("[File too large"):
+            blobs.append(f"{att.get('filename') or 'attachment'}:\n{text}")
+    return blobs
 
 
 def _cmp_jira_updated(a: str | None, b: str | None) -> bool:
@@ -269,8 +315,10 @@ def _flush_chunk_rows(
     """Embed + upsert buffer. Returns (chunk_count, error_message)."""
     if not all_chunk_rows:
         return 0, None
-    if force_reindex:
-        delete_documents(CHROMA_COLLECTION_JIRA_QA, [r["chunk_id"] for r in all_chunk_rows])
+    # ``force_reindex`` no longer pre-deletes: the upsert overwrites ids that still exist, and
+    # ``prune_stale_jira_chunks`` below removes ids that this rebuild no longer produces. Deleting
+    # first would also drop the issue from the index whenever the embedding call then failed.
+    _ = force_reindex
     docs = [r["document"] for r in all_chunk_rows]
     embeddings = embed_texts_batched(docs, batch_size=48)
     if embeddings is None:
@@ -285,7 +333,64 @@ def _flush_chunk_rows(
     ok = add_documents(CHROMA_COLLECTION_JIRA_QA, ids, docs, metas, emb_list)
     if not ok:
         return 0, "Chroma upsert failed."
+    prune_stale_jira_chunks(all_chunk_rows)
     return len(ids), None
+
+
+def _row_jira_key(row: dict[str, Any]) -> str:
+    meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    key = str(meta.get("jira_key") or "").strip()
+    if key:
+        return key
+    return str(row.get("chunk_id") or "").split("::", 1)[0].strip()
+
+
+def _is_chunker_owned_id(chunk_id: str, jira_key: str) -> bool:
+    """True for ``KEY::<chunk type>::<n>`` ids written by the Jira chunkers.
+
+    Other writers share the ``jira_qa`` collection and ``jira_key`` metadata — generated test
+    plans (``KEY::testplan::...``) and the learning-chunk backfill (``learning_behavior_chunk``) —
+    and must survive a re-index of the issue.
+    """
+    from app.services.jira_chunking_service import SMART_JIRA_CHUNK_TYPES
+    from app.services.jira_learning_chunk_service import LEARNING_CHUNK_TYPE
+
+    parts = str(chunk_id or "").split("::")
+    if len(parts) != 3 or parts[0] != jira_key or not parts[2].isdigit():
+        return False
+    return parts[1] in (CHUNK_TYPES | SMART_JIRA_CHUNK_TYPES) and parts[1] != LEARNING_CHUNK_TYPE
+
+
+def prune_stale_jira_chunks(chunk_rows: list[dict[str, Any]]) -> int:
+    """Delete Chroma chunks of the re-indexed Jira keys that the new build no longer produces.
+
+    Call only after the new rows were upserted successfully, so a failed rebuild never empties an
+    issue. Chunk ids are positional (``KEY::type::idx``), so a shorter rebuild — fewer problem
+    slices, fewer UAC clauses, smart vs legacy chunk types — would otherwise leave old chunks
+    that keep being retrieved. Returns the number of stale ids deleted.
+    """
+    keep_by_key: dict[str, set[str]] = {}
+    for row in chunk_rows:
+        key = _row_jira_key(row)
+        chunk_id = str(row.get("chunk_id") or "")
+        if key and chunk_id:
+            keep_by_key.setdefault(key, set()).add(chunk_id)
+    stale: list[str] = []
+    for key, keep in keep_by_key.items():
+        existing = get_document_ids_where(CHROMA_COLLECTION_JIRA_QA, {"jira_key": key})
+        if existing is None:
+            logger.warning_structured("jira_qa_stale_chunk_lookup_failed", extra_fields={"key": key})
+            continue
+        stale.extend(
+            chunk_id for chunk_id in existing if chunk_id not in keep and _is_chunker_owned_id(chunk_id, key)
+        )
+    if not stale:
+        return 0
+    if not delete_documents(CHROMA_COLLECTION_JIRA_QA, stale):
+        logger.warning_structured("jira_qa_stale_chunk_delete_failed", extra_fields={"count": len(stale)})
+        return 0
+    logger.info_structured("jira_qa_stale_chunks_pruned", extra_fields={"count": len(stale)})
+    return len(stale)
 
 
 def _persist_jira_qa_sync_state_fields(
@@ -466,7 +571,7 @@ def index_jql_to_chroma(
                     issue,
                     comments=bundle["comments"],
                     linked_issues=bundle["linked_issues"],
-                    attachment_search_blobs=None,
+                    attachment_search_blobs=bundle.get("attachment_search_blobs") or [],
                     enriched=enriched,
                 )
                 if JIRA_SQL_ENRICHMENT:
@@ -483,9 +588,6 @@ def index_jql_to_chroma(
                         )
                     finally:
                         db.close()
-
-                if force_reindex and crows:
-                    delete_documents(CHROMA_COLLECTION_JIRA_QA, [r["chunk_id"] for r in crows])
 
                 buffer_rows.extend(crows)
                 buffer_issue_count += 1
@@ -780,20 +882,32 @@ def recover_failed_jira_keys(
 
 
 def delete_jira_key_chunks(jira_key: str, chunk_defs: list[dict] | None = None) -> bool:
-    """Delete all chunk ids for a jira key. If chunk_defs not passed, deletes known chunk type slots."""
+    """Delete all chunker-owned chunks stored for a Jira key.
+
+    With ``chunk_defs`` only those ids are deleted. Otherwise every ``KEY::<chunk type>::<n>`` chunk
+    whose ``jira_key`` metadata matches is deleted, whatever its index, plus the known id slots as
+    a fallback for rows written without ``jira_key`` metadata or when the metadata lookup fails.
+    Generated test-plan chunks (``KEY::testplan::...``) are not chunker-owned and are kept.
+    """
     from app.services.jira_chunking_service import SMART_JIRA_CHUNK_TYPES
 
     if chunk_defs:
         ids = [c["chunk_id"] for c in chunk_defs]
         return delete_documents(CHROMA_COLLECTION_JIRA_QA, ids)
+    key = (jira_key or "").strip()
+    if not key:
+        return True
+    ids: list[str] = [
+        chunk_id
+        for chunk_id in get_document_ids_where(CHROMA_COLLECTION_JIRA_QA, {"jira_key": key}) or []
+        if _is_chunker_owned_id(chunk_id, key) or chunk_id.startswith(f"{key}::learning_behavior_chunk::")
+    ]
     merged_types = CHUNK_TYPES | SMART_JIRA_CHUNK_TYPES
-    ids = [f"{jira_key}::{ct}::0" for ct in merged_types]
-    for i in range(JIRA_QA_DESCRIPTION_LONG_PART_MAX):
-        ids.append(f"{jira_key}::description_long_part::{i}")
+    ids.extend(f"{key}::{ct}::0" for ct in merged_types)
+    ids.extend(f"{key}::description_long_part::{i}" for i in range(JIRA_QA_DESCRIPTION_LONG_PART_MAX))
     for ct in SMART_JIRA_CHUNK_TYPES:
-        for idx in range(1, 6):
-            ids.append(f"{jira_key}::{ct}::{idx}")
-    return delete_documents(CHROMA_COLLECTION_JIRA_QA, ids)
+        ids.extend(f"{key}::{ct}::{idx}" for idx in range(1, 6))
+    return delete_documents(CHROMA_COLLECTION_JIRA_QA, list(dict.fromkeys(ids)))
 
 
 def run_jira_qa_rag_backfill(

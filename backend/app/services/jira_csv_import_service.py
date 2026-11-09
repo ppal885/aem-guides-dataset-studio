@@ -1473,6 +1473,9 @@ def _flush_issue_batch(
                 insert_jira_chunks(db, parsed_issue.issue_key, chunks, enrichment=enriched)
                 db.commit()
                 persisted += len(chunks)
+                from app.services.jira_qa_index_service import prune_stale_jira_chunks
+
+                prune_stale_jira_chunks(chunks)
             except Exception as exc:
                 db.rollback()
                 delete_documents(CHROMA_COLLECTION_JIRA_QA, [chunk["chunk_id"] for chunk in chunks])

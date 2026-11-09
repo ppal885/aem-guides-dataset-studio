@@ -69,12 +69,32 @@ _MEANINGFUL_HINTS = (
 )
 
 
+_DIGEST_MAX_REGULAR_COMMENTS = 40
+_DIGEST_REGULAR_COMMENT_CHARS = 900
+
+
+def _comment_sort_key(created: str, index: int) -> tuple[int, float, str, int]:
+    """Chronological key: parsed timestamp when possible, otherwise the raw string, then position."""
+    from app.services.jira_sync_state import parse_jira_timestamp
+
+    parsed = parse_jira_timestamp(created) if created else None
+    if parsed is not None:
+        return (1, parsed.timestamp(), "", index)
+    return (0, 0.0, created, index)
+
+
 def build_comments_digest(comments: list[dict[str, Any]] | None, *, max_chars: int = 3200) -> str:
-    """Compact, meaningful-only comment text for ``comments_digest``."""
+    """Compact, meaningful-only comment text for ``comments_digest``.
+
+    The latest explicit final-scope comment comes first. The rest of the budget goes to the
+    *newest* meaningful comments (verification, final fix, sign-off usually come last), emitted in
+    chronological order. Whole comment lines are kept or dropped; a line is never cut midway to
+    fit the budget.
+    """
     if not comments:
         return ""
-    regular_lines: list[str] = []
-    scope_lines: list[tuple[str, int, str]] = []
+    regular: list[tuple[tuple[int, float, str, int], str]] = []
+    scope: list[tuple[tuple[int, float, str, int], str]] = []
     for index, c in enumerate(comments):
         if not isinstance(c, dict):
             continue
@@ -84,23 +104,38 @@ def build_comments_digest(comments: list[dict[str, Any]] | None, *, max_chars: i
         if len(body) < _COMMENT_MIN_LEN:
             continue
         explicit_scope = is_explicit_final_scope_comment(body)
-        if index >= 40 and not explicit_scope:
-            continue
         blob = body.lower()
         if not explicit_scope and not any(h in blob for h in _MEANINGFUL_HINTS) and len(body) < 120:
             continue
         author = str(c.get("author") or "").strip()
         created = str(c.get("created") or "").strip()
-        line = f"[{created}] {author}: {body[:max_chars if explicit_scope else 900]}"
+        key = _comment_sort_key(created, index)
         if explicit_scope:
-            scope_lines.append((created, index, line))
+            scope.append((key, f"[{created}] {author}: {body}"))
         else:
-            regular_lines.append(line)
+            regular.append((key, f"[{created}] {author}: {body[:_DIGEST_REGULAR_COMMENT_CHARS]}"))
+
     lines: list[str] = []
-    if scope_lines:
-        lines.append(max(scope_lines, key=lambda item: (item[0], item[1]))[2])
-    lines.extend(regular_lines)
-    return "\n".join(lines)[:max_chars].strip()
+    remaining = max_chars
+    if scope:
+        # The accepted scope is the acceptance authority, but it may use at most two thirds of the
+        # budget so the latest regular comments are not crowded out entirely.
+        scope_line = max(scope, key=lambda item: item[0])[1]
+        scope_cap = max_chars if not regular else max(1, (max_chars * 2) // 3)
+        scope_line = scope_line[:scope_cap].rstrip()
+        lines.append(scope_line)
+        remaining -= len(scope_line)
+
+    regular.sort(key=lambda item: item[0])
+    picked: list[str] = []
+    for _, line in reversed(regular[-_DIGEST_MAX_REGULAR_COMMENTS:]):
+        cost = len(line) + 1  # newline separator
+        if cost > remaining:
+            continue
+        picked.append(line)
+        remaining -= cost
+    lines.extend(reversed(picked))
+    return "\n".join(lines).strip()
 
 
 def _core_fields(enriched: JiraEnrichedDocument) -> dict[str, Any]:
@@ -526,14 +561,87 @@ def smart_chunks_to_chroma_rows(
     return rows
 
 
+_LINKED_SUMMARY_CHARS = 160
+_ATTACHMENT_TEXT_MAX_BLOBS = 5
+_ATTACHMENT_TEXT_CHUNK_CHARS = 3000
+
+
+def _linked_issue_text(refs: list[str], linked_issues: list[dict[str, Any]] | None) -> str:
+    """Linked keys with their fetched summaries; keys without a summary are still listed."""
+    summaries: dict[str, str] = {}
+    order: list[str] = []
+    for ref in refs or []:
+        key = str(ref or "").strip()
+        if key and key not in summaries:
+            summaries[key] = ""
+            order.append(key)
+    for item in linked_issues or []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip()
+        if not key:
+            continue
+        if key not in summaries:
+            order.append(key)
+        summaries[key] = " ".join(str(item.get("summary") or "").split())[:_LINKED_SUMMARY_CHARS]
+    if not order:
+        return ""
+    order = order[:80]
+    if not any(summaries[key] for key in order):
+        return "Linked Jira issues: " + ", ".join(order)
+    lines = ["Linked Jira issues:"]
+    used = len(lines[0])
+    overflow: list[str] = []
+    for key in order:
+        line = f"{key}: {summaries[key]}" if summaries[key] else key
+        if used + len(line) + 1 > _MAX_CHUNK_CHARS - 200:
+            overflow.append(key)
+            continue
+        lines.append(line)
+        used += len(line) + 1
+    if overflow:
+        lines.append("Also linked: " + ", ".join(overflow))
+    return "\n".join(lines)
+
+
+def _augment_with_bundle_context(
+    smart: list[dict[str, Any]],
+    enriched: JiraEnrichedDocument,
+    *,
+    linked_issues: list[dict[str, Any]] | None,
+    attachment_search_blobs: list[str] | None,
+) -> list[dict[str, Any]]:
+    """Add linked-issue summaries and extracted attachment text the enriched doc does not carry."""
+    out = list(smart)
+    linked_text = _linked_issue_text(list(enriched.linked_issue_refs or []), linked_issues)
+    if linked_text:
+        out = [chunk for chunk in out if chunk.get("chunk_type") != "linked_issue_chunk"]
+        _append_chunk(out, chunk_type="linked_issue_chunk", chunk_text=linked_text, enriched=enriched)
+    for blob in [b for b in (attachment_search_blobs or []) if str(b or "").strip()][:_ATTACHMENT_TEXT_MAX_BLOBS]:
+        text = str(blob).strip()[:_ATTACHMENT_TEXT_CHUNK_CHARS]
+        _append_chunk(
+            out,
+            chunk_type="attachment_signal_chunk",
+            chunk_text="Attachment text:\n" + text,
+            enriched=enriched,
+        )
+    return out
+
+
 def build_smart_chroma_chunks(
     issue_key: str,
     issue_dict: dict[str, Any],
     *,
     enriched: JiraEnrichedDocument | None = None,
     comments: list[dict[str, Any]] | None = None,
+    linked_issues: list[dict[str, Any]] | None = None,
+    attachment_search_blobs: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Enrich (if needed), attach comment digest, run smart chunking, return Chroma rows."""
+    """Enrich (if needed), attach comment digest, run smart chunking, return Chroma rows.
+
+    ``linked_issues`` (``{"key", "summary"}``) and ``attachment_search_blobs`` (extracted
+    attachment text) come from the fetched issue bundle and are indexed alongside the smart chunks.
+    """
     enr = enriched if enriched is not None else enrich_jira(issue_dict)
     if issue_key and not (enr.jira_key or "").strip():
         enr = enr.model_copy(update={"jira_key": issue_key.strip()})
@@ -541,4 +649,10 @@ def build_smart_chroma_chunks(
     if digest:
         enr = enr.model_copy(update={"comments_digest": digest})
     smart = create_jira_chunks(enr)
+    smart = _augment_with_bundle_context(
+        smart,
+        enr,
+        linked_issues=linked_issues,
+        attachment_search_blobs=attachment_search_blobs,
+    )
     return smart_chunks_to_chroma_rows(issue_key, issue_dict, enr, smart)
