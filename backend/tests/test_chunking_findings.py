@@ -541,3 +541,21 @@ def test_pdf_short_tail_of_same_section_still_merges():
     assert len(chunks) == 1
     assert chunks[0]["text"].endswith("tail words only")
     assert chunks[0]["pages"] == [1, 2]
+
+
+def test_legacy_steps_do_not_stop_at_prose_starting_with_a_heading_word(monkeypatch):
+    # Talos: a step line beginning with "Current" ended the steps after the first step.
+    doc = _legacy_section(
+        "Steps to reproduce:\n1. Open the map\nCurrent selection must remain unchanged while loading\n2. Publish",
+        monkeypatch,
+    )
+    assert (
+        "Steps to reproduce:\n1. Open the map\nCurrent selection must remain unchanged while loading\n2. Publish"
+        in doc
+    )
+
+
+def test_legacy_steps_still_stop_at_heading_labels(monkeypatch):
+    for heading in ("Expected:", "Actual result", "Current behaviour:", "Observed"):
+        doc = _legacy_section(f"Steps to reproduce:\n1. Open the map\n{heading}\nPDF fails", monkeypatch)
+        assert doc.split("Steps to reproduce:\n", 1)[1] == "1. Open the map", heading

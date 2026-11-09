@@ -354,7 +354,9 @@ def build_jira_qa_chunks(
         sea_lines.append("Actual / current:\n" + "\n".join(s.strip() for s in actual[:3]))
     steps_m = re.findall(
         r"(?is)\b(?:steps?\s+to\s+reproduce|repro\s+steps)\s*[:.]?\s*(.+?)"
-        r"(?=\n\n|\n[ \t]*(?:expected|actual|current|observed)\b|\Z)",
+        # Stop only at a heading-shaped label ("Expected:", "Actual result", "Current behaviour:"),
+        # not at a step written in prose such as "Current selection must remain unchanged".
+        r"(?=\n\n|\n[ \t]*(?:expected|actual|current|observed)\b(?:[ \t]+\w+){0,2}[ \t]*(?::|\n|\Z)|\Z)",
         desc_plain,
     )
     if steps_m:
