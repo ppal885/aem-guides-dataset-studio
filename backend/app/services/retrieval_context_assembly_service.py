@@ -61,6 +61,25 @@ def _dedupe_docs(docs: list[dict]) -> list[dict]:
     return out
 
 
+def _with_best_rank(docs: list[dict]) -> list[dict]:
+    """Give every copy of a document its best (lowest) ``_retrieval_rank`` across queries.
+
+    ``_dedupe_docs`` keeps the first occurrence, so without this a document ranked 0 by a later
+    query kept the worse rank from an earlier query.
+    """
+    best: dict[str, int] = {}
+    for d in docs:
+        key = (d.get("snippet") or "")[:160]
+        rank = d.get("_retrieval_rank")
+        if isinstance(rank, int) and (key not in best or rank < best[key]):
+            best[key] = rank
+    return [
+        {**d, "_retrieval_rank": best[(d.get("snippet") or "")[:160]]}
+        if (d.get("snippet") or "")[:160] in best else d
+        for d in docs
+    ]
+
+
 def _rerank_docs_for_xml_examples(docs: list[dict]) -> list[dict]:
     """Prefer XML-like snippets without discarding retrieval relevance.
 
@@ -148,7 +167,7 @@ def fetch_gold_xml_examples_digest(
         for rank, doc in enumerate(retrieve_relevant_docs(q, k=k_per_query, max_snippet_chars=1200)):
             raw.append({**doc, "_retrieval_rank": rank})
 
-    merged = drop_negative_term_docs(_dedupe_docs(raw), bundle.negative_terms, user_text)
+    merged = drop_negative_term_docs(_dedupe_docs(_with_best_rank(raw)), bundle.negative_terms, user_text)
     reranked = _rerank_docs_for_xml_examples(merged)[:max_snippets]
     if not reranked:
         return "", 0
