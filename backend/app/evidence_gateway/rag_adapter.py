@@ -175,12 +175,19 @@ def fetch_chunks(chunk_ids: list[str], neighbor_window: int, authorized_corpora:
             continue
         corpus, row = located
         selected_rows.append(_row_to_chunk(corpus, row, selected=True, neighbor_of=None, settings=settings))
+        selected_scope = _source_scope(row.get("metadata") or {})
         for neighbor_id in _neighbor_ids(chunk_id, neighbor_window):
             if neighbor_id == chunk_id:
                 continue
             neighbor = _locate_chunk(neighbor_id, {corpus}, settings)
-            if neighbor:
-                neighbor_rows.append(_row_to_chunk(corpus, neighbor[1], selected=False, neighbor_of=chunk_id, settings=settings))
+            if not neighbor:
+                continue
+            # Ids are numbered across a whole index run (e.g. every file of a GitHub repo), so the
+            # next id can belong to another document; only same-document chunks are context.
+            neighbor_scope = _source_scope(neighbor[1].get("metadata") or {})
+            if selected_scope and neighbor_scope and selected_scope != neighbor_scope:
+                continue
+            neighbor_rows.append(_row_to_chunk(corpus, neighbor[1], selected=False, neighbor_of=chunk_id, settings=settings))
     # Requested chunks win over their neighbour copies: a chunk asked for and also adjacent to an
     # earlier one must come back as selected, not as a mere neighbour.
     seen: set[str] = set()
@@ -235,6 +242,18 @@ def _row_to_chunk(corpus: str, row: dict[str, Any], selected: bool, neighbor_of:
     )
 
 
+_SOURCE_SCOPE_KEYS = ("jira_key", "path", "filename", "file_hash", "url", "entry_id")
+
+
+def _source_scope(meta: dict[str, Any]) -> tuple[str, str] | None:
+    """The most specific source-document identity a chunk's metadata carries, if any."""
+    for key in _SOURCE_SCOPE_KEYS:
+        value = str(meta.get(key) or "").strip()
+        if value:
+            return key, value
+    return None
+
+
 def _neighbor_ids(chunk_id: str, window: int) -> list[str]:
     if window <= 0:
         return []
@@ -243,4 +262,10 @@ def _neighbor_ids(chunk_id: str, window: int) -> list[str]:
         return []
     prefix, number_text = match.groups()
     number = int(number_text)
-    return [f"{prefix}{number + offset}" for offset in range(-window, window + 1) if offset != 0 and number + offset >= 0]
+    # Keep zero padding: "chunk_007" neighbours are "chunk_006"/"chunk_008", not "chunk_6".
+    width = len(number_text) if number_text.startswith("0") and len(number_text) > 1 else 0
+    return [
+        f"{prefix}{str(number + offset).zfill(width)}"
+        for offset in range(-window, window + 1)
+        if offset != 0 and number + offset >= 0
+    ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Any
 
@@ -346,7 +347,10 @@ def _row_jira_key(row: dict[str, Any]) -> str:
 
 
 def _is_chunker_owned_id(chunk_id: str, jira_key: str) -> bool:
-    """True for ``KEY::<chunk type>::<n>`` ids written by the Jira chunkers.
+    """True for ``KEY::<chunk type>::<suffix>`` ids written by the Jira chunkers.
+
+    The suffix is a position (``0``, ``1``...) or, for per-clause UAC chunks, a content digest
+    (``<hex>``, ``<hex>-p2``, ``<hex>-2``).
 
     Other writers share the ``jira_qa`` collection and ``jira_key`` metadata — generated test
     plans (``KEY::testplan::...``) and the learning-chunk backfill (``learning_behavior_chunk``) —
@@ -356,7 +360,7 @@ def _is_chunker_owned_id(chunk_id: str, jira_key: str) -> bool:
     from app.services.jira_learning_chunk_service import LEARNING_CHUNK_TYPE
 
     parts = str(chunk_id or "").split("::")
-    if len(parts) != 3 or parts[0] != jira_key or not parts[2].isdigit():
+    if len(parts) != 3 or parts[0] != jira_key or not re.fullmatch(r"[0-9a-z]+(?:-p?\d+)*", parts[2]):
         return False
     return parts[1] in (CHUNK_TYPES | SMART_JIRA_CHUNK_TYPES) and parts[1] != LEARNING_CHUNK_TYPE
 

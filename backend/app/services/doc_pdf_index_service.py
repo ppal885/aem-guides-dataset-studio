@@ -173,6 +173,26 @@ def _extract_text_pypdf(pdf_path: Path) -> tuple[list[dict], int]:
     return pages, len(reader.pages)
 
 
+def _table_lines_missing_from_text(text: str, tables: list) -> list[str]:
+    """Pipe-joined table rows whose cell text ``extract_text()`` did not already produce.
+
+    pdfplumber's page text usually contains the table cells already; appending every row again
+    duplicated table content in the indexed chunks.
+    """
+    normalized_text = " ".join(text.split()).casefold()
+    lines: list[str] = []
+    for table in tables:
+        for row in table or []:
+            cells = [" ".join(str(cell or "").split()) for cell in row or []]
+            filled = [cell for cell in cells if cell]
+            if not filled:
+                continue
+            if all(cell.casefold() in normalized_text for cell in filled):
+                continue
+            lines.append(" | ".join(cells).strip())
+    return lines
+
+
 def _extract_text_pdfplumber(pdf_path: Path) -> tuple[list[dict], int]:
     import pdfplumber
 
@@ -181,13 +201,7 @@ def _extract_text_pdfplumber(pdf_path: Path) -> tuple[list[dict], int]:
         with pdfplumber.open(str(pdf_path)) as pdf:
             for index, page in enumerate(pdf.pages[:MAX_PAGES], start=1):
                 text = (page.extract_text() or "").strip()
-                tables = page.extract_tables() or []
-                table_lines: list[str] = []
-                for table in tables:
-                    for row in table or []:
-                        row_text = " | ".join(str(cell or "") for cell in row or [])
-                        if row_text.strip():
-                            table_lines.append(row_text.strip())
+                table_lines = _table_lines_missing_from_text(text, page.extract_tables() or [])
                 joined = "\n".join([text, *table_lines]).strip()
                 pages.append({"page_num": index, "text": joined, "has_text": len(joined) > 30})
             return pages, len(pdf.pages)
@@ -202,19 +216,41 @@ def _extract_text(pdf_path: Path) -> tuple[list[dict], int]:
         return _extract_text_pypdf(pdf_path)
 
 
+_NUMBERED_HEADING_RE = re.compile(r"^[0-9]+(?:\.[0-9]+)+\.?\s+\S|^[0-9]+\.?\s+[A-Z][^.!?]*$")
+
+
+def _is_heading_line(line: str) -> bool:
+    """Conservative heading test for a single line, usable anywhere on a page.
+
+    Accepts numbered section titles ("2.3 Configure output", "4 Publishing"), "Chapter/Section/
+    Appendix ..." and short all-caps lines. Rejects sentences (trailing punctuation) and long lines,
+    so numbered steps such as "1. Click Save." or "10 items were found." do not open a section.
+    """
+    line = line.strip()
+    if not line or len(line) > 80 or line.endswith((".", ",", ";", ":")):
+        return False
+    if len(line.split()) > 12:
+        return False
+    if _NUMBERED_HEADING_RE.match(line):
+        return True
+    if re.match(r"^(chapter|section|appendix)\s+\S", line, re.IGNORECASE):
+        return True
+    letters = [ch for ch in line if ch.isalpha()]
+    return len(letters) >= 3 and line.isupper() and len(line.split()) < 10
+
+
 def _detect_heading(text: str) -> str:
     first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
-    if not first_line:
-        return ""
-    if len(first_line) > 80:
-        return ""
-    if re.match(r"^[0-9]+(\.[0-9]+)*\s+\w", first_line):
-        return first_line
-    if re.match(r"^(chapter|section|appendix)\s+", first_line, re.IGNORECASE):
-        return first_line
-    if first_line.isupper() and len(first_line.split()) < 10:
-        return first_line
-    return ""
+    return first_line if _is_heading_line(first_line) else ""
+
+
+def _effective_overlap_chars(split_pos: int) -> int:
+    """Overlap carried into the next chunk, clamped so every split shrinks the buffer.
+
+    ``DOC_PDF_CHUNK_OVERLAP`` large relative to ``DOC_PDF_CHUNK_SIZE`` used to keep the whole
+    buffer and loop forever.
+    """
+    return max(0, min(CHUNK_OVERLAP * 4, split_pos // 2))
 
 
 def _chunk_pages(pages: list[dict], doc_meta: dict) -> list[dict]:
@@ -231,47 +267,47 @@ def _chunk_pages(pages: list[dict], doc_meta: dict) -> list[dict]:
         return any(re.match(pattern, stripped, re.IGNORECASE) for pattern in junk_patterns)
 
     chunks: list[dict] = []
+    # The buffer is text plus spans [(start, end, page_num)] recording which page each character
+    # came from, so every chunk carries exactly the pages its own text came from.
     buffer = ""
-    buffer_pages: list[int] = []
+    spans: list[tuple[int, int, int]] = []
     current_section = ""
 
-    def flush_buffer() -> None:
-        nonlocal buffer, buffer_pages
+    def pages_in(lo: int, hi: int) -> list[int]:
+        return sorted({page for start, end, page in spans if start < hi and end > lo})
+
+    def emit(text: str, chunk_pages: list[int], section: str) -> None:
+        chunks.append({"text": text, "pages": chunk_pages, "section": section, **doc_meta})
+
+    def append_text(text: str, page_num: int) -> None:
+        nonlocal buffer
+        if buffer:
+            buffer += "\n\n"
+        spans.append((len(buffer), len(buffer) + len(text), page_num))
+        buffer += text
+
+    def flush_buffer(*, final: bool = False) -> None:
+        nonlocal buffer, spans
         text = buffer.strip()
+        if not text:
+            buffer, spans = "", []
+            return
+        chunk_pages = pages_in(0, len(buffer))
         if len(text) >= MIN_CHUNK_CHARS:
-            chunks.append(
-                {
-                    "text": text,
-                    "pages": sorted(set(buffer_pages)),
-                    "section": current_section,
-                    **doc_meta,
-                }
-            )
-        buffer = ""
-        buffer_pages = []
+            emit(text, chunk_pages, current_section)
+        elif chunks and (final or chunks[-1]["section"] == current_section):
+            # Too short to stand alone: keep it with the previous chunk instead of dropping it.
+            previous = chunks[-1]
+            previous["text"] = f"{previous['text']}\n\n{text}"
+            previous["pages"] = sorted(set(previous["pages"]) | set(chunk_pages))
+        elif final:
+            emit(text, chunk_pages, current_section)
+        else:
+            return  # carry the short text into the next section's buffer
+        buffer, spans = "", []
 
-    for page in pages:
-        if not page.get("has_text"):
-            continue
-        clean_lines = []
-        for line in str(page.get("text", "")).splitlines():
-            stripped = line.strip()
-            if not stripped or is_junk(stripped):
-                continue
-            clean_lines.append(stripped)
-        clean_text = "\n".join(clean_lines).strip()
-        if not clean_text:
-            continue
-
-        heading = _detect_heading(clean_text)
-        if heading:
-            if buffer:
-                flush_buffer()
-            current_section = heading
-
-        buffer = f"{buffer}\n\n{clean_text}".strip() if buffer else clean_text
-        buffer_pages.append(int(page.get("page_num", 0)))
-
+    def split_oversized() -> None:
+        nonlocal buffer, spans
         while len(buffer) > CHUNK_SIZE * 4:
             split_pos = CHUNK_SIZE * 3
             found_separator = False
@@ -289,19 +325,46 @@ def _chunk_pages(pages: list[dict], doc_meta: dict) -> list[dict]:
                     split_pos = space + 1
             chunk_text = buffer[:split_pos].strip()
             if len(chunk_text) >= MIN_CHUNK_CHARS:
-                chunks.append(
-                    {
-                        "text": chunk_text,
-                        "pages": sorted(set(buffer_pages)) or [int(page.get("page_num", 0))],
-                        "section": current_section,
-                        **doc_meta,
-                    }
-                )
-            overlap_start = max(0, split_pos - CHUNK_OVERLAP * 4)
-            buffer = buffer[overlap_start:].strip()
-            buffer_pages = [int(page.get("page_num", 0))]
+                emit(chunk_text, pages_in(0, split_pos), current_section)
+            overlap_start = split_pos - _effective_overlap_chars(split_pos)
+            rest = buffer[overlap_start:]
+            lead = len(rest) - len(rest.lstrip())
+            cut = overlap_start + lead
+            buffer = buffer[cut:].rstrip()
+            spans = [
+                (max(start, cut) - cut, end - cut, page)
+                for start, end, page in spans
+                if end > cut
+            ]
 
-    flush_buffer()
+    for page in pages:
+        if not page.get("has_text"):
+            continue
+        page_num = int(page.get("page_num", 0))
+        clean_lines = [
+            line.strip()
+            for line in str(page.get("text", "")).splitlines()
+            if line.strip() and not is_junk(line)
+        ]
+        if not clean_lines:
+            continue
+        # Headings are detected on every line, not only a page's first line, so a section that
+        # starts mid-page is labelled correctly.
+        block: list[str] = []
+        for line in clean_lines:
+            if _is_heading_line(line):
+                if block:
+                    append_text("\n".join(block), page_num)
+                    split_oversized()
+                    block = []
+                flush_buffer()
+                current_section = line
+            block.append(line)
+        if block:
+            append_text("\n".join(block), page_num)
+            split_oversized()
+
+    flush_buffer(final=True)
     return chunks
 
 
@@ -411,6 +474,7 @@ async def index_pdf(
                 "filename": result.filename,
                 "section": chunk.get("section", ""),
                 "page": str((chunk.get("pages") or [0])[0]),
+                "pages": json.dumps(chunk.get("pages") or []),
                 "file_hash": result.file_hash,
                 "indexed_at": result.indexed_at,
                 "credibility": str(chunk.get("credibility", _credibility_score(doc_type))),

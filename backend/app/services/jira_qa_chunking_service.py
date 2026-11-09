@@ -40,7 +40,7 @@ CHUNK_TYPES = frozenset(
 )
 
 # Overlapping windows over long descriptions (chunk_id suffix 0 .. max-1).
-JIRA_QA_DESCRIPTION_LONG_PART_MAX = 8
+JIRA_QA_DESCRIPTION_LONG_PART_MAX = 16
 _DESCRIPTION_LONG_THRESHOLD = 6000
 _DESCRIPTION_LONG_WINDOW = 6000
 _DESCRIPTION_LONG_STRIDE = 4500
@@ -323,16 +323,22 @@ def build_jira_qa_chunks(
                 f"Description segment (chars {pos}-{pos + len(slice_)} of {len(desc_plain)}):\n{slice_}"
             )
             add("description_long_part", part_i, body)
-            pos += _DESCRIPTION_LONG_STRIDE
             part_i += 1
+            if pos + len(slice_) >= len(desc_plain):
+                break  # this window reached the end; another would be a subset of it
+            pos += _DESCRIPTION_LONG_STRIDE
 
     # steps_expected_actual — heuristic sections
+    # Section labels only: a word at the start of a line followed by ":" (or alone on its line).
+    # Unanchored matching read "unexpected error" as an Expected section and "concurrently" as Actual.
     expected = re.findall(
-        r"(?is)(?:expected|expect)\s*(?:behavior|result)?\s*[:.\s]*([^\n]+(?:\n(?!(?:actual|current))[^\n]+)*)",
+        r"(?im)^[ \t]*expected(?:[ \t]+(?:behaviou?r|results?|outcome))?[ \t]*(?::[ \t]*|\n)"
+        r"([^\n]+(?:\n(?![ \t]*(?:actual|current|observed|steps?)\b)[^\n]+)*)",
         desc_plain,
     )
     actual = re.findall(
-        r"(?is)(?:actual|current)\s*(?:behavior|result)?\s*[:.\s]*([^\n]+(?:\n(?!(?:expected|steps))[^\n]+)*)",
+        r"(?im)^[ \t]*(?:actual|current|observed)(?:[ \t]+(?:behaviou?r|results?|outcome))?[ \t]*(?::[ \t]*|\n)"
+        r"([^\n]+(?:\n(?![ \t]*(?:expected|steps?)\b)[^\n]+)*)",
         desc_plain,
     )
     sea_lines: list[str] = []
@@ -340,7 +346,11 @@ def build_jira_qa_chunks(
         sea_lines.append("Expected:\n" + "\n".join(s.strip() for s in expected[:3]))
     if actual:
         sea_lines.append("Actual / current:\n" + "\n".join(s.strip() for s in actual[:3]))
-    steps_m = re.findall(r"(?is)(?:steps?\s+to\s+reproduce|repro\s+steps)\s*[:.]?\s*(.+?)(?:\n\n|$)", desc_plain)
+    steps_m = re.findall(
+        r"(?is)\b(?:steps?\s+to\s+reproduce|repro\s+steps)\s*[:.]?\s*(.+?)"
+        r"(?=\n\n|\n[ \t]*(?:expected|actual|current|observed)\b|\Z)",
+        desc_plain,
+    )
     if steps_m:
         sea_lines.append("Steps to reproduce:\n" + steps_m[0].strip()[:4000])
     add("steps_expected_actual", 0, "\n\n".join(sea_lines))
