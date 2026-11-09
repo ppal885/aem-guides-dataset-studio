@@ -164,3 +164,27 @@ def test_azure_caps_over_long_inputs():
     with a, b:
         embeddings._try_azure_embedding(["x" * 100_000])
     assert len(post.call_args.kwargs["json"]["input"][0]) == embeddings._AZURE_MAX_INPUT_CHARS
+
+
+def test_duplicate_docs_keep_their_best_rank_across_queries(monkeypatch):
+    from app.core.schemas_dita_pipeline import RetrievalQueryBundle
+    from app.services import retrieval_context_assembly_service as rca
+
+    shared = {"title": "shared", "snippet": "<table><tgroup>shared</tgroup></table>"}
+    other = {"title": "other", "snippet": "<table><tgroup>other</tgroup></table>"}
+    pages = [[other, shared], [shared, other]]  # shared is rank 1, then rank 0
+    calls = iter(pages * 4)
+    monkeypatch.setattr(
+        "app.services.doc_retriever_service.retrieve_relevant_docs",
+        lambda q, k, max_snippet_chars: next(calls),
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "app.services.doc_retriever_service.format_docs_for_prompt",
+        lambda docs: captured.setdefault("docs", docs) and "x",
+    )
+    bundle = RetrievalQueryBundle(primary_query="q", dita_spec_queries=["a"])
+    rca.fetch_gold_xml_examples_digest(bundle, "", max_queries=2)
+    assert all("_retrieval_rank" not in d for d in captured["docs"])
+    merged = rca._with_best_rank([{**shared, "_retrieval_rank": 1}, {**shared, "_retrieval_rank": 0}])
+    assert [d["_retrieval_rank"] for d in merged] == [0, 0]

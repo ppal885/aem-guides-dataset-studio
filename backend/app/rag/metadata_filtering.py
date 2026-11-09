@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from app.services.customer_tokens import clean_customer_tokens
+from app.services.jira_sync_state import parse_jira_timestamp
+
 
 @dataclass(frozen=True)
 class JiraMetadataCriteria:
@@ -171,17 +174,24 @@ def metadata_customer_unknown(meta: dict[str, Any]) -> bool:
     """True when no structured customer field is set (the issue is not tied to any customer)."""
     for field in _CUSTOMER_FIELDS:
         raw = meta.get(field)
-        if isinstance(raw, (list, tuple)):
-            if any(str(x).strip() for x in raw):
-                return False
-        elif parse_json_list(raw):
+        tokens = [str(x) for x in raw] if isinstance(raw, (list, tuple)) else parse_json_list(raw)
+        # Legacy chunks carry leaked Jira labels ("Triaged", "Bugs", "ID") in customer fields.
+        # Sanitize them the same way retrieval does, so they do not count as a real customer.
+        if clean_customer_tokens(tokens):
             return False
     return True
 
 
 def _metadata_updated_date(meta: dict[str, Any]) -> date | None:
     for field in _UPDATED_AT_FIELDS:
-        match = _ISO_DATE.search(str(meta.get(field) or ""))
+        raw = str(meta.get(field) or "").strip()
+        if not raw:
+            continue
+        # Shared parser: Jira API, Jira CSV ("31/Jul/26 05:30 PM") and stored ISO timestamps.
+        parsed = parse_jira_timestamp(raw)
+        if parsed is not None:
+            return parsed.date()
+        match = _ISO_DATE.search(raw)
         if not match:
             continue
         try:
@@ -237,7 +247,7 @@ def metadata_score(criteria: JiraMetadataCriteria, meta: dict[str, Any], documen
         ("issue_type", criteria.issue_type, 0.15, ("issue_type",)),
         ("environment", criteria.environment, 0.15, ("environment", "labels", "build_type")),
         ("output_type", criteria.output_type, 0.1, ("enrich_outputs", "component", "components", "labels", "title")),
-        ("editor_type", criteria.editor_type, 0.1, ("editor_type", "component", "components", "labels", "title")),
+        ("editor_type", criteria.editor_type, 0.1, ("editor_type", "editor_variant", "enrich_features", "component", "components", "labels", "title")),
     )
     for label, value, weight, fields in weighted:
         if value and metadata_contains(value, meta, document, fields=fields):

@@ -127,3 +127,25 @@ def test_live_jira_snapshot_metadata_wins_over_indexed_chunks() -> None:
     assert details.metadata["issue_type"] == "Bug"
     # Document order is unchanged: the live snapshot still leads the evidence.
     assert details.evidence_chunks[0]["chunk_type"] == "live_jira_snapshot"
+
+
+# --- Talos review follow-ups ------------------------------------------------------------------
+
+
+def test_leaked_label_tokens_do_not_count_as_a_customer(monkeypatch) -> None:
+    polluted = _hit("GUIDES-20", {"enrich_customers": json.dumps(["Triaged", "Bugs", "ID"]), "issue_type": "Bug"})
+    real = _hit("GUIDES-21", {"enrich_customers": json.dumps(["Cisco"]), "issue_type": "Bug"})
+    result = _search(monkeypatch, [polluted, real], JiraMetadataCriteria(customer="Topcon", issue_type="Bug"))
+    assert [h["jira_key"] for h in result.hits] == ["GUIDES-20"]
+
+
+def test_time_window_parses_jira_csv_dates() -> None:
+    today = date(2026, 11, 9)
+    assert not within_time_window(90, {"updated": "31/Jul/25 05:30 PM"}, today=today)
+    assert within_time_window(90, {"updated": "31/Oct/26 05:30 PM"}, today=today)
+
+
+def test_editor_boost_uses_indexed_editor_variant_and_features() -> None:
+    criteria = JiraMetadataCriteria(editor_type="New Editor")
+    assert "editor_type_match" in metadata_score(criteria, {"editor_variant": "new_editor"})[1]
+    assert "editor_type_match" in metadata_score(criteria, {"enrich_features": json.dumps(["new_editor"])})[1]
