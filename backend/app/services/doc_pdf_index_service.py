@@ -174,12 +174,15 @@ def _extract_text_pypdf(pdf_path: Path) -> tuple[list[dict], int]:
 
 
 def _table_lines_missing_from_text(text: str, tables: list) -> list[str]:
-    """Pipe-joined table rows whose cell text ``extract_text()`` did not already produce.
+    """Pipe-joined table rows that ``extract_text()`` did not already produce as a complete line.
 
-    pdfplumber's page text usually contains the table cells already; appending every row again
-    duplicated table content in the indexed chunks.
+    pdfplumber's page text usually renders a table row as one line with the cells in order, so
+    appending every row again duplicated table content. A row is suppressed only when a line of
+    the page text is exactly that row — the same cells, in the same order, with nothing else.
+    Matching each cell as a substring anywhere on the page would drop real data, e.g. the row
+    ``timeout | 10`` on a page that only says ``timeout 100``.
     """
-    normalized_text = " ".join(text.split()).casefold()
+    page_lines = {" ".join(line.split()).casefold() for line in text.splitlines() if line.strip()}
     lines: list[str] = []
     for table in tables:
         for row in table or []:
@@ -187,7 +190,7 @@ def _table_lines_missing_from_text(text: str, tables: list) -> list[str]:
             filled = [cell for cell in cells if cell]
             if not filled:
                 continue
-            if all(cell.casefold() in normalized_text for cell in filled):
+            if " ".join(filled).casefold() in page_lines:
                 continue
             lines.append(" | ".join(cells).strip())
     return lines

@@ -400,3 +400,111 @@ def test_neighbours_from_another_document_are_skipped(monkeypatch):
 def test_neighbour_ids_keep_zero_padding():
     assert rag_adapter._neighbor_ids("chunk_007", 1) == ["chunk_006", "chunk_008"]
     assert rag_adapter._neighbor_ids("chunk_7", 1) == ["chunk_6", "chunk_8"]
+
+
+# --- Talos review follow-ups ---------------------------------------------------------------
+
+
+def test_markup_cut_ignores_greater_than_inside_quoted_attribute():
+    # Talos: '<p outputclass="' + 210 'a' + '>\n' + 20 'b' + '">Text</p>' + trailing text.
+    doc = '<p outputclass="' + "a" * 210 + ">\n" + "b" * 20 + '">Text</p>' + " trailing words here" * 20
+    window = doc[:400]
+    attribute_end = doc.index('">Text')
+
+    cut = gh._markup_aware_cut(window)
+
+    assert not (0 < cut <= attribute_end), (cut, window[max(0, cut - 5) : cut + 5])
+
+
+def test_xml_cut_map_skips_comments_cdata_and_quoted_values():
+    text = "<a x='1>2'>t<!-- a > b --><![CDATA[ c > d ]]>u</a>"
+    outside, tag_end = gh._xml_cut_map(text)
+
+    real_ends = {i for i in range(len(text) + 1) if tag_end[i]}
+    assert real_ends == {
+        text.index("'>t") + 2,  # end of <a x='1>2'>
+        text.index("-->") + 3,
+        text.index("]]>") + 3,
+        len(text),  # </a>
+    }
+    assert not outside[text.index("2'")]  # inside the quoted value
+    assert not outside[text.index(" b -->")]  # inside the comment
+
+
+def test_github_chunks_never_split_quoted_attribute(monkeypatch):
+    monkeypatch.setattr(gh, "CHUNK_SIZE", 300)
+    monkeypatch.setattr(gh, "CHUNK_OVERLAP", 40)
+    para = '<p outputclass="' + "a" * 120 + '>\n' + "b" * 30 + '">Text body here.</p>\n'
+    chunks = gh._chunk_document("<body>\n" + para * 12 + "</body>")
+
+    for chunk in chunks:
+        # every chunk boundary is outside markup: no chunk ends inside an attribute value
+        outside, _ = gh._xml_cut_map(chunk)
+        assert outside[len(chunk)], chunk[-60:]
+
+
+def test_pdf_table_row_kept_when_only_a_substring_is_on_the_page():
+    # Talos: "timeout 100" in the text must not suppress the row ["timeout", "10"].
+    assert pdf._table_lines_missing_from_text("timeout 100", [[["timeout", "10"]]]) == ["timeout | 10"]
+
+
+def test_pdf_table_row_kept_when_cells_appear_out_of_order_or_apart():
+    text = "10 is the timeout\nretries 3"
+    tables = [[["timeout", "10"], ["retries", "3"]]]
+
+    assert pdf._table_lines_missing_from_text(text, tables) == ["timeout | 10"]
+
+
+def test_problem_truncation_flagged_when_only_first_slice_is_kept(monkeypatch):
+    # Talos: JIRA_SMART_MAX_PARTS_PER_FIELD=1 truncated the description without the flag.
+    monkeypatch.setattr(jc, "_MAX_PARTS_PER_FIELD", 1)
+    chunks = jc.create_jira_chunks(JiraEnrichedDocument(jira_key="G-1", description=_words(3000)))
+    problem = [c for c in chunks if c["chunk_type"] == "problem_chunk"]
+
+    assert len(problem) == 1
+    assert problem[0].get("chunk_truncated") is True
+
+
+def test_problem_truncation_flag_lands_on_last_retained_row(monkeypatch):
+    monkeypatch.setattr(jc, "_MAX_PARTS_PER_FIELD", 3)
+    chunks = jc.create_jira_chunks(JiraEnrichedDocument(jira_key="G-1", description=_words(3000)))
+    problem = [c for c in chunks if c["chunk_type"] == "problem_chunk"]
+
+    assert len(problem) == 3
+    assert [bool(c.get("chunk_truncated")) for c in problem] == [False, False, True]
+
+
+def test_legacy_expected_heading_with_content_on_next_line(monkeypatch):
+    # Talos: "Expected result:\nPDF generates." stopped matching.
+    doc = _legacy_section(
+        "Expected result:\nPDF generates.\nActual result:\nerror 500.\nSteps to reproduce: 1. open map",
+        monkeypatch,
+    )
+    assert "Expected:\nPDF generates." in doc
+    assert "Actual / current:\nerror 500." in doc
+
+
+def test_legacy_empty_expected_section_does_not_capture_next_heading(monkeypatch):
+    doc = _legacy_section("Expected:\nActual: error 500.", monkeypatch)
+    assert "Expected:" not in doc
+    assert "Actual / current:\nerror 500." in doc
+
+
+def test_legacy_comments_keep_newest_within_document_budget(monkeypatch):
+    # Talos: 40 long comments were cut from the front at 12,000 chars, dropping the newest.
+    monkeypatch.setenv("JIRA_SMART_CHUNKING", "false")
+    comments = [
+        {"author": "qa", "created": f"2026-01-{i + 1:02d}", "body_text": f"comment {i} " + "detail " * 280}
+        for i in range(45)
+    ]
+    comments[-1]["body_text"] = "Verified fixed in 2026.11 build; closing. " + "detail " * 200
+    issue = {"fields": {"summary": "S", "description": "D", "labels": [], "components": []}}
+
+    rows = build_jira_qa_chunks("G-1", issue, comments=comments, linked_issues=[])
+    doc = next(r["document"] for r in rows if r["metadata"]["chunk_type"] == "comments_discussion")
+
+    assert len(doc) <= 12000
+    assert "Verified fixed in 2026.11 build" in doc
+    assert "comment 43 " in doc
+    assert "comment 0 " not in doc
+    assert doc.rstrip().endswith("detail")  # the newest comment is whole, not cut
