@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 
@@ -134,29 +135,75 @@ def _contains_value(needle: str, haystack: str) -> bool:
     return needle in haystack
 
 
+_ESCALATION_NEEDLES = ("customer escalation", "p1 escalation", "escalation", "escalated", "sev 1", "sev1")
+_ESCALATION_PRIORITIES = ("blocker", "critical")
+_CUSTOMER_FIELDS = ("customer", "customer_key", "customer_labels", "enrich_customers")
+_UPDATED_AT_FIELDS = ("jira_updated_at", "updated_at", "updated")
+_ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+
+
 def metadata_has_escalation(meta: dict[str, Any], document: str = "") -> bool:
-    text = normalize_token(
-        " ".join(
-            [
-                metadata_text(meta, document),
-                " ".join(parse_json_list(meta.get("labels"))),
-                " ".join(parse_json_list(meta.get("customer_labels"))),
-            ]
-        )
+    """True when structured Jira fields mark the issue as an escalation.
+
+    Only labels, title/summary and priority are checked. The ticket body is deliberately
+    ignored: words such as "critical", "blocker" or "escalation" appear in ordinary
+    descriptions, which made ``escalation_only`` accept almost every ticket.
+    ``document`` is kept in the signature for callers but is not searched.
+    """
+    del document
+    labelled = " ".join(
+        parse_json_list(meta.get("labels"))
+        + parse_json_list(meta.get("customer_labels"))
+        + [str(meta.get("title") or ""), str(meta.get("summary") or "")]
     )
-    compact = normalize_compact(text)
-    return any(
-        needle in text or needle.replace(" ", "") in compact
-        for needle in (
-            "customer escalation",
-            "p1 escalation",
-            "sev 1",
-            "sev1",
-            "escalation",
-            "blocker",
-            "critical",
-        )
-    )
+    text = normalize_token(labelled)
+    compact = normalize_compact(labelled)
+    if any(
+        _contains_value(needle, text) or _contains_value(needle.replace(" ", ""), compact)
+        for needle in _ESCALATION_NEEDLES
+    ):
+        return True
+    priority = normalize_token(str(meta.get("priority") or ""))
+    return any(_contains_value(level, priority) for level in _ESCALATION_PRIORITIES)
+
+
+def metadata_customer_unknown(meta: dict[str, Any]) -> bool:
+    """True when no structured customer field is set (the issue is not tied to any customer)."""
+    for field in _CUSTOMER_FIELDS:
+        raw = meta.get(field)
+        if isinstance(raw, (list, tuple)):
+            if any(str(x).strip() for x in raw):
+                return False
+        elif parse_json_list(raw):
+            return False
+    return True
+
+
+def _metadata_updated_date(meta: dict[str, Any]) -> date | None:
+    for field in _UPDATED_AT_FIELDS:
+        match = _ISO_DATE.search(str(meta.get(field) or ""))
+        if not match:
+            continue
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            continue
+    return None
+
+
+def within_time_window(days: int | None, meta: dict[str, Any], *, today: date | None = None) -> bool:
+    """Exclude issues whose known last-update date is older than ``days``.
+
+    Issues with no parseable update date are kept: the index cannot prove they are outside
+    the window, and older index generations did not store the date.
+    """
+    if not days or days <= 0:
+        return True
+    updated = _metadata_updated_date(meta)
+    if updated is None:
+        return True
+    current = today or datetime.now(timezone.utc).date()
+    return updated >= current - timedelta(days=int(days))
 
 
 def matches_metadata(criteria: JiraMetadataCriteria, meta: dict[str, Any], document: str = "") -> bool:
@@ -176,6 +223,7 @@ def matches_metadata(criteria: JiraMetadataCriteria, meta: dict[str, Any], docum
         metadata_contains(criteria.issue_type, meta, document, fields=("issue_type",)),
         metadata_contains(criteria.environment, meta, document, fields=("environment", "labels", "build_type")),
         metadata_has_escalation(meta, document) if criteria.escalation_only else True,
+        within_time_window(criteria.time_window_days, meta),
     ]
     return all(checks)
 
@@ -189,6 +237,7 @@ def metadata_score(criteria: JiraMetadataCriteria, meta: dict[str, Any], documen
         ("issue_type", criteria.issue_type, 0.15, ("issue_type",)),
         ("environment", criteria.environment, 0.15, ("environment", "labels", "build_type")),
         ("output_type", criteria.output_type, 0.1, ("enrich_outputs", "component", "components", "labels", "title")),
+        ("editor_type", criteria.editor_type, 0.1, ("editor_type", "component", "components", "labels", "title")),
     )
     for label, value, weight, fields in weighted:
         if value and metadata_contains(value, meta, document, fields=fields):

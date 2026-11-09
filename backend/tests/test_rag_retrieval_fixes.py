@@ -52,14 +52,24 @@ def test_hybrid_fallback_reports_when_no_metadata_filter_applied():
     hits = [{"jira_key": "GUIDES-1", "document": "x", "metadata": {"issue_type": "Bug", "customer": "Acme"}, "score": 0.9}]
     search = HybridJiraSearch(semantic_search=_FakeSemantic(hits))
     out = search.search(JiraMetadataCriteria(customer="Zebra", issue_type="Story"), limit=5)
-    assert out.hits, "callers still get the best unfiltered candidates"
+    # Hard filters are never dropped: an issue of the wrong type for another customer is not a match.
+    assert out.hits == []
     assert out.semantic_fallback_used is True
-    assert out.metadata_filter_used is False, "no constraint survived, and the output must not claim one did"
-    assert out.debug["fallback_reason"] == "all_metadata_filters_relaxed"
+    assert out.metadata_filter_used is True
+    assert out.debug["fallback_reason"] == "metadata_filters_matched_zero_candidates"
 
     relaxed_only = HybridJiraSearch(semantic_search=_FakeSemantic(hits))
     out = relaxed_only.search(JiraMetadataCriteria(customer="Zebra", issue_type="Bug"), limit=5)
+    # Relaxing the customer admits only issues with no customer recorded; "Acme" is another customer.
+    assert out.hits == []
     assert out.metadata_filter_used is True
+    assert out.debug["fallback_reason"] == "metadata_filters_matched_zero_candidates"
+
+    no_customer = [{**hits[0], "metadata": {"issue_type": "Bug"}}]
+    out = HybridJiraSearch(semantic_search=_FakeSemantic(no_customer)).search(
+        JiraMetadataCriteria(customer="Zebra", issue_type="Bug"), limit=5
+    )
+    assert [h["jira_key"] for h in out.hits] == ["GUIDES-1"]
     assert out.debug["fallback_reason"] == "metadata_filter_returned_zero_candidates"
 
 
