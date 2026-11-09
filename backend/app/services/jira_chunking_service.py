@@ -225,8 +225,9 @@ def _append_chunk(
         return [row]
     header_room = 24
     parts = split_text_slices(text, _MAX_CHUNK_CHARS - header_room)
-    truncated = len(parts) > _MAX_PARTS_PER_FIELD
-    parts = parts[:_MAX_PARTS_PER_FIELD]
+    max_parts = max(1, _MAX_PARTS_PER_FIELD)
+    truncated = len(parts) > max_parts
+    parts = parts[:max_parts]
     rows: list[dict[str, Any]] = []
     for number, part in enumerate(parts, start=1):
         row = {
@@ -321,20 +322,25 @@ def create_jira_chunks(enriched_doc: JiraEnrichedDocument) -> list[dict]:
     # Overlapping slices over the whole description (previously only the first two slices were
     # kept and the rest was dropped).
     body_slices = split_text_slices(body, _PROBLEM_SLICE)
-    problem_truncated = len(body_slices) > _MAX_PARTS_PER_FIELD
-    body_slices = body_slices[:_MAX_PARTS_PER_FIELD]
+    max_slices = max(1, _MAX_PARTS_PER_FIELD)
+    problem_truncated = len(body_slices) > max_slices
+    body_slices = body_slices[:max_slices]
     if body_slices:
         prob_lines.append(body_slices[0])
+    problem_rows: list[dict[str, Any]] = []
     if prob_lines:
-        _append_chunk(out, chunk_type="problem_chunk", chunk_text="\n".join(prob_lines), enriched=e)
+        problem_rows += _append_chunk(out, chunk_type="problem_chunk", chunk_text="\n".join(prob_lines), enriched=e)
     for number, rest in enumerate(body_slices[1:], start=2):
-        for row in _append_chunk(
+        problem_rows += _append_chunk(
             out,
             chunk_type="problem_chunk",
             chunk_text=f"Description continued ({number}/{len(body_slices)}):\n{rest}",
             enriched=e,
-        ):
-            row["chunk_truncated"] = problem_truncated and number == len(body_slices)
+        )
+    if problem_truncated and problem_rows:
+        # Flag the last retained row, even when only the first slice was kept. Set-only: never
+        # clear a flag _append_chunk already set on its own parts.
+        problem_rows[-1]["chunk_truncated"] = True
 
     # 3) expected / actual
     ea_lines = []

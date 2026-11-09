@@ -331,13 +331,19 @@ def build_jira_qa_chunks(
     # steps_expected_actual — heuristic sections
     # Section labels only: a word at the start of a line followed by ":" (or alone on its line).
     # Unanchored matching read "unexpected error" as an Expected section and "concurrently" as Actual.
+    # The heading may carry its content on the same line ("Expected: PDF") or on the next line
+    # ("Expected result:\nPDF" / "Expected result\nPDF"); an empty section must not capture the
+    # next heading.
     expected = re.findall(
-        r"(?im)^[ \t]*expected(?:[ \t]+(?:behaviou?r|results?|outcome))?[ \t]*(?::[ \t]*|\n)"
+        r"(?im)^[ \t]*expected(?:[ \t]+(?:behaviou?r|results?|outcome))?[ \t]*(?::[ \t]*(?:\n[ \t]*)?|\n[ \t]*)"
+        r"(?![ \t]*(?:actual|current|observed|steps?)\b)"
         r"([^\n]+(?:\n(?![ \t]*(?:actual|current|observed|steps?)\b)[^\n]+)*)",
         desc_plain,
     )
     actual = re.findall(
-        r"(?im)^[ \t]*(?:actual|current|observed)(?:[ \t]+(?:behaviou?r|results?|outcome))?[ \t]*(?::[ \t]*|\n)"
+        r"(?im)^[ \t]*(?:actual|current|observed)(?:[ \t]+(?:behaviou?r|results?|outcome))?[ \t]*"
+        r"(?::[ \t]*(?:\n[ \t]*)?|\n[ \t]*)"
+        r"(?![ \t]*(?:expected|steps?)\b)"
         r"([^\n]+(?:\n(?![ \t]*(?:expected|steps?)\b)[^\n]+)*)",
         desc_plain,
     )
@@ -348,7 +354,9 @@ def build_jira_qa_chunks(
         sea_lines.append("Actual / current:\n" + "\n".join(s.strip() for s in actual[:3]))
     steps_m = re.findall(
         r"(?is)\b(?:steps?\s+to\s+reproduce|repro\s+steps)\s*[:.]?\s*(.+?)"
-        r"(?=\n\n|\n[ \t]*(?:expected|actual|current|observed)\b|\Z)",
+        # Stop only at a heading-shaped label ("Expected:", "Actual result", "Current behaviour:"),
+        # not at a step written in prose such as "Current selection must remain unchanged".
+        r"(?=\n\n|\n[ \t]*(?:expected|actual|current|observed)\b(?:[ \t]+\w+){0,2}[ \t]*(?::|\n|\Z)|\Z)",
         desc_plain,
     )
     if steps_m:
@@ -367,8 +375,22 @@ def build_jira_qa_chunks(
         created = str(c.get("created") or "").strip()
         if body:
             comm_texts.append(f"[{created}] {author}: {body[:2000]}")
-    # Keep the newest 40: verification and final-fix comments usually come last.
-    add("comments_discussion", 0, "\n\n".join(comm_texts[-40:]))
+    # Keep the newest comments that fit the stored document: ``add`` cuts the document at
+    # _MAX_DOC_CHARS (after the enrichment header), so joining 40 long comments and letting it
+    # truncate kept the oldest ones and dropped the latest verification/final-fix comments.
+    header_len = len(f"[Enrichment: {embed_prefix}]\n\n") if embed_prefix else 0
+    budget = _MAX_DOC_CHARS - header_len
+    picked: list[str] = []
+    used = 0
+    for text in reversed(comm_texts[-40:]):
+        cost = len(text) + (2 if picked else 0)  # "\n\n" separator
+        if used + cost > budget:
+            if not picked:  # a single comment longer than the budget: keep its start
+                picked.append(text[:budget])
+            break
+        picked.append(text)
+        used += cost
+    add("comments_discussion", 0, "\n\n".join(reversed(picked)))
 
     # qa_testing_scope — keyword-focused excerpt
     qa_hints = []

@@ -311,28 +311,100 @@ def _iter_dita_files_from_zip(
     return dita_files
 
 
-def _markup_aware_cut(window: str) -> int:
-    """Best cut position in ``window`` (back half only): never inside a tag, preferring the end
-    of a closing tag on its own line, then any tag end at a line break, a blank line, a line break,
-    any tag end, and finally whitespace outside a tag. Returns -1 when none is found."""
+def _xml_cut_map(text: str) -> tuple[bytearray, bytearray]:
+    """Lexical map of ``text`` for choosing chunk boundaries.
+
+    Returns ``(outside, tag_end)``, each ``len(text) + 1`` long: ``outside[i]`` is 1 when a cut
+    before ``text[i]`` falls in character data (not inside a tag, quoted attribute value, comment,
+    CDATA section or processing instruction), and ``tag_end[i]`` is 1 when ``text[i - 1]`` is the
+    ``>`` that really closes a markup construct. A ``>`` inside a quoted attribute value is legal
+    XML and is not a tag end.
+    """
+    n = len(text)
+    outside = bytearray(n + 1)
+    tag_end = bytearray(n + 1)
+    state = "text"
+    quote = ""
+    bracket_depth = 0  # DOCTYPE internal subset: <!DOCTYPE x [ <!ENTITY ...> ]>
+    i = 0
+    while i < n:
+        if state == "text":
+            outside[i] = 1
+            if text.startswith("<!--", i):
+                state, i = "comment", i + 4
+            elif text.startswith("<![CDATA[", i):
+                state, i = "cdata", i + 9
+            elif text.startswith("<?", i):
+                state, i = "pi", i + 2
+            elif text[i] == "<":
+                state, quote, bracket_depth, i = "tag", "", 0, i + 1
+            else:
+                i += 1
+            continue
+        closers = {"comment": "-->", "cdata": "]]>", "pi": "?>"}
+        if state in closers:
+            closer = closers[state]
+            if text.startswith(closer, i):
+                i += len(closer)
+                tag_end[i] = 1
+                state = "text"
+            else:
+                i += 1
+            continue
+        char = text[i]  # inside a tag
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "\"'":
+            quote = char
+        elif char == "[":
+            bracket_depth += 1
+        elif char == "]" and bracket_depth:
+            bracket_depth -= 1
+        elif char == ">" and not bracket_depth:
+            tag_end[i + 1] = 1
+            state = "text"
+        i += 1
+    outside[n] = 1 if state == "text" else 0
+    return outside, tag_end
+
+
+def _markup_aware_cut(
+    window: str,
+    *,
+    outside: bytearray | bytes | None = None,
+    tag_end: bytearray | bytes | None = None,
+) -> int:
+    """Best cut position in ``window`` (back half only), never inside markup.
+
+    Preference: the end of a closing tag followed by a line break, a tag end at a line break, a
+    blank line, a line break, any tag end, then whitespace. ``outside``/``tag_end`` are the
+    :func:`_xml_cut_map` slices for this window (``len(window) + 1`` long); when omitted the
+    window is scanned on its own and assumed to start in character data. Returns -1 when no
+    safe cut exists.
+    """
+    if outside is None or tag_end is None:
+        outside, tag_end = _xml_cut_map(window)
     floor = len(window) // 2
-    candidates: list[int] = []
-    closing = [m.end() for m in re.finditer(r"</[A-Za-z][\w:.-]*\s*>\s*\n", window) if m.end() > floor]
-    if closing:
-        candidates.append(closing[-1])
-    for pattern in (">\n", "\n\n", "\n", ">"):
-        pos = window.rfind(pattern, floor)
-        if pos > 0:
-            candidates.append(pos + len(pattern))
-            break
-    for cut in candidates:
-        if window.rfind("<", 0, cut) <= window.rfind(">", 0, cut):
-            return cut
-    for match in reversed(list(re.finditer(r"\s+", window))):
-        cut = match.end()
-        if cut <= floor:
-            break
-        if window.rfind("<", 0, cut) <= window.rfind(">", 0, cut):
+
+    def latest(positions) -> int:
+        best = -1
+        for cut in positions:
+            if floor < cut <= len(window) and outside[cut] and cut > best:
+                best = cut
+        return best
+
+    closing_tags = (
+        m.end() for m in re.finditer(r"</[A-Za-z][\w:.-]*\s*>[ \t]*\n", window) if outside[m.start()]
+    )
+    newline_after_tag = (pos + 1 for pos in range(len(window)) if window[pos] == "\n" and tag_end[pos])
+    blank_lines = (m.end() for m in re.finditer(r"\n\n", window))
+    line_breaks = (pos + 1 for pos in range(len(window)) if window[pos] == "\n")
+    tag_ends = (pos for pos in range(1, len(window) + 1) if tag_end[pos])
+    whitespace = (m.end() for m in re.finditer(r"\s+", window))
+    for positions in (closing_tags, newline_after_tag, blank_lines, line_breaks, tag_ends, whitespace):
+        cut = latest(positions)
+        if cut > 0:
             return cut
     return -1
 
@@ -340,9 +412,10 @@ def _markup_aware_cut(window: str) -> int:
 def _chunk_document(content: str) -> list[str]:
     """Split a DITA file into chunks of at most ``CHUNK_SIZE`` chars at markup boundaries.
 
-    Cuts land between elements or lines, never inside a tag, and consecutive chunks overlap by
-    about ``CHUNK_OVERLAP`` chars. Progress is guaranteed even when ``GITHUB_DITA_CHUNK_OVERLAP``
-    is configured at or above ``GITHUB_DITA_CHUNK_SIZE`` (that used to loop forever).
+    Cuts land between elements or lines, never inside a tag, quoted attribute value, comment or
+    CDATA section, and consecutive chunks overlap by about ``CHUNK_OVERLAP`` chars. Progress is
+    guaranteed even when ``GITHUB_DITA_CHUNK_OVERLAP`` is configured at or above
+    ``GITHUB_DITA_CHUNK_SIZE`` (that used to loop forever).
     """
     normalized = (content or "").strip()
     if not normalized:
@@ -351,12 +424,19 @@ def _chunk_document(content: str) -> list[str]:
     if len(normalized) <= size:
         return [normalized]
     overlap = max(0, min(CHUNK_OVERLAP, size // 2))
+    # One lexical pass over the whole file: a window can start mid-document, so its own scan
+    # could not know whether it begins inside a tag or a quoted value.
+    outside, tag_end = _xml_cut_map(normalized)
     chunks: list[str] = []
     start = 0
     while start < len(normalized):
         end = min(len(normalized), start + size)
         if end < len(normalized):
-            cut = _markup_aware_cut(normalized[start:end])
+            cut = _markup_aware_cut(
+                normalized[start:end],
+                outside=outside[start : end + 1],
+                tag_end=tag_end[start : end + 1],
+            )
             if cut > 0:
                 end = start + cut
         chunk = normalized[start:end].strip()
@@ -365,9 +445,11 @@ def _chunk_document(content: str) -> list[str]:
         if end >= len(normalized):
             break
         next_start = max(end - overlap, start + 1)
-        # Begin the overlap at a tag or line start where one is close, not mid-token.
-        tag_start = normalized.find("<", next_start, end)
-        start = tag_start if tag_start != -1 else next_start
+        # Begin the overlap at a real tag start, else at any position outside markup.
+        start = next(
+            (i for i in range(next_start, end) if outside[i] and normalized[i] == "<"),
+            next((i for i in range(next_start, end) if outside[i]), next_start),
+        )
     return chunks
 
 

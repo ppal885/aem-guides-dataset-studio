@@ -174,12 +174,15 @@ def _extract_text_pypdf(pdf_path: Path) -> tuple[list[dict], int]:
 
 
 def _table_lines_missing_from_text(text: str, tables: list) -> list[str]:
-    """Pipe-joined table rows whose cell text ``extract_text()`` did not already produce.
+    """Pipe-joined table rows that ``extract_text()`` did not already produce as a complete line.
 
-    pdfplumber's page text usually contains the table cells already; appending every row again
-    duplicated table content in the indexed chunks.
+    pdfplumber's page text usually renders a table row as one line with the cells in order, so
+    appending every row again duplicated table content. A row is suppressed only when a line of
+    the page text is exactly that row — the same cells, in the same order, with nothing else.
+    Matching each cell as a substring anywhere on the page would drop real data, e.g. the row
+    ``timeout | 10`` on a page that only says ``timeout 100``.
     """
-    normalized_text = " ".join(text.split()).casefold()
+    page_lines = {" ".join(line.split()).casefold() for line in text.splitlines() if line.strip()}
     lines: list[str] = []
     for table in tables:
         for row in table or []:
@@ -187,7 +190,7 @@ def _table_lines_missing_from_text(text: str, tables: list) -> list[str]:
             filled = [cell for cell in cells if cell]
             if not filled:
                 continue
-            if all(cell.casefold() in normalized_text for cell in filled):
+            if " ".join(filled).casefold() in page_lines:
                 continue
             lines.append(" | ".join(cells).strip())
     return lines
@@ -295,15 +298,17 @@ def _chunk_pages(pages: list[dict], doc_meta: dict) -> list[dict]:
         chunk_pages = pages_in(0, len(buffer))
         if len(text) >= MIN_CHUNK_CHARS:
             emit(text, chunk_pages, current_section)
-        elif chunks and (final or chunks[-1]["section"] == current_section):
-            # Too short to stand alone: keep it with the previous chunk instead of dropping it.
+        elif chunks and chunks[-1]["section"] == current_section:
+            # Too short to stand alone: keep it with the previous chunk of the same section.
             previous = chunks[-1]
             previous["text"] = f"{previous['text']}\n\n{text}"
             previous["pages"] = sorted(set(previous["pages"]) | set(chunk_pages))
-        elif final:
+        elif final or current_section:
+            # A short section of its own (e.g. a brief final "INTRO"): emit it separately so it
+            # keeps its own section name rather than being labelled as a neighbouring section.
             emit(text, chunk_pages, current_section)
         else:
-            return  # carry the short text into the next section's buffer
+            return  # short unnamed preamble: carry it into the next section's buffer
         buffer, spans = "", []
 
     def split_oversized() -> None:

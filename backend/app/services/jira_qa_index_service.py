@@ -256,13 +256,21 @@ def fetch_issue_bundle(client: JiraClient, issue_key: str) -> dict[str, Any]:
 
 
 _INDEX_ATTACHMENT_TEXT = os.getenv("JIRA_QA_INDEX_ATTACHMENT_TEXT", "true").strip().lower() in ("1", "true", "yes")
+# Maximum download *attempts* per issue (successful or not), so an attachment-service outage
+# costs at most this many timeouts instead of one per text attachment.
 _INDEX_ATTACHMENT_MAX = int(os.getenv("JIRA_QA_INDEX_ATTACHMENT_MAX", "3"))
+# Total wall-clock budget per issue; no new download starts once it is spent. Attachment text is
+# optional context, so it must not stall the sequential indexing run.
+_INDEX_ATTACHMENT_BUDGET_SECONDS = float(os.getenv("JIRA_QA_INDEX_ATTACHMENT_BUDGET_SECONDS", "90"))
 
 
 def _attachment_text_blobs(client: JiraClient, fields: dict[str, Any]) -> list[str]:
     """Extracted text of the newest text-readable attachments (logs, DITA, XML), filename-prefixed.
 
-    Binary attachments are skipped by ``_read_attachment_text``; failures never fail the issue.
+    Unsupported, oversized and URL-less attachments are filtered out before any download, so
+    they do not consume the attempt budget. At most ``JIRA_QA_INDEX_ATTACHMENT_MAX`` downloads
+    are attempted, whether or not they succeed, and none starts after
+    ``JIRA_QA_INDEX_ATTACHMENT_BUDGET_SECONDS``. Failures never fail the issue.
     Disable with ``JIRA_QA_INDEX_ATTACHMENT_TEXT=false``.
     """
     if not _INDEX_ATTACHMENT_TEXT or _INDEX_ATTACHMENT_MAX <= 0:
@@ -270,16 +278,32 @@ def _attachment_text_blobs(client: JiraClient, fields: dict[str, Any]) -> list[s
     attachments = fields.get("attachment") or []
     if not isinstance(attachments, list):
         return []
-    from app.services.jira_generate_resolve import _read_attachment_text
+    from app.services.jira_generate_resolve import (
+        _attachment_too_large_to_inline,
+        _is_text_attachment,
+        _read_attachment_text,
+    )
 
-    newest_first = sorted(
-        (a for a in attachments if isinstance(a, dict)),
+    candidates = sorted(
+        (
+            a
+            for a in attachments
+            if isinstance(a, dict)
+            and (a.get("content") or a.get("url"))
+            and _is_text_attachment(a)
+            and not _attachment_too_large_to_inline(a)
+        ),
         key=lambda a: str(a.get("created") or ""),
         reverse=True,
     )
     blobs: list[str] = []
-    for att in newest_first:
-        if len(blobs) >= _INDEX_ATTACHMENT_MAX:
+    started = time.monotonic()
+    for attempt, att in enumerate(candidates[:_INDEX_ATTACHMENT_MAX]):
+        if attempt and time.monotonic() - started >= _INDEX_ATTACHMENT_BUDGET_SECONDS:
+            logger.info_structured(
+                "jira_qa_attachment_text_budget_spent",
+                extra_fields={"attempted": attempt, "budget_seconds": _INDEX_ATTACHMENT_BUDGET_SECONDS},
+            )
             break
         try:
             text = _read_attachment_text(client, att).strip()
@@ -289,7 +313,7 @@ def _attachment_text_blobs(client: JiraClient, fields: dict[str, Any]) -> list[s
                 extra_fields={"filename": att.get("filename"), "error": str(exc)},
             )
             continue
-        # Oversized files come back as a "[File too large ...]" placeholder, which is not evidence.
+        # Defensive: an oversized-file placeholder is not evidence.
         if text and not text.startswith("[File too large"):
             blobs.append(f"{att.get('filename') or 'attachment'}:\n{text}")
     return blobs
@@ -353,8 +377,8 @@ def _is_chunker_owned_id(chunk_id: str, jira_key: str) -> bool:
     (``<hex>``, ``<hex>-p2``, ``<hex>-2``).
 
     Other writers share the ``jira_qa`` collection and ``jira_key`` metadata — generated test
-    plans (``KEY::testplan::...``) and the learning-chunk backfill (``learning_behavior_chunk``) —
-    and must survive a re-index of the issue.
+    plans (``KEY::testplan::...``) and the learning-chunk backfill (``learning_behavior_chunk::0``)
+    — and must survive a re-index of the issue.
     """
     from app.services.jira_chunking_service import SMART_JIRA_CHUNK_TYPES
     from app.services.jira_learning_chunk_service import LEARNING_CHUNK_TYPE
@@ -362,7 +386,11 @@ def _is_chunker_owned_id(chunk_id: str, jira_key: str) -> bool:
     parts = str(chunk_id or "").split("::")
     if len(parts) != 3 or parts[0] != jira_key or not re.fullmatch(r"[0-9a-z]+(?:-p?\d+)*", parts[2]):
         return False
-    return parts[1] in (CHUNK_TYPES | SMART_JIRA_CHUNK_TYPES) and parts[1] != LEARNING_CHUNK_TYPE
+    if parts[1] == LEARNING_CHUNK_TYPE:
+        # The learning backfill writes only the ``::0`` slot; continuation parts (``::1``+) of an
+        # oversized smart learning chunk are chunker-owned and must be pruned when they go stale.
+        return parts[2] != "0"
+    return parts[1] in (CHUNK_TYPES | SMART_JIRA_CHUNK_TYPES)
 
 
 def prune_stale_jira_chunks(chunk_rows: list[dict[str, Any]]) -> int:
