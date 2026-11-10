@@ -12,15 +12,19 @@ Checks:
   2. judge model  - Azure OpenAI creds in backend/.env (endpoint/key/version/model).
   3. runtime      - the VM canonical runtime answers at --vm (corp network / VPN).
   4. deps         - openai, requests, python-dotenv importable.
+  5. RAG index    - a rag-index-manifest.json (--rag-manifest or RAG_INDEX_MANIFEST) shows
+                    the index was rebuilt by the CURRENT retrieval/chunking code. A score
+                    against an index built by older chunkers measures that old index.
 
 Usage:
   python scripts/uac_eval/run.py --check-only          # just report readiness
-  python scripts/uac_eval/run.py --n 30 --seed 5       # check, then run the eval
+  python scripts/uac_eval/run.py --n 30 --seed 5 --rag-manifest <staging>/rag-index-manifest.json
   (any judge_pipeline.py flag is accepted and passed through)
 """
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -112,11 +116,33 @@ def check_runtime(vm: str) -> bool:
         return False
 
 
+def check_index_freshness(manifest_path: str) -> bool:
+    import rag_index_freshness_gate as gate
+
+    rebuild = ("python scripts/uac_eval/rag_index_freshness_gate.py rebuild --staging-chroma-dir <dir>, "
+               "then pass --rag-manifest <dir>/rag-index-manifest.json")
+    if not manifest_path:
+        _fail("no RAG index manifest given", rebuild)
+        return False
+    reasons = gate.check_manifest(
+        gate.load_json(Path(manifest_path)),
+        current_code_sha256=gate.code_fingerprint()["sha256"],
+        code_changed_at=gate.code_last_changed_at(),
+    )
+    if reasons:
+        _fail(f"RAG index is not fresh for this code: {', '.join(reasons)}", rebuild)
+        return False
+    _ok(f"RAG index manifest fresh for the current retrieval/chunking code ({manifest_path})")
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, add_help=True)
     ap.add_argument("--vm", default=DEFAULT_VM)
     ap.add_argument("--check-only", action="store_true",
                     help="report readiness and exit without running the eval")
+    ap.add_argument("--rag-manifest", default=os.getenv("RAG_INDEX_MANIFEST", ""),
+                    help="rag-index-manifest.json written by rag_index_freshness_gate.py rebuild")
     # everything else is passed straight through to judge_pipeline.py
     args, passthrough = ap.parse_known_args()
 
@@ -127,6 +153,7 @@ def main() -> int:
         check_corpus(),
         check_judge(),
         check_runtime(args.vm),
+        check_index_freshness(args.rag_manifest),
     ]
     print("-" * 40)
     if not all(results):

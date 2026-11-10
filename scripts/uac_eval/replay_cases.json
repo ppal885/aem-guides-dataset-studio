@@ -1,0 +1,94 @@
+{
+  "schema_version": "uac-replay-cases-v1",
+  "_instructions": [
+    "Fixed five-case replay set for rag_index_freshness_gate.py replay. QE fills every slot from a reviewed Jira; the gate refuses (CASE_EXPECTATIONS_UNFILLED) while any slot is empty.",
+    "jira_key: the ticket. tenant_id: runtime tenant (default kone). customer / components: the filters the case must not leak across.",
+    "decision_text: an exact phrase from the CURRENT Jira decision or accepted UAC. newest_verification_comment: an exact phrase from the newest verification comment. attachment_filename: the applicable attachment, or empty when none applies.",
+    "critical_branches: each named state/configuration branch the UAC must cover. terms: exact words that identify the branch in UAC text and evidence. query: retrieval query for the branch. supported: true when the product supports the branch (it must then stay in the UAC or be a TBD even if the customer omitted it). benchmark_critical: true when it needs authoritative evidence in the top five or an explicit TBD.",
+    "required_terms: exact AEM/DITA terms (case-sensitive) the UAC must use. requires_negative_contract: true when the UAC must state what is blocked or not allowed."
+  ],
+  "cases": [
+    {
+      "slot": "new_legacy_editor",
+      "jira_key": "",
+      "tenant_id": "kone",
+      "customer": "",
+      "components": [],
+      "decision_text": "",
+      "newest_verification_comment": "",
+      "attachment_filename": "",
+      "critical_branches": [
+        {"name": "New Editor", "terms": ["New Editor"], "query": "", "supported": true, "benchmark_critical": true},
+        {"name": "Legacy Editor", "terms": ["Legacy Editor"], "query": "", "supported": true, "benchmark_critical": true}
+      ],
+      "required_terms": [],
+      "requires_negative_contract": false,
+      "notes": "A change whose behavior must hold, or is decided, separately in the New Editor and the Legacy Editor."
+    },
+    {
+      "slot": "configuration_on_off",
+      "jira_key": "",
+      "tenant_id": "kone",
+      "customer": "",
+      "components": [],
+      "decision_text": "",
+      "newest_verification_comment": "",
+      "attachment_filename": "",
+      "critical_branches": [
+        {"name": "Configuration on", "terms": [], "query": "", "supported": true, "benchmark_critical": true},
+        {"name": "Configuration off", "terms": [], "query": "", "supported": true, "benchmark_critical": true}
+      ],
+      "required_terms": [],
+      "requires_negative_contract": false,
+      "notes": "A behavior controlled by a configuration (folder profile, ui_config.json, Workspace setting); both states are named branches."
+    },
+    {
+      "slot": "save_reopen",
+      "jira_key": "",
+      "tenant_id": "kone",
+      "customer": "",
+      "components": [],
+      "decision_text": "",
+      "newest_verification_comment": "",
+      "attachment_filename": "",
+      "critical_branches": [
+        {"name": "After save and reopen", "terms": ["reopen"], "query": "", "supported": true, "benchmark_critical": true}
+      ],
+      "required_terms": [],
+      "requires_negative_contract": false,
+      "notes": "A change whose outcome must persist after Save and after closing and reopening the document."
+    },
+    {
+      "slot": "indirect_reference",
+      "jira_key": "",
+      "tenant_id": "kone",
+      "customer": "",
+      "components": [],
+      "decision_text": "",
+      "newest_verification_comment": "",
+      "attachment_filename": "",
+      "critical_branches": [
+        {"name": "Indirect reference", "terms": [], "query": "", "supported": true, "benchmark_critical": true}
+      ],
+      "required_terms": [],
+      "requires_negative_contract": false,
+      "notes": "Behavior reached through an indirect reference (keyref, conkeyref, conref, or a referenced map)."
+    },
+    {
+      "slot": "blocked_action_negative",
+      "jira_key": "",
+      "tenant_id": "kone",
+      "customer": "",
+      "components": [],
+      "decision_text": "",
+      "newest_verification_comment": "",
+      "attachment_filename": "",
+      "critical_branches": [
+        {"name": "Action blocked", "terms": [], "query": "", "supported": true, "benchmark_critical": true}
+      ],
+      "required_terms": [],
+      "requires_negative_contract": true,
+      "notes": "An action the product must block or refuse; the UAC must state the negative contract explicitly."
+    }
+  ]
+}
