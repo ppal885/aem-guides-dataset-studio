@@ -872,18 +872,47 @@ def production_dirs() -> list[Path]:
     return dirs
 
 
-def open_staging(staging_root: Path, *, create: bool) -> Path:
-    """Bind the staging environment, load backend .env without letting it override staging."""
-    target = prepare_staging_dir(staging_root, production_dirs=production_dirs(), create=create)
-    if any(name == "app" or name.startswith("app.") for name in sys.modules):
-        raise GateRefused("BACKEND_IMPORTED_BEFORE_STAGING", "backend modules were imported before binding")
+# Production stores as resolved when the staging environment was opened (before binding).
+# Read-only sources (PDF uploads, DITA spec PDFs) are taken from here, never from staging.
+PRODUCTION_DIRS: list[Path] = []
+
+
+def load_env_files(env_files: Sequence[str]) -> None:
+    """Load backend/.env and any --env-file without overriding variables already set."""
     try:
         from dotenv import load_dotenv
-
-        load_dotenv(BACKEND / ".env", override=False, encoding="utf-8-sig")
     except ImportError:
-        pass
-    bind_staging_environment(target)  # .env may have added CHROMA_HOST; staging wins
+        if env_files:
+            raise GateRefused("DOTENV_MISSING", "python-dotenv is required for --env-file")
+        return
+    for raw in env_files:
+        path = Path(raw).expanduser()
+        if not path.is_file():
+            raise GateRefused("ENV_FILE_MISSING", str(path))
+        load_dotenv(path, override=False, encoding="utf-8-sig")
+    if (BACKEND / ".env").is_file():
+        load_dotenv(BACKEND / ".env", override=False, encoding="utf-8-sig")
+
+
+def open_staging(staging_root: Path, *, create: bool, env_files: Sequence[str] = ()) -> Path:
+    """Bind the staging environment before any backend import.
+
+    A CHROMA_HOST set in the shell is refused (an explicit request for a remote store). Env
+    files (e.g. the service's .env.docker) are loaded without overriding the shell; a
+    CHROMA_HOST they define is dropped, and their STORAGE_PATH / CHROMA_PERSIST_DIR count as
+    production stores that staging must not overlap.
+    """
+    if os.getenv("CHROMA_HOST", "").strip():
+        raise GateRefused(
+            "REMOTE_CHROMA_REFUSED",
+            "CHROMA_HOST is set in the shell; unset it - staging writes only to an embedded store",
+        )
+    if any(name == "app" or name.startswith("app.") for name in sys.modules):
+        raise GateRefused("BACKEND_IMPORTED_BEFORE_STAGING", "backend modules were imported before binding")
+    load_env_files(env_files)
+    os.environ.pop("CHROMA_HOST", None)
+    PRODUCTION_DIRS[:] = production_dirs()
+    target = prepare_staging_dir(staging_root, production_dirs=PRODUCTION_DIRS, create=create)
     if str(BACKEND) not in sys.path:
         sys.path.insert(0, str(BACKEND))
     return target
@@ -989,8 +1018,17 @@ def _step(sources: dict[str, Any], name: str, fn: Callable[[], dict[str, Any]]) 
 
 
 def rebuild(args: argparse.Namespace) -> int:
-    root = open_staging(Path(args.staging_chroma_dir), create=True)
-    cases = load_cases(Path(args.cases))
+    root = open_staging(Path(args.staging_chroma_dir), create=True, env_files=args.env_file)
+    try:
+        cases = load_cases(Path(args.cases))
+    except GateRefused as refused:
+        # The index can be rebuilt before QE picks the five cases, from an explicit Jira slice;
+        # replay still refuses until the cases are filled (and finds them NOT_INDEXED if the
+        # slice missed them).
+        if refused.code != "CASE_EXPECTATIONS_UNFILLED" or not args.jira_jql:
+            raise
+        print(f"note: {refused.code}; rebuilding Jira from --jira-jql only")
+        cases = []
     import asyncio
     import shutil
 
@@ -1039,7 +1077,7 @@ def rebuild(args: argparse.Namespace) -> int:
         def pdf() -> dict[str, Any]:
             from app.services.doc_pdf_index_service import index_pdf_directory
 
-            pdf_dir = Path(args.pdf_dir or (production_dirs()[0] / "pdf_uploads" / tenant))
+            pdf_dir = Path(args.pdf_dir or (PRODUCTION_DIRS[0] / "pdf_uploads" / tenant))
             results = asyncio.run(index_pdf_directory(pdf_dir, tenant, force=True))
             rows = [r.model_dump() if hasattr(r, "model_dump") else vars(r) for r in results]
             return {
@@ -1053,7 +1091,7 @@ def rebuild(args: argparse.Namespace) -> int:
             from app.services.dita_pdf_index_service import index_dita_pdf
             from app.services.dita_spec_curated_chunk_service import upsert_curated_dita_spec_chunks
 
-            src = production_dirs()[0] / "dita_spec"
+            src = PRODUCTION_DIRS[0] / "dita_spec"
             dst = root / "storage" / "dita_spec"
             dst.mkdir(parents=True, exist_ok=True)
             for pdf_file in sorted(src.glob("*.pdf")):
@@ -1070,9 +1108,12 @@ def rebuild(args: argparse.Namespace) -> int:
             from app.services.jira_qa_index_service import index_jql_to_chroma
 
             keys = sorted({c.jira_key for c in cases})
-            jql = "key in (" + ", ".join(f'"{k}"' for k in keys) + ")"
+            parts = []
+            if keys:
+                parts.append("key in (" + ", ".join(f'"{k}"' for k in keys) + ")")
             if args.jira_jql:
-                jql = f"({jql}) OR ({args.jira_jql})"
+                parts.append(args.jira_jql)
+            jql = " OR ".join(f"({part})" for part in parts)
             out = index_jql_to_chroma(jql, limit=args.jira_limit, force_reindex=True, persist_sync_state=False)
             errors = [str(e) for e in out.get("errors") or []]
             case_failures = [e for e in errors if any(e.startswith(f"{k}:") for k in keys)]
@@ -1187,7 +1228,7 @@ def _run_case(case: ReplayCase) -> CaseRun:
 
 
 def replay(args: argparse.Namespace) -> int:
-    root = open_staging(Path(args.staging_chroma_dir), create=False)
+    root = open_staging(Path(args.staging_chroma_dir), create=False, env_files=args.env_file)
     reasons = check(args)
     if reasons:
         print("REFUSED: index manifest is not fresh for benchmarking: " + ", ".join(reasons))
@@ -1224,6 +1265,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     def staging(p: argparse.ArgumentParser) -> None:
         p.add_argument("--staging-chroma-dir", required=True, help="isolated staging root (created and marked by rebuild)")
         p.add_argument("--cases", default=str(DEFAULT_CASES), help="fixed five-case replay set")
+        p.add_argument("--env-file", action="append", default=[],
+                       help="extra env file for Jira/embedding settings, e.g. the service's .env.docker")
 
     p_rebuild = sub.add_parser("rebuild", help="rebuild evaluation collections into staging and write the manifest")
     staging(p_rebuild)
@@ -1241,6 +1284,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_check.add_argument("--staging-chroma-dir", default="")
     p_check.add_argument("--manifest", default="", help="manifest path (default: <staging>/rag-index-manifest.json)")
     p_check.add_argument("--no-embedding-check", action="store_true", help="skip loading backend embedding config")
+    p_check.add_argument("--env-file", action="append", default=[], help="env file with the embedding settings")
 
     p_replay = sub.add_parser("replay", help="replay the five fixed cases twice against the staging index")
     staging(p_replay)
@@ -1257,6 +1301,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parser.error("check needs --manifest or --staging-chroma-dir")
             with_embedding = not args.no_embedding_check
             if with_embedding:
+                load_env_files(args.env_file)
                 if str(BACKEND) not in sys.path:
                     sys.path.insert(0, str(BACKEND))
             reasons = check(args, with_embedding=with_embedding)

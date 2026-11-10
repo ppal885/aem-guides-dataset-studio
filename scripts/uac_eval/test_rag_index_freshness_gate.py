@@ -569,3 +569,40 @@ def test_runner_accepts_fresh_manifest_and_refuses_stale_one(tmp_path, capsys):
     stale = _fresh_manifest_file(tmp_path, rebuilt_at="2020-01-01T00:00:00+00:00")
     assert run.check_index_freshness(str(stale)) is False
     assert "MANIFEST_PREDATES_RETRIEVAL_CODE" in capsys.readouterr().out
+
+
+def test_open_staging_reads_env_file_without_letting_it_point_at_production(tmp_path, monkeypatch):
+    for key in ("CHROMA_HOST", "CHROMA_PERSIST_DIR", "STORAGE_PATH", "JIRA_SQL_ENRICHMENT", "GATE_TEST_JIRA_URL"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(gate.sys, "modules", {k: v for k, v in sys.modules.items() if not (k == "app" or k.startswith("app."))})
+    prod_storage = tmp_path / "prod-storage"
+    (prod_storage / "pdf_uploads").mkdir(parents=True)
+    env_file = tmp_path / ".env.docker"
+    env_file.write_text(f"CHROMA_HOST=chroma.prod\nSTORAGE_PATH={prod_storage}\nGATE_TEST_JIRA_URL=https://jira\n")
+
+    target = gate.open_staging(tmp_path / "staging", create=True, env_files=[str(env_file)])
+
+    assert gate.os.environ["GATE_TEST_JIRA_URL"] == "https://jira"  # credentials/settings loaded
+    assert "CHROMA_HOST" not in gate.os.environ  # env-file remote host dropped
+    assert gate.os.environ["STORAGE_PATH"] == str(target / "storage")  # staging wins
+    assert gate.PRODUCTION_DIRS[0] == prod_storage  # read-only sources still found
+    for key in ("STORAGE_PATH", "CHROMA_PERSIST_DIR"):  # a fresh CLI process opens staging once
+        monkeypatch.delenv(key, raising=False)
+    with pytest.raises(gate.GateRefused) as err:  # and production cannot be used as staging
+        gate.open_staging(prod_storage / "x", create=True, env_files=[str(env_file)])
+    assert err.value.code == "PRODUCTION_PATH_REFUSED"
+
+
+def test_open_staging_refuses_remote_host_from_shell(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHROMA_HOST", "chroma.prod")
+    with pytest.raises(gate.GateRefused) as err:
+        gate.open_staging(tmp_path / "s", create=True)
+    assert err.value.code == "REMOTE_CHROMA_REFUSED"
+
+
+def test_missing_env_file_is_refused(tmp_path, monkeypatch):
+    monkeypatch.delenv("CHROMA_HOST", raising=False)
+    monkeypatch.setattr(gate.sys, "modules", {k: v for k, v in sys.modules.items() if not (k == "app" or k.startswith("app."))})
+    with pytest.raises(gate.GateRefused) as err:
+        gate.open_staging(tmp_path / "s", create=True, env_files=[str(tmp_path / "nope.env")])
+    assert err.value.code == "ENV_FILE_MISSING"
