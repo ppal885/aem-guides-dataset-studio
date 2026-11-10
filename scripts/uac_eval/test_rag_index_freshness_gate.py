@@ -606,3 +606,24 @@ def test_missing_env_file_is_refused(tmp_path, monkeypatch):
     with pytest.raises(gate.GateRefused) as err:
         gate.open_staging(tmp_path / "s", create=True, env_files=[str(tmp_path / "nope.env")])
     assert err.value.code == "ENV_FILE_MISSING"
+
+
+def test_missing_default_pdf_folder_is_an_empty_ok_source(tmp_path):
+    result = gate.pdf_source_empty(tmp_path / "pdf_uploads" / "kone", explicit=False)
+    assert result["chunks_written"] == 0 and result["errors"] == []
+    (tmp_path / "empty").mkdir()
+    assert gate.pdf_source_empty(tmp_path / "empty", explicit=False)["chunks_written"] == 0
+
+
+def test_explicit_missing_pdf_folder_fails_and_real_pdfs_are_indexed(tmp_path):
+    with pytest.raises(RuntimeError):
+        gate.pdf_source_empty(tmp_path / "typo", explicit=True)
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "guide.pdf").write_bytes(b"%PDF-1.4")
+    assert gate.pdf_source_empty(tmp_path / "docs", explicit=True) is None
+
+
+def test_step_status_treats_empty_pdf_source_as_ok():
+    sources = {}
+    gate._step(sources, "pdf", lambda: gate.pdf_source_empty(gate.Path("/nonexistent/pdf_uploads/kone"), explicit=False))
+    assert sources["pdf"]["status"] == "OK"

@@ -1001,6 +1001,24 @@ def scan_collections(written: Mapping[str, set[str]]) -> dict[str, Any]:
     return collections
 
 
+def pdf_source_empty(pdf_dir: Path, *, explicit: bool) -> dict[str, Any] | None:
+    """An OK-but-empty PDF source when production has no uploaded PDFs; None when there are PDFs.
+
+    The default location mirrors production: no folder or no PDFs there means the production
+    PDF corpus is empty, so the staging copy is correctly empty too. An explicit --pdf-dir
+    that does not exist is an operator mistake and fails the source.
+    """
+    if not pdf_dir.is_dir():
+        if explicit:
+            raise RuntimeError(f"--pdf-dir does not exist: {pdf_dir}")
+        return {"pdf_dir": str(pdf_dir), "files": {}, "chunks_written": 0, "errors": [],
+                "note": "no uploaded PDFs in production storage; PDF corpus is empty"}
+    if not any(pdf_dir.glob("*.pdf")):
+        return {"pdf_dir": str(pdf_dir), "files": {}, "chunks_written": 0, "errors": [],
+                "note": "PDF folder holds no .pdf files; PDF corpus is empty"}
+    return None
+
+
 def _hash_files(paths: Iterable[Path]) -> dict[str, str]:
     return {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths) if p.is_file()}
 
@@ -1078,6 +1096,9 @@ def rebuild(args: argparse.Namespace) -> int:
             from app.services.doc_pdf_index_service import index_pdf_directory
 
             pdf_dir = Path(args.pdf_dir or (PRODUCTION_DIRS[0] / "pdf_uploads" / tenant))
+            empty = pdf_source_empty(pdf_dir, explicit=bool(args.pdf_dir))
+            if empty is not None:
+                return empty
             results = asyncio.run(index_pdf_directory(pdf_dir, tenant, force=True))
             rows = [r.model_dump() if hasattr(r, "model_dump") else vars(r) for r in results]
             return {
