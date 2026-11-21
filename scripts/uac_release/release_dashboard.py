@@ -102,6 +102,8 @@ def collect_tickets(out: Path) -> tuple[list[dict], list[dict]]:
                 row["where"] += " (runtime gates not passed)"
             if status.get("linked_docs_unread"):
                 row["where"] += " (linked design document not read)"
+            if status.get("figma_designs_unread"):
+                row["where"] += " (linked Figma design not read)"
             row["notes"] = [str(n) for n in status.get("review_notes") or []]
             posted.append(row)
         else:

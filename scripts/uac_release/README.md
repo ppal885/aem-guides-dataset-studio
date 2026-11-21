@@ -172,6 +172,7 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    JIRA_PAT=<Jira personal access token>
    COPILOT_GITHUB_TOKEN=<GitHub token with Copilot access>
    WIKI_PAT=<wiki.corp.adobe.com personal access token, read-only use>
+   FIGMA_TOKEN=<Figma personal access token, scope file_content:read only>
    STARLING_REPO_PATH=/opt/uac/repos/starling
    XML_EDITOR_REPO_PATH=/opt/uac/repos/xmleditor
    GUIDES_UI_TESTS_REPO_PATH=/opt/uac/repos/guides-ui-tests
@@ -191,6 +192,19 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    evidence. Create the token on wiki.corp.adobe.com under Profile > Settings > Personal Access Tokens. A
    link the runner cannot read never blocks the UAC: it is shown on the release page as "linked design
    document not read". `linked_doc_hosts` in the config changes which hosts count as wiki links.
+
+   `FIGMA_TOKEN` lets the runner read the Figma designs a ticket links to. The unattended Copilot session
+   cannot complete the Figma MCP browser login, so the runner reads each linked frame itself through the
+   Figma REST API (GET requests only) and writes, into `<KEY>/figma-designs/`, a text outline of the frame
+   (layer names, every on-screen text, component variants) and the frame rendered as PNG, listed in
+   `FIGMA_DESIGNS.json`. The skill treats it as its Figma evidence: intended UI only, never backend
+   behaviour. Create the token while signed in with the account that can open the team's design files
+   (Figma > Settings > Security > Personal access tokens), give it only the `file_content:read` scope, and
+   note its expiry date: an expired token makes every design "Figma design not read" on the release page.
+   The token goes only to `api.figma.com`; rendered images are downloaded from Figma's signed links without
+   it. A link without `node-id` renders up to three top-level frames of the file's first page; at most
+   `figma_max_designs` (default 5) links are read per ticket. `figma_hosts` in the config changes which
+   hosts count as Figma links. A design the runner cannot read never blocks the UAC.
 
    The Copilot session runs the canonical runtime locally and answers its research requests through
    `scripts/agent_research_bridge.py`, with the requests stored in `<KEY>/agent-research/`. The runtime needs
