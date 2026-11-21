@@ -100,6 +100,16 @@ class FigmaDesignTests(unittest.TestCase):
         self.assertIn('GROUP "Old banner" (hidden)', text)
         self.assertNotIn("never shown", text)
 
+    def test_a_ticket_without_a_figma_link_calls_figma_never(self) -> None:
+        api = FakeFigmaApi()
+        source = dict(SOURCE, comments=SOURCE["comments"] + [
+            {"id": "11", "author": "dev.lead", "body": "Log in at https://www.figma.com/email_only first"}])
+        entries = figma_designs.collect(source, self.out, "uac.bot", client(api))
+        self.assertEqual(entries, [])
+        self.assertEqual(api.requests, [], "no design link on the ticket means no Figma request at all")
+        self.assertFalse((self.out / figma_designs.FIGMA_DESIGNS_DIR).exists())
+        self.assertEqual(json.loads((self.out / figma_designs.FIGMA_DESIGNS_FILE).read_text(encoding="utf-8")), [])
+
     def test_without_a_token_each_design_is_unreadable_and_nothing_is_requested(self) -> None:
         entries = figma_designs.collect(self.source, self.out, "uac.bot", None)
         self.assertEqual([e["status"] for e in entries], ["UNREADABLE"], "the automation's own comment is ignored")
