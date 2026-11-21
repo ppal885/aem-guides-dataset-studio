@@ -4,7 +4,8 @@
 One scheduled run:
   1. health checks: Jira auth, Dataset Studio MCP health URL, Copilot CLI present;
   2. finds tickets with the configured JQL;
-  3. downloads the wiki pages the ticket links to (design documents; WIKI_PAT) and
+  3. downloads the wiki pages (design documents; WIKI_PAT) and the Figma designs (FIGMA_TOKEN,
+     read-only) the ticket links to, and
      runs `copilot -p` once per ticket with the test-plan-generation skill, writing
      UAC.md, test-plan.md, the UAC Doc Researcher result and the source coverage map
      into <output_dir>/<KEY>/;
@@ -39,6 +40,7 @@ import common  # noqa: E402
 import uac_request_queue  # noqa: E402
 import uac_field_parser  # noqa: E402
 import linked_docs  # noqa: E402
+import figma_designs  # noqa: E402
 
 PROMPT = """Generate the UAC for Jira {key} using the test-plan-generation skill.
 Follow the skill fully: live Jira, attachments, product and automation clones, the researcher
@@ -51,6 +53,16 @@ status values, errors, permissions, limits, configuration): a behaviour it state
 whose Source line names the document title, not a TBD. Ask a TBD only for what the document leaves open or
 marks as still under review. For a page with status UNREADABLE, the TBD for what it would decide names the
 document title or link.
+Figma designs: {figma_path} lists every Figma design linked from the ticket. The runner already read each
+frame with status READ through the Figma API (read-only): "outline" is a text outline of the frame (layer
+names, every on-screen text, component variants) and "image" is the frame rendered as PNG. Read the outline and
+view the image of every READ frame before writing the Acceptance Criteria, and do not try to open figma.com or a
+Figma MCP yourself; this file is the skill's Figma evidence (record figma as available via the runner's
+download, or not_applicable when the list is empty). A design shows the intended UI - labels, controls,
+states, dialogs and layout - never backend behaviour, permissions or persistence. An Acceptance Criterion
+that a design drives names the on-screen text exactly as the outline shows it, and its Source line names the
+frame title. Where the design and the ticket disagree, keep the ticket and ask a TBD. For a design with status
+UNREADABLE, the TBD for what it would decide names the link.
 When finished, write these files:
 1. {uac_path}: only the delivered UAC block - a flat list of "- Acceptance Criteria NN: ..." lines,
    each followed by an indented "**Source:** ..." line and, when a decision is open, a "**TBD:** ...?" line.
@@ -206,7 +218,7 @@ When finished, write these files:
 5. {source_coverage_path}: a JSON list that maps EVERY sentence and bullet of the Jira description,
    every sentence of every comment (skip comments posted by this automation), and every
    attachment to the UAC, before you write it. One object per item:
-   {{"source": "description" | "comment:<id>" | "attachment:<filename>" | "linked:<url from {linked_docs_path}>"
+   {{"source": "description" | "comment:<id>" | "attachment:<filename>" | "linked:<url from {linked_docs_path} or {figma_path}>"
    | "referenced:<key from {referenced_path}>",
    "text": "<the exact
    sentence, copied; for a linked page, the requirement copied from it>", "disposition": "AC" | "TBD" | "OUT_OF_SCOPE" | "NOT_MATERIAL",
@@ -1460,14 +1472,19 @@ def referenced_ticket_problems(ticket_dir: Path, entries: list) -> list[str]:
             and f"referenced:{r['key']}" not in mapped]
 
 
-def fetch_linked_docs(key: str, config: dict, jira, logger, ticket_dir: Path) -> list[dict]:
-    """Download the wiki pages the ticket links to (LINKED_DOCS.json). Never raises."""
+def read_link_source(key: str, jira, logger) -> tuple[dict, str]:
+    """(ticket source, automation account name) to find linked pages and designs in. Never raises."""
     try:
-        source = jira.get_source(key)
-        own_name = str((jira.myself() or {}).get("name") or "")
+        return jira.get_source(key), str((jira.myself() or {}).get("name") or "")
     except Exception as exc:  # noqa: BLE001 - the Copilot session still reads the ticket itself
         logger.warning("%s: could not read the ticket to find linked pages: %s", key, exc)
-        source, own_name = {}, ""
+        return {}, ""
+
+
+def fetch_linked_docs(key: str, config: dict, jira, logger, ticket_dir: Path,
+                      link_source: tuple[dict, str] | None = None) -> list[dict]:
+    """Download the wiki pages the ticket links to (LINKED_DOCS.json). Never raises."""
+    source, own_name = link_source or read_link_source(key, jira, logger)
     hosts = tuple(config.get("linked_doc_hosts") or linked_docs.DEFAULT_HOSTS)
     entries = linked_docs.collect(source, ticket_dir, own_name, linked_docs.WikiClient.from_env(), hosts)
     for entry in entries:
@@ -1475,6 +1492,21 @@ def fetch_linked_docs(key: str, config: dict, jira, logger, ticket_dir: Path) ->
             logger.info("%s: linked page read: %s", key, entry.get("title") or entry["url"])
         else:
             logger.warning("%s: linked page not read: %s (%s)", key, entry["url"], entry.get("reason"))
+    return entries
+
+
+def fetch_figma_designs(key: str, config: dict, jira, logger, ticket_dir: Path,
+                        link_source: tuple[dict, str] | None = None) -> list[dict]:
+    """Read the Figma designs the ticket links to (FIGMA_DESIGNS.json), read-only. Never raises."""
+    source, own_name = link_source or read_link_source(key, jira, logger)
+    hosts = tuple(config.get("figma_hosts") or figma_designs.DEFAULT_HOSTS)
+    limit = int(config.get("figma_max_designs") or figma_designs.MAX_DESIGNS)
+    entries = figma_designs.collect(source, ticket_dir, own_name, figma_designs.FigmaClient.from_env(), hosts, limit)
+    for entry in entries:
+        if entry["status"] == "READ":
+            logger.info("%s: Figma design read: %s", key, entry.get("title") or entry["url"])
+        else:
+            logger.warning("%s: Figma design not read: %s (%s)", key, entry["url"], entry.get("reason"))
     return entries
 
 
@@ -1622,14 +1654,17 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                  common.DOC_RESEARCH_FILE, common.SOURCE_COVERAGE_FILE, common.JIRA_SOURCE_FILE,
                  common.SURFACE_INVENTORY_FILE, common.HOTFIX_SCOPE_FILE, common.EVIDENCE_FILE,
                  common.RUNTIME_FALLBACK_FILE, common.RUNTIME_RESULT_FILE, linked_docs.LINKED_DOCS_FILE,
-                 common.REFERENCED_TICKETS_FILE):
+                 common.REFERENCED_TICKETS_FILE, figma_designs.FIGMA_DESIGNS_FILE):
         (ticket_dir / name).unlink(missing_ok=True)
     shutil.rmtree(ticket_dir / linked_docs.LINKED_DOCS_DIR, ignore_errors=True)
+    shutil.rmtree(ticket_dir / figma_designs.FIGMA_DESIGNS_DIR, ignore_errors=True)
     shutil.rmtree(ticket_dir / RESEARCH_STORE_DIR, ignore_errors=True)  # each attempt answers its own requests
     held = hold_before_generation(key, config, jira, logger, ticket_dir, status)
     if held:
         return held
-    links = fetch_linked_docs(key, config, jira, logger, ticket_dir)
+    link_source = read_link_source(key, jira, logger)
+    links = fetch_linked_docs(key, config, jira, logger, ticket_dir, link_source)
+    designs = fetch_figma_designs(key, config, jira, logger, ticket_dir, link_source)
     fetch_referenced_tickets(key, jira, logger, ticket_dir)
     prompt = PROMPT.format(key=key, referenced_path=ticket_dir / common.REFERENCED_TICKETS_FILE, uac_path=ticket_dir / common.UAC_FILE, plan_path=ticket_dir / common.PLAN_FILE,
                            decisions_path=ticket_dir / common.DECISIONS_FILE,
@@ -1640,6 +1675,7 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
                            evidence_path=ticket_dir / common.EVIDENCE_FILE,
                            fallback_path=ticket_dir / common.RUNTIME_FALLBACK_FILE,
                            linked_docs_path=ticket_dir / linked_docs.LINKED_DOCS_FILE,
+                           figma_path=ticket_dir / figma_designs.FIGMA_DESIGNS_FILE,
                            research_store=ticket_dir / RESEARCH_STORE_DIR,
                            runtime_python=runtime_python(config) or "python3",
                            max_discovered=MAX_DISCOVERED_SURFACES_PER_AC)
@@ -1656,7 +1692,8 @@ def process_ticket(key: str, config: dict, jira, logger, dry_run: bool) -> str:
     except subprocess.TimeoutExpired:
         exit_code = "timeout"
     status.update({"key": key, "copilot_exit": exit_code, "copilot_seconds": round(time.time() - started),
-                   "linked_docs_unread": linked_docs.unread(links)})
+                   "linked_docs_unread": linked_docs.unread(links),
+                   "figma_designs_unread": figma_designs.unread(designs)})
     if exit_code != 0:
         problems = [f"Copilot CLI exit {exit_code}"]
     else:
