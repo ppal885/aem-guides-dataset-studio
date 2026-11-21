@@ -6,8 +6,8 @@ access token (FIGMA_TOKEN in the env file, scope file_content:read). Access is r
 sends GET requests, and the token is sent to the Figma API alone, never to the image download host.
 
 For every linked frame it writes, into <ticket>/figma-designs/:
-  - <file>_<node>.md   an outline of the frame: layer types and names, every text string, component
-                       variant names and instance property values, hidden layers marked and not expanded;
+  - <file>_<node>.md   an outline of the frame's visible layers: layer types and names, every text string
+                       and component variant choices; shapes and hidden layers are left out;
   - <file>_<node>.png  the frame rendered by Figma (PNG, scale 1).
 and lists every link in FIGMA_DESIGNS.json:
 
@@ -70,15 +70,38 @@ def _line(node: dict, depth: int) -> str:
         line += f": {text[:MAX_TEXT_CHARS]}" + (" [...]" if len(text) > MAX_TEXT_CHARS else "")
     props = node.get("componentProperties") or {}
     if isinstance(props, dict) and props:
-        values = ", ".join(f"{k.split('#')[0]}={(v or {}).get('value')}" for k, v in props.items())
-        line += f" {{{values}}}"
-    if node.get("visible") is False:
-        line += " (hidden)"
+        # Variant choices (State=Disabled, Theme=Dark) say which state a component shows; text and
+        # instance-swap properties are already visible as the layers below.
+        values = [f"{k.split('#')[0]}={(v or {}).get('value')}" for k, v in props.items()
+                  if isinstance(v, dict) and v.get("type") in ("VARIANT", "BOOLEAN")]
+        if values:
+            line += " {" + ", ".join(values)[:MAX_TEXT_CHARS] + "}"
     return line
 
 
+# Shapes carry no text or name a tester reads; they only make the outline long.
+_SHAPES = {"VECTOR", "RECTANGLE", "ELLIPSE", "LINE", "STAR", "POLYGON", "REGULAR_POLYGON", "BOOLEAN_OPERATION"}
+
+
+def _visible(node: dict) -> bool:
+    return isinstance(node, dict) and node.get("visible") is not False
+
+
+def _has_text(node: dict) -> bool:
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.get("type") == "TEXT" and current.get("characters"):
+            return True
+        stack.extend(c for c in current.get("children") or [] if _visible(c))
+    return False
+
+
 def outline(node: dict) -> tuple[str, bool]:
-    """Indented text outline of a node tree; (text, truncated). Hidden layers are listed, not expanded."""
+    """Indented text outline of the visible layers; (text, truncated).
+
+    Hidden layers and plain shapes are left out. A layer with no visible text under it (an icon, a divider)
+    is one line with its name, not expanded, so icon names stay while their drawing parts do not."""
     lines: list[str] = []
     stack: list[tuple[dict, int]] = [(node, 0)]
     while stack:
@@ -86,9 +109,9 @@ def outline(node: dict) -> tuple[str, bool]:
         if len(lines) >= MAX_OUTLINE_LINES:
             return "\n".join(lines), True
         lines.append(_line(current, depth))
-        if current.get("visible") is False:
+        if depth and not _has_text(current):
             continue
-        children = [c for c in current.get("children") or [] if isinstance(c, dict)]
+        children = [c for c in current.get("children") or [] if _visible(c) and c.get("type") not in _SHAPES]
         stack.extend((child, depth + 1) for child in reversed(children))
     return "\n".join(lines), False
 

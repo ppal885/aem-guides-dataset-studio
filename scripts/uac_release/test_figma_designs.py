@@ -91,14 +91,19 @@ class FigmaDesignTests(unittest.TestCase):
         self.assertEqual(figma_designs.parse_link("https://www.figma.com/email_only"), ("", ""))
         self.assertEqual(figma_designs.parse_link("https://www.figma.com/community/file/123"), ("", ""))
 
-    def test_outline_lists_text_and_variants_and_does_not_expand_hidden_layers(self) -> None:
-        text, truncated = figma_designs.outline(FRAME)
+    def test_outline_lists_text_and_variants_and_leaves_out_hidden_layers_and_shapes(self) -> None:
+        frame = dict(FRAME, children=FRAME["children"] + [
+            {"id": "6", "type": "INSTANCE", "name": "Copy icon", "children": [
+                {"id": "7", "type": "VECTOR", "name": "iconFill"}]},
+            {"id": "8", "type": "RECTANGLE", "name": "Divider"}])
+        text, truncated = figma_designs.outline(frame)
         self.assertFalse(truncated)
         self.assertIn('- TEXT "Title": Upload files', text)
         self.assertIn("{State=Disabled}", text)
         self.assertIn('    - TEXT "Label": Cancel all', text)
-        self.assertIn('GROUP "Old banner" (hidden)', text)
-        self.assertNotIn("never shown", text)
+        self.assertIn('- INSTANCE "Copy icon"', text, "an icon keeps its name")
+        for left_out in ("Old banner", "never shown", "iconFill", "Divider"):
+            self.assertNotIn(left_out, text)
 
     def test_a_ticket_without_a_figma_link_calls_figma_never(self) -> None:
         api = FakeFigmaApi()

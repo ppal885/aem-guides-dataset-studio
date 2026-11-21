@@ -196,7 +196,7 @@ A missing request is logged as a warning in `status.json` and never blocks the A
    `FIGMA_TOKEN` lets the runner read the Figma designs a ticket links to. The unattended Copilot session
    cannot complete the Figma MCP browser login, so the runner reads each linked frame itself through the
    Figma REST API (GET requests only) and writes, into `<KEY>/figma-designs/`, a text outline of the frame
-   (layer names, every on-screen text, component variants) and the frame rendered as PNG, listed in
+   (visible layer names, every on-screen text, component variants) and the frame rendered as PNG, listed in
    `FIGMA_DESIGNS.json`. The skill treats it as its Figma evidence: intended UI only, never backend
    behaviour. Create the token while signed in with the account that can open the team's design files
    (Figma > Settings > Security > Personal access tokens), give it only the `file_content:read` scope, and
