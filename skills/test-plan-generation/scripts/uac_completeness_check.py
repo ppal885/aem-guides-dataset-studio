@@ -131,6 +131,9 @@ WHAT IT CHECKS in a UAC folder
    cause ("caused by", "regression of", "introduced in") is opened and read in full - description and every
    comment - and recorded with read true and "used" (what it changed in the UAC, or why nothing), or read false
    with the reason it could not be opened. A ticket named as the cause is skipped only when it cannot be opened.
+27. "affected_version" (no record of its own): a release the bug was reported in (Jira Affects Version, not also a
+   fix version) is never the place to test the fix - the UAC and the test plan name the build that carries the fix.
+   An affected release may be named only to reproduce the bug or to say where it was reported.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -603,6 +606,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "observable_result": observable_result_problems(evidence, uac),
         "decisions": decision_problems(evidence, uac, source),
         "linked_tickets": linked_ticket_problems(evidence, source),
+        "affected_version": affected_version_problems(uac, plan, source),
     }
 
 
@@ -661,6 +665,44 @@ def check(folder: Path) -> list[str]:
                 problems += [f"hotfix scope: {p}" for p in hotfix_scope_check.check(_load(scope_path), uac)]
     else:
         problems.append(f"{JIRA_SOURCE_FILE} is missing: save the live ticket text so hotfix scope can be checked")
+    return problems
+
+
+# --- affected release used as the test release --------------------------------------------------------------
+# The bug was reported in the affected releases (Jira "Affects Version"); the fix ships in a later build. A UAC or
+# test plan that tells QE to check the fix on an affected release ("On-premise 6.5 with Guides 5.2") is wrong: that
+# release does not carry the fix. QE corrected this on a ticket reported in three releases with an undecided fix
+# version. An affected release may still be named to reproduce the bug or to describe where it was reported.
+_REPRO_CONTEXT = re.compile(r"reproduc|repro\b|reported|affected|affects|before the fix|without the fix|"
+                            r"stale|existing (?:data|values|content)|left behind|bug (?:was|is) seen", re.I)
+
+
+def _version_pattern(version: str) -> re.Pattern | None:
+    version = str(version or "").strip()
+    if not re.fullmatch(r"\d+(?:\.\d+)*", version):
+        return None
+    return re.compile(rf"(?<![\w.]){re.escape(version)}(?:\.(?:x|\d+))*(?![\w])", re.I)
+
+
+def affected_version_problems(uac_text: str, plan_text: str, source: dict | None) -> list[str]:
+    if not source:
+        return []
+    fixed = {str(v).strip() for v in source.get("fixVersions") or []}
+    affected = [str(v).strip() for v in source.get("versions") or [] if str(v).strip() not in fixed]
+    problems = []
+    for version in affected:
+        pattern = _version_pattern(version)
+        if pattern is None:
+            continue
+        for name, text in ((UAC_FILE, uac_text or ""), (PLAN_FILE, plan_text or "")):
+            for line in text.splitlines():
+                if re.match(r"\s*\*\*Source:", line) or not pattern.search(line) or _REPRO_CONTEXT.search(line):
+                    continue
+                problems.append(f"{name} names {version} as a place to test (\"{line.strip()[:80]}\"), but the bug was "
+                                f"reported in {version} and the fix ships later (fix version: "
+                                f"{', '.join(sorted(fixed)) or 'not set'}); test on the build that carries the fix, and "
+                                "name an affected release only to reproduce the bug")
+                break
     return problems
 
 

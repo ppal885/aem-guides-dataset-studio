@@ -928,6 +928,11 @@ or three tickets:
   cause without a fix - support isolated a rule as the likely cause, a developer traced the culprit - record
   fix_basis CAUSE_KNOWN with that sentence and start with the cause-known Note, not "not confirmed". Keep
   UNCONFIRMED only with a reason why that text is not the cause.
+- **The release to test on** (affected-version, `affected_version`). The ticket's Affects Version is where the bug
+  was reported, not where the fix is tested: the fix ships in a later build. A criterion, case or test-plan line never
+  names an affected release as the place to check the fix ("On-premise 6.5 with Guides 5.2" on a ticket reported in
+  5.2 with fix version Undecided). Name the build that carries the fix, and use an affected release only to reproduce
+  the bug or to say where it was reported.
 - **A ticket the ticket rules out** (excluded-ticket, `excluded_tickets`). A related ticket the description or a
   comment calls "not the same defect", "a different issue" or "unrelated" is context, never the Source of a
   criterion. Its check goes to the full test plan or is dropped.
