@@ -216,6 +216,7 @@ Convergence and conversational clarification: after mandated research resolves, 
 - When the user supplies a concrete Jira key, fetch that issue before drafting the plan. Do not silently describe the source as pasted text, and do not continue from historical RAG as though it were the live issue. If Jira MCP cannot fetch the key, state the exact Jira evidence failure; use pasted issue content only when the user supplied it.
 - Treat placeholders such as `GUIDES-XXXXX` as missing input, not as a real Jira key. Ask for the actual key instead of producing a Jira-backed plan.
 - Extract summary, description, expected/actual behaviour, acceptance criteria/UAC, customer and business impact, environment, product/version, logs, error text, affected assets/workflows, actions already taken, requested engineering help, attachments, linked issues, and development links when present.
+- Open every linked ticket (test-case links aside) and every ticket the text names as the cause or as the fix it regresses ("caused by", "regression of", "introduced in"), and read its description and every comment - one line in this ticket saying what it did is not enough. Its comments say which file types, routes and settings the change touched and what its QE already checked. Record each in `UAC_EVIDENCE.json` `linked_tickets`: `{"key", "read": true, "used"}` (what it changed in the UAC, or why nothing), or `{"key", "read": false, "reason"}` when it cannot be opened; a causing ticket may be skipped only when it cannot be opened. Save the ticket's Jira links in `jira-source.json` `links`. A regression UAC that never opened the causing ticket missed a file type, kept a wrong criterion and had no guard for the saves the change left alone (`linked_ticket_problems`).
 - Resolve customer context from explicit Jira customer/account fields first, then customer-identifying labels. Preserve multiple customers separately, surface material field/label conflicts, and never infer a customer from reporter identity, email, IMS Org ID, or incidental description text.
 - Do not stop at attachment filenames. List every attachment (Jira MCP `list_attachments`), then download and actually analyse each one that could carry evidence: `download_attachment` to a scratchpad path, then Read images/screenshots visually, open logs/HAR/stack traces as text, and inspect sample DITA/maps/zips. Extract concrete facts a QA plan can assert — exact property values and identifier formats (for example `GUID-<uuid>-en`), how a symptom actually renders in the UI (for example an orphan shown as an empty value between commas), affected columns/fields, enum values, error strings, timestamps, and counts.
 - When an inspected attachment or user-provided visual reference names a UI surface,
@@ -828,6 +829,13 @@ scenario VARIANT:
   writes data AEM Guides keeps in its database on Cloud (Document State, metadata, references, versions,
   review data), add the switch "DB flavour and JCR flavour" with the case "Try it on Cloud with the DB
   flavour, and again with the JCR flavour"; it needs no `reads_at`.
+  Each state of an AC switch is stated in a criterion or case line that names the switch ("with the approval
+  workflow on, nothing changes"); a TBD or Source line does not count. A state whose result is really open is
+  listed in `tbd_states` and asked in a TBD line. When the ticket itself says how the product behaves in a state
+  and the fix does not ask to change it, that state is a "still works as before" criterion, not a TBD (give
+  `tbd_reason` only when that behaviour is genuinely open). A document-state UAC asked "with the approval
+  workflow on, should the API also reset the state?" while the ticket said approval-on files stay read-only;
+  the reviewer had to add "with the approval workflow on, nothing changes" (`switch_state_problems`).
 - **mechanism** - when the ticket asks for general behaviour ("users can move content while others refer to
   it", "same as Baseline and Conditional Presets"), the other item or reference types, and the named feature
   it must match, are ACs; the reporter's own item is one case of it. When the ask is only the reporter's

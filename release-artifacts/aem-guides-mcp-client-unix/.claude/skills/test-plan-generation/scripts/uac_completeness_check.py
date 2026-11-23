@@ -122,6 +122,15 @@ WHAT IT CHECKS in a UAC folder
    blocked, a count, a precedence) records who decided it - TICKET or DEVELOPER_COMMENT with the sentence
    copied, ATTACHMENT, PRODUCT_DECISION with who and where, or MERGED_FIX with the merged pull request or commit.
    A choice nobody decided is a TBD.
+25. Switch states (action_variants.config_switches with disposition AC): each state is stated in a criterion or
+   case line, next to the switch's name - a TBD or Source line does not count. A state whose result is open is
+   listed in "tbd_states" and asked in a TBD line; when the ticket itself says how the switch behaves in that state
+   (and the fix does not ask to change it), it is a criterion that it stays as it is, not a TBD, unless
+   "tbd_reason" says why it is open. The same holds for a switch whose disposition is TBD.
+26. "linked_tickets": every Jira link of the ticket (test-case links aside) and every ticket the text names as the
+   cause ("caused by", "regression of", "introduced in") is opened and read in full - description and every
+   comment - and recorded with read true and "used" (what it changed in the UAC, or why nothing), or read false
+   with the reason it could not be opened. A ticket named as the cause is skipped only when it cannot be opened.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -593,6 +602,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "reporter_screen": reporter_screen_problems(evidence, uac),
         "observable_result": observable_result_problems(evidence, uac),
         "decisions": decision_problems(evidence, uac, source),
+        "linked_tickets": linked_ticket_problems(evidence, source),
     }
 
 
@@ -1678,7 +1688,126 @@ def _variant_entry_problems(label: str, entry, blocks: dict[int, str], uac_text:
     words = _name_words(name)
     if words and not any(re.search(rf"\b{re.escape(w)}", text) for w in words):
         return [f"{label} \"{name}\": Acceptance Criteria {', '.join(f'{a:02d}' for a in acs)} does not name it"]
+    stated = _stated_text(uac_text, acs) if uac_text else text
+    if words and not any(re.search(rf"\b{re.escape(w)}", stated) for w in words):
+        return [f"{label} \"{name}\": Acceptance Criteria {', '.join(f'{a:02d}' for a in acs)} names it only in a "
+                "TBD or Source line - a question is not a criterion; state the result it must give, or make the "
+                "variant a TBD"]
     return []
+
+
+def _stated_text(uac_text: str, acs) -> str:
+    """The statement and case lines of these criteria, without their TBD and Source lines."""
+    wanted = set(acs)
+    return _normalize(" ".join(t for ac, _, t in _criterion_lines(uac_text) if ac in wanted))
+
+
+# A switch state and the words a criterion uses for it.
+_STATE_WORDS = {
+    "on": ("on", "enabled", "enable", "turned on", "switched on", "active", "selected", "checked", "ticked"),
+    "enabled": ("on", "enabled", "enable", "turned on", "switched on", "active", "selected", "checked", "ticked"),
+    "off": ("off", "disabled", "disable", "turned off", "switched off", "inactive", "cleared", "unchecked",
+            "unticked", "not selected"),
+    "disabled": ("off", "disabled", "disable", "turned off", "switched off", "inactive", "cleared", "unchecked",
+                 "unticked", "not selected"),
+}
+
+
+# "on" and "off" are everyday words ("the API on a Done file"): they count only right after the switch's name
+# ("the approval workflow on", "UUID file names are off"). The other words for a state count anywhere in the line.
+_BARE_STATES = ("on", "off")
+
+
+def _state_pattern(state: str) -> str:
+    words = [w for w in _STATE_WORDS.get(state, (state,)) if w not in _BARE_STATES or w == state not in _STATE_WORDS]
+    return r"\b(?:" + "|".join(re.escape(_normalize(w)) for w in words) + r")\b" if words else r"(?!x)x"
+
+
+def _names_state(line: str, words: list[str], state: str) -> bool:
+    """One line that names the switch (any word of its name) and the state."""
+    line = _normalize(line)
+    named = not words or any(re.search(rf"\b{re.escape(w)}", line) for w in words)
+    if named and re.search(_state_pattern(state), line):
+        return True
+    bare = [w for w in _STATE_WORDS.get(state, ()) if w in _BARE_STATES]
+    return bool(words and bare) and any(
+        re.search(rf"\b{re.escape(w)}\w*(?:\s+(?:is|are|set|turned|switched|to))*\s+(?:(?:on|off)\s*(?:or|and|/)\s*)?"
+                  rf"(?:{'|'.join(bare)})\b", line)
+        for w in words)
+
+
+def _ticket_states(source: dict | None, words: list[str], states: list[str]) -> list[str]:
+    """The states the ticket itself describes for this switch: a ticket sentence naming every word of the switch
+    and the state. Such a state has a known current behaviour."""
+    if not source or not words:
+        return []
+    found = []
+    for sentence in _ticket_sentences(source):
+        low = _normalize(sentence)
+        if not all(re.search(rf"\b{re.escape(w)}", low) for w in words):
+            continue
+        for state in states:
+            if state not in found and _names_state(low, words, state):
+                found.append(state)
+    return found
+
+
+def switch_state_problems(label: str, entry: dict, uac_text: str, source: dict | None) -> list[str]:
+    """Each state of an AC switch is a criterion, or a TBD the ticket leaves open - never a criterion on one state
+    with the other state only asked in its TBD line.
+
+    A document-state ticket (Save as new version must reset the end state to the start state) listed the approval
+    workflow with states off and on on one criterion, but "on" appeared only in that criterion's TBD ("with the
+    approval workflow on, should the API also reset the state?"). The ticket said what happens with approval on
+    (the file opens read-only, the button is hidden), so the reviewer added the criterion the UAC lacked: with the
+    approval workflow on, nothing changes. A state the ticket describes, and the fix does not ask to change, is a
+    "still works as before" criterion."""
+    name = entry["name"]
+    words = _name_words(name)
+    acs = _ac_list(entry.get("acs", entry.get("ac")))
+    states = [str(x).strip().lower() for x in entry.get("states") or [] if str(x).strip()]
+    tbd_states = [str(x).strip().lower() for x in entry.get("tbd_states") or [] if str(x).strip()]
+    problems = []
+    unknown = [x for x in tbd_states if x not in states]
+    if unknown:
+        problems.append(f"{label} \"{name}\": tbd_states {unknown} are not in states {states}")
+    lines = {ac: [] for ac in acs}
+    tbd_lines = {ac: [] for ac in acs}
+    current = 0
+    for line in (uac_text or "").splitlines():
+        head = re.match(r"^\s*(?:[-*]\s+)?\**Acceptance Criteria (\d+):\**\s*(.*)$", line)
+        if head:
+            current = int(head.group(1))
+            if current in lines:
+                lines[current].append(head.group(2))
+            continue
+        if current in lines:
+            if re.match(r"^\s*(?:[-*+]+\s+)?\**\s*TBD\s*:", line, re.I):
+                tbd_lines[current].append(line)
+            elif not re.match(r"^\s*(?:[-*+]+\s+)?\**\s*Source\s*:", line, re.I):
+                lines[current].append(line)
+    stated = [ln for ac in acs for ln in lines[ac]]
+    asked = [ln for ac in acs for ln in tbd_lines[ac]]
+    described = _ticket_states(source, words, states)
+    for state in states:
+        if any(_names_state(ln, words, state) for ln in stated):
+            continue
+        if state in tbd_states:
+            if not any(_names_state(ln, words, state) for ln in asked):
+                problems.append(f"{label} \"{name}\": state {state} is in tbd_states but no TBD line of Acceptance "
+                                f"Criteria {', '.join(f'{a:02d}' for a in acs)} asks about it")
+            elif state in described and len(str(entry.get("tbd_reason") or "").split()) < 5:
+                problems.append(f"{label} \"{name}\": the ticket says what happens when it is {state}, so a fix that "
+                                "does not ask to change that is a criterion that it stays as it is, not a TBD - or "
+                                "give tbd_reason: why the ticket's own behaviour in that state is open")
+            continue
+        if any(_names_state(ln, words, state) for ln in asked):
+            problems.append(f"{label} \"{name}\": the result when it is {state} is only asked in a TBD line - "
+                            "write the criterion for that state (when the ticket describes it and the fix does not "
+                            "ask to change it: it stays as it is), or list the state in tbd_states")
+        else:
+            problems.append(f"{label} \"{name}\": no Acceptance Criterion states the result when it is {state}")
+    return problems
 
 
 # Output generation has several routes that share one engine; the reporter uses one of them (miss probe
@@ -1837,6 +1966,14 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
             found = _variant_entry_problems(label, entry, blocks, uac_text,
                                         plan_text=plan_text)
             problems += found
+            if not found and isinstance(entry, dict) and entry.get("disposition") == "TBD":
+                states = [str(x).strip().lower() for x in entry.get("states") or [] if str(x).strip()]
+                described = _ticket_states(source, _name_words(entry["name"]), states)
+                if described and len(str(entry.get("tbd_reason") or "").split()) < 5:
+                    problems.append(f"{label} \"{entry['name']}\": the ticket says what happens when it is "
+                                    f"{', '.join(described)}, so that state is a criterion that it stays as it is "
+                                    "(disposition AC with tbd_states for the open state), not only a TBD - or give "
+                                    "tbd_reason: why the ticket's own behaviour in that state is open")
             if found or not isinstance(entry, dict) or entry.get("disposition") != "AC":
                 continue
             states = [str(s).strip().lower() for s in entry.get("states") or [] if str(s).strip()]
@@ -1844,11 +1981,7 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
                 problems.append(f"{label} \"{entry['name']}\": list at least two states (for example enabled and "
                                 "disabled) - the human UACs cover each state the switch can take")
                 continue
-            text = _normalize(" ".join(blocks[ac] for ac in _ac_list(entry.get("acs", entry.get("ac")))))
-            for state in states:
-                if not re.search(rf"\b{re.escape(_normalize(state))}\b", text):
-                    problems.append(f"{label} \"{entry['name']}\": no Acceptance Criterion states the result when it "
-                                    f"is {state}")
+            problems += switch_state_problems(label, entry, uac_text, source)
         problems += research_switch_cap_problems(switches, source)
     mechanism = block.get("mechanism")
     if not isinstance(mechanism, dict) or not isinstance(mechanism.get("general_ask"), bool):
@@ -1883,6 +2016,106 @@ def action_variant_problems(evidence: dict, uac_text: str, source: dict | None =
                 continue
             if dimension == "value_shapes" and not found and entry.get("disposition") == "AC":
                 problems += _value_shape_problems(entry, blocks)
+    return problems
+
+
+# --- linked tickets ------------------------------------------------------------------------------------
+_ISSUE_KEY = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
+# Link types that point at test cases, not at another ticket (as in similar_uac_compare.py).
+_TEST_LINK = re.compile(r"test\s*case|tested\s+by|tests?\b", re.I)
+# A ticket the text names as the cause: the change that broke it, or the fix it regresses.
+_CAUSE_KEY = re.compile(
+    r"\b(?:caused\s+by|introduced\s+(?:by|in|with)|regress\w*\s+(?:of|from|by|in|after)|broken\s+by|broke\s+in|"
+    r"after\s+(?:the\s+)?(?:fix|change)\s+(?:for|in|of)|since|due\s+to|root\s+cause\s*(?:is|was|:)?)"
+    r"[^.\n]{0,80}?\b([A-Z][A-Z0-9]+-\d+)\b"
+    r"|\b([A-Z][A-Z0-9]+-\d+)\b[^.\n]{0,40}?\b(?:caused|introduced|broke)\b"
+    r"|\b([A-Z][A-Z0-9]+-\d+)\s+regression\b", re.I)
+LINKED_UNREADABLE = re.compile(r"\b(?:no access|permission|not visible|restricted|unavailable|deleted|404|403)\b", re.I)
+
+
+def _link_keys(source: dict) -> list[str]:
+    """Issue keys of the ticket's Jira links: a flat "links" list (keys or link objects), or Jira's issuelinks."""
+    raw = list(source.get("links") or []) + list(source.get("issuelinks") or [])
+    raw += list(((source.get("fields") or {}).get("issuelinks")) or [])
+    keys = []
+    for link in raw:
+        if isinstance(link, str):
+            keys.append(link)
+            continue
+        if not isinstance(link, dict):
+            continue
+        link_type = link.get("type") or {}
+        type_text = " ".join(str(link_type.get(k) or "") for k in ("name", "inward", "outward")) if isinstance(
+            link_type, dict) else str(link_type)
+        if _TEST_LINK.search(type_text):
+            continue
+        for direction in ("outwardIssue", "inwardIssue"):
+            other = link.get(direction)
+            if isinstance(other, dict) and other.get("key"):
+                keys.append(other["key"])
+        if link.get("key"):
+            keys.append(link["key"])
+    return keys
+
+
+def required_linked_tickets(source: dict | None) -> dict[str, str]:
+    """{key: why} for every ticket the UAC author has to open: each Jira link, and each ticket the text names as
+    the cause."""
+    if not source:
+        return {}
+    own = str(source.get("key") or "").upper()
+    found: dict[str, str] = {}
+    for key in _link_keys(source):
+        key = str(key).strip().upper()
+        if _ISSUE_KEY.fullmatch(key) and key != own:
+            found.setdefault(key, "linked")
+    for match in _CAUSE_KEY.finditer(_ticket_text_raw(source)):
+        key = next(k for k in match.groups() if k).upper()
+        if key != own:
+            found[key] = "named as the cause or as the fix it regresses"
+    return found
+
+
+def _ticket_text_raw(source: dict) -> str:
+    parts = [source.get("summary") or "", source.get("description") or ""]
+    parts += [c.get("body") or "" for c in source.get("comments") or [] if isinstance(c, dict)]
+    return "\n".join(str(p) for p in parts)
+
+
+def linked_ticket_problems(evidence: dict, source: dict | None) -> list[str]:
+    """Every linked ticket, and every ticket the text names as the cause, is opened and read in full.
+
+    A regression ticket named the change that caused it; the first UAC relied on that one line and never opened
+    the causing ticket. Its comments said DITA, map and Markdown save through the changed path, that Version
+    History revert uses another API, and that QE had checked autosave - so the UAC missed Markdown, kept a wrong
+    revert criterion and had no plain Save / autosave guard. Each entry: key, read true and "used" (what it changed in
+    the UAC, or why nothing), or read false with why it could not be opened."""
+    required = required_linked_tickets(source)
+    if not required:
+        return []
+    entries = evidence.get("linked_tickets")
+    if not isinstance(entries, list):
+        return [f"linked_tickets is missing: open each linked ticket and each ticket named as the cause "
+                f"({', '.join(required)}) - description and every comment - and record key, read and used"]
+    by_key = {str(e.get("key") or "").strip().upper(): e for e in entries if isinstance(e, dict)}
+    problems = []
+    for key, why in required.items():
+        entry = by_key.get(key)
+        if entry is None:
+            problems.append(f"linked_tickets: {key} ({why}) was not recorded - open it and read its description and "
+                            "every comment")
+            continue
+        if entry.get("read") is True:
+            if len(str(entry.get("used") or "").split()) < 3:
+                problems.append(f"linked_tickets: {key} needs \"used\": what it changed in the UAC (a case, a "
+                                "criterion, a criterion removed) or why it changed nothing")
+            continue
+        reason = str(entry.get("reason") or "")
+        if len(reason.split()) < 5:
+            problems.append(f"linked_tickets: {key} was not read - read it, or give the reason it could not be opened")
+        elif why != "linked" and not LINKED_UNREADABLE.search(reason):
+            problems.append(f"linked_tickets: {key} is named as the cause; its comments say what the change touched - "
+                            "read it (only a ticket that cannot be opened may be skipped)")
     return problems
 
 
