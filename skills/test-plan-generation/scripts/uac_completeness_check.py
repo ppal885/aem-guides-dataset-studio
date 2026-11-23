@@ -134,10 +134,11 @@ WHAT IT CHECKS in a UAC folder
 27. "affected_version" (no record of its own): a release the bug was reported in (Jira Affects Version, not also a
    fix version) is never the place to test the fix - the UAC and the test plan name the build that carries the fix.
    An affected release may be named only to reproduce the bug or to say where it was reported.
-28. "performance_plan": a ticket that reports slowness, a timeout, a large workload or a large multi-valued
-   property has a Performance section in the full test plan: at least three prioritized checks, a comparison with
-   the build before the fix, what to record, and an [AC NN] on each check - or "performance" NOT_APPLICABLE with a
-   reason in the evidence record.
+28. "performance_plan": only a ticket that reports slowness, a timeout, a large workload or a large multi-valued
+   property needs performance checks in the full test plan's Test Scenarios (tagged "(Performance)" or under a
+   Performance sub-heading): at least three prioritized checks, a comparison with the build before the fix, what to
+   record, and an AC reference on every check - or "performance" NOT_APPLICABLE with a reason in the evidence record.
+   A ticket with no such signal gets no performance checks.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -682,6 +683,9 @@ _REPRO_CONTEXT = re.compile(r"reproduc|repro\b|reported|affected|affects|before 
                             r"stale|existing (?:data|values|content)|left behind|bug (?:was|is) seen", re.I)
 
 
+_SOURCE_LABEL = re.compile(r"\s*(?:[-*]\s*)?(?:\*\*)?Source:", re.I)
+
+
 def _version_pattern(version: str) -> re.Pattern | None:
     version = str(version or "").strip()
     if not re.fullmatch(r"\d+(?:\.\d+)*", version):
@@ -701,7 +705,12 @@ def affected_version_problems(uac_text: str, plan_text: str, source: dict | None
             continue
         for name, text in ((UAC_FILE, uac_text or ""), (PLAN_FILE, plan_text or "")):
             for line in text.splitlines():
-                if re.match(r"\s*\*\*Source:", line) or not pattern.search(line) or _REPRO_CONTEXT.search(line):
+                if _SOURCE_LABEL.match(line) or _REPRO_CONTEXT.search(line):
+                    continue
+                hits = [m.group(0) for m in pattern.finditer(line)
+                        if not any(m.group(0).lower() == f.lower() or m.group(0).lower().startswith(f.lower() + ".")
+                                   for f in fixed)]
+                if not hits:
                     continue
                 problems.append(f"{name} names {version} as a place to test (\"{line.strip()[:80]}\"), but the bug was "
                                 f"reported in {version} and the fix ships later (fix version: "
@@ -712,34 +721,41 @@ def affected_version_problems(uac_text: str, plan_text: str, source: dict | None
 
 
 # --- performance in the test plan ------------------------------------------------------------------------------
-# A ticket that reports slowness, a timeout, a large workload or a "large multi valued property" warning needs a
-# Performance section in the full test plan, not only one criterion about a big number. QE added it by hand on a
-# ticket whose plan had a single 10,000-topic check and no before/after timing. The section compares the build
-# before the fix with the build that carries it, says what to record, and maps each check to a criterion.
+# A ticket that reports slowness, a timeout, a large workload or a "large multi valued property" warning needs
+# performance checks in the full test plan, not only one criterion about a big number. QE added them by hand on a
+# ticket whose plan had a single large-workload check and no before/after timing. Only such a ticket is asked: a
+# ticket with no performance signal gets no performance checks. The checks sit inside the plan's Test Scenarios,
+# either tagged "(Performance)" or under a "Performance" sub-heading (plain, numbered or bold), so the plan keeps its
+# required sections. They compare with the build before the fix, say what to record, and each maps to a criterion.
 _PERF_TICKET = re.compile(
     r"\bperformance\b|\bslow(?:ness|er|ly)?\b|\btime ?outs?\b|\btimed out\b|\blatency\b|\bthroughput\b"
     r"|\blarge multi.?valued\b|\bout of memory\b|\bOOM\b|\bhigh (?:CPU|memory)\b|\bscalab"
     r"|\b\d{1,3}(?:,\d{3})+\s*(?:topics?|files?|maps?|assets?|nodes?|values?|users?)\b"
     r"|\b\d{4,}\s*(?:topics?|files?|maps?|assets?|nodes?|values?|users?)\b", re.I)
-_PERF_HEADING = re.compile(r"^\s*(?:#+\s*)?(?:\d+[a-z]?[.)]\s*)?performance\b", re.I | re.M)
+_PERF_HEADING = re.compile(r"^\s*(?:#+\s*)?(?:\*\*)?\s*(?:\d+[a-z]?[.)]\s*)?performance\b[^\n]*$", re.I | re.M)
+_PERF_TAG = re.compile(r"\(performance\)|\bperformance:", re.I)
 _PERF_BASELINE = re.compile(r"before the fix|without the fix|baseline|previous build|build before", re.I)
 _PERF_MEASURE = re.compile(r"\btimes?\b|\bduration\b|\bseconds?\b|\bminutes?\b|\bCPU\b|\bmemory\b"
                            r"|\bqueue\b|\bload time\b|\berror log\b", re.I)
+_PRIORITY = re.compile(r"^\s*-\s*P\d\b")
+_AC_REF = re.compile(r"\[\s*AC[-\s]?\d+(?:\s*,\s*AC[-\s]?\d+)*\s*\]", re.I)
 MIN_PERFORMANCE_CHECKS = 3
 
 
-def _performance_section(plan_text: str) -> list[str]:
+def _performance_lines(plan_text: str) -> tuple[list[str], list[str]]:
+    """Return (every line of the performance part, its prioritized checks)."""
+    lines: list[str] = []
     match = _PERF_HEADING.search(plan_text or "")
-    if not match:
-        return []
-    lines = []
-    for line in plan_text[match.end():].splitlines()[1:]:
-        if not line.strip():
-            continue
-        if not line.lstrip().startswith("-"):
-            break
-        lines.append(line)
-    return lines
+    if match:
+        for line in plan_text[match.end():].splitlines()[1:]:
+            if not line.strip():
+                continue
+            if not line.lstrip().startswith("-"):
+                break
+            lines.append(line)
+    lines += [line for line in (plan_text or "").splitlines()
+              if _PRIORITY.match(line) and _PERF_TAG.search(line) and line not in lines]
+    return lines, [line for line in lines if _PRIORITY.match(line)]
 
 
 def performance_plan_problems(evidence: dict, plan_text: str, source: dict | None) -> list[str]:
@@ -750,29 +766,29 @@ def performance_plan_problems(evidence: dict, plan_text: str, source: dict | Non
     if isinstance(record, dict) and record.get("disposition") == "NOT_APPLICABLE":
         return [] if _reason_ok(record.get("reason")) else [
             "performance is NOT_APPLICABLE without a reason: say why the ticket's performance signal does not apply"]
-    lines = _performance_section(plan_text)
+    lines, checks = _performance_lines(plan_text)
     found = f"the ticket mentions \"{signal.group(0)}\""
     if not lines:
-        return [f"{found}, but {PLAN_FILE} has no Performance section: add one that compares the build before the fix "
-                "with the build that carries it, says what to record (time, memory, queue, error log) and maps each check "
-                "to a criterion - or record \"performance\": {\"disposition\": \"NOT_APPLICABLE\", \"reason\": ...} "
-                f"in {EVIDENCE_FILE}"]
+        return [f"{found}, but {PLAN_FILE} has no performance checks: in Test Scenarios, add checks tagged "
+                "\"(Performance)\" or under a Performance sub-heading that compare the build before the fix with the "
+                "fixed build, say what to record (time, memory, queue, error log) and map each to a criterion - or "
+                f"record \"performance\": {{\"disposition\": \"NOT_APPLICABLE\", \"reason\": ...}} in {EVIDENCE_FILE}"]
     problems = []
-    checks = [line for line in lines if re.search(r"\bP\d\b", line)]
     if len(checks) < MIN_PERFORMANCE_CHECKS:
-        problems.append(f"the Performance section of {PLAN_FILE} has {len(checks)} prioritized checks; write at least "
+        problems.append(f"{PLAN_FILE} has {len(checks)} prioritized performance checks; write at least "
                         f"{MIN_PERFORMANCE_CHECKS} (workload sizes, several users at once, load on the server)")
     section = "\n".join(lines)
     if not _PERF_BASELINE.search(section):
-        problems.append(f"the Performance section of {PLAN_FILE} does not compare with the build before the fix; say "
+        problems.append(f"the performance checks in {PLAN_FILE} do not compare with the build before the fix; say "
                         "to run the same content on the build before the fix and on the fixed build")
     if not _PERF_MEASURE.search(section):
-        problems.append(f"the Performance section of {PLAN_FILE} does not say what to record (time, memory, CPU, job "
+        problems.append(f"the performance checks in {PLAN_FILE} do not say what to record (time, memory, CPU, job "
                         "queue, error log)")
-    if checks and not any(re.search(r"\[AC ?\d", line) for line in checks):
-        problems.append(f"the Performance checks in {PLAN_FILE} map to no criterion; tag each with [AC NN]")
+    unmapped = [line.strip()[:60] for line in checks if not _AC_REF.search(line)]
+    if unmapped:
+        problems.append(f"{len(unmapped)} performance check(s) in {PLAN_FILE} map to no criterion (\"{unmapped[0]}\"); "
+                        "tag each with [AC-NN] or [AC NN]")
     return problems
-
 
 # --- customer scenario ---------------------------------------------------------------------------------
 SCENARIO_KINDS = ("CUSTOMER", "REGRESSION", "VARIANT", "ADJACENT")

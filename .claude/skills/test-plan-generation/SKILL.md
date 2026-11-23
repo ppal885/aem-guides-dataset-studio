@@ -931,14 +931,18 @@ or three tickets:
 - **The release to test on** (affected-version, `affected_version`). The ticket's Affects Version is where the bug
   was reported, not where the fix is tested: the fix ships in a later build. A criterion, case or test-plan line never
   names an affected release as the place to check the fix ("On-premise 6.5 with Guides 5.2" on a ticket reported in
-  5.2 with fix version Undecided). Name the build that carries the fix, and use an affected release only to reproduce
-  the bug or to say where it was reported.
-- **Performance in the test plan** (missing-performance, `performance_plan`). When the ticket reports slowness, a
-  timeout, a large workload or a large multi-valued property, one criterion about a big number is not enough: the
-  full test plan has a Performance section. It says to run the same content on the build before the fix and on the
-  fixed build, what to record (time, memory, CPU, job queue, error log), and at least three prioritized checks, each
-  with an [AC NN]: workload sizes, several users at once, and load on the server. With no agreed limit, the time
-  limit is a TBD; never invent one. Label that criterion "Performance:" in the UAC.
+  5.2 with fix version Undecided), unless that release is also a fix version. Name the build that carries the fix (a
+  fix build such as 5.2.1 is fine), and use an affected release only to reproduce the bug or to say where it was
+  reported.
+- **Performance in the test plan, only when needed** (missing-performance, `performance_plan`). Only when the ticket
+  reports slowness, a timeout, a large workload or a large multi-valued property: one criterion about a big number is
+  not enough, and the full test plan's Test Scenarios carry performance checks (tagged "(Performance)" or under a
+  Performance sub-heading, never a new top-level section). They say to run the same content on the build before the
+  fix and on the fixed build, what to record (time, memory, CPU, job queue, error log), and at least three prioritized
+  checks, each with an AC reference: workload sizes, several users at once, and load on the server. A ticket with no
+  such signal gets no performance checks. With no agreed limit, the assessment stays conditional
+  (`references/performance-assessment-contract.md`): the missing limit is a TBD (an Open Question in the record), and
+  no criterion is labelled Performance until a numeric or source-backed comparative limit exists; never invent one.
 - **A ticket the ticket rules out** (excluded-ticket, `excluded_tickets`). A related ticket the description or a
   comment calls "not the same defect", "a different issue" or "unrelated" is context, never the Source of a
   criterion. Its check goes to the full test plan or is dropped.

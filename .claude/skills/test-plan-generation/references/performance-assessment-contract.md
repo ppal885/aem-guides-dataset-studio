@@ -103,4 +103,4 @@ The contract is enforced by `scripts/performance_contract.py` and `scripts/run_g
 - A conditional decision fails without a performance-related Open Question that states QA impact.
 - Required ACs fail when workload or outcome is not quantitative.
 - Every Performance AC fails unless at least one mapped performance scenario exists.
-- No additional output section is permitted.
+- No additional output section is permitted: the internal assessment never adds a Performance section to the UAC, the compact output or the compatibility record. Performance execution checks that a ticket with a performance signal needs (`uac_completeness_check.performance_plan`) live inside Test Scenarios of the full test plan, tagged "(Performance)" or under a Performance sub-heading.

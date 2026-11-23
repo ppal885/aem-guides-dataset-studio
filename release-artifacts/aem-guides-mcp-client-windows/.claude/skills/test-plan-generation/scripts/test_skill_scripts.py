@@ -8896,6 +8896,13 @@ def test_affected_version_not_test_release() -> None:
           uc.affected_version_problems("  **Source:** comment on 5.2 build", "", source) == [])
     check("a release that is also a fix version passes",
           uc.affected_version_problems(bad, "", {"versions": ["5.2"], "fixVersions": ["5.2"]}) == [])
+    check("a plain Source: line may name the affected release",
+          uc.affected_version_problems("  Source: GUIDES-1, Guides 5.2", "", source) == [])
+    fix_build = {"versions": ["5.2"], "fixVersions": ["5.2.1"]}
+    check("a fix build that starts with the affected release passes",
+          uc.affected_version_problems("", "- Servers: Guides 5.2.1", fix_build) == [])
+    check("the affected release next to its fix build still fails",
+          bool(uc.affected_version_problems("", "- Servers: Guides 5.2.x", fix_build)))
     check("a different number does not match (5.2 vs 5.21, 15.2)",
           uc.affected_version_problems("- Guides 5.21 and 15.2 only", "", source) == [])
 
@@ -8919,9 +8926,21 @@ def test_performance_plan_section() -> None:
           any("before the fix" in p for p in uc.performance_plan_problems(
               {}, good.replace("on the build before the fix and ", ""), slow)))
     check("a section with too few checks fails",
-          any("prioritized checks" in p for p in uc.performance_plan_problems(
+          any("prioritized performance checks" in p for p in uc.performance_plan_problems(
               {}, "Performance\n- Compare with the build before the fix; record the time.\n- P1 [AC 08] One big map.\n",
               slow)))
+    tagged = ("**Test Scenarios**\n"
+              "- P1 [AC-08] (Performance) Delete maps with 1,000 topics on the build before the fix and the fixed build; "
+              "record the time.\n"
+              "- P1 [AC-08, AC-09] (Performance) 5 users delete at once; record the time.\n"
+              "- P2 [AC 08] (Performance) Watch CPU, memory and the job queue.\n")
+    check("performance checks tagged inside Test Scenarios with canonical AC-NN pass",
+          uc.performance_plan_problems({}, tagged, slow) == [])
+    check("a bold Performance sub-heading is found",
+          uc.performance_plan_problems({}, good.replace("7d. Performance", "**Performance**"), slow) == [])
+    check("every performance check needs its own AC reference",
+          any("map to no criterion" in p for p in uc.performance_plan_problems(
+              {}, good.replace("- P1 [AC 09] 5 users", "- P1 5 users"), slow)))
     check("NOT_APPLICABLE with a reason is accepted",
           uc.performance_plan_problems({"performance": {"disposition": "NOT_APPLICABLE",
                                                          "reason": "the count is the size of an attachment, not a workload"}},
