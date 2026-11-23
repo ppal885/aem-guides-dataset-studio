@@ -134,6 +134,10 @@ WHAT IT CHECKS in a UAC folder
 27. "affected_version" (no record of its own): a release the bug was reported in (Jira Affects Version, not also a
    fix version) is never the place to test the fix - the UAC and the test plan name the build that carries the fix.
    An affected release may be named only to reproduce the bug or to say where it was reported.
+28. "performance_plan": a ticket that reports slowness, a timeout, a large workload or a large multi-valued
+   property has a Performance section in the full test plan: at least three prioritized checks, a comparison with
+   the build before the fix, what to record, and an [AC NN] on each check - or "performance" NOT_APPLICABLE with a
+   reason in the evidence record.
 
 Run it before a UAC is shown, posted or re-posted, and again after every rewrite.
 
@@ -607,6 +611,7 @@ def evidence_problems_by_check(folder: Path) -> dict[str, list[str]]:
         "decisions": decision_problems(evidence, uac, source),
         "linked_tickets": linked_ticket_problems(evidence, source),
         "affected_version": affected_version_problems(uac, plan, source),
+        "performance_plan": performance_plan_problems(evidence, plan, source),
     }
 
 
@@ -703,6 +708,69 @@ def affected_version_problems(uac_text: str, plan_text: str, source: dict | None
                                 f"{', '.join(sorted(fixed)) or 'not set'}); test on the build that carries the fix, and "
                                 "name an affected release only to reproduce the bug")
                 break
+    return problems
+
+
+# --- performance in the test plan ------------------------------------------------------------------------------
+# A ticket that reports slowness, a timeout, a large workload or a "large multi valued property" warning needs a
+# Performance section in the full test plan, not only one criterion about a big number. QE added it by hand on a
+# ticket whose plan had a single 10,000-topic check and no before/after timing. The section compares the build
+# before the fix with the build that carries it, says what to record, and maps each check to a criterion.
+_PERF_TICKET = re.compile(
+    r"\bperformance\b|\bslow(?:ness|er|ly)?\b|\btime ?outs?\b|\btimed out\b|\blatency\b|\bthroughput\b"
+    r"|\blarge multi.?valued\b|\bout of memory\b|\bOOM\b|\bhigh (?:CPU|memory)\b|\bscalab"
+    r"|\b\d{1,3}(?:,\d{3})+\s*(?:topics?|files?|maps?|assets?|nodes?|values?|users?)\b"
+    r"|\b\d{4,}\s*(?:topics?|files?|maps?|assets?|nodes?|values?|users?)\b", re.I)
+_PERF_HEADING = re.compile(r"^\s*(?:#+\s*)?(?:\d+[a-z]?[.)]\s*)?performance\b", re.I | re.M)
+_PERF_BASELINE = re.compile(r"before the fix|without the fix|baseline|previous build|build before", re.I)
+_PERF_MEASURE = re.compile(r"\btimes?\b|\bduration\b|\bseconds?\b|\bminutes?\b|\bCPU\b|\bmemory\b"
+                           r"|\bqueue\b|\bload time\b|\berror log\b", re.I)
+MIN_PERFORMANCE_CHECKS = 3
+
+
+def _performance_section(plan_text: str) -> list[str]:
+    match = _PERF_HEADING.search(plan_text or "")
+    if not match:
+        return []
+    lines = []
+    for line in plan_text[match.end():].splitlines()[1:]:
+        if not line.strip():
+            continue
+        if not line.lstrip().startswith("-"):
+            break
+        lines.append(line)
+    return lines
+
+
+def performance_plan_problems(evidence: dict, plan_text: str, source: dict | None) -> list[str]:
+    signal = _PERF_TICKET.search(_ticket_text_raw(source)) if source else None
+    if not signal:
+        return []
+    record = evidence.get("performance") if isinstance(evidence, dict) else None
+    if isinstance(record, dict) and record.get("disposition") == "NOT_APPLICABLE":
+        return [] if _reason_ok(record.get("reason")) else [
+            "performance is NOT_APPLICABLE without a reason: say why the ticket's performance signal does not apply"]
+    lines = _performance_section(plan_text)
+    found = f"the ticket mentions \"{signal.group(0)}\""
+    if not lines:
+        return [f"{found}, but {PLAN_FILE} has no Performance section: add one that compares the build before the fix "
+                "with the build that carries it, says what to record (time, memory, queue, error log) and maps each check "
+                "to a criterion - or record \"performance\": {\"disposition\": \"NOT_APPLICABLE\", \"reason\": ...} "
+                f"in {EVIDENCE_FILE}"]
+    problems = []
+    checks = [line for line in lines if re.search(r"\bP\d\b", line)]
+    if len(checks) < MIN_PERFORMANCE_CHECKS:
+        problems.append(f"the Performance section of {PLAN_FILE} has {len(checks)} prioritized checks; write at least "
+                        f"{MIN_PERFORMANCE_CHECKS} (workload sizes, several users at once, load on the server)")
+    section = "\n".join(lines)
+    if not _PERF_BASELINE.search(section):
+        problems.append(f"the Performance section of {PLAN_FILE} does not compare with the build before the fix; say "
+                        "to run the same content on the build before the fix and on the fixed build")
+    if not _PERF_MEASURE.search(section):
+        problems.append(f"the Performance section of {PLAN_FILE} does not say what to record (time, memory, CPU, job "
+                        "queue, error log)")
+    if checks and not any(re.search(r"\[AC ?\d", line) for line in checks):
+        problems.append(f"the Performance checks in {PLAN_FILE} map to no criterion; tag each with [AC NN]")
     return problems
 
 

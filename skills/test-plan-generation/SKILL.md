@@ -933,6 +933,12 @@ or three tickets:
   names an affected release as the place to check the fix ("On-premise 6.5 with Guides 5.2" on a ticket reported in
   5.2 with fix version Undecided). Name the build that carries the fix, and use an affected release only to reproduce
   the bug or to say where it was reported.
+- **Performance in the test plan** (missing-performance, `performance_plan`). When the ticket reports slowness, a
+  timeout, a large workload or a large multi-valued property, one criterion about a big number is not enough: the
+  full test plan has a Performance section. It says to run the same content on the build before the fix and on the
+  fixed build, what to record (time, memory, CPU, job queue, error log), and at least three prioritized checks, each
+  with an [AC NN]: workload sizes, several users at once, and load on the server. With no agreed limit, the time
+  limit is a TBD; never invent one. Label that criterion "Performance:" in the UAC.
 - **A ticket the ticket rules out** (excluded-ticket, `excluded_tickets`). A related ticket the description or a
   comment calls "not the same defect", "a different issue" or "unrelated" is context, never the Source of a
   criterion. Its check goes to the full test plan or is dropped.

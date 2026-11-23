@@ -8900,6 +8900,34 @@ def test_affected_version_not_test_release() -> None:
           uc.affected_version_problems("- Guides 5.21 and 15.2 only", "", source) == [])
 
 
+def test_performance_plan_section() -> None:
+    uc = uac_completeness_check_mod
+    slow = {"key": "GUIDES-1", "summary": "Delete is slow",
+            "description": "Customer logs show a Large multi valued property (1926 values)."}
+    plain = {"key": "GUIDES-2", "summary": "Rename a button", "description": "The Save label is unclear."}
+    good = ("7d. Performance\n"
+            "- Rules: run the same content on the build before the fix and on the fixed build; record the time.\n"
+            "- P1 [AC 08] Delete maps with 100, 1,000 and 10,000 topics; record the delete time.\n"
+            "- P1 [AC 09] 5 users delete at the same time; record the time.\n"
+            "- P2 [AC 08] Watch CPU, memory and the job queue.\n\n8. Regression\n")
+    check("a performance ticket without a Performance section fails",
+          bool(uc.performance_plan_problems({}, "- P1 [AC 08] Delete a big map.", slow)))
+    check("a full Performance section passes", uc.performance_plan_problems({}, good, slow) == [])
+    check("a ticket without a performance signal needs no section",
+          uc.performance_plan_problems({}, "", plain) == [])
+    check("a section without a before-the-fix comparison fails",
+          any("before the fix" in p for p in uc.performance_plan_problems(
+              {}, good.replace("on the build before the fix and ", ""), slow)))
+    check("a section with too few checks fails",
+          any("prioritized checks" in p for p in uc.performance_plan_problems(
+              {}, "Performance\n- Compare with the build before the fix; record the time.\n- P1 [AC 08] One big map.\n",
+              slow)))
+    check("NOT_APPLICABLE with a reason is accepted",
+          uc.performance_plan_problems({"performance": {"disposition": "NOT_APPLICABLE",
+                                                         "reason": "the count is the size of an attachment, not a workload"}},
+                                       "", slow) == [])
+
+
 def test_uac_completeness_check() -> None:
     uc = uac_completeness_check_mod
     vm = vm_evidence_call_mod
@@ -19066,6 +19094,7 @@ def main() -> int:
     test_hotfix_scope_check()
     test_uac_completeness_check()
     test_affected_version_not_test_release()
+    test_performance_plan_section()
     test_scenario_and_failure_path()
     test_fix_basis_and_no_suggested_checks()
     test_excluded_ticket_problems()
