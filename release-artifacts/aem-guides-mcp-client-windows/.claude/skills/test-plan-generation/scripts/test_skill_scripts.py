@@ -8695,8 +8695,9 @@ def test_action_variants() -> None:
           any("no longer an answer" in p for p in variant(entry_points__1__disposition="SUGGESTED")))
     check("a switch with one state fails", any("at least two states" in p for p in variant(
         config_switches__0__states=["enabled"])))
-    check("a switch state no criterion covers fails", any("when it is off" in p for p in variant(
-        config_switches__0__states=["enabled", "off"])))
+    check("a switch state no criterion covers fails", any("when it is read-only" in p for p in variant(
+        config_switches__0__states=["enabled", "read-only"])))
+    check("off and disabled name the same state", variant(config_switches__0__states=["enabled", "off"]) == [])
     check("no switches without a reason fails", any("config_switches_reason" in p for p in variant(config_switches=[])))
     check("no switches with a reason passes", variant(config_switches=[], config_switches_reason=
                                                       "no setting changes what the dialog stores") == [])
@@ -8752,6 +8753,92 @@ def test_action_variants() -> None:
           uc.scenario_problems({**scenario, **good}, uac, None) == [])
     check("a VARIANT criterion action_variants does not list fails",
           any("is a VARIANT" in p for p in uc.scenario_problems(scenario, uac, None)))
+
+
+def test_switch_states_and_linked_tickets() -> None:
+    """A switch state asked only in a TBD line, and a linked or causing ticket nobody opened (a document-state
+    regression whose first UAC left the approval workflow as a question and never read the causing ticket)."""
+    uc = uac_completeness_check_mod
+    source = {"key": "PROJ-1", "summary": "Save as new version does not reset the end state; PROJ-3 regression",
+              "description": "Save as new version leaves a Done file in Done. This is caused by PROJ-2. "
+                             "With the approval workflow on, a Done file opens read-only and the Save as new "
+                             "version button is hidden.",
+              "comments": [], "links": ["PROJ-2", "PROJ-3"]}
+    head = ("- Acceptance Criteria 01: A topic in Done saved with Save as new version moves to Draft.\n"
+            "  **Source:** Ticket description.\n")
+    first_draft = head + ("- Acceptance Criteria 02: Calling the version API directly on a Done file gives the same "
+                          "result as the toolbar.\n"
+                          "  **TBD:** With the approval workflow on, should the API also move a Done file to Draft?\n")
+    switch = {"name": "Approval workflow", "basis": "TICKET", "disposition": "AC", "acs": [2], "states": ["off", "on"]}
+
+    def problems(uac, entry, src=source):
+        record = {"action_variants": {
+            "entry_points": [{"name": "Save as new version on the toolbar", "basis": "TICKET", "disposition": "AC",
+                              "ac": 1}],
+            "config_switches": [entry],
+            "mechanism": {"general_ask": False, "reason": "the ticket asks only about Save as new version",
+                          "reverse_action": {"name": "x", "disposition": "NOT_APPLICABLE",
+                                             "reason": "saving a version has no reverse action to check"},
+                          "item_origin": {"name": "x", "disposition": "NOT_APPLICABLE",
+                                          "reason": "every file reaches Done through the same workflow"},
+                          "value_shapes": {"name": "x", "disposition": "NOT_APPLICABLE",
+                                           "reason": "the change reads no value the user types"}}}}
+        return uc.action_variant_problems(record, uac, src)
+
+    check("a switch named only in a TBD line is not a criterion", any(
+        "only in a TBD or Source line" in p for p in problems(first_draft, switch)))
+    off_only = head + ("- Acceptance Criteria 02: With the approval workflow off, calling the version API on a Done "
+                       "file moves it to Draft.\n"
+                       "  **TBD:** With the approval workflow on, should the API also move a Done file to Draft?\n")
+    check("a state asked only in a TBD line fails", any(
+        "when it is on is only asked in a TBD line" in p for p in problems(off_only, switch)))
+    check("an open state the ticket describes cannot stay a TBD", any(
+        "the ticket says what happens when it is on" in p for p in problems(off_only, {**switch, "tbd_states": ["on"]})))
+    check("an open state with a reason may stay a TBD", problems(off_only, {
+        **switch, "tbd_states": ["on"], "tbd_reason": "the developer must decide whether approval blocks the API"}) == [])
+    quiet = {**source, "description": "Save as new version leaves a Done file in Done. This is caused by PROJ-2."}
+    check("an open state the ticket does not describe may be a TBD", problems(
+        off_only, {**switch, "tbd_states": ["on"]}, quiet) == [])
+    check("tbd_states must be one of the states", any("are not in states" in p for p in problems(
+        off_only, {**switch, "tbd_states": ["read-only"]})))
+    fixed = off_only.replace("  **TBD:** With the approval workflow on, should the API also move a Done file to Draft?\n",
+                             "") + ("- Acceptance Criteria 03: With the approval workflow on, nothing changes: a Done "
+                                    "file opens read-only and stays Done.\n")
+    check("each state stated in a criterion passes", problems(fixed, {**switch, "acs": [2, 3]}) == [])
+    tbd_switch = {"name": "Approval workflow", "basis": "TICKET", "disposition": "TBD", "acs": [2],
+                  "states": ["off", "on"]}
+    check("a whole switch left as a TBD fails when the ticket describes a state", any(
+        "the ticket says what happens when it is on" in p for p in problems(off_only, tbd_switch)))
+    check("a whole TBD switch with a reason passes", problems(off_only, {
+        **tbd_switch, "tbd_reason": "the product owner has not decided the approval-on behaviour"}) == [])
+
+    check("the linked and causing tickets are required", uc.required_linked_tickets(source) == {
+        "PROJ-2": "named as the cause or as the fix it regresses",
+        "PROJ-3": "named as the cause or as the fix it regresses"})
+    check("a missing linked_tickets record fails", any(
+        "linked_tickets is missing" in p for p in uc.linked_ticket_problems({}, source)))
+    read = {"linked_tickets": [{"key": "PROJ-2", "read": True, "used": "Markdown case on criterion 01"},
+                               {"key": "PROJ-3", "read": True, "used": "nothing: same expected result as criterion 01"}]}
+    check("every linked ticket read and used passes", uc.linked_ticket_problems(read, source) == [])
+    check("a linked ticket not recorded fails", any("PROJ-3" in p and "was not recorded" in p for p in
+                                                    uc.linked_ticket_problems({"linked_tickets": read["linked_tickets"][:1]}, source)))
+    check("a read ticket needs what it changed", any("needs \"used\"" in p for p in uc.linked_ticket_problems(
+        {"linked_tickets": [{"key": "PROJ-2", "read": True, "used": "ok"}, read["linked_tickets"][1]]}, source)))
+    skipped = {"linked_tickets": [{"key": "PROJ-2", "read": False, "reason": "the description already says enough"},
+                                  read["linked_tickets"][1]]}
+    check("a causing ticket skipped without being unreadable fails", any(
+        "is named as the cause" in p for p in uc.linked_ticket_problems(skipped, source)))
+    skipped["linked_tickets"][0]["reason"] = "no access to that restricted security project"
+    check("a causing ticket that cannot be opened may be skipped", uc.linked_ticket_problems(skipped, source) == [])
+    raw = {"key": "PROJ-1", "summary": "s", "description": "d", "fields": {"issuelinks": [
+        {"type": {"name": "Tests", "inward": "is tested by", "outward": "tests"}, "inwardIssue": {"key": "PROJ-7"}},
+        {"type": {"name": "Relates", "inward": "relates to", "outward": "relates to"}, "outwardIssue": {"key": "PROJ-8"}}]}}
+    check("test-case links are not required, other Jira links are", uc.required_linked_tickets(raw) == {"PROJ-8": "linked"})
+    commented = {"key": "PROJ-1", "summary": "s", "description": "d",
+                 "comments": [{"body": "This was introduced in PROJ-9 when the save path changed."}]}
+    check("a ticket a comment names as the cause is required", list(uc.required_linked_tickets(commented)) == ["PROJ-9"])
+    check("a ticket with no links and no cause needs no record", uc.linked_ticket_problems(
+        {}, {"key": "PROJ-1", "summary": "s", "description": "PROJ-1 fails on save."}) == [])
 
 
 def test_gate_firing_log() -> None:
@@ -18964,6 +19051,7 @@ def main() -> int:
     test_human_uac_shape()
     test_uac_size_and_pre_existing_items()
     test_action_variants()
+    test_switch_states_and_linked_tickets()
     test_repeated_qe_correction_gates()
     test_guessed_decision_gate()
     test_repeated_correction_pattern_gates_v2()
