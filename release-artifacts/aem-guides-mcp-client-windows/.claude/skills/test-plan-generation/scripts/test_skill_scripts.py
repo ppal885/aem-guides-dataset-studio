@@ -8879,6 +8879,27 @@ def test_gate_firing_log() -> None:
             os.environ["UAC_GATE_LOG"] = old
 
 
+def test_affected_version_not_test_release() -> None:
+    uc = uac_completeness_check_mod
+    source = {"key": "GUIDES-1", "versions": ["5.1", "5.2", "2605"], "fixVersions": ["Undecided"]}
+    bad = "- Acceptance Criteria 01: Deleting a map cleans its topics.\n  - On-premise 6.5 with Guides 5.2.\n"
+    check("an affected release named as the test release fails",
+          any("5.2" in p for p in uc.affected_version_problems(bad, "", source)))
+    check("an affected release in the test plan's servers fails",
+          bool(uc.affected_version_problems("", "- Servers: on-premise Guides 5.2.x", source)))
+    check("a Cloud affected release fails too",
+          bool(uac_completeness_check_mod.affected_version_problems("", "- Servers: Cloud 2605 build", source)))
+    repro = "- Reproduce on Guides 5.2.x first: the bug was reported there."
+    check("an affected release named to reproduce the bug passes",
+          uc.affected_version_problems("", repro, source) == [])
+    check("a Source line may name the affected release",
+          uc.affected_version_problems("  **Source:** comment on 5.2 build", "", source) == [])
+    check("a release that is also a fix version passes",
+          uc.affected_version_problems(bad, "", {"versions": ["5.2"], "fixVersions": ["5.2"]}) == [])
+    check("a different number does not match (5.2 vs 5.21, 15.2)",
+          uc.affected_version_problems("- Guides 5.21 and 15.2 only", "", source) == [])
+
+
 def test_uac_completeness_check() -> None:
     uc = uac_completeness_check_mod
     vm = vm_evidence_call_mod
@@ -19044,6 +19065,7 @@ def main() -> int:
     test_config_settings_lookup()
     test_hotfix_scope_check()
     test_uac_completeness_check()
+    test_affected_version_not_test_release()
     test_scenario_and_failure_path()
     test_fix_basis_and_no_suggested_checks()
     test_excluded_ticket_problems()
